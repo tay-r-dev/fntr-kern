@@ -78,12 +78,14 @@ export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
 const NECK_HANDLE_FRACTION = 0.45;
 // How far (radians of ball sweep) the neck may back the ball attachment off.
 const MAX_NECK_ARC_BACKOFF = 0.6;
-// How far back along the outer wall the ease-in point sits from where the ball
-// meets it, as a fraction of the ball's LATERAL radius, which is the size the
-// designer set. Not the along-stroke radius: that one is what the cut search
-// arrives at, and on a stroke whose wall has turned it comes back small, so the
-// ease-in landed a few units from the ball's own first point and the two drew
-// the flat spot this construction exists to remove.
+// The ball's glyph-axis extremes the arc turns at, counted back from its end.
+const DROP_CAP_APEX_COUNT = 3;
+// Bisection steps for the ease-in's two handle lengths, and the longest a
+// handle may be as a multiple of the chord.
+const HARMONIOUS_SOLVE_STEPS = 40;
+const HARMONIOUS_MAX_HANDLE = 2;
+// How far back the tangency sits where no harmonious answer exists, as a share
+// of the ball's own lateral radius.
 const DROP_CAP_EASE_IN_RATIO = 0.5;
 // The most of that run the ease-in may take.
 const DROP_CAP_EASE_IN_MAX_RUN = 0.9;
@@ -5633,6 +5635,77 @@ function dropCapApexAngles(ball, thetaStart) {
   return angles.sort((one, other) => one - other);
 }
 
+// A cubic's signed curvature where it STARTS, from its own four points. The
+// curve read backwards has the opposite sign, so a caller measuring a piece
+// against the direction it is travelled in negates it.
+function cubicStartCurvature(points) {
+  const [p0, p1, p2, p3] = points;
+  const tangent = { x: p1.x - p0.x, y: p1.y - p0.y };
+  const length = Math.hypot(tangent.x, tangent.y);
+  if (!(length > 1e-9)) {
+    return 0;
+  }
+  const second = { x: p2.x - 2 * p1.x + p0.x, y: p2.y - 2 * p1.y + p0.y };
+  return ((2 / 3) * (tangent.x * second.y - tangent.y * second.x)) / length ** 3;
+}
+
+// The two handle lengths that make one cubic leave `from` at curvature
+// `startCurvature` and arrive at `to` at curvature `endCurvature`, with both
+// handle directions given. Tangency alone is not enough here: the wall and the
+// ball meet at a curvature step, and the comb draws that step as a spike
+// however smooth the join looks.
+//
+// A cubic's end curvature depends on its own end and the two points beside it,
+// so each length is one division once the other is known:
+//
+//   a^2 = (2/3)(cross(u, d) + b cross(u, v)) / k0
+//   b^2 = (2/3)(cross(v, d) + a cross(u, v)) / k1
+//
+// with d the chord, u and v the two handle directions. The pair is solved by
+// substitution at a fixed trip count — no convergence test, like every other
+// search here — and null where either side asks for the square root of a
+// negative, which is a joint no cubic with these directions can make.
+function solveHarmoniousHandles({ from, u, startCurvature, to, v, endCurvature }) {
+  const cross = (one, other) => one.x * other.y - one.y * other.x;
+  const d = { x: to.x - from.x, y: to.y - from.y };
+  const A = cross(u, d);
+  const B = cross(u, v);
+  const C = cross(v, d);
+  const chord = Math.hypot(d.x, d.y);
+  if (!(chord > 1e-9) || !startCurvature || !endCurvature) {
+    return null;
+  }
+  if (Math.abs(B) < 1e-9) {
+    return null;
+  }
+  // Substituting the first equation into the second leaves one function of `a`
+  // alone. It is bisected over the lengths a handle may have, which is nothing
+  // to the chord's own length, with a fixed trip count.
+  const bFor = (value) => (1.5 * value * value * startCurvature - A) / B;
+  const residual = (value) => {
+    const other = bFor(value);
+    return 1.5 * other * other * endCurvature - (C + value * B);
+  };
+  const high = chord * HARMONIOUS_MAX_HANDLE;
+  const lowSign = residual(1e-6) < 0;
+  if (lowSign === residual(high) < 0) {
+    return null;
+  }
+  let low = 1e-6;
+  let top = high;
+  for (let step = 0; step < HARMONIOUS_SOLVE_STEPS; step++) {
+    const middle = (low + top) / 2;
+    if (residual(middle) < 0 === lowSign) {
+      low = middle;
+    } else {
+      top = middle;
+    }
+  }
+  const a = (low + top) / 2;
+  const b = bFor(a);
+  return a > 0 && b > 0 && Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+}
+
 // The two kappa handles of one arc piece from `a` to `b`, in device space.
 // Unit-space tangents are (-sin, cos); the handles are the kappa offsets.
 function dropCapArcHandles(ball, a, b) {
@@ -6400,63 +6473,165 @@ function buildDropCap({
   // end, where it collapses onto the point already there — points collapse,
   // they do not disappear, and that is what keeps one bulb comparable with
   // another.
-  const thetaArcStart = thetaOuter;
-  const apexes = dropCapApexAngles(ball, thetaArcStart).filter(
-    (theta) => theta > thetaArcStart + 1e-9 && theta < thetaArcEnd - 1e-9
-  );
+  // Counted back from the arc's END, which is the one stable landmark: the
+  // neck's own start. Counting forward from where the ball meets the wall
+  // instead made an extreme just behind that meeting and one just ahead pick
+  // different threes, a quarter turn apart, so the same bulb drew its points in
+  // different places either side of that edge.
+  const apexes = dropCapApexAngles(ball, thetaArcEnd - 2 * Math.PI)
+    .filter((theta) => theta < thetaArcEnd - 1e-9)
+    .slice(-DROP_CAP_APEX_COUNT)
+    // Held inside the drawn arc. Behind where the ball meets the wall is the
+    // far side of the stroke's own edge, and an arc reaching back there draws
+    // the ball over the wall and loops the outline; past the arc's end is the
+    // neck's. Held rather than dropped, because dropping one steps the count —
+    // and an extreme a degree behind the meeting, which is every upright
+    // stroke, is the meeting.
+    .map((theta) => Math.min(Math.max(theta, thetaOuter), thetaArcEnd));
+  // The ball's first point is the earliest of them, and the meeting with the
+  // wall is not a point at all: the ease-in curve runs from the wall straight
+  // into it.
+  const thetaArcStart = apexes.length ? apexes.shift() : thetaOuter;
 
-  // The ease-in point. The outer wall is cut again, back from where the ball
-  // meets it by a share of the ball's own along-stroke radius, and one cubic
-  // runs from that cut into the arc's first point: it leaves along the wall and
-  // arrives along the ball. So the wall does not run into the ball at a
-  // curvature step, the cut slides back as the ball grows, and it is always its
-  // own point — the arc's first point never stands on top of it.
+  // The tangency point, and the ease-in into the ball.
+  //
+  // The outer wall is cut a second time and one cubic runs from that cut into
+  // the ball's first point, leaving along the wall and arriving along the ball.
+  // Where the ball touches the wall is not a point at all: the ease-in passes
+  // over it.
+  //
+  // Both of the ease-in's handle lengths are solved so its curvature MATCHES the
+  // wall at one end and the ball at the other. Tangency alone leaves a curvature
+  // step, and the comb draws that step as a spike however smooth the join looks.
+  //
+  // The cut then slides until those two lengths come out EQUAL. That is what the
+  // sliding is for. Set back by a fixed share of the ball instead, the solve
+  // still answers, but it answers with one handle long and the other a few units
+  // — and a few units is where half a unit of grid rounding is a sixth of the
+  // curvature, so the step comes back on the emitted outline. Balanced, both
+  // handles are about a third of the chord and the grid costs a fraction of a
+  // per cent. The balance grows with the setback, so it is bisected for, at a
+  // fixed trip count like every other search here.
   const arcStart = dropCapOnCurve(ball.at(thetaArcStart));
-  const easeInDistance = Math.min(
-    ball.b * DROP_CAP_EASE_IN_RATIO,
-    getTerminalSegmentLength(trimmedOuterSide, position) * DROP_CAP_EASE_IN_MAX_RUN
-  );
-  const cutAt = (distance) =>
-    splitTerminalSideForRoundCap(
+  const ballIn = vector.mulVectorScalar(ball.tangentAt(thetaArcStart), -1);
+  // Measured on the arc piece AS IT WILL BE EMITTED, on the grid. Matching the
+  // exact ball instead leaves the step the rounding put there, which is the
+  // step the comb draws.
+  const ballCurvature = (() => {
+    const to = apexes[0] ?? thetaArcEnd;
+    const handles = dropCapArcHandles(ball, thetaArcStart, to);
+    return cubicStartCurvature([
+      arcStart,
+      dropCapHandle(handles.start),
+      dropCapHandle(handles.end),
+      dropCapOnCurve(ball.at(to)),
+    ]);
+  })();
+  const easeInAt = (distance) => {
+    const split = splitTerminalSideForRoundCap(
       trimmedOuterSide,
       position,
       distance,
       { endpointTangent: forward, capTangent: forward },
       { minimumTrim: 0 }
     );
-  const easeInSplit = cutAt(easeInDistance);
-  let easeIn = [];
-  if (easeInSplit?.insertedPoint) {
-    const easeInPoint = easeInSplit.insertedPoint;
-    easeInPoint.skipColinear = true;
-    easeInPoint.x = Math.round(easeInPoint.x);
-    easeInPoint.y = Math.round(easeInPoint.y);
-    trimmedOuterSide = trimSideForRoundCapEmission(
-      easeInSplit.sidePoints,
+    if (!split?.insertedPoint) {
+      return null;
+    }
+    const sidePoints = trimSideForRoundCapEmission(
+      split.sidePoints,
       position,
-      easeInSplit.referenceEndpointIndex
+      split.referenceEndpointIndex
     );
-    const wallOut = easeInSplit.tangentToEndpoint;
-    const ballIn = vector.mulVectorScalar(ball.tangentAt(thetaArcStart), -1);
-    const lengths = computeTunniHandleLengths(
+    const wallPoints =
+      getRoundCapTerminalSegment(sidePoints, position)?.segmentPoints ?? [];
+    // The wall's own terminal piece runs away from the tangency, the ease-in
+    // toward the ball, so the wall's curvature is negated to face the same way.
+    const wall = position === "end" ? [...wallPoints].reverse() : wallPoints;
+    return {
+      split,
+      sidePoints,
+      solved:
+        wall.length === 4
+          ? solveHarmoniousHandles({
+              from: split.insertedPoint,
+              u: split.tangentToEndpoint,
+              startCurvature: -cubicStartCurvature(wall),
+              to: arcStart,
+              v: ballIn,
+              endCurvature: ballCurvature,
+            })
+          : null,
+    };
+  };
+  // Positive where the wall-side handle is the longer, and where no cubic with
+  // these directions holds both curvatures at all — which happens past the
+  // balance, never before it.
+  const balanceAt = (distance) => {
+    const attempt = easeInAt(distance);
+    return attempt?.solved ? attempt.solved.a - attempt.solved.b : Infinity;
+  };
+  const longestRun =
+    getTerminalSegmentLength(trimmedOuterSide, position) * DROP_CAP_EASE_IN_MAX_RUN;
+  let low = Math.min(MIN_BALL_TRIM, longestRun);
+  let high = longestRun;
+  // A straight wall has no harmonious answer at any setback, and that is
+  // geometry rather than a failure: a circle tangent to a straight line steps in
+  // curvature where it touches, whatever runs between them. There the cut takes
+  // a share of the ball's own size, as it always did, and the join keeps its
+  // tangents alone.
+  let chosen = Math.min(ball.b * DROP_CAP_EASE_IN_RATIO, longestRun);
+  if (balanceAt(low) < 0 && balanceAt(high) > 0) {
+    for (let step = 0; step < DROP_CAP_TRIM_BISECTION_STEPS; step++) {
+      const middle = (low + high) / 2;
+      if (balanceAt(middle) < 0) {
+        low = middle;
+      } else {
+        high = middle;
+      }
+    }
+    chosen = high;
+  }
+  const easeInAttempt = easeInAt(chosen);
+  let easeIn = [];
+  if (easeInAttempt) {
+    // Left off the grid, with its two handles, deliberately. Curvature at a
+    // cubic's end goes as one over the square of its handle, so on a handle of
+    // fifteen units half a unit of rounding is a fifteenth of the curvature —
+    // and the match this solve exists to make comes back as a step in the comb.
+    // The colinearity pass writes unrounded for the same reason (§3, grid
+    // rounding), and the tangency must also stay ON the wall it was cut from.
+    const easeInPoint = easeInAttempt.split.insertedPoint;
+    easeInPoint.skipColinear = true;
+    trimmedOuterSide = easeInAttempt.sidePoints;
+    const wallOut = easeInAttempt.split.tangentToEndpoint;
+    const chord = vector.distance(easeInPoint, arcStart);
+    // Where no cubic with these two directions can hold both curvatures, the
+    // join keeps its tangents and gives the curvature up rather than inventing
+    // a length: the circular handle pair, which is what it always drew.
+    const fallback = computeTunniHandleLengths(
       easeInPoint,
       wallOut,
       arcStart,
       ballIn,
       KAPPA
     );
-    const chord = vector.distance(easeInPoint, arcStart);
+    const solved = easeInAttempt.solved;
     const clampEase = (value) =>
       Math.min(Math.max(Number.isFinite(value) ? value : chord / 3, 0), chord);
+    const startLength = clampEase(solved ? solved.a : fallback.startLen);
+    const endLength = clampEase(solved ? solved.b : fallback.endLen);
     easeIn = [
-      dropCapHandle({
-        x: easeInPoint.x + wallOut.x * clampEase(lengths.startLen),
-        y: easeInPoint.y + wallOut.y * clampEase(lengths.startLen),
-      }),
-      dropCapHandle({
-        x: arcStart.x + ballIn.x * clampEase(lengths.endLen),
-        y: arcStart.y + ballIn.y * clampEase(lengths.endLen),
-      }),
+      {
+        x: easeInPoint.x + wallOut.x * startLength,
+        y: easeInPoint.y + wallOut.y * startLength,
+        type: "cubic",
+      },
+      {
+        x: arcStart.x + ballIn.x * endLength,
+        y: arcStart.y + ballIn.y * endLength,
+        type: "cubic",
+      },
     ];
   }
 

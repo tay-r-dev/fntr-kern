@@ -1709,39 +1709,53 @@ with one run serving both the geometry and the panel's top of range.
 **The arc was cut into four equal pieces whatever the sweep**, so a default
 bulb carried five on-curves on the ball at about -32, 26, 85 and 143 degrees,
 none of them on an extreme. Reported 2026-09-17 as one point too many. The
-on-curves are the ball's glyph-axis extremes now, and the count is fixed at
-three of the four.
+terminal is the neck's landing, three glyph-axis extremes and the tangency point
+on the wall; the count holds under every drag and the ease-in is curvature
+continuous at both ends.
 
-- **Three rounds went into merging the tangency away, and the answer was to
-  keep it.** On a horizontal stroke the ball's own meeting with the wall IS its
-  top extreme, so the two were coincident and every fix tried to drop one:
-  merging the extreme into the tangency, which left the arc starting at an
-  arbitrary angle; sliding the wall's last piece onto the extreme and deleting
-  the tangency; then gating that slide on an angle, which put both on the
-  outline once the lean passed the gate. **A point two constructions both want
-  is not a duplicate to delete: it is one point too few.** The wall is cut a
-  second time, half a ball radius back, so the ease-in point is always its own
-  and each construction keeps its point.
-- **A count held by a gate is not held.** Every version above kept the count at
-  one lean and stepped at another: at 30 degrees for the angle gate, at 45 for
-  the window, at 2.02 of ball ratio and at the ease/corner crossover. A sweep
-  over lean, size, shape and easing found each one; no single configuration
-  showed any of them. The count is fixed by construction now — three extremes
-  taken from the four, an ease-in point that cannot collapse, and a corner that
-  emits the same points a neck does — and the same sweeps report zero steps.
-- **A zero-length arc piece was skipped, and the skip was the step.** An extreme
-  held at the sweep's end emitted nothing, so the ball lost an on-curve exactly
-  where the extreme met the end. It emits its three points collapsed on their
-  own end now. Points collapse, they do not disappear.
+- **Six rounds went into the point beside the tangency, and five were the same
+  mistake.** On an upright stroke the ball's meeting with the wall IS its top
+  extreme, so the two were coincident, and each round chose the ball's points by
+  working FORWARD from that meeting: merging the extreme into it, sliding the
+  wall onto the extreme and deleting the tangency, gating that slide on an
+  angle, then on a window, then taking a fixed three from that window. Every one
+  held the count at one lean and stepped at another -- 30 degrees for the gate,
+  45 for the window, ratio 1.02 and 2.02 for the size, and the window swapped
+  which three extremes were drawn a quarter turn apart either side of its edge.
+  **An anchor two constructions both sit on is the wrong thing to count from.**
+  Counted back from the arc's END, which is the neck's own start, there is
+  nothing to disambiguate.
+- **Dropping an extreme that falls outside the arc steps the count; holding it
+  at the edge does not.** Behind the meeting the arc loops over the wall, so the
+  clamp is needed; but an extreme a degree behind the meeting is the meeting,
+  and dropping that one stepped the count at a lean of exactly zero.
+- **Tangency is not harmony, and the comb says so.** The ease-in matched
+  direction at both ends and jumped curvature by 16 per cent at the ball. Its
+  two handle lengths are solved from the two curvatures now, which is one
+  substitution and a bisection.
+- **The solve was exact and the grid ate it.** Set back by a fixed share of the
+  ball, the answer came out with one handle at 32 units and the other at 6, and
+  on a 6-unit handle half a unit of rounding is a sixth of the curvature: 16 per
+  cent at the ball end, 8 at the wall. The setback is bisected for the balance
+  now, which is the widest the shorter handle gets -- about a third of the chord
+  either side -- and the ease-in is emitted off the grid, with the ball's
+  curvature read off the arc AS DRAWN. Each of the three alone left several per
+  cent; together the two joints measure 0.00.
+- **The count was measured, not reasoned.** Sweeps over lean from -60 to 60
+  degrees, size 0.5 to 3, shape and easing 0 to 1, plain and eased, on a test
+  stroke and on the `underscore` of skeletron.fontra. No single configuration
+  showed any of the steps above.
+- **The continuity bound had to rise from 6 units to 12.** The ease-in's handles
+  are solved from CURVATURE, a second derivative, so they move further per unit
+  of skeleton than a position does. The on-curves under the same sweep move
+  about one unit.
 - **The neck was rebuilt and did not need to be.** Reading the ease-in as "the
   neck starts at the last extreme" took the neck's own backed-off point away,
-  and on the `underscore` of skeletron.fontra — where the ball sits beside a
-  near-vertical stroke and the two neck tangents run nearly parallel — no single
-  tension described the result: the handles ran the whole chord and the neck
-  folded, or were clamped and drew a straight drop with the ball's underside
-  gone. Reverted whole. The neck, its backoff, its own on-curve and its
-  curvature gizmo are as they were. **The report said easing, and easing was not
-  the part that changed.**
+  and on the `underscore` -- where the ball sits beside a near-vertical stroke
+  and the two neck tangents run nearly parallel -- no single tension described
+  the result: the handles ran the whole chord and the neck folded, or were
+  clamped and drew a straight drop with the ball's underside gone. Reverted
+  whole. **The report said easing, and easing was not the part that changed.**
 
 - The curvature gizmo was absent from the whole terminal region, because the
   segment walk takes a segment only when all four points carry addresses and the

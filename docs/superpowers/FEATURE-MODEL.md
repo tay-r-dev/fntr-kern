@@ -514,27 +514,47 @@ predict.
 
 **The ball's on-curves sit on its extremes in the glyph's own axes** (decided 2026-09-17), which
 is where a designer puts them by hand, and the ball is drawn from one to the next as an exact
-kappa arc. On a horizontal stroke that is its top, its tip on the terminal plane, and its bottom.
+kappa arc. The terminal reads, from the neck back to the stroke: the neck's landing, three
+extremes, and the tangency point on the outer wall.
 
-**The count is fixed, and that is what the placement is for.** The ball has four extremes, a
-quarter turn apart. Exactly one of them falls in the window around where the ball meets the outer
-wall, and that one is the arc's first point; the next two follow it, and one the sweep does not
-reach is held at the sweep's end, where it collapses onto the point already there. So the ball
-always draws the same points, whatever the stroke's lean, the ball's size or its shape. The
-alternative, taking however many extremes the sweep happens to contain, steps the count as the
-stroke turns, which is what the placement was asked to cure.
+**The three extremes are counted back from the arc's END**, which is the neck's own start and the
+one landmark nothing else sits on. Counting forward from where the ball meets the wall instead
+makes an extreme just behind that meeting and one just ahead pick different threes, a quarter turn
+apart, so one bulb drawn with the same numbers puts its points in different places either side of
+that edge. One that falls outside the drawn arc is held at its edge rather than dropped: behind the
+meeting is the far side of the stroke's own edge, and an arc reaching back there loops the outline;
+past the arc's end is the neck's. Held rather than dropped, because dropping one steps the count,
+and an extreme a degree behind the meeting is the meeting. So the same three are drawn at every
+lean, size, shape and easing, and the point count never changes.
 
-**The ease-in point is always its own point, and it slides.** The outer wall is cut a second time,
-back from where the ball meets it by half the ball's own along-stroke radius, and one cubic runs
-from that cut into the ball's first point: it leaves along the wall and arrives along the ball. So
-the wall does not run into the ball at a curvature step. The cut slides back along the wall toward
-the previous rib point as the ball grows, and it never stands on the ball's first point, so no
-count changes under it. An extreme behind the meeting is hidden under the wall, and the meeting
-stands in for it: the two are one point on an axis-aligned stroke, and the ease-in curve covers the
-few degrees between them on a leaning one.
+**Where the ball meets the wall is not a point.** The outer wall is cut a second time and the
+tangency point sits at that cut. One cubic, the ease-in, runs from it into the ball's first extreme,
+and the meeting is passed over. Emitting the meeting as well put a point between the last extreme
+and the tangency that answers to nothing a designer set.
 
-One cost is measured: on a slanted stroke the ball's forward tip is not an on-curve, so the arc
-through it can stand a fraction of a percent of the radius past the terminal plane.
+**The ease-in is harmonious, not merely tangent.** Both of its handle lengths are solved so its
+curvature equals the wall's where it leaves and the ball's where it arrives. A cubic's end
+curvature is set by that end and the two points beside it, so the pair solves by substitution, and
+it is bisected at a fixed trip count. Tangency alone leaves a curvature step, and the comb draws
+that step as a spike however smooth the join looks.
+
+**The tangency then slides until those two lengths come out equal**, and that is what the sliding
+is for. Set back by a fixed share of the ball instead, the solve still answers, but with one handle
+long and the other a few units, and a few units is where half a unit of grid rounding is a sixth of
+the curvature. The step comes back on the emitted outline. Balanced, both handles are about a third
+of the chord. The balance grows with the setback, so it too is bisected for.
+
+**The ease-in is emitted off the grid**, its point and both handles, as the colinearity pass already
+is (§3). The ball's curvature is read off the arc piece as it will be drawn rather than off the
+exact circle. Either one alone leaves several per cent of the step behind.
+
+**A straight wall has no harmonious answer at any setback**, and that is geometry rather than a
+failure: a circle tangent to a straight line steps in curvature where it touches, whatever runs
+between them. There the cut takes a share of the ball's own lateral radius and the join keeps its
+tangents alone.
+
+One further cost is measured: on a slanted stroke the ball's forward tip is not an on-curve, so the
+arc through it can stand a fraction of a percent of the radius past the terminal plane.
 
 Exactly one curvature gizmo lives at a bulb's terminal. Without easing it sits on the inner edge
 above the incision: the trim rebuilds that segment's two handles from a bezier split, so they are
