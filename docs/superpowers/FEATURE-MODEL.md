@@ -512,13 +512,34 @@ panel's top of range are the same fact, and the neck can never eat an on-curve. 
 inflated a second ball and took whatever crossing that made, which no reading of the number could
 predict.
 
-Exactly one curvature gizmo lives at a bulb's terminal. Without easing it sits on the inner edge
-above the incision: the trim rebuilds that segment's two handles from a bezier split, so they are
-given the original handles' addresses and the crossing on-curve carries the untrimmed segment, the
-same pair the round-cap split publishes. With easing it moves onto the neck. A neck has no skeleton
-segment behind it, so its curvature is stored in `capBallEaseCurvature` on the cap-owning point and
-its four points name that point and that field. Neck points are addressable by the gizmo and by
-nothing else — no on-curve gizmo, no direct handle drag — because they are cap geometry and
+**The ball's on-curves sit on its extremes in the glyph's own axes** (decided 2026-09-17), which
+is where a designer puts them by hand, and the ball is drawn from one to the next as an exact
+kappa arc. The tangency with the outer edge is not a point of its own where an extreme lies within
+30 degrees of it: the outer wall's last piece slides onto that extreme, leaving along the wall and
+arriving along the ball, with its handle grown by the arc it absorbed. On an axis-aligned stroke
+the tangency is the extreme and nothing moves. Further round, the tangency stays a point and the
+extreme is another. An extreme within a unit of the landing is not emitted twice. So the ball
+region carries its extremes and the landing on the inner wall: on a horizontal stroke, top, tip,
+bottom, landing. Two costs: the count of extremes inside the sweep changes as the stroke turns, so
+two masters whose terminals lean differently may not interpolate at the ball; and on a slanted
+stroke the ball's forward tip is no longer an on-curve, so the arc through it can stand a fraction
+of a percent of the radius past the terminal plane, about a unit on the largest teardrop.
+
+**The neck is one cubic from the last extreme to the landing, and it has no point of its own.**
+Its first handle is the arc's own kappa handle for the sweep from that extreme to the crossing, so
+the ball's underside is drawn rather than dropped. Its landing handle starts as that arc's end
+handle and turns onto the wall over the first quarter of the easing range, growing by a fillet's
+share of the slide, so easing leaves zero without a pop and lands smoothly once it is on. Easing
+zero is a corner at the crossing. A ball too small to reach the inner edge lands on the inner
+terminal with its handle running into the stroke, and the terminal stays the corner it is. A single
+tension cannot describe this neck, because its two tangents run nearly parallel on a stroke the ball
+sits beside, so the neck carries no curvature gizmo and `capBallEaseCurvature` is unread.
+
+The curvature gizmo at a bulb's terminal sits on the inner edge above the incision while easing is
+off: the trim rebuilds that segment's two handles from a bezier split, so they are given the
+original handles' addresses and the crossing on-curve carries the untrimmed segment, the same pair
+the round-cap split publishes. With easing on, that trim is rebuilt without addresses and there is
+no gizmo at the terminal. Neck points are not addressable by anything: they are cap geometry, and
 dragging one would move the rib the neck hangs off.
 
 ### Step 5 — Assembly

@@ -1706,6 +1706,37 @@ no reading of the number told you where the neck would land. It is a 0 to 1
 fraction of the run from the plain ball crossing back to the next on-curve now,
 with one run serving both the geometry and the panel's top of range.
 
+**The arc was cut into four equal pieces whatever the sweep**, so a default
+bulb carried five on-curves on the ball at about −32, 26, 85 and 143 degrees,
+none on an apex, and the neck left from a point backed off the last of them.
+Reported 2026-09-17 as one point too many. The on-curves are the ball's
+glyph-axis extremes now and the backoff is gone. Default horizontal bulb: top,
+tip, bottom, landing — four. The fixed count that the four pieces existed for is
+traded away knowingly: the extremes inside the sweep change as the stroke
+turns. The other price is measured: on a curved terminal at ratio 3 and full
+shape the forward tip is no longer an on-curve and the arc through it stands
+1.05 units past the terminal plane, against 0.5 before. The bound in the test
+is 1.5 now.
+
+- **The neck could not start at the last apex under a single tension.** On the
+  `underscore` of skeletron.fontra the ball sits beside a near-vertical stroke,
+  so the last apex's tangent and the wall run parallel and the two tangent
+  lines meet hundreds of units away. Read off that meeting the handles ran the
+  whole chord and the neck folded over itself; clamped at six tenths of the
+  chord it drew a straight drop and the ball's underside was gone. The neck
+  takes the arc's own kappa handle at the apex and a landing handle that turns
+  from the arc's end onto the wall over the first quarter of the easing range,
+  and the neck's curvature gizmo went with it. `capBallEaseCurvature` is still
+  in the model, the panel fallbacks and the drag code, and reads nothing.
+- **The tangency beside an apex drew a flat spot.** On the same glyph the
+  tangency landed three units from the right apex, with one-unit handles the
+  grid could not round. The wall slides onto an apex within 30 degrees of its
+  tangency now, absorbing the arc between into its own last piece.
+- **Sliding onto the first apex in the list slid onto the tip.** On a
+  horizontal stroke the top apex is the tangency and was dropped as
+  coincident, so the tip came first and the wall ran to it. The gate is the
+  angle from the tangency, not the list order.
+
 - The curvature gizmo was absent from the whole terminal region, because the
   segment walk takes a segment only when all four points carry addresses and the
   trim rebuilt the inner edge's handles without re-attaching theirs.

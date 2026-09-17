@@ -1314,7 +1314,11 @@ describe("skeleton-generator drop caps", () => {
       { capStyle: "drop", capBallRatio: 2, capBallEasing: 0.5 },
       { capStyle: "drop", capBallRatio: 3, capBallShape: 1, capBallEasing: 1 },
     ]) {
-      expect(overshoot(capFields), JSON.stringify(capFields)).to.be.lessThan(0.5);
+      // On a slanted terminal the ball's forward tip is not an on-curve any
+      // more (the on-curves sit on the glyph's own extremes), so the kappa
+      // cubic through it can stand a fraction of a percent of the radius past
+      // the plane: about a unit on a ratio-3 teardrop.
+      expect(overshoot(capFields), JSON.stringify(capFields)).to.be.lessThan(1.5);
     }
   });
 
@@ -1417,30 +1421,6 @@ describe("skeleton-generator drop caps", () => {
     }
   });
 
-  it("capBallEaseCurvature shapes the eased neck without moving its ends", () => {
-    const neckEnds = (curvature) => {
-      const points = generateFromSkeleton(
-        horizontalDrop({ capBallEasing: 0.6, capBallEaseCurvature: curvature })
-      ).contours[0].points;
-      return points
-        .filter((point) => !point.type)
-        .map((point) => `${point.x},${point.y}`);
-    };
-    const slack = neckEnds(0.3);
-    const taut = neckEnds(0.9);
-    expect(slack).to.deep.equal(taut);
-
-    const handles = (curvature) => {
-      const points = generateFromSkeleton(
-        horizontalDrop({ capBallEasing: 0.6, capBallEaseCurvature: curvature })
-      ).contours[0].points;
-      return points
-        .filter((point) => point.type)
-        .map((point) => `${point.x},${point.y}`);
-    };
-    expect(handles(0.3)).to.not.deep.equal(handles(0.9));
-  });
-
   it("capBallShape stretches the ball backward without resizing it", () => {
     // A teardrop, not a bigger ball: the swell is unchanged, but it leaves the
     // outer edge earlier and tapers back further along the inner edge.
@@ -1491,6 +1471,99 @@ describe("skeleton-generator drop caps", () => {
     );
     expect(result.contours.length).to.equal(1);
     expect(allFinite(result)).to.equal(true);
+  });
+
+  // The ball's on-curves sit where a designer would put them: at the ball's
+  // extremes in the glyph's own axes, plus the landing on the inner wall. On a
+  // horizontal stroke the tangency with the outer edge IS the top extreme, so
+  // the ball region carries exactly four on-curves: top, tip, bottom, landing.
+  // An extreme within a few degrees of the tangency or the landing is not
+  // emitted a second time.
+  // The ball region in contour order: from the tangency, the last on-curve on
+  // the outer edge (y=80), to the landing, the first on-curve after it back on
+  // the inner edge (y=160).
+  function ballOnCurves(capFields) {
+    const points = generateFromSkeleton(
+      horizontalDrop(capFields)
+    ).contours[0].points.filter((p) => !p.type);
+    const onOuter = (p) => Math.abs(p.y - 80) <= 1;
+    const onInner = (p) => Math.abs(p.y - 160) <= 1;
+    const tangency = points.length - 1 - [...points].reverse().findIndex(onOuter);
+    const landing = points.findIndex((p, index) => index > tangency && onInner(p));
+    return points.slice(tangency, landing + 1);
+  }
+
+  it("puts the ball's on-curves on its glyph-axis extremes and the landing", () => {
+    for (const capFields of [{}, { capBallEasing: 0.5 }, { capBallEasing: 1 }]) {
+      const ball = ballOnCurves(capFields);
+      const label = JSON.stringify(capFields);
+      // Default ratio 1.25 on width 80: lateral radius 50, top at y=80, bottom
+      // at y=180, tip at x=440.
+      expect(ball.length, label).to.equal(4);
+      expect(ball.filter((p) => Math.abs(p.y - 80) <= 1).length, label).to.equal(1);
+      expect(ball.filter((p) => Math.abs(p.x - 440) <= 1).length, label).to.equal(1);
+      expect(ball.filter((p) => Math.abs(p.y - 180) <= 1).length, label).to.equal(1);
+      expect(ball.filter((p) => Math.abs(p.y - 160) <= 1).length, label).to.equal(1);
+    }
+  });
+
+  it("drops an extreme the landing arrives before", () => {
+    // Ratio 0.8: radius 32, the ball never reaches the inner edge and lands on
+    // the inner terminal at (440, 160), which comes before the bottom extreme.
+    const ball = ballOnCurves({ capBallRatio: 0.8 });
+    expect(ball.length).to.equal(3);
+    expect(ball.filter((p) => Math.abs(p.y - 80) <= 1).length).to.equal(1);
+    expect(ball.filter((p) => Math.abs(p.x - 440) <= 1).length).to.equal(2);
+  });
+
+  it("slides the outer wall onto the first apex on a leaning stroke", () => {
+    // A stroke leaning 15 degrees off horizontal, ball on the outer side. The
+    // wall's last on-curve is the ball's topmost point, and no on-curve sits
+    // within a few units of it: the tangency is not emitted as its own point.
+    const lean = (15 * Math.PI) / 180;
+    const points = generateFromSkeleton({
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: null,
+          points: [
+            { id: 2, x: 40, y: 120, type: null, smooth: false },
+            {
+              id: 3,
+              x: 40 + 400 * Math.cos(lean),
+              y: 120 - 400 * Math.sin(lean),
+              type: null,
+              smooth: false,
+              capStyle: "drop",
+              capBallSide: "left",
+            },
+          ],
+        },
+      ],
+      generated: [],
+    }).contours[0].points;
+    const onCurves = points.filter((p) => !p.type);
+    const top = onCurves.reduce((best, p) => (p.y < best.y ? p : best));
+    const near = onCurves.filter(
+      (p) => p !== top && Math.hypot(p.x - top.x, p.y - top.y) < 8
+    );
+    expect(near).to.have.length(0);
+    // The piece arriving at the top is tangent to the ball there: horizontal.
+    const topIndex = points.indexOf(top);
+    const before = points[topIndex - 1];
+    expect(Math.abs(before.y - top.y)).to.be.at.most(1);
+  });
+
+  it("keeps the same four points as the shape stretches", () => {
+    for (const shape of [0, 0.25, 0.5, 0.75, 1]) {
+      expect(ballOnCurves({ capBallShape: shape }).length, `shape ${shape}`).to.equal(
+        4
+      );
+    }
   });
 });
 
