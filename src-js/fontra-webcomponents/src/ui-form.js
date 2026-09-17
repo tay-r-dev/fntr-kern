@@ -15,7 +15,7 @@ import {
   round,
   scheduleCalls,
 } from "@fontra/core/utils.ts";
-import { LoopedScrub } from "@fontra/web-components/looped-scrub.js";
+import { EdgeScrub } from "@fontra/web-components/edge-scrub.js";
 import { RangeSlider } from "@fontra/web-components/range-slider.js";
 import "@fontra/web-components/rotary-control.js";
 
@@ -323,7 +323,6 @@ export class Form extends SimpleElement {
       // works — the change is what is being sent — but nothing truthful can be
       // shown in the box, so it is left alone.
       const hasStartValue = Number.isFinite(startValue);
-      const looped = new LoopedScrub(labelElement);
       // Unrounded, always. What the box shows and what goes down the stream are
       // rounded off this, never back into it: a fine drag moves a tenth of a unit
       // per pixel, and rounding the running total would floor every one of those
@@ -331,24 +330,16 @@ export class Form extends SimpleElement {
       let travel = 0;
       let valueStream = null;
       let streamStarted = false;
+      // The modifiers of the last real move, so the travel the edge adds on
+      // its own is stepped the same way the hand's travel would have been.
+      let lastEvent = event;
 
-      const onMove = (moveEvent) => {
-        if (!valueStream) {
-          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
-            return;
-          }
-          valueStream = new QueueIterator(5, true);
-          // Everything before the threshold was a click, not travel, so the
-          // drag starts counting from where it crossed rather than from the
-          // press — otherwise the value lurches by the dead zone on the first
-          // move that registers.
-          looped.begin(moveEvent);
-        }
-        travel += scrubIncrement(looped.delta(moveEvent), {
+      const applyDelta = (dx) => {
+        travel += scrubIncrement(dx, {
           step,
-          shiftKey: moveEvent.shiftKey,
-          ctrlKey: moveEvent.ctrlKey,
-          metaKey: moveEvent.metaKey,
+          shiftKey: lastEvent.shiftKey,
+          ctrlKey: lastEvent.ctrlKey,
+          metaKey: lastEvent.metaKey,
         });
         let change;
         if (hasStartValue) {
@@ -372,6 +363,23 @@ export class Form extends SimpleElement {
         valueStream.put(change);
         this._dispatchEvent("doChange", { key: fieldItem.key, value: change });
       };
+      const scrub = new EdgeScrub(labelElement, applyDelta);
+
+      const onMove = (moveEvent) => {
+        if (!valueStream) {
+          if (Math.abs(moveEvent.clientX - startX) < SCRUB_THRESHOLD) {
+            return;
+          }
+          valueStream = new QueueIterator(5, true);
+          // Everything before the threshold was a click, not travel, so the
+          // drag starts counting from where it crossed rather than from the
+          // press — otherwise the value lurches by the dead zone on the first
+          // move that registers.
+          scrub.begin(moveEvent);
+        }
+        lastEvent = moveEvent;
+        applyDelta(scrub.delta(moveEvent));
+      };
 
       const detach = () => {
         labelElement.removeEventListener("pointermove", onMove);
@@ -380,7 +388,7 @@ export class Form extends SimpleElement {
         labelElement.removeEventListener("pointerdown", onSecondButton);
         labelElement.removeEventListener("contextmenu", onContextMenu);
         labelElement.releasePointerCapture?.(event.pointerId);
-        looped.end();
+        scrub.end();
       };
 
       const onUp = () => {

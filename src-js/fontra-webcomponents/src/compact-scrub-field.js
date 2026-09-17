@@ -10,7 +10,7 @@ import {
 } from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import { InlineSVG } from "./inline-svg.js";
-import { LoopedScrub } from "./looped-scrub.js";
+import { EdgeScrub } from "./edge-scrub.js";
 import { themeColorCSS } from "./theme-support.js";
 
 // Ticket 26 (UI-REFACTOR.md §2.5, UI-NOMENCLATURE.md §14): the compact scrub
@@ -431,7 +431,21 @@ export class CompactScrubField extends UnlitElement {
     const startValue = this._value;
     let travel = 0;
     let dragging = false;
-    const looped = new LoopedScrub(this._box);
+    // The modifiers of the last real move, so the travel the edge adds on its
+    // own is stepped the same way the hand's travel would have been.
+    let lastEvent = event;
+    const applyDelta = (dx) => {
+      travel += scrubIncrement(dx, {
+        step: this._step,
+        shiftKey: lastEvent.shiftKey,
+        ctrlKey: lastEvent.ctrlKey,
+        metaKey: lastEvent.metaKey,
+      });
+      const clamped = clampScrubValue(startValue + travel, this._boundsFieldItem);
+      travel = clamped - startValue;
+      this._commit(roundScrubValue(clamped, this._boundsFieldItem));
+    };
+    const scrub = new EdgeScrub(this._box, applyDelta);
 
     const onMove = (moveEvent) => {
       if (!dragging) {
@@ -439,7 +453,7 @@ export class CompactScrubField extends UnlitElement {
           return;
         }
         dragging = true;
-        looped.begin(moveEvent);
+        scrub.begin(moveEvent);
         // One stream per gesture, opened the moment it is confirmed to be a
         // drag rather than a click. A caller that wants the whole drag as one
         // undo step (a live preview it commits once) reads this instead of
@@ -452,16 +466,8 @@ export class CompactScrubField extends UnlitElement {
           })
         );
       }
-      travel += scrubIncrement(looped.delta(moveEvent), {
-        step: this._step,
-        shiftKey: moveEvent.shiftKey,
-        ctrlKey: moveEvent.ctrlKey,
-        metaKey: moveEvent.metaKey,
-      });
-      const clamped = clampScrubValue(startValue + travel, this._boundsFieldItem);
-      travel = clamped - startValue;
-      const rounded = roundScrubValue(clamped, this._boundsFieldItem);
-      this._commit(rounded);
+      lastEvent = moveEvent;
+      applyDelta(scrub.delta(moveEvent));
     };
 
     const detach = () => {
@@ -471,7 +477,7 @@ export class CompactScrubField extends UnlitElement {
       this._box.removeEventListener("pointerdown", onSecondButton);
       this._box.removeEventListener("contextmenu", onContextMenu);
       this._box.releasePointerCapture?.(event.pointerId);
-      looped.end();
+      scrub.end();
     };
 
     const endStream = () => {
