@@ -15,19 +15,16 @@ export class LoopedScrub {
     this.cursor = null;
     this.x = 0;
     this.y = 0;
+    this._lockRequested = false;
   }
 
-  // Call once, when the press has become a drag.
+  // Call once, when the press has become a drag. No lock yet: most drags
+  // never reach an edge, and requesting one here fired Chrome's "lost your
+  // pointer" notice on every scrub, locked or not.
   begin(event) {
     this.x = event.clientX;
     this.y = event.clientY;
     this.lastX = event.clientX;
-    try {
-      const request = this.element.requestPointerLock?.();
-      request?.catch?.(() => {});
-    } catch (error) {
-      // No lock: the drag stays a captured drag.
-    }
   }
 
   get locked() {
@@ -39,6 +36,26 @@ export class LoopedScrub {
     if (!this.locked) {
       const dx = event.clientX - this.lastX;
       this.lastX = event.clientX;
+      this.x = event.clientX;
+      this.y = event.clientY;
+      // The lock is only worth its own UI at the one moment a captured drag
+      // cannot serve: the pointer has reached a window edge and needs to
+      // keep going past it. Anywhere else in the window, no request goes
+      // out at all.
+      const atEdge =
+        this.x <= 0 ||
+        this.x >= window.innerWidth - 1 ||
+        this.y <= 0 ||
+        this.y >= window.innerHeight - 1;
+      if (atEdge && !this._lockRequested) {
+        this._lockRequested = true;
+        try {
+          const request = this.element.requestPointerLock?.();
+          request?.catch?.(() => {});
+        } catch (error) {
+          // No lock: the drag stays a captured drag.
+        }
+      }
       return dx;
     }
     const width = window.innerWidth;
@@ -53,6 +70,7 @@ export class LoopedScrub {
     if (this.locked) {
       document.exitPointerLock();
     }
+    this._lockRequested = false;
     this.cursor?.remove();
     this.cursor = null;
   }
