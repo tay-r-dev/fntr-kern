@@ -56,6 +56,8 @@ import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
   makeAxisLock,
   makeTensionAwareAxisScaleSolver,
+  applyPowerAxisScale,
+  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 
 export function makeSkeletonPointKey(contourId, pointId) {
@@ -751,7 +753,9 @@ export function makeSkeletonPointTargetEntry(
 export function makeSkeletonTensionAwareTargetEntry(
   layer,
   selection,
-  referenceSkeletonData = null
+  referenceSkeletonData = null,
+  behaviorName = "skeleton-tension-aware",
+  clickedSkeletonPointKey = null
 ) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) return null;
@@ -793,6 +797,23 @@ export function makeSkeletonTensionAwareTargetEntry(
         applyTensionAwareEdit(before.points, after.points, after.isClosed, {
           slide: false,
         });
+        if (behaviorName === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME) {
+          const clicked = clickedSkeletonPointKey
+            ? parseSkeletonPointKey(clickedSkeletonPointKey)
+            : null;
+          const clickedAddress = clicked
+            ? getSkeletonPointAddress(skeletonData, clicked.contourId, clicked.pointId)
+            : null;
+          if (clickedAddress && clickedAddress.contourIndex === contourIndex) {
+            applyPowerAxisScale(
+              before.points,
+              after.points,
+              after.isClosed,
+              clickedAddress.pointIndex,
+              delta
+            );
+          }
+        }
         const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
         after.points.forEach((point, i) => corrected.set(startIndex + i, point));
       }
