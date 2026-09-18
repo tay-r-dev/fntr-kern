@@ -846,7 +846,6 @@ export class PointerTool extends BaseTool {
               isGeneratedContour: (contourIndex) =>
                 this.sceneModel.isGeneratedPathContour(contourIndex),
               scalingEditBehavior: this.scalingEditBehavior,
-              clickedPointIndex: sceneController.sceneModel.initialClickedPointIndex,
             }
           );
         }
@@ -858,8 +857,7 @@ export class PointerTool extends BaseTool {
             layerGlyph,
             sceneController.selection,
             referenceSkeletonData,
-            name,
-            sceneController.sceneModel.initialClickedSkeletonPointKey
+            name
           );
           return entry ? [entry] : [];
         }

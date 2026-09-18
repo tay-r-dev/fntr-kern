@@ -754,8 +754,7 @@ export function makeSkeletonTensionAwareTargetEntry(
   layer,
   selection,
   referenceSkeletonData = null,
-  behaviorName = "skeleton-tension-aware",
-  clickedSkeletonPointKey = null
+  behaviorName = "skeleton-tension-aware"
 ) {
   const skeletonData = getSkeletonData(layer);
   if (!skeletonData) return null;
@@ -774,6 +773,20 @@ export function makeSkeletonTensionAwareTargetEntry(
   // The axis the drag latches onto, held for the whole gesture. Same lock as
   // the path drag: the correction reads a shape one axis at a time.
   const lockDeltaToAxis = makeAxisLock();
+
+  // The moved body, resolved once: the selected points of each contour, as
+  // indices into that contour. The run grows from its edges, so a selection
+  // holding a whole leg carries a side of the letter at each end.
+  const movedByContour = new Map();
+  for (const item of synthetic.selection) {
+    const pointIndex = parseInt(item.split("/")[1], 10);
+    const [contourIndex, contourPointIndex] =
+      originalPath.getContourAndPointIndex(pointIndex);
+    if (!movedByContour.has(contourIndex)) {
+      movedByContour.set(contourIndex, new Set());
+    }
+    movedByContour.get(contourIndex).add(contourPointIndex);
+  }
 
   let rollbackChange = null;
   return {
@@ -798,27 +811,19 @@ export function makeSkeletonTensionAwareTargetEntry(
           slide: false,
         });
         if (behaviorName === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME) {
-          const clicked = clickedSkeletonPointKey
-            ? parseSkeletonPointKey(clickedSkeletonPointKey)
-            : null;
-          const clickedAddress = clicked
-            ? getSkeletonPointAddress(skeletonData, clicked.contourId, clicked.pointId)
-            : null;
-          if (clickedAddress && clickedAddress.contourIndex === contourIndex) {
-            applyPowerAxisScale(
-              before.points,
-              after.points,
-              after.isClosed,
-              clickedAddress.pointIndex,
-              delta
-            );
-            // The run has moved, so the handles around it are read again. The
-            // outline half does the same, and a centerline that skipped it kept
-            // the tension of the shape before the stretch.
-            applyTensionAwareEdit(before.points, after.points, after.isClosed, {
-              slide: false,
-            });
-          }
+          applyPowerAxisScale(
+            before.points,
+            after.points,
+            after.isClosed,
+            movedByContour.get(contourIndex),
+            delta
+          );
+          // The run has moved, so the handles around it are read again. The
+          // outline half does the same, and a centerline that skipped it kept
+          // the tension of the shape before the stretch.
+          applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+            slide: false,
+          });
         }
         const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
         after.points.forEach((point, i) => corrected.set(startIndex + i, point));
