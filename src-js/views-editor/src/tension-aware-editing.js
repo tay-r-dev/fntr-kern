@@ -14,7 +14,8 @@ import { EditBehaviorFactory } from "./edit-behavior.js";
 export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
 export const SKELETON_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-tension-aware";
 export const POWER_TENSION_AWARE_BEHAVIOR_NAME = "power-tension-aware";
-export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-power-tension-aware";
+export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME =
+  "skeleton-power-tension-aware";
 
 /**
  * X drives the correction on whatever geometry the selection holds: ordinary
@@ -51,69 +52,113 @@ const BASE_BEHAVIOR_NAMES = {
   [POWER_TENSION_AWARE_BEHAVIOR_NAME]: "default",
 };
 
+const POWER_EPSILON = 1e-9;
+
 function axisForDelta(delta) {
   return Math.abs(delta.x) >= Math.abs(delta.y) ? "x" : "y";
 }
 
-function isEligiblePowerPoint(points, index, axis) {
-  const point = points[index];
-  if (!point || point.type || !point.smooth) return false;
-  const controls = [];
-  for (let i = index - 1; i >= 0 && controls.length < 1; i--) {
-    if (points[i].type) controls.push(points[i]);
-    else break;
-  }
-  for (let i = index + 1; i < points.length && controls.length < 2; i++) {
-    if (points[i].type) controls.push(points[i]);
-    else break;
-  }
-  if (!controls.length) return false;
-  return controls.every((control) => {
-    const dx = control.x - point.x;
-    const dy = control.y - point.y;
-    return Math.hypot(dx, dy) > 1e-9 &&
-      (axis === "x" ? Math.abs(dy) < 1e-9 : Math.abs(dx) < 1e-9);
+// The on-curve points of one contour, in contour order, as indices into its
+// unpacked point list. The run is walked along the contour, not along the axis:
+// a closed shape sorts its two sides into each other, so an axis order pairs a
+// point with a partner across the counter.
+function onCurvePointIndices(points) {
+  const indices = [];
+  points.forEach((point, index) => {
+    if (!point.type) indices.push(index);
   });
+  return indices;
 }
 
-// Scale the eligible smooth points between the clicked point and the first
-// non-eligible point in each drag direction. The clicked point itself remains
-// under the ordinary X rules; this pass supplies the FontLab-style power
-// propagation to the eligible run on either side.
+// A point the power scale may carry: a smooth on-curve whose handles leave it
+// square across the axis, which is what makes it an extreme the run can stretch
+// through. Both neighbours are read with a wrap, so the point that sits at the
+// contour's seam is judged like any other.
+function isEligiblePowerPoint(points, index, axis, closed) {
+  const point = points[index];
+  if (!point || point.type || !point.smooth) return false;
+  const crossAxis = axis === "x" ? "y" : "x";
+  const controls = [index - 1, index + 1]
+    .map((neighbourIndex) => {
+      if (neighbourIndex >= 0 && neighbourIndex < points.length) {
+        return points[neighbourIndex];
+      }
+      return closed ? points[(neighbourIndex + points.length) % points.length] : null;
+    })
+    .filter((neighbour) => neighbour?.type);
+  if (!controls.length) return false;
+  return controls.every(
+    (control) =>
+      Math.hypot(control.x - point.x, control.y - point.y) > POWER_EPSILON &&
+      Math.abs(control[crossAxis] - point[crossAxis]) < POWER_EPSILON
+  );
+}
+
+// Walk the contour away from the pivot, one on-curve point at a time, and
+// collect the run the scale carries. The walk ends at the first point that is
+// not an eligible extreme - that point is the anchor, and it stays where it is
+// - or where the contour turns back along the axis, which makes the far extreme
+// already collected the anchor instead.
+function collectPowerRun(points, order, pivotOrdinal, step, axis, closed) {
+  const pivot = points[order[pivotOrdinal]][axis];
+  const run = [];
+  let reach = 0;
+  for (let n = 1; n <= order.length; n++) {
+    let ordinal = pivotOrdinal + n * step;
+    if (closed) {
+      ordinal = ((ordinal % order.length) + order.length) % order.length;
+      if (ordinal === pivotOrdinal) break;
+    } else if (ordinal < 0 || ordinal >= order.length) {
+      break;
+    }
+    const index = order[ordinal];
+    const distance = Math.abs(points[index][axis] - pivot);
+    if (distance <= reach + POWER_EPSILON) {
+      const anchor = run.pop();
+      return anchor === undefined ? null : { run, anchor };
+    }
+    if (!isEligiblePowerPoint(points, index, axis, closed)) {
+      return { run, anchor: index };
+    }
+    run.push(index);
+    reach = distance;
+  }
+  return null;
+}
+
+/**
+ * The power propagation under X+Shift. The clicked point has already travelled
+ * with the ordinary rules; this pass carries the run of extremes between it and
+ * the first fixed landmark on either side, so the stretch is proportional
+ * instead of a single point sliding through a shape that stands still.
+ *
+ * Only the locked axis is written. The anchor does not move, and the handles
+ * are left to the tension correction that runs after this pass.
+ */
 export function applyPowerAxisScale(before, after, closed, clickedIndex, delta) {
-  if (!Number.isInteger(clickedIndex) || !before[clickedIndex]) return;
+  if (!Number.isInteger(clickedIndex)) return;
+  const clickedPoint = before[clickedIndex];
+  if (!clickedPoint || clickedPoint.type) return;
   const axis = axisForDelta(delta);
   const amount = delta[axis];
   if (!amount) return;
-  const ordered = before
-    .map((point, index) => ({ point, index }))
-    .filter(({ point }) => !point.type)
-    .sort((a, b) => a.point[axis] - b.point[axis]);
-  const clicked = ordered.find(({ index }) => index === clickedIndex);
-  if (!clicked) return;
-  const pivot = clicked.point[axis];
-  for (const direction of [-1, 1]) {
-    const run = [];
-    let anchor = null;
-    for (const item of ordered) {
-      const distance = (item.point[axis] - pivot) * direction;
-      if (distance <= 1e-9) continue;
-      if (!isEligiblePowerPoint(before, item.index, axis)) {
-        anchor = item;
-        break;
-      }
-      run.push(item);
-    }
-    if (!anchor || !run.length) continue;
-    const span = anchor.point[axis] - pivot;
-    if (Math.abs(span) < 1e-9) continue;
-    // The anchor stays fixed while the pivot follows the drag. This naturally
-    // expands the run on the side the pivot moves away from and compresses the
-    // run on the side it moves toward.
+  const order = onCurvePointIndices(before);
+  const pivotOrdinal = order.indexOf(clickedIndex);
+  if (pivotOrdinal < 0) return;
+  const pivot = clickedPoint[axis];
+  for (const step of [-1, 1]) {
+    const collected = collectPowerRun(before, order, pivotOrdinal, step, axis, closed);
+    if (!collected?.run.length) continue;
+    const span = before[collected.anchor][axis] - pivot;
+    if (Math.abs(span) < POWER_EPSILON) continue;
+    // The anchor holds and the pivot follows the drag, so the run is remapped
+    // from the span it had onto the span it has.
     const factor = (span - amount) / span;
-    for (const { index } of run) {
-      const point = before[index];
-      after[index] = { ...after[index], [axis]: Math.round(pivot + (point[axis] - pivot) * factor) };
+    for (const index of collected.run) {
+      after[index] = {
+        ...after[index],
+        [axis]: Math.round(pivot + amount + (before[index][axis] - pivot) * factor),
+      };
     }
   }
 }
@@ -129,7 +174,11 @@ export function createTensionAwareTargetEntries(
   layerGlyph,
   selection,
   behaviorName,
-  { isGeneratedContour = null, scalingEditBehavior = false, clickedPointIndex = null } = {}
+  {
+    isGeneratedContour = null,
+    scalingEditBehavior = false,
+    clickedPointIndex = null,
+  } = {}
 ) {
   const { point: pointSelection } = parseSelection(selection || new Set());
   if (!pointSelection?.length || !layerGlyph?.path) return [];
@@ -146,6 +195,13 @@ export function createTensionAwareTargetEntries(
   const baseBehavior = baseFactory.getBehavior(
     BASE_BEHAVIOR_NAMES[behaviorName] || "default"
   );
+
+  // Resolved once: the clicked point as a contour index and a point index
+  // inside it.
+  const clickedContourPoint =
+    clickedPointIndex == null
+      ? null
+      : originalPath.getContourAndPointIndex(clickedPointIndex);
 
   let rollbackChange = null;
   // The axis the drag latches onto, held for the whole gesture.
@@ -197,13 +253,18 @@ export function createTensionAwareTargetEntries(
             applyTensionAwareEdit(before.points, after.points, after.isClosed, {
               slide: false,
             });
-            if (behaviorName === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
-              const start = moved.path.getAbsolutePointIndex(contourIndex, 0);
+            // The power pass belongs to the contour the designer clicked. Any
+            // other contour would take the clicked index as a local one and
+            // scale a run around a point nobody chose.
+            if (
+              behaviorName === POWER_TENSION_AWARE_BEHAVIOR_NAME &&
+              clickedContourPoint?.[0] === contourIndex
+            ) {
               applyPowerAxisScale(
                 before.points,
                 after.points,
                 after.isClosed,
-                clickedPointIndex == null ? null : clickedPointIndex - start,
+                clickedContourPoint[1],
                 delta
               );
               applyTensionAwareEdit(before.points, after.points, after.isClosed, {

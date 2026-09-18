@@ -1079,7 +1079,9 @@ export class SceneController {
     const targetKinds = getSelectionTargetKinds(this.selection);
     // An arrow key is a drag of one grid step, so X means here what it means
     // under the pointer. It needs no axis lock: an arrow key names its axis.
-    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds, event);
+    // No event goes in: under an arrow key Shift is the coarse step, and there
+    // is no clicked point for a power run to grow from.
+    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds);
     const behaviorName =
       tensionAwareName ||
       getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||

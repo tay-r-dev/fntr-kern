@@ -812,6 +812,12 @@ export function makeSkeletonTensionAwareTargetEntry(
               clickedAddress.pointIndex,
               delta
             );
+            // The run has moved, so the handles around it are read again. The
+            // outline half does the same, and a centerline that skipped it kept
+            // the tension of the shape before the stretch.
+            applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+              slide: false,
+            });
           }
         }
         const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
