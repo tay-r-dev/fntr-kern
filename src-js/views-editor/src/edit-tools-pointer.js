@@ -1490,7 +1490,7 @@ export class PointerTool extends BaseTool {
 
   _handleRealtimeModifierKeyDown(event) {
     const modifier = REALTIME_MODIFIER_ACTIONS.find((modifier) =>
-      eventMatchesActionShortCut(modifier.action, event)
+      matchesRealtimeModifierKey(modifier.action, event)
     );
     if (!modifier) {
       return false;
@@ -1681,6 +1681,17 @@ function toggleSegmentSelection(currentSelection, segmentSelection) {
 // grid.
 function extendsSelection(event) {
   return isMac ? event.metaKey : false;
+}
+
+// A mode key states a mode and nothing about Shift, which is the coarse step of
+// the nudge and the second half of C+Shift. An exact modifier match let the
+// mode start only when Shift came second, so pressing the two together did
+// nothing. Alt and the command keys still have to agree: they carry the menu
+// shortcuts.
+function matchesRealtimeModifierKey(action, event) {
+  if (eventMatchesActionShortCut(action, event)) return true;
+  if (!event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+  return eventMatchesActionBaseKey(action, event);
 }
 
 function getSelectModeFunction(event) {
