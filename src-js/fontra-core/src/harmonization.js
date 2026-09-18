@@ -77,6 +77,20 @@ export const HARMONIZE_DEFAULTS = {
   // At 1 it lands exactly on it; past 1 the segment's two handle lines cross
   // each other and the curve doubles back.
   maxHandleTension: 1,
+  // How full a curve a press may MAKE one. The hard limit above is the
+  // segment's Tunni point, where the two handle lines cross: a handle parked
+  // there presses the curve into the corner of its own control polygon, which
+  // is the squared-off look a designer sees when harmonizing a small shape
+  // with short handles. Matching curvature asks for exactly that, because the
+  // end curvature goes as the outer handle's offset over the square of the
+  // inner handle's length, so the cheapest way to flatten one side is to make
+  // the other side's handle enormous.
+  //
+  // A joint that ARRIVES fuller than this keeps what it arrived with. The
+  // ceiling holds a press back from squaring a curve up; it never pulls in a
+  // curve the designer drew full. A circular arc sits at 0.552, so this leaves
+  // real room above round before it bites.
+  comfortableTension: 0.75,
   // Round the points this operation moved to whole units, once, at the end.
   // Off here so the math stays exact and testable; the editor turns it on,
   // because a document wants integer coordinates and the sweep does not.
@@ -595,6 +609,32 @@ function handleTension(points, nearSide) {
 }
 
 //
+// The ceiling this joint's own handles may reach, read once from the drawing as
+// it arrived. See `comfortableTension`.
+//
+function jointTensionCeiling(path, ctx, comfortableTension, maxHandleTension) {
+  // The joint's OWN two handles, which are the ones every construction here
+  // moves. Reading the outer two as well lets a joint inherit the fullness of
+  // whatever it happens to sit next to, and on a small shape where one corner
+  // is drawn tight that spreads the squareness right around the contour.
+  //
+  // The exception is an outer handle standing ON the hard limit, which is where
+  // the over-tension repair leaves one that arrived past it. The inner handle
+  // has to answer the curvature that outer handle states, so a ceiling below it
+  // leaves the joint unanswerable.
+  const arrived = [];
+  for (const { nearSide, indices } of jointSegments(path, ctx)) {
+    const points = segmentPositions(path, indices);
+    arrived.push(handleTension(points, nearSide));
+    const outer = handleTension(points, nearSide === "start" ? "end" : "start");
+    if (outer >= maxHandleTension) {
+      arrived.push(outer);
+    }
+  }
+  return Math.min(maxHandleTension, Math.max(comfortableTension, ...arrived));
+}
+
+//
 // The worst tension either of the joint's own handles would reach after a
 // step, computed without touching the path.
 //
@@ -614,7 +654,15 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
       }
       return point;
     });
-    worst = Math.max(worst, handleTension(points, nearSide));
+    // Both ends, not only the one this joint moves. Tension is measured against
+    // the segment's Tunni point, and that point moves when either handle does -
+    // so a step here inflates the far handle's tension without touching it, and
+    // a ceiling that read only the near end never saw it.
+    worst = Math.max(
+      worst,
+      handleTension(points, nearSide),
+      handleTension(points, nearSide === "start" ? "end" : "start")
+    );
   }
   return worst;
 }
@@ -1463,7 +1511,13 @@ function snapToGrid(path, touched, jointResidual, isBetter) {
 // and it is the same reason the other construction sweeps.
 //
 export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
-  const { toleranceUnits, maxIterations, maxHandleTension, roundCoordinates } = {
+  const {
+    toleranceUnits,
+    maxIterations,
+    maxHandleTension,
+    comfortableTension,
+    roundCoordinates,
+  } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
@@ -1488,10 +1542,16 @@ export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
   // What each joint arrived with, captured before anything moves, so the score
   // can tell a joint this command broke from one that was already unreadable.
   const arrival = new Map();
+  // How full each joint may be made, read from the drawing as it arrived.
+  const ceilings = new Map();
   for (const pointIndex of candidates) {
     const ctx = getJointContext(path, pointIndex);
     if (!ctx.reason) {
       arrival.set(pointIndex, relativeCurvatureStep(path, ctx));
+      ceilings.set(
+        pointIndex,
+        jointTensionCeiling(path, ctx, comfortableTension, maxHandleTension)
+      );
     }
   }
 
@@ -1545,7 +1605,9 @@ export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
         stencil.outgoing[3],
       ];
 
-      const solved = solveNearestHandleScales(seven, { maxHandleTension });
+      const solved = solveNearestHandleScales(seven, {
+        maxHandleTension: ceilings.get(pointIndex) ?? maxHandleTension,
+      });
       state.status = solved.status === "solved" ? "harmonized" : solved.status;
       state.reason = solved.reason;
       if (solved.status === "skipped") {
@@ -1609,6 +1671,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
     toleranceUnits,
     maxIterations,
     maxHandleTension,
+    comfortableTension,
     roundCoordinates,
   } = {
     ...HARMONIZE_DEFAULTS,
@@ -1726,6 +1789,14 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
       }
 
       state.segments = jointSegments(path, ctx);
+      // Read after the over-tension repair above, so a handle that arrived past
+      // the Tunni point does not raise its own ceiling.
+      state.tensionCeiling = jointTensionCeiling(
+        path,
+        ctx,
+        comfortableTension,
+        maxHandleTension
+      );
       // A handle may never end up shorter than this, however many passes it takes
       // and however many times the command is run.
       state.floors = cuspFloors(path, ctx, state.segments, cuspSafetyMargin);
@@ -1771,7 +1842,10 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
 
         if (state.mode === "g3") {
           const stencil = jointStencil(path, ctx);
-          const limits = { floors: state.floors, maxHandleTension };
+          const limits = {
+            floors: state.floors,
+            maxHandleTension: state.tensionCeiling,
+          };
           let outcome = null;
           if (stencil) {
             // The slide is opt-in, and when it is on it is the whole search:
@@ -1815,7 +1889,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
         if (slideOnCurve) {
           const slid = g2BestSlide(path, ctx, state, {
             roundCoordinates,
-            maxHandleTension,
+            maxHandleTension: state.tensionCeiling,
           });
           if (slid) {
             const movement = Math.max(
@@ -1878,7 +1952,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
             state.segments,
             mulVectorScalar(solution.fixup, scale),
             handleBias
-          ) > maxHandleTension
+          ) > state.tensionCeiling
         ) {
           let low = 0;
           let high = scale;
@@ -1891,7 +1965,7 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
               mulVectorScalar(solution.fixup, mid),
               handleBias
             );
-            if (tension > maxHandleTension) {
+            if (tension > state.tensionCeiling) {
               high = mid;
             } else {
               low = mid;

@@ -576,7 +576,14 @@ describe("harmonization: harmonizePath", () => {
     distance({ x: 110, y: 100 }, { x: 200, y: 0 }); // outgoing chord
 
   it("clamps instead of collapsing a handle, and reports partial", () => {
-    const result = harmonizePath(clampPath(), [NODE], { equalizeHandles: false });
+    // The cusp floor, which is what this test is about. The comfortable ceiling
+    // refuses this joint's step outright -- its outgoing handles sit on top of
+    // each other, so any step at all is a very full curve -- and the press then
+    // has nothing to clamp.
+    const result = harmonizePath(clampPath(), [NODE], {
+      equalizeHandles: false,
+      comfortableTension: 1,
+    });
 
     expect(result.report[0].status).to.equal("partial");
     expect(result.report[0].reason).to.equal("clamped");
@@ -723,12 +730,33 @@ describe("harmonization: harmonizePath", () => {
     // 2.6. There is no entry point that shows that any more: position 2
     // finishes by balancing and repairing and position 3 slides, and all three
     // pull an overshoot back. What is pinned here is the ceiling itself.
-    const limited = harmonizePath(overshootPath(), [NODE], { equalizeHandles: false });
+    // `comfortableTension: 1` asks for the hard limit alone, which is what this
+    // test is about. The soft ceiling below is the one a press runs into first.
+    const limited = harmonizePath(overshootPath(), [NODE], {
+      equalizeHandles: false,
+      comfortableTension: 1,
+    });
     expect(Math.max(...jointHandleTensions(limited.path))).to.be.closeTo(1, 1e-6);
     expect(limited.report[0]).to.include({
       status: "partial",
       reason: "tension-limited",
     });
+  });
+
+  it("never makes a joint fuller than it found it, past the comfortable ceiling", () => {
+    // A handle parked on the Tunni point presses the curve into the corner of
+    // its own control polygon, which is the squared-off curve a designer sees
+    // on a small shape with short handles. This joint arrives over the ceiling
+    // already, so what is pinned is that the press does not add to it.
+    const arrived = Math.max(...jointHandleTensions(overshootPath()), 0);
+    const limited = harmonizePath(overshootPath(), [NODE], { equalizeHandles: false });
+    const ceiling = Math.max(
+      HARMONIZE_DEFAULTS.comfortableTension,
+      Math.min(1, arrived)
+    );
+    expect(Math.max(...jointHandleTensions(limited.path))).to.be.at.most(
+      ceiling + 1e-6
+    );
   });
 
   it("limits tension at any bias", () => {
@@ -1206,6 +1234,10 @@ describe("harmonization: what the grid search may not trade away", () => {
     harmonizePathInPlace(path, [NODE], {
       continuity: "G2",
       roundCoordinates: true,
+      // The hard limit alone. This joint arrives with a handle past its Tunni
+      // point, and under the comfortable ceiling the inner handle may not grow
+      // far enough to answer the repair -- which the test below states.
+      comfortableTension: 1,
     });
 
     // Both, and not one at the other's expense: curvature continuity across a
@@ -1213,6 +1245,25 @@ describe("harmonization: what the grid search may not trade away", () => {
     // limit on the search rather than another term in it.
     expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
     expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.below(before);
+  });
+
+  it("buys the crossed handle back with curvature, and says so", () => {
+    // This joint arrives with a handle past its Tunni point. Pulling that back
+    // is a defect repaired, and under the comfortable ceiling the inner handle
+    // may not grow far enough to match the curvature the repair leaves behind.
+    // The joint ends further out than it arrived and reports it: a crossed
+    // handle is a defect and curvature continuity is a trade, and the ranking
+    // says the defect goes first.
+    const path = creasingJointPath();
+    const report = harmonizePathInPlace(path, [NODE], {
+      continuity: "G2",
+      roundCoordinates: true,
+    });
+    expect(report[0]).to.include({ status: "partial", reason: "tension-limited" });
+    // Every handle of the joint comes back inside its segment's Tunni point,
+    // which is the defect that outranks the curvature.
+    expect(jointHandleTensions(path).every((tension) => tension <= 1)).to.equal(true);
+    expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
   });
 });
 
@@ -1823,6 +1874,11 @@ describe("harmonization: a joint that arrived badly broken", () => {
     const report = harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
       matchCurvature: true,
+      // The hard limit alone, so the verdict is about the construction and not
+      // about the comfortable ceiling. Under the default the drawing comes out
+      // in exactly the same place and reports `partial/tension-limited`,
+      // because the last step it wanted would have squared the curve up.
+      comfortableTension: 1,
     });
     expect(report[0].status).to.equal("harmonized");
     expect(report[0].reason).to.equal(undefined);
@@ -2041,6 +2097,8 @@ describe("harmonization: balancing is its own command", () => {
     const report = harmonizePathInPlace(path, [3], {
       roundCoordinates: true,
       matchCurvature: true,
+      // As above: the hard limit alone, so the verdict is about the ranking.
+      comfortableTension: 1,
     });
     expect(report[0].status).to.equal("harmonized");
   });
@@ -2392,22 +2450,71 @@ function quoteSingle() {
   ]);
 }
 
+// Every handle of the contour, as a fraction of the way to its segment's Tunni
+// point.
+function segmentTensionsOf(path) {
+  const tensions = [];
+  for (const [start, ...rest] of [
+    [0, 1, 2, 3],
+    [3, 4, 5, 6],
+    [6, 7, 8, 9],
+    [9, 10, 11, 12],
+    [13, 14, 15, 16],
+    [16, 17, 18, 19],
+    [19, 20, 21, 22],
+    [22, 23, 24, 25],
+  ].map((indices) => [indices])) {
+    const points = start.map((index) => {
+      const [x, y] = path.getPointPosition(index);
+      return { x, y };
+    });
+    const tunni = calculateTunniPoint(points);
+    if (!tunni) {
+      tensions.push(0, 0);
+      continue;
+    }
+    tensions.push(
+      distance(points[0], points[1]) / distance(points[0], tunni),
+      distance(points[3], points[2]) / distance(points[3], tunni)
+    );
+  }
+  return tensions;
+}
+
 describe("harmonization: the press is judged against the drawing it was handed", () => {
   const limits = { maxHandleTension: HARMONIZE_DEFAULTS.maxHandleTension };
   const score = (path) =>
     scoreJointsForTest(path, expandToJoints(path, undefined), "G2", limits, null);
 
-  it("refuses an answer that is worse than the drawing, tick or no tick", () => {
-    for (const equalizeHandles of [false, true]) {
-      const path = quoteSingle();
-      const before = Array.from(path.coordinates);
-      const report = harmonizePathInPlace(path, undefined, {
-        method: "canonical",
-        equalizeHandles,
-      });
-      expect(Array.from(path.coordinates)).to.deep.equal(before);
-      expect(report.some((state) => state.reason === "reverted")).to.equal(true);
-      expect(report.some((state) => state.status === "harmonized")).to.equal(false);
+  it("refuses an answer that is worse than the drawing", () => {
+    // The square-up pass alone takes this drawing backwards: 0.53 units of
+    // movement puts a handle past its Tunni point. Handed only that, the press
+    // has nothing to keep.
+    const path = quoteSingle();
+    const before = Array.from(path.coordinates);
+    const report = harmonizePathInPlace(path, undefined, {
+      method: "canonical",
+      equalizeHandles: false,
+      maxIterations: 0,
+    });
+    expect(Array.from(path.coordinates)).to.deep.equal(before);
+    expect(report.some((state) => state.reason === "reverted")).to.equal(true);
+  });
+
+  it("leaves no handle parked on its Tunni point", () => {
+    for (const method of ["nearest", "canonical", "canonical-slide"]) {
+      for (const equalizeHandles of [false, true]) {
+        const path = quoteSingle();
+        // A handle on its segment's Tunni point presses the curve into the
+        // corner of its own control polygon, which is the squared-off curve
+        // this shape used to come back with. The ones the drawing arrived with
+        // are its own business; the press may not add any.
+        const full = (tensions) =>
+          tensions.filter((tension) => tension >= 0.995).length;
+        const arrived = full(segmentTensionsOf(path));
+        harmonizePathInPlace(path, undefined, { method, equalizeHandles });
+        expect(full(segmentTensionsOf(path))).to.be.at.most(arrived);
+      }
     }
   });
 
