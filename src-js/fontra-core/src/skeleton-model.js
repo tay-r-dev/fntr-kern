@@ -838,6 +838,199 @@ const MIN_FIXED_RIB_TOTAL_WIDTH = 2 * MIN_FIXED_RIB_HALF_WIDTH;
 // travels together and is held to whichever member reaches the floor first. Letting
 // members clamp separately would pull the group apart at exactly the moment the
 // coupling matters most.
+/**
+ * A on a skeleton point: the point moves across the stroke and the outline
+ * stands still. Both edges are pinned, so the widths pay for the whole travel -
+ * on a double-sided contour the two half-widths trade, which is the
+ * distribution, and on a single-sided one the total shrinks or grows so that
+ * the one visible edge holds its place.
+ *
+ * Only the part of the drag that runs across the stroke can be paid for that
+ * way, so the drag is read along the clicked point's normal, exactly as the
+ * fixed-rib drags read theirs.
+ */
+export function applySkeletonDistributionDelta(
+  originalSkeletonData,
+  workingSkeletonData,
+  selectedPointKeys,
+  clickedPointKey,
+  delta,
+  { scaleControlPoints = true, round = Math.round } = {}
+) {
+  const clicked = parseSkeletonPointKey(clickedPointKey);
+  if (!clicked || !selectedPointKeys?.size) return false;
+  const clickedAddress = getSkeletonPointAddress(
+    originalSkeletonData,
+    clicked.contourId,
+    clicked.pointId
+  );
+  if (!clickedAddress || clickedAddress.point.type) return false;
+  const clickedNormal = calculateNormalAtSkeletonPoint(
+    clickedAddress.contour,
+    clickedAddress.pointIndex
+  );
+  if (!(Math.hypot(clickedNormal.x, clickedNormal.y) > 1e-6)) return false;
+  const projectedDelta = delta.x * clickedNormal.x + delta.y * clickedNormal.y;
+  const selected = collectSelectedPointKeys(selectedPointKeys);
+  let changed = false;
+  for (const [contourId, pointIds] of selected) {
+    const originalContourAddress = getSkeletonContourAddress(
+      originalSkeletonData,
+      contourId
+    );
+    const workingContourAddress = getSkeletonContourAddress(
+      workingSkeletonData,
+      contourId
+    );
+    if (!originalContourAddress || !workingContourAddress) continue;
+    const originalContour = originalContourAddress.contour;
+    const workingContour = workingContourAddress.contour;
+    const visibleSide =
+      originalContour.singleSided === "left" || originalContour.singleSided === "right"
+        ? originalContour.singleSided
+        : null;
+    const offsetsByIndex = new Map();
+    const affected = expandToTiedRibGroups(originalContour, pointIds);
+    const allowed = collectDistributionAllowances(
+      originalContour,
+      affected,
+      projectedDelta,
+      visibleSide
+    );
+    for (const pointId of affected) {
+      const originalPointIndex = originalContour.points.findIndex(
+        (point) => point.id === pointId
+      );
+      const originalPoint = originalContour.points[originalPointIndex];
+      const workingPoint = workingContour.points?.[originalPointIndex];
+      if (!originalPoint || !workingPoint || originalPoint.type) continue;
+      // Both edges are pinned here, so a lock on either side holds the point
+      // still: the width that would have paid for the travel is refused, and a
+      // point that moved anyway would walk that edge away with it.
+      if (
+        isSkeletonSideLocked(originalPoint, "left", "width") ||
+        isSkeletonSideLocked(originalPoint, "right", "width")
+      ) {
+        continue;
+      }
+      const allowedDelta = allowed.has(pointId) ? allowed.get(pointId) : projectedDelta;
+      offsetsByIndex.set(originalPointIndex, allowedDelta);
+      applyDistributionWidthDelta(
+        workingPoint,
+        originalPoint,
+        originalContour.defaultWidth,
+        allowedDelta,
+        round,
+        visibleSide
+      );
+      changed = true;
+    }
+    if (offsetsByIndex.size) {
+      offsetContourAlongNormals(
+        originalContour.points,
+        originalContour.closed,
+        offsetsByIndex,
+        workingContour.points,
+        {
+          round,
+          rebuildHandles: scaleControlPoints,
+          normalAt: (pointIndex) =>
+            calculateNormalAtSkeletonPoint(originalContour, pointIndex),
+        }
+      );
+    }
+  }
+  return changed;
+}
+
+// The left edge stands at the point plus its left half-width along the normal,
+// so a point travelling along the normal keeps that edge by giving the same
+// amount back out of the left side - and keeps the right edge by handing it to
+// the right side. A single-sided contour renders the sum on one side, so there
+// the sum carries the whole trade.
+function distributionWidthDeltas(projectedDelta, visibleSide) {
+  if (visibleSide) {
+    return { total: visibleSide === "left" ? -projectedDelta : projectedDelta };
+  }
+  return { left: -projectedDelta, right: projectedDelta };
+}
+
+function applyDistributionWidthDelta(
+  workingPoint,
+  originalPoint,
+  defaultWidth,
+  projectedDelta,
+  round,
+  visibleSide
+) {
+  // A reads the link flag and never writes it: the drag states how the two
+  // edges travel, not how the designer types widths in.
+  const linked = originalPoint.width?.linked !== false;
+  const deltas = distributionWidthDeltas(projectedDelta, visibleSide);
+  if (visibleSide) {
+    setSkeletonPointTotalWidth(
+      workingPoint,
+      defaultWidth,
+      Math.max(
+        MIN_FIXED_RIB_TOTAL_WIDTH,
+        getSkeletonPointWidth(originalPoint, defaultWidth) + deltas.total
+      ),
+      { round }
+    );
+    workingPoint.width.linked = linked;
+    return;
+  }
+  for (const side of ["left", "right"]) {
+    setSkeletonPointSideWidth(
+      workingPoint,
+      defaultWidth,
+      side,
+      Math.max(
+        MIN_FIXED_RIB_HALF_WIDTH,
+        getSkeletonPointHalfWidth(originalPoint, defaultWidth, side) + deltas[side]
+      ),
+      // Each side states its own edge, so neither write may carry to the other.
+      { linked: false, round }
+    );
+  }
+  workingPoint.width.linked = linked;
+}
+
+// Only the side that gives width away can run out. The floor stops the travel
+// with it: a point that keeps moving after its width has stopped paying drags
+// the edge that width was pinning along with it.
+function collectDistributionAllowances(contour, pointIds, projectedDelta, visibleSide) {
+  const allowances = new Map();
+  const points = contour?.points || [];
+  const deltas = distributionWidthDeltas(projectedDelta, visibleSide);
+  const roomFor = (point) => {
+    if (visibleSide) {
+      if (deltas.total >= 0) return Infinity;
+      return Math.max(
+        0,
+        getSkeletonPointWidth(point, contour?.defaultWidth) - MIN_FIXED_RIB_TOTAL_WIDTH
+      );
+    }
+    const shrinking = deltas.left < 0 ? "left" : deltas.right < 0 ? "right" : null;
+    if (!shrinking) return Infinity;
+    return Math.max(
+      0,
+      getSkeletonPointHalfWidth(point, contour?.defaultWidth, shrinking) -
+        MIN_FIXED_RIB_HALF_WIDTH
+    );
+  };
+  for (const pointId of pointIds) {
+    const point = points.find((candidate) => candidate.id === pointId);
+    if (!point || point.type) continue;
+    const group = getTiedRibGroup(contour, point) || [point];
+    const room = Math.min(...group.map(roomFor));
+    if (!Number.isFinite(room)) continue;
+    const magnitude = Math.min(Math.abs(projectedDelta), room);
+    allowances.set(pointId, Math.sign(projectedDelta) * magnitude);
+  }
+  return allowances;
+}
+
 function collectFixedRibAllowances(
   contour,
   pointIds,

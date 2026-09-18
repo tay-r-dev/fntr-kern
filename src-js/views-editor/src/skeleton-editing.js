@@ -8,6 +8,7 @@ import {
   liftChangedPresetBindings,
   alignSkeletonSmoothHandles,
   applyFixedRibDelta,
+  applySkeletonDistributionDelta,
   applySkeletonInsertionExecutorResult,
   applySkeletonInsertionRibExecutorResult,
   applySkeletonRibExecutorResult,
@@ -82,8 +83,22 @@ export function getSkeletonModifierBehaviorName(event, modifiers = {}, targetKin
   if (modifiers.fixedRibMode && canFixRib) {
     return `fixed-rib${suffix}`;
   }
+  // A on the skeleton itself, with no D or S under it: the point moves across
+  // the stroke and the outline stands still. A rib selection keeps its own
+  // reading of A, which is the width edit.
+  if (
+    modifiers.independentRibMode &&
+    targetKinds.has("skeletonPoint") &&
+    !targetKinds.has("skeletonRib")
+  ) {
+    return SKELETON_DISTRIBUTE_BEHAVIOR_NAME;
+  }
   return null;
 }
+
+// A on a skeleton point. Stated once, because the name is read in three places:
+// the dispatcher, the entry that builds the change, and the drag readout.
+export const SKELETON_DISTRIBUTE_BEHAVIOR_NAME = "skeleton-distribute";
 
 // The two fixed-rib drags, with or without A. Stated once so a caller asking
 // "is this the pair that reads the ribs" cannot fall out of step with the names.
@@ -649,6 +664,16 @@ export function makeSkeletonPointTargetEntry(
 
   if (!selected.length) return null;
 
+  if (behaviorName === SKELETON_DISTRIBUTE_BEHAVIOR_NAME) {
+    return makeDistributionSkeletonPointTargetEntry(
+      layer,
+      skeletonData,
+      reference,
+      selected,
+      options
+    );
+  }
+
   if (behaviorName === "equalize" || behaviorName === "equalize-constrain") {
     return makeEqualizeSkeletonHandleTargetEntry(
       layer,
@@ -981,6 +1006,51 @@ function makeFixedRibSkeletonPointTargetEntry(
             independent: skeletonBehaviorIsIndependentRib(behaviorName),
             scaleControlPoints: true,
           }
+        );
+      });
+      rollbackChange = changes.rollbackChange;
+      return changes.change;
+    },
+    makeChangeForTransformation() {
+      return null;
+    },
+  };
+}
+
+// A on a skeleton point. The same shape as the fixed-rib entry: the pass reads
+// the pre-drag skeleton and writes the working one, and the entry only carries
+// the keys and the clicked point into it.
+function makeDistributionSkeletonPointTargetEntry(
+  layer,
+  skeletonData,
+  referenceSkeletonData,
+  selected,
+  options
+) {
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layer);
+  const selectedPointKeys = new Set(
+    selected.map((item) => makeSkeletonPointKey(item.contourId, item.pointId))
+  );
+  const clickedPointKey =
+    resolveClickedSkeletonPointKey(
+      skeletonData,
+      referenceSkeletonData,
+      options.clickedSkeletonPointKey
+    ) || selectedPointKeys.values().next().value;
+  let rollbackChange = null;
+  return {
+    get rollbackChange() {
+      return rollbackChange;
+    },
+    makeChangeForDelta(delta) {
+      const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+        applySkeletonDistributionDelta(
+          skeletonData,
+          working,
+          selectedPointKeys,
+          clickedPointKey,
+          delta,
+          { scaleControlPoints: true }
         );
       });
       rollbackChange = changes.rollbackChange;

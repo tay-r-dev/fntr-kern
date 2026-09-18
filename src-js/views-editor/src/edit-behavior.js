@@ -1416,6 +1416,13 @@ const behaviorTypes = {
   // The same two drags with A held. The modifier changes only how the width is
   // written, which is entirely the target entry's business, so the base point
   // behavior is the same one.
+  // A on a skeleton point. The entry writes the whole contour through the
+  // skeleton path, so the match tree matches no point.
+  "skeleton-distribute": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   "fixed-rib-independent": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,
