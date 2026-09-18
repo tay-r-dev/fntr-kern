@@ -13,34 +13,215 @@ import { EditBehaviorFactory } from "./edit-behavior.js";
 
 export const TENSION_AWARE_BEHAVIOR_NAME = "tension-aware";
 export const SKELETON_TENSION_AWARE_BEHAVIOR_NAME = "skeleton-tension-aware";
+export const POWER_TENSION_AWARE_BEHAVIOR_NAME = "power-tension-aware";
+export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME =
+  "skeleton-power-tension-aware";
 
 /**
  * X drives the correction on whatever geometry the selection holds: ordinary
  * path points take it directly, skeleton points take it on their centerline.
  * A rib selection is the width edit and keeps its own drag.
  *
- * Shift adds nothing. X already states an axis, which is the stronger of the
- * two constraints, and 0/45/90 has no diagonal left to offer under it.
+ * C is the power variant of the same drag: the extremes between the dragged
+ * point and the first fixed landmark on either side are carried along the
+ * locked axis. It states the correction too, so it needs no X under it.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
  * @returns {string|null} The behavior name, or null
  */
 export function getTensionAwareBehaviorName(modifiers, targetKinds) {
-  if (!modifiers?.tensionAwareMode) return null;
+  const power = !!modifiers?.powerTensionAwareMode;
+  if (!modifiers?.tensionAwareMode && !power) return null;
   // A rib drag is the width edit: it states a distance across the stroke, and
   // there is no tension along it for the correction to hold. X stays out.
   if (targetKinds?.has("skeletonRib")) return null;
   // The centerline is a path, so it takes the same correction - but only
   // through the skeleton write path, which the ordinary entry cannot reach.
-  if (targetKinds?.has("skeletonPoint")) return SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
-  return TENSION_AWARE_BEHAVIOR_NAME;
+  if (targetKinds?.has("skeletonPoint")) {
+    return power
+      ? SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
+      : SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
+  }
+  return power ? POWER_TENSION_AWARE_BEHAVIOR_NAME : TENSION_AWARE_BEHAVIOR_NAME;
 }
 
 // The ordinary behavior name behind ours. The correction runs on top of what
 // the ordinary rules produce, so the rules have to run somewhere.
 const BASE_BEHAVIOR_NAMES = {
   [TENSION_AWARE_BEHAVIOR_NAME]: "default",
+  [POWER_TENSION_AWARE_BEHAVIOR_NAME]: "default",
 };
+
+const POWER_EPSILON = 1e-9;
+
+function axisForDelta(delta) {
+  return Math.abs(delta.x) >= Math.abs(delta.y) ? "x" : "y";
+}
+
+// The on-curve points of one contour, in contour order, as indices into its
+// unpacked point list. The run is walked along the contour, not along the axis:
+// a closed shape sorts its two sides into each other, so an axis order pairs a
+// point with a partner across the counter.
+function onCurvePointIndices(points) {
+  const indices = [];
+  points.forEach((point, index) => {
+    if (!point.type) indices.push(index);
+  });
+  return indices;
+}
+
+// How far off square a handle may sit and still call its point an extreme,
+// as a fraction of the handle's own length - about two degrees. A drawn glyph
+// is not the ideal on paper: an extreme placed by hand, or one carried over
+// from an interpolation, misses the axis by a fraction of a unit, and an exact
+// test calls it a corner and stops the run there.
+const POWER_SQUARE_TOLERANCE = 0.035;
+
+// A neighbour index inside the contour, wrapped where the contour closes.
+function wrapContourIndex(index, length, closed) {
+  if (index >= 0 && index < length) return index;
+  return closed ? ((index % length) + length) % length : null;
+}
+
+// A point the power scale may carry: an on-curve whose handles leave it square
+// across the axis, which is what makes it an extreme the run can stretch
+// through. The smooth flag is not asked for - the geometry is the statement,
+// and many drawn extremes carry no flag. Both neighbours are read with a wrap,
+// so the point that sits at the contour's seam is judged like any other.
+function isEligiblePowerPoint(points, index, axis, closed) {
+  const point = points[index];
+  if (!point || point.type) return false;
+  const crossAxis = axis === "x" ? "y" : "x";
+  const controls = [index - 1, index + 1]
+    .map((neighbourIndex) => {
+      const wrapped = wrapContourIndex(neighbourIndex, points.length, closed);
+      return wrapped === null ? null : points[wrapped];
+    })
+    .filter((neighbour) => neighbour?.type);
+  if (!controls.length) return false;
+  return controls.every((control) => {
+    const length = Math.hypot(control.x - point.x, control.y - point.y);
+    return (
+      length > POWER_EPSILON &&
+      Math.abs(control[crossAxis] - point[crossAxis]) <= length * POWER_SQUARE_TOLERANCE
+    );
+  });
+}
+
+// Walk the contour away from one edge of the moved body, one on-curve point at
+// a time, and collect the run the scale carries. The walk ends at the first
+// point that is not an eligible extreme - that point is the anchor, and it
+// stays where it is - or where the contour turns back along the axis, which
+// makes the far extreme already collected the anchor instead. A walk that
+// reaches the moved body again has no fixed end to scale against.
+function collectPowerRun(
+  points,
+  order,
+  edgeOrdinal,
+  step,
+  axis,
+  closed,
+  movedOrdinals
+) {
+  const pivot = points[order[edgeOrdinal]][axis];
+  const run = [];
+  let reach = 0;
+  for (let n = 1; n <= order.length; n++) {
+    let ordinal = edgeOrdinal + n * step;
+    if (closed) {
+      ordinal = ((ordinal % order.length) + order.length) % order.length;
+      if (ordinal === edgeOrdinal) break;
+    } else if (ordinal < 0 || ordinal >= order.length) {
+      break;
+    }
+    if (movedOrdinals.has(ordinal)) return null;
+    const index = order[ordinal];
+    const distance = Math.abs(points[index][axis] - pivot);
+    if (distance <= reach + POWER_EPSILON) {
+      const anchor = run.pop();
+      return anchor === undefined ? null : { run, anchor };
+    }
+    if (!isEligiblePowerPoint(points, index, axis, closed)) {
+      return { run, anchor: index };
+    }
+    run.push(index);
+    reach = distance;
+  }
+  return null;
+}
+
+/**
+ * The power propagation under C. The selected points have already travelled
+ * with the ordinary rules; this pass carries the run of extremes between the
+ * moved body and the first fixed landmark beyond it, so the stretch is
+ * proportional instead of the selection sliding through a shape that stands
+ * still.
+ *
+ * The run grows from every edge of the moved body, not from the one point under
+ * the cursor: a selection holds a whole leg as often as a single point, and
+ * each of its two ends has a side of the letter to carry.
+ *
+ * Only the locked axis is written. The anchor does not move, and the handles
+ * are left to the tension correction that runs after this pass.
+ *
+ * @param {Array} before - The contour's points before the drag
+ * @param {Array} after - The same points as the ordinary rules left them, written in place
+ * @param {boolean} closed - Whether the contour is closed
+ * @param {Set} movedIndices - Indices, into this contour, of the points the drag moved
+ * @param {Object} delta - The locked drag delta
+ */
+export function applyPowerAxisScale(before, after, closed, movedIndices, delta) {
+  if (!movedIndices?.size) return;
+  const axis = axisForDelta(delta);
+  const amount = delta[axis];
+  if (!amount) return;
+  const order = onCurvePointIndices(before);
+  const movedOrdinals = new Set();
+  order.forEach((index, ordinal) => {
+    if (movedIndices.has(index)) movedOrdinals.add(ordinal);
+  });
+  if (!movedOrdinals.size || movedOrdinals.size === order.length) return;
+  for (const edgeOrdinal of movedOrdinals) {
+    const pivot = before[order[edgeOrdinal]][axis];
+    for (const step of [-1, 1]) {
+      const collected = collectPowerRun(
+        before,
+        order,
+        edgeOrdinal,
+        step,
+        axis,
+        closed,
+        movedOrdinals
+      );
+      if (!collected?.run.length) continue;
+      const span = before[collected.anchor][axis] - pivot;
+      if (Math.abs(span) < POWER_EPSILON) continue;
+      // The anchor holds and the moved edge follows the drag, so the run is
+      // remapped from the span it had onto the span it has.
+      const factor = (span - amount) / span;
+      for (const index of collected.run) {
+        const scaled = Math.round(
+          pivot + amount + (before[index][axis] - pivot) * factor
+        );
+        const shift = scaled - before[index][axis];
+        after[index] = { ...after[index], [axis]: scaled };
+        // The handles travel with their point. Left behind, a handle that
+        // reached forward ends up reaching back once its point has passed it,
+        // and the segment turns through half a circle. The correction that
+        // runs after this reads the handles it is given, so it cannot put back
+        // a phase that was lost here.
+        for (const neighbourIndex of [index - 1, index + 1]) {
+          const handleIndex = wrapContourIndex(neighbourIndex, before.length, closed);
+          if (handleIndex === null || !before[handleIndex]?.type) continue;
+          after[handleIndex] = {
+            ...after[handleIndex],
+            [axis]: before[handleIndex][axis] + shift,
+          };
+        }
+      }
+    }
+  }
+}
 
 /**
  * One target entry for the whole path. It reproduces the ordinary edit on a
@@ -70,6 +251,18 @@ export function createTensionAwareTargetEntries(
   const baseBehavior = baseFactory.getBehavior(
     BASE_BEHAVIOR_NAMES[behaviorName] || "default"
   );
+
+  // The moved body, resolved once: the selected points of each contour, as
+  // indices into that contour. The run grows from its edges.
+  const movedByContour = new Map();
+  for (const pointIndex of pointSelection) {
+    const [contourIndex, contourPointIndex] =
+      originalPath.getContourAndPointIndex(pointIndex);
+    if (!movedByContour.has(contourIndex)) {
+      movedByContour.set(contourIndex, new Set());
+    }
+    movedByContour.get(contourIndex).add(contourPointIndex);
+  }
 
   let rollbackChange = null;
   // The axis the drag latches onto, held for the whole gesture.
@@ -121,6 +314,19 @@ export function createTensionAwareTargetEntries(
             applyTensionAwareEdit(before.points, after.points, after.isClosed, {
               slide: false,
             });
+            // The power pass belongs to the contours the selection moved.
+            if (behaviorName === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
+              applyPowerAxisScale(
+                before.points,
+                after.points,
+                after.isClosed,
+                movedByContour.get(contourIndex),
+                delta
+              );
+              applyTensionAwareEdit(before.points, after.points, after.isClosed, {
+                slide: false,
+              });
+            }
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];

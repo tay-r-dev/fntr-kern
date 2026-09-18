@@ -788,6 +788,11 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.tension-aware",
         defaultShortCuts: [{ baseKey: "x" }],
       });
+      registerActionInfo("action.realtime.power-tension-aware", {
+        topic,
+        titleKey: "shortcuts.realtime.power-tension-aware",
+        defaultShortCuts: [{ baseKey: "c" }],
+      });
     }
 
     {

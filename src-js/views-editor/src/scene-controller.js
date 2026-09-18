@@ -122,6 +122,7 @@ import {
 import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
 import { forceRefreshSnapping } from "./snapping-interactions.js";
 import {
+  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
   SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
   getTensionAwareBehaviorName,
@@ -1069,10 +1070,13 @@ export class SceneController {
       tangentRibMode: this.selectedTool?.tangentRibMode === true,
       tensionAwareMode: this.selectedTool?.tensionAwareMode === true,
       independentRibMode: this.selectedTool?.independentRibMode === true,
+      powerTensionAwareMode: this.selectedTool?.powerTensionAwareMode === true,
     };
     const targetKinds = getSelectionTargetKinds(this.selection);
-    // An arrow key is a drag of one grid step, so X means here what it means
-    // under the pointer. It needs no axis lock: an arrow key names its axis.
+    // An arrow key is a drag of one grid step, so X and C mean here what they
+    // mean under the pointer. It needs no axis lock: an arrow key names its
+    // axis. The power run grows from the selection, which a nudge has, so the
+    // nudge takes it too. Shift is still the coarse step.
     const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds);
     const behaviorName =
       tensionAwareName ||
@@ -1098,11 +1102,13 @@ export class SceneController {
         // entry reads outline points and builds nothing at all from a
         // skeleton-only selection, which is why the nudge did nothing.
         const skeletonTensionAwareEntry =
-          tensionAwareName === SKELETON_TENSION_AWARE_BEHAVIOR_NAME
+          tensionAwareName === SKELETON_TENSION_AWARE_BEHAVIOR_NAME ||
+          tensionAwareName === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
             ? makeSkeletonTensionAwareTargetEntry(
                 layerGlyph,
                 this.selection,
-                referenceSkeletonData
+                referenceSkeletonData,
+                tensionAwareName
               )
             : null;
         const targetEntries = skeletonTensionAwareEntry

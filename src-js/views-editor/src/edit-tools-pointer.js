@@ -83,7 +83,9 @@ import {
 } from "./snapping-interactions.js";
 import {
   SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
+  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_BEHAVIOR_NAME,
+  POWER_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_SCALE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
   createTensionAwareTransformEntries,
@@ -117,6 +119,7 @@ const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
+const REALTIME_POWER_TENSION_AWARE_ACTION = "action.realtime.power-tension-aware";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -139,6 +142,10 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_INDEPENDENT_RIB_ACTION,
     modeProperty: "independentRibMode",
   },
+  {
+    action: REALTIME_POWER_TENSION_AWARE_ACTION,
+    modeProperty: "powerTensionAwareMode",
+  },
 ];
 
 export class PointerTools {
@@ -158,6 +165,7 @@ export class PointerTool extends BaseTool {
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
     this.independentRibMode = false;
+    this.powerTensionAwareMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
     // One reveal for the whole scene. There is more than one pointer tool, and
@@ -543,7 +551,7 @@ export class PointerTool extends BaseTool {
     let initiateDrag = false;
     let initiateRectSelect = false;
 
-    const modeFunc = getSelectModeFunction(event);
+    const modeFunc = getSelectModeFunction(initialEvent);
     const newSelection =
       isSegment && modeFunc === symmetricDifference
         ? toggleSegmentSelection(sceneController.selection, selection)
@@ -551,8 +559,8 @@ export class PointerTool extends BaseTool {
     const cleanSel = selection;
     if (
       !selection.size ||
-      event.shiftKey ||
-      event.altKey ||
+      initialEvent.shiftKey ||
+      initialEvent.altKey ||
       !isSuperset(sceneController.selection, cleanSel)
     ) {
       this._selectionBeforeSingleClick = sceneController.selection;
@@ -822,6 +830,7 @@ export class PointerTool extends BaseTool {
         tangentRibMode: this.tangentRibMode,
         tensionAwareMode: this.tensionAwareMode,
         independentRibMode: this.independentRibMode,
+        powerTensionAwareMode: this.powerTensionAwareMode,
       });
       const getSelectionBehaviorName = (event) =>
         getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
@@ -864,7 +873,10 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
-        if (name === TENSION_AWARE_BEHAVIOR_NAME) {
+        if (
+          name === TENSION_AWARE_BEHAVIOR_NAME ||
+          name === POWER_TENSION_AWARE_BEHAVIOR_NAME
+        ) {
           return createTensionAwareTargetEntries(
             layerGlyph,
             sceneController.selection,
@@ -876,11 +888,15 @@ export class PointerTool extends BaseTool {
             }
           );
         }
-        if (name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME) {
+        if (
+          name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME ||
+          name === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
+        ) {
           const entry = makeSkeletonTensionAwareTargetEntry(
             layerGlyph,
             sceneController.selection,
-            referenceSkeletonData
+            referenceSkeletonData,
+            name
           );
           return entry ? [entry] : [];
         }
@@ -1513,7 +1529,7 @@ export class PointerTool extends BaseTool {
 
   _handleRealtimeModifierKeyDown(event) {
     const modifier = REALTIME_MODIFIER_ACTIONS.find((modifier) =>
-      eventMatchesActionShortCut(modifier.action, event)
+      matchesRealtimeModifierKey(modifier.action, event)
     );
     if (!modifier) {
       return false;
@@ -1704,6 +1720,17 @@ function toggleSegmentSelection(currentSelection, segmentSelection) {
 // grid.
 function extendsSelection(event) {
   return isMac ? event.metaKey : false;
+}
+
+// A mode key states a mode and nothing about Shift, which is the coarse step of
+// the nudge and the second half of C+Shift. An exact modifier match let the
+// mode start only when Shift came second, so pressing the two together did
+// nothing. Alt and the command keys still have to agree: they carry the menu
+// shortcuts.
+function matchesRealtimeModifierKey(action, event) {
+  if (eventMatchesActionShortCut(action, event)) return true;
+  if (!event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+  return eventMatchesActionBaseKey(action, event);
 }
 
 function getSelectModeFunction(event) {
