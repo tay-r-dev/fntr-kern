@@ -1079,8 +1079,8 @@ export class SceneController {
     const targetKinds = getSelectionTargetKinds(this.selection);
     // An arrow key is a drag of one grid step, so X means here what it means
     // under the pointer. It needs no axis lock: an arrow key names its axis.
-    // No event goes in: under an arrow key Shift is the coarse step, and there
-    // is no clicked point for a power run to grow from.
+    // The power variant stays out of the nudge: it grows its run from the
+    // clicked point, and an arrow key has none.
     const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds);
     const behaviorName =
       tensionAwareName ||

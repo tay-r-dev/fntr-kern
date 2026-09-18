@@ -85,3 +85,38 @@ describe("power axis scale", () => {
     expect(after[0].x).to.equal(0);
   });
 });
+
+describe("power axis scale, drawn glyphs", () => {
+  it("still reads a hand-placed extreme as one", () => {
+    const before = circleContour();
+    // The top extreme's handles miss the horizontal by half a unit.
+    before[2].y = 99.5;
+    before[4].y = 100.5;
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, 0, delta);
+    expect(after[3].x).to.equal(60);
+  });
+
+  it("carries an extreme that carries no smooth flag", () => {
+    const before = circleContour().map((point) => {
+      const { smooth, ...rest } = point;
+      return rest;
+    });
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, 0, delta);
+    expect(after[3].x).to.equal(60);
+  });
+
+  it("stops at a corner, which is not square across the axis", () => {
+    const before = circleContour();
+    // The top point's outgoing handle is steep, so the run ends there.
+    before[2].y = 80;
+    before[4].y = 80;
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, 0, delta);
+    expect(after[3].x).to.equal(50);
+  });
+});

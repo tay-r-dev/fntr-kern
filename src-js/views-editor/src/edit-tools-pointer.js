@@ -113,6 +113,7 @@ const REALTIME_FIXED_RIB_ACTION = "action.realtime.fixed-rib";
 const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
+const REALTIME_POWER_TENSION_AWARE_ACTION = "action.realtime.power-tension-aware";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -135,6 +136,10 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_INDEPENDENT_RIB_ACTION,
     modeProperty: "independentRibMode",
   },
+  {
+    action: REALTIME_POWER_TENSION_AWARE_ACTION,
+    modeProperty: "powerTensionAwareMode",
+  },
 ];
 
 export class PointerTools {
@@ -154,6 +159,7 @@ export class PointerTool extends BaseTool {
     this.fixedRibCompressMode = false;
     this.tensionAwareMode = false;
     this.independentRibMode = false;
+    this.powerTensionAwareMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
   }
@@ -533,7 +539,7 @@ export class PointerTool extends BaseTool {
     let initiateDrag = false;
     let initiateRectSelect = false;
 
-    const modeFunc = getSelectModeFunction(event);
+    const modeFunc = getSelectModeFunction(initialEvent);
     const newSelection =
       isSegment && modeFunc === symmetricDifference
         ? toggleSegmentSelection(sceneController.selection, selection)
@@ -541,8 +547,8 @@ export class PointerTool extends BaseTool {
     const cleanSel = selection;
     if (
       !selection.size ||
-      event.shiftKey ||
-      event.altKey ||
+      initialEvent.shiftKey ||
+      initialEvent.altKey ||
       !isSuperset(sceneController.selection, cleanSel)
     ) {
       this._selectionBeforeSingleClick = sceneController.selection;
@@ -785,9 +791,10 @@ export class PointerTool extends BaseTool {
         tangentRibMode: this.tangentRibMode,
         tensionAwareMode: this.tensionAwareMode,
         independentRibMode: this.independentRibMode,
+        powerTensionAwareMode: this.powerTensionAwareMode,
       });
       const getSelectionBehaviorName = (event) =>
-        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getBaseExpandBehaviorName(
           getRealtimeModifiers(),
@@ -827,7 +834,10 @@ export class PointerTool extends BaseTool {
         editingLayers[editLayerName] || Object.values(editingLayers)[0]
       );
       const makeSkeletonTargetEntries = (layerGlyph, name) => {
-        if (name === TENSION_AWARE_BEHAVIOR_NAME || name === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
+        if (
+          name === TENSION_AWARE_BEHAVIOR_NAME ||
+          name === POWER_TENSION_AWARE_BEHAVIOR_NAME
+        ) {
           return createTensionAwareTargetEntries(
             layerGlyph,
             sceneController.selection,

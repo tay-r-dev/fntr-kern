@@ -22,27 +22,27 @@ export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME =
  * path points take it directly, skeleton points take it on their centerline.
  * A rib selection is the width edit and keeps its own drag.
  *
- * Shift selects the power variant: eligible smooth points between the dragged
- * point and an anchor are scaled along the locked axis.
+ * C is the power variant of the same drag: the extremes between the dragged
+ * point and the first fixed landmark on either side are carried along the
+ * locked axis. It states the correction too, so it needs no X under it.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
  * @returns {string|null} The behavior name, or null
  */
-export function getTensionAwareBehaviorName(modifiers, targetKinds, event = null) {
-  if (!modifiers?.tensionAwareMode) return null;
+export function getTensionAwareBehaviorName(modifiers, targetKinds) {
+  const power = !!modifiers?.powerTensionAwareMode;
+  if (!modifiers?.tensionAwareMode && !power) return null;
   // A rib drag is the width edit: it states a distance across the stroke, and
   // there is no tension along it for the correction to hold. X stays out.
   if (targetKinds?.has("skeletonRib")) return null;
   // The centerline is a path, so it takes the same correction - but only
   // through the skeleton write path, which the ordinary entry cannot reach.
   if (targetKinds?.has("skeletonPoint")) {
-    return event?.shiftKey
+    return power
       ? SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
       : SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
   }
-  return event?.shiftKey
-    ? POWER_TENSION_AWARE_BEHAVIOR_NAME
-    : TENSION_AWARE_BEHAVIOR_NAME;
+  return power ? POWER_TENSION_AWARE_BEHAVIOR_NAME : TENSION_AWARE_BEHAVIOR_NAME;
 }
 
 // The ordinary behavior name behind ours. The correction runs on top of what
@@ -70,13 +70,21 @@ function onCurvePointIndices(points) {
   return indices;
 }
 
-// A point the power scale may carry: a smooth on-curve whose handles leave it
-// square across the axis, which is what makes it an extreme the run can stretch
-// through. Both neighbours are read with a wrap, so the point that sits at the
-// contour's seam is judged like any other.
+// How far off square a handle may sit and still call its point an extreme,
+// as a fraction of the handle's own length - about two degrees. A drawn glyph
+// is not the ideal on paper: an extreme placed by hand, or one carried over
+// from an interpolation, misses the axis by a fraction of a unit, and an exact
+// test calls it a corner and stops the run there.
+const POWER_SQUARE_TOLERANCE = 0.035;
+
+// A point the power scale may carry: an on-curve whose handles leave it square
+// across the axis, which is what makes it an extreme the run can stretch
+// through. The smooth flag is not asked for - the geometry is the statement,
+// and many drawn extremes carry no flag. Both neighbours are read with a wrap,
+// so the point that sits at the contour's seam is judged like any other.
 function isEligiblePowerPoint(points, index, axis, closed) {
   const point = points[index];
-  if (!point || point.type || !point.smooth) return false;
+  if (!point || point.type) return false;
   const crossAxis = axis === "x" ? "y" : "x";
   const controls = [index - 1, index + 1]
     .map((neighbourIndex) => {
@@ -87,11 +95,13 @@ function isEligiblePowerPoint(points, index, axis, closed) {
     })
     .filter((neighbour) => neighbour?.type);
   if (!controls.length) return false;
-  return controls.every(
-    (control) =>
-      Math.hypot(control.x - point.x, control.y - point.y) > POWER_EPSILON &&
-      Math.abs(control[crossAxis] - point[crossAxis]) < POWER_EPSILON
-  );
+  return controls.every((control) => {
+    const length = Math.hypot(control.x - point.x, control.y - point.y);
+    return (
+      length > POWER_EPSILON &&
+      Math.abs(control[crossAxis] - point[crossAxis]) <= length * POWER_SQUARE_TOLERANCE
+    );
+  });
 }
 
 // Walk the contour away from the pivot, one on-curve point at a time, and
