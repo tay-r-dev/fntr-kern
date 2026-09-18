@@ -185,3 +185,55 @@ describe("power axis scale, a selection of several points", () => {
     expect(after[5].x).to.equal(before[5].x + 20);
   });
 });
+
+// The centerline of "n" from _external/skeletron.fontra, an open contour whose
+// on-curve points are 0, 3, 6, 9 and 12.
+function centerlineOfN() {
+  return [
+    { x: 461, y: 224 },
+    { x: 461, y: 311, type: "cubic" },
+    { x: 433, y: 364, type: "cubic" },
+    { x: 387, y: 364, smooth: true },
+    { x: 457, y: 364, type: "cubic" },
+    { x: 321, y: 263, type: "cubic" },
+    { x: 266, y: 263, smooth: true },
+    { x: 213, y: 263, type: "cubic" },
+    { x: 208, y: 364, type: "cubic" },
+    { x: 145, y: 364, smooth: true },
+    { x: 102, y: 364, type: "cubic" },
+    { x: 68, y: 308, type: "cubic" },
+    { x: 68, y: 233 },
+  ];
+}
+
+describe("power axis scale, the handles", () => {
+  it("carries each handle with its own point", () => {
+    const before = centerlineOfN();
+    const delta = { x: 40, y: 0 };
+    const after = movedCopy(before, [0], delta);
+    applyPowerAxisScale(before, after, false, new Set([0]), delta);
+    // A handle left behind reaches back once its point has passed it, and the
+    // segment turns through half a circle.
+    for (const [handle, point] of [
+      [2, 3],
+      [4, 3],
+      [5, 6],
+      [7, 6],
+      [8, 9],
+      [10, 9],
+    ]) {
+      expect(after[handle].x - after[point].x).to.equal(
+        before[handle].x - before[point].x
+      );
+    }
+  });
+
+  it("leaves the anchor's own handle alone", () => {
+    const before = centerlineOfN();
+    const delta = { x: 40, y: 0 };
+    const after = movedCopy(before, [0], delta);
+    applyPowerAxisScale(before, after, false, new Set([0]), delta);
+    expect(after[12].x).to.equal(before[12].x);
+    expect(after[11].x).to.equal(before[11].x);
+  });
+});

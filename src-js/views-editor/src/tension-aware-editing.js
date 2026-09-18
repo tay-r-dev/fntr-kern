@@ -77,6 +77,12 @@ function onCurvePointIndices(points) {
 // test calls it a corner and stops the run there.
 const POWER_SQUARE_TOLERANCE = 0.035;
 
+// A neighbour index inside the contour, wrapped where the contour closes.
+function wrapContourIndex(index, length, closed) {
+  if (index >= 0 && index < length) return index;
+  return closed ? ((index % length) + length) % length : null;
+}
+
 // A point the power scale may carry: an on-curve whose handles leave it square
 // across the axis, which is what makes it an extreme the run can stretch
 // through. The smooth flag is not asked for - the geometry is the statement,
@@ -88,10 +94,8 @@ function isEligiblePowerPoint(points, index, axis, closed) {
   const crossAxis = axis === "x" ? "y" : "x";
   const controls = [index - 1, index + 1]
     .map((neighbourIndex) => {
-      if (neighbourIndex >= 0 && neighbourIndex < points.length) {
-        return points[neighbourIndex];
-      }
-      return closed ? points[(neighbourIndex + points.length) % points.length] : null;
+      const wrapped = wrapContourIndex(neighbourIndex, points.length, closed);
+      return wrapped === null ? null : points[wrapped];
     })
     .filter((neighbour) => neighbour?.type);
   if (!controls.length) return false;
@@ -196,10 +200,24 @@ export function applyPowerAxisScale(before, after, closed, movedIndices, delta) 
       // remapped from the span it had onto the span it has.
       const factor = (span - amount) / span;
       for (const index of collected.run) {
-        after[index] = {
-          ...after[index],
-          [axis]: Math.round(pivot + amount + (before[index][axis] - pivot) * factor),
-        };
+        const scaled = Math.round(
+          pivot + amount + (before[index][axis] - pivot) * factor
+        );
+        const shift = scaled - before[index][axis];
+        after[index] = { ...after[index], [axis]: scaled };
+        // The handles travel with their point. Left behind, a handle that
+        // reached forward ends up reaching back once its point has passed it,
+        // and the segment turns through half a circle. The correction that
+        // runs after this reads the handles it is given, so it cannot put back
+        // a phase that was lost here.
+        for (const neighbourIndex of [index - 1, index + 1]) {
+          const handleIndex = wrapContourIndex(neighbourIndex, before.length, closed);
+          if (handleIndex === null || !before[handleIndex]?.type) continue;
+          after[handleIndex] = {
+            ...after[handleIndex],
+            [axis]: before[handleIndex][axis] + shift,
+          };
+        }
       }
     }
   }
