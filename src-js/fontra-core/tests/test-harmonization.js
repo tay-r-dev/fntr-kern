@@ -2356,3 +2356,82 @@ function bentJointFixture() {
     { x: 200, y: 0 },
   ]);
 }
+
+// The quote mark of `_external/skeletron.fontra`. Two of its six smooth joints
+// arrive bent by under two degrees, on handles of five to twelve units, and the
+// preparation pass that squares them up costs more than the construction after
+// it can win back.
+function quoteSingle() {
+  return makeContour([
+    { x: 359, y: 451 },
+    cubic(355, 422),
+    cubic(344, 410),
+    { x: 326, y: 410, smooth: true },
+    cubic(304, 410),
+    cubic(278, 428),
+    { x: 268, y: 435, smooth: true },
+    cubic(264, 438),
+    cubic(224, 468),
+    { x: 189, y: 468, smooth: true },
+    cubic(153, 468),
+    cubic(115, 436),
+    { x: 115, y: 361 },
+    { x: 147, y: 361 },
+    cubic(147, 386),
+    cubic(170, 410),
+    { x: 194, y: 410, smooth: true },
+    cubic(208, 410),
+    cubic(226, 396),
+    { x: 242, y: 383, smooth: true },
+    cubic(276, 357),
+    cubic(306, 353),
+    { x: 326, y: 353, smooth: true },
+    cubic(366, 353),
+    cubic(391, 388),
+    { x: 391, y: 451 },
+  ]);
+}
+
+describe("harmonization: the press is judged against the drawing it was handed", () => {
+  const limits = { maxHandleTension: HARMONIZE_DEFAULTS.maxHandleTension };
+  const score = (path) =>
+    scoreJointsForTest(path, expandToJoints(path, undefined), "G2", limits, null);
+
+  it("refuses an answer that is worse than the drawing, tick or no tick", () => {
+    for (const equalizeHandles of [false, true]) {
+      const path = quoteSingle();
+      const before = Array.from(path.coordinates);
+      const report = harmonizePathInPlace(path, undefined, {
+        method: "canonical",
+        equalizeHandles,
+      });
+      expect(Array.from(path.coordinates)).to.deep.equal(before);
+      expect(report.some((state) => state.reason === "reverted")).to.equal(true);
+      expect(report.some((state) => state.status === "harmonized")).to.equal(false);
+    }
+  });
+
+  it("keeps the answer where the construction earns it", () => {
+    const path = quoteSingle();
+    const handed = score(path);
+    harmonizePathInPlace(path, undefined, {
+      method: "nearest",
+      equalizeHandles: false,
+    });
+    expect(score(path).residual).to.be.lessThan(handed.residual);
+  });
+
+  it("never leaves a press that can be pressed again into something worse", () => {
+    // The refused press used to write a stuck state: every further press moved
+    // nothing, so the drawing could not be walked back out of it.
+    const path = quoteSingle();
+    const handed = score(path);
+    for (let press = 0; press < 3; press++) {
+      harmonizePathInPlace(path, undefined, {
+        method: "canonical",
+        equalizeHandles: true,
+      });
+    }
+    expect(score(path).residual).to.be.at.most(handed.residual);
+  });
+});

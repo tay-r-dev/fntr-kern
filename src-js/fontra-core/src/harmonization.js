@@ -2120,11 +2120,39 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // actually moved there.
   const startedPress = Array.from(path.coordinates);
 
+  // The drawing as it ARRIVED, scored the way every step here is scored. The
+  // constructions carry a best-state gate of their own, but it takes its
+  // baseline after the preparation pass below and knows nothing of the
+  // finishing pass after it, so neither of those two could ever be refused.
+  // Measured on `quotesingle`: a 0.53-unit square-up put one handle past its
+  // segment's Tunni point and took the residual from 2.63 to 4.62, and the
+  // construction was then judged against that. The press kept a drawing worse
+  // than the one the designer handed it and reported success.
+  const arrival = new Map();
+  for (const pointIndex of candidates) {
+    if (!getJointContext(path, pointIndex).reason) {
+      arrival.set(pointIndex, true);
+    }
+  }
+  const scoreLimits = { maxHandleTension: rest.maxHandleTension };
+  const scoreOf = (candidatePath, travel) => ({
+    ...scoreJoints(candidatePath, candidates, continuity, scoreLimits, arrival),
+    travel,
+  });
+  const handed = scoreOf(path, 0);
+
+  // The whole press runs on a copy and only the points that ended up somewhere
+  // else are written back. Its steps write the same handles over and over, and
+  // every one of those writes would be a recorded change -- which is how a
+  // command that settles on the drawing it started from takes an undo step for
+  // nothing. It is also what lets the gate below refuse the answer whole.
+  const working = path.copy();
+
   // The preparation pass. It squares up a joint whose handles have drifted off
   // one line, and every construction here solves against the tangent at the
   // joint. It always runs: it fires only on a bent joint, and over every smooth
   // joint of `N^1.json` and `I^1.json` it moved 0 of 88 points.
-  realignSmoothJointsInPlace(path, candidates, new Set());
+  realignSmoothJointsInPlace(working, candidates, new Set());
 
   // Position 2 is three steps rather than one, so the whole of it runs on a copy
   // and only what ended up somewhere else is written back. Each step moves the
@@ -2154,13 +2182,6 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   //
   const finishes = equalizeHandles && continuity === "G2";
 
-  // The pass runs on a copy and only the points that ended up somewhere else are
-  // written back. Both steps write the same handles the construction already
-  // wrote, and every one of those writes would be a recorded change -- which is
-  // how a command that settles on the drawing it started from takes an undo step
-  // for nothing.
-  const working = finishes ? path.copy() : path;
-
   const report =
     construction === "nearest"
       ? harmonizeNearestInPlace(working, candidates, { ...rest, continuity })
@@ -2174,10 +2195,6 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
           handleBias: 1,
         });
 
-  if (!finishes) {
-    return report;
-  }
-
   // Everywhere the joint is a real one. Balancing works on segments rather than
   // joints, so handed the whole candidate list it evens segments at points that
   // are not joints at all -- which is how it reached past a skeleton selection.
@@ -2189,21 +2206,57 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // squaring the joint up beforehand often settles it -- so gating on "the
   // construction did something" turned the pass off almost everywhere at
   // position 1.
-  const reached = report
-    .filter((state) => !STRUCTURAL_SKIPS.has(state.reason))
-    .map((state) => state.pointIndex);
-  if (!reached.length) {
-    writeBack(path, working);
+  const reached = finishes
+    ? report
+        .filter((state) => !STRUCTURAL_SKIPS.has(state.reason))
+        .map((state) => state.pointIndex)
+    : [];
+  let repaired = null;
+  if (reached.length) {
+    balancePathInPlace(working, reached);
+    repaired = harmonizeNearestInPlace(working, reached, {
+      ...rest,
+      continuity,
+    });
+  }
+
+  // The gate. A press that does not beat the drawing it was handed leaves it
+  // alone: the answer is refused whole, because its three steps share handles
+  // and no one of them can be put back on its own.
+  let travel = 0;
+  for (let index = 0; index < working.numPoints; index++) {
+    const [x, y] = working.getPointPosition(index);
+    travel += Math.hypot(x - startedPress[index * 2], y - startedPress[index * 2 + 1]);
+  }
+  // A press that moved nothing has nothing to write and nothing to judge: its
+  // report already says why, and `already-harmonic` and `degenerate` are the
+  // answers the designer asked for.
+  if (!travel) {
+    return report;
+  }
+  // Strictly worse, and nothing else. A tie is kept: the score reads the joints
+  // it can measure, and the preparation pass also squares up joints it cannot -
+  // a curve running into a straight is refused by every construction here, so
+  // squaring it is the only work that joint will ever get, and it scores as a
+  // tie. `travel` is left out of both sides for the same reason: it is the grid
+  // search's tie-breaker between two whole-unit positions, and reading it here
+  // would refuse every tie that moved anything.
+  if (isBetter(handed, scoreOf(working, 0))) {
+    for (const state of report) {
+      if (state.status === "skipped") {
+        continue;
+      }
+      state.status = "skipped";
+      state.reason = "reverted";
+    }
     return report;
   }
 
-  balancePathInPlace(working, reached);
-  const repaired = harmonizeNearestInPlace(working, reached, {
-    ...rest,
-    continuity,
-  });
-
   writeBack(path, working);
+
+  if (!repaired) {
+    return report;
+  }
 
   //
   // One verdict per joint, describing the drawing that was kept. The joint
