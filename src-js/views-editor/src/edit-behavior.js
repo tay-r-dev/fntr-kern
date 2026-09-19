@@ -1476,6 +1476,11 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  "point-slide": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   "equalize": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,

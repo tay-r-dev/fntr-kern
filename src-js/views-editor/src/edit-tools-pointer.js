@@ -53,6 +53,11 @@ import { handlesEqual } from "./edit-tools-pen.js";
 import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
+import {
+  POINT_SLIDE_BEHAVIOR_NAME,
+  createPointSlideTargetEntries,
+  getPointSlideBehaviorName,
+} from "./point-slide-editing.js";
 import { equalGlyphSelection } from "./scene-controller.js";
 import { resetPanelGeneratedHandle, resetPanelRibs } from "./skeleton-panel-edits.js";
 import {
@@ -120,6 +125,7 @@ const REALTIME_FIXED_RIB_COMPRESS_ACTION = "action.realtime.fixed-rib-compress";
 const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
 const REALTIME_POWER_TENSION_AWARE_ACTION = "action.realtime.power-tension-aware";
+const REALTIME_POINT_SLIDE_ACTION = "action.realtime.point-slide";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -146,6 +152,10 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_POWER_TENSION_AWARE_ACTION,
     modeProperty: "powerTensionAwareMode",
   },
+  {
+    action: REALTIME_POINT_SLIDE_ACTION,
+    modeProperty: "pointSlideMode",
+  },
 ];
 
 export class PointerTools {
@@ -166,6 +176,7 @@ export class PointerTool extends BaseTool {
     this.tensionAwareMode = false;
     this.independentRibMode = false;
     this.powerTensionAwareMode = false;
+    this.pointSlideMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
     // One reveal for the whole scene. There is more than one pointer tool, and
@@ -824,6 +835,16 @@ export class PointerTool extends BaseTool {
     await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
       const initialPoint = sceneController.selectedGlyphPoint(initialEvent);
       const targetKinds = getSelectionTargetKinds(sceneController.selection);
+      // Read the edit layer's skeleton data once; every layer's skeleton target
+      // entry resolves selection ids against this single reference by structural
+      // ordinal (cross-layer addressing).
+      const editingLayers = sceneController.getEditingLayerFromGlyphLayers(
+        glyph.layers
+      );
+      const editLayerName = sceneController.sceneSettings.editLayerName;
+      const editLayerGlyph =
+        editingLayers[editLayerName] || Object.values(editingLayers)[0];
+      const referenceSkeletonData = getSkeletonData(editLayerGlyph);
       const getRealtimeModifiers = () => ({
         fixedRibMode: this.fixedRibMode,
         fixedRibCompressMode: this.fixedRibCompressMode,
@@ -831,10 +852,21 @@ export class PointerTool extends BaseTool {
         tensionAwareMode: this.tensionAwareMode,
         independentRibMode: this.independentRibMode,
         powerTensionAwareMode: this.powerTensionAwareMode,
+        pointSlideMode: this.pointSlideMode,
       });
       const getSelectionBehaviorName = (event) =>
         getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
+        getPointSlideBehaviorName(
+          getRealtimeModifiers(),
+          targetKinds,
+          sceneController.selection,
+          editLayerGlyph,
+          {
+            isGeneratedContour: (contourIndex) =>
+              this.sceneModel.isGeneratedPathContour(contourIndex),
+          }
+        ) ||
         getBaseExpandBehaviorName(
           getRealtimeModifiers(),
           targetKinds,
@@ -862,17 +894,21 @@ export class PointerTool extends BaseTool {
             : undefined;
       };
 
-      // Read the edit layer's skeleton data once; every layer's skeleton target
-      // entry resolves selection ids against this single reference by structural
-      // ordinal (cross-layer addressing).
-      const editingLayers = sceneController.getEditingLayerFromGlyphLayers(
-        glyph.layers
-      );
-      const editLayerName = sceneController.sceneSettings.editLayerName;
-      const referenceSkeletonData = getSkeletonData(
-        editingLayers[editLayerName] || Object.values(editingLayers)[0]
-      );
-      const makeSkeletonTargetEntries = (layerGlyph, name) => {
+      // The slide session carries the edit layer's chosen side and source
+      // parameter to every other layer's entry, and the moved point's new index
+      // back to the selection restore. Reset when the behavior changes
+      // mid-drag, because the rebuilt entries capture fresh geometry.
+      let pointSlideSession = {};
+      const makeSkeletonTargetEntries = (layerGlyph, name, isPrimary = false) => {
+        if (name === POINT_SLIDE_BEHAVIOR_NAME) {
+          return createPointSlideTargetEntries(layerGlyph, sceneController.selection, {
+            isGeneratedContour: (contourIndex) =>
+              this.sceneModel.isGeneratedPathContour(contourIndex),
+            initialPointer: initialPoint,
+            isPrimary,
+            session: pointSlideSession,
+          });
+        }
         if (
           name === TENSION_AWARE_BEHAVIOR_NAME ||
           name === POWER_TENSION_AWARE_BEHAVIOR_NAME
@@ -994,24 +1030,32 @@ export class PointerTool extends BaseTool {
         return entry ? [entry] : [];
       };
 
-      const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
-        const behaviorFactory = new EditBehaviorFactory(
-          layerGlyph,
-          sceneController.selection,
-          this.scalingEditBehavior,
-          { targetEntries: makeSkeletonTargetEntries(layerGlyph, behaviorName) }
-        );
-        return {
-          layerName,
-          layerGlyph,
-          changePath: ["layers", layerName, "glyph"],
-          pathPrefix: [],
-          connectDetector: sceneController.getPathConnectDetector(layerGlyph.path),
-          shouldConnect: false,
-          behaviorFactory,
-          editBehavior: behaviorFactory.getBehavior(behaviorName),
-        };
-      });
+      const layerInfo = Object.entries(editingLayers).map(
+        ([layerName, layerGlyph], layerIndex) => {
+          const behaviorFactory = new EditBehaviorFactory(
+            layerGlyph,
+            sceneController.selection,
+            this.scalingEditBehavior,
+            {
+              targetEntries: makeSkeletonTargetEntries(
+                layerGlyph,
+                behaviorName,
+                layerIndex === 0
+              ),
+            }
+          );
+          return {
+            layerName,
+            layerGlyph,
+            changePath: ["layers", layerName, "glyph"],
+            pathPrefix: [],
+            connectDetector: sceneController.getPathConnectDetector(layerGlyph.path),
+            shouldConnect: false,
+            behaviorFactory,
+            editBehavior: behaviorFactory.getBehavior(behaviorName),
+          };
+        }
+      );
 
       assert(layerInfo.length >= 1, "no layer to edit");
 
@@ -1038,6 +1082,7 @@ export class PointerTool extends BaseTool {
           // Behavior changed, undo current changes
           behaviorName = newEditBehaviorName;
           sceneController.sceneModel.skeletonDragBehaviorName = behaviorName;
+          pointSlideSession = {};
           const rollbackChanges = [];
           for (const layer of layerInfo) {
             applyChange(layer.layerGlyph, layer.editBehavior.rollbackChange);
@@ -1054,7 +1099,8 @@ export class PointerTool extends BaseTool {
               {
                 targetEntries: makeSkeletonTargetEntries(
                   layer.layerGlyph,
-                  behaviorName
+                  behaviorName,
+                  layer.isPrimaryLayer
                 ),
               }
             );
@@ -1085,6 +1131,7 @@ export class PointerTool extends BaseTool {
           event.altKey ||
           this.tensionAwareMode ||
           this.tangentRibMode ||
+          this.pointSlideMode ||
           ((this.fixedRibMode || this.fixedRibCompressMode) &&
             !SNAP_PARAMETERS.snapDuringFixedRib);
         const wouldBe = snapStartPositions.map((point) => ({
@@ -1115,6 +1162,17 @@ export class PointerTool extends BaseTool {
       }
       // No snap state survives the gesture (spec section 5).
       snapSession.end();
+
+      // A slide changes the point count, so the pre-drag point index is stale.
+      // The entry reported where the moved point landed; keep it selected.
+      if (
+        behaviorName === POINT_SLIDE_BEHAVIOR_NAME &&
+        pointSlideSession.movedPointIndex !== undefined
+      ) {
+        sceneController.selection = new Set([
+          `point/${pointSlideSession.movedPointIndex}`,
+        ]);
+      }
 
       let changes = ChangeCollector.fromChanges(
         editChange,

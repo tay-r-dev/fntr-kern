@@ -793,6 +793,11 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.power-tension-aware",
         defaultShortCuts: [{ baseKey: "c" }],
       });
+      registerActionInfo("action.realtime.point-slide", {
+        topic,
+        titleKey: "shortcuts.realtime.point-slide",
+        defaultShortCuts: [{ baseKey: "v" }],
+      });
     }
 
     {
