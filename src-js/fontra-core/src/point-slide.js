@@ -185,11 +185,14 @@ export function splitSegmentAt(segmentPoints, t) {
  * The segment traveled takes the split's exact piece: toward the previous
  * on-curve that is the split's first piece, toward the next it is the second
  * piece. Its handles overwrite the segment's own slots one for one, which is
- * the anchor's handle length adjusting to the cut. The far segment keeps its
- * handles, anchored at the far neighbour. On a smooth point the far handle is
- * then rotated colinear through the moved point, keeping its length: the
- * point's angle follows the slide. A corner's far handle travels with the
- * point, keeping its vector relative to it.
+ * the anchor's handle length adjusting to the cut. The far segment is
+ * rescaled around its own fixed anchor by the change in chord length between
+ * the moved point and that anchor, the same way the traveled segment's own
+ * handles shrink or grow with the cut: both of its handles keep their
+ * direction and scale by the same ratio, so the far segment's shape adapts
+ * to the point's new distance from it instead of holding a fixed length. On
+ * a smooth point the near handle also swings colinear through the moved
+ * point; a corner's near handle keeps its direction from the point.
  *
  * The parameter is clamped to 0 and 1 and no further in. Zero and one are
  * legal destinations: the point lands on its neighbour and the traveled
@@ -234,14 +237,12 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
 }
 
 /**
- * Move the far segment's near handle with the point. A smooth point's handle
- * swings colinear with the handle on the traveled side, keeping its length:
- * the point's angle follows the slide. A corner's handle keeps its vector
- * relative to the point, so the corner's geometry travels unchanged. The far
- * segment's other handle stays with its anchor. The next segment's handles
- * always start at pointIndex + 1 (they trail the array when it wraps); the
- * previous segment's last handle sits at pointIndex - 1, or at the array's
- * tail when that segment wraps.
+ * Rescale the far segment around its own fixed anchor to follow the point's
+ * new distance from it, and swing its near handle to the point's new angle.
+ * The next segment's handles always start at pointIndex + 1 (they trail the
+ * array when it wraps); the previous segment's handles run from
+ * startIndex + 1 up to pointIndex - 1, or the array's tail when that segment
+ * wraps.
  */
 function adjustFarHandle(
   newPoints,
@@ -252,47 +253,59 @@ function adjustFarHandle(
   destination,
   point
 ) {
-  let reference;
-  let farHandleIndex;
-  let sign;
-  if (side === "previous") {
-    // Direction through the moved point, away from the traveled side.
-    reference = handles[1] || adjacent.previous.points[0];
-    if (!adjacent.next?.handles.length) return;
-    farHandleIndex = pointIndex + 1;
-    sign = 1;
-  } else {
-    reference = handles[0] || adjacent.next.points.at(-1);
-    if (!adjacent.previous?.handles.length) return;
-    farHandleIndex =
-      adjacent.previous.endIndex <= adjacent.previous.startIndex
-        ? newPoints.length - 1
-        : pointIndex - 1;
-    sign = -1;
-  }
-  const farHandle = newPoints[farHandleIndex];
-  if (!farHandle?.type) return;
-  if (!point.smooth) {
-    // A corner: the handle keeps its vector relative to the point.
-    newPoints[farHandleIndex] = {
-      ...farHandle,
-      x: farHandle.x + destination.x - point.x,
-      y: farHandle.y + destination.y - point.y,
-    };
-    return;
-  }
-  // A smooth point: colinear through the moved point, length kept.
-  const length = Math.hypot(farHandle.x - point.x, farHandle.y - point.y);
-  const direction = {
-    x: destination.x - reference.x,
-    y: destination.y - reference.y,
-  };
-  const magnitude = Math.hypot(direction.x, direction.y);
-  if (!magnitude || !length) return;
-  newPoints[farHandleIndex] = {
+  const farSegment = side === "previous" ? adjacent.next : adjacent.previous;
+  if (!farSegment?.handles.length) return;
+  const wraps = farSegment.endIndex <= farSegment.startIndex;
+  // The handle nearest the moved point, and the handle nearest the far,
+  // unmoving anchor.
+  const nearIndex = side === "previous" ? pointIndex + 1 : wraps
+      ? newPoints.length - 1
+      : pointIndex - 1;
+  const farIndex = side === "previous"
+    ? wraps
+      ? newPoints.length - 1
+      : farSegment.endIndex - 1
+    : farSegment.startIndex + 1;
+  const nearHandle = newPoints[nearIndex];
+  const farHandle = newPoints[farIndex];
+  const anchor = side === "previous" ? adjacent.next.points.at(-1) : adjacent.previous.points[0];
+  if (!nearHandle?.type || !farHandle?.type || !anchor) return;
+
+  // The far segment's shape follows the change in distance between the
+  // point and its fixed anchor, the same way the traveled segment's own
+  // handles shrink or grow with the cut.
+  const oldChord = Math.hypot(anchor.x - point.x, anchor.y - point.y);
+  const newChord = Math.hypot(anchor.x - destination.x, anchor.y - destination.y);
+  if (!oldChord) return;
+  const ratio = newChord / oldChord;
+
+  // The far handle keeps its direction from the anchor, only its length
+  // scales.
+  newPoints[farIndex] = {
     ...farHandle,
-    x: destination.x + (sign * direction.x * length) / magnitude,
-    y: destination.y + (sign * direction.y * length) / magnitude,
+    x: anchor.x + (farHandle.x - anchor.x) * ratio,
+    y: anchor.y + (farHandle.y - anchor.y) * ratio,
+  };
+
+  const nearLength = Math.hypot(nearHandle.x - point.x, nearHandle.y - point.y) * ratio;
+  let direction;
+  if (point.smooth) {
+    // Colinear with the traveled side's handle at the point's new angle.
+    const reference =
+      side === "previous"
+        ? handles[1] || adjacent.previous.points[0]
+        : handles[0] || adjacent.next.points.at(-1);
+    direction = { x: destination.x - reference.x, y: destination.y - reference.y };
+  } else {
+    // A corner: the handle keeps its direction from the point.
+    direction = { x: nearHandle.x - point.x, y: nearHandle.y - point.y };
+  }
+  const magnitude = Math.hypot(direction.x, direction.y);
+  if (!magnitude || !nearLength) return;
+  newPoints[nearIndex] = {
+    ...nearHandle,
+    x: destination.x + (direction.x * nearLength) / magnitude,
+    y: destination.y + (direction.y * nearLength) / magnitude,
   };
 }
 
