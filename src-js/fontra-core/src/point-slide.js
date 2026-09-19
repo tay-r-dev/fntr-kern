@@ -1,4 +1,9 @@
 import { Bezier } from "bezier-js";
+import {
+  chordLengthParameterize,
+  generateBezier,
+  parameterizeAgainstCubic,
+} from "./fit-cubic.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 
 // Point slide: move one on-curve point along its own contour. The point the
@@ -6,8 +11,8 @@ import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 // attributes, and its identity, and the point count never changes. The two
 // neighbouring on-curves are the anchors. The segment traveled keeps its
 // exact shape through the split's kept piece: de Casteljau on a cubic, linear
-// interpolation on a straight. The far segment keeps its handles, and a
-// smooth point's far handle follows the new angle.
+// interpolation on a straight. The far segment is refit to keep drawing the
+// old path between the moved point and its far anchor.
 //
 // The path representation this module works on, confirmed against
 // `VarPackedPath.getUnpackedContour` / `setUnpackedContour`:
@@ -185,14 +190,9 @@ export function splitSegmentAt(segmentPoints, t) {
  * The segment traveled takes the split's exact piece: toward the previous
  * on-curve that is the split's first piece, toward the next it is the second
  * piece. Its handles overwrite the segment's own slots one for one, which is
- * the anchor's handle length adjusting to the cut. The far segment is
- * rescaled around its own fixed anchor by the change in chord length between
- * the moved point and that anchor, the same way the traveled segment's own
- * handles shrink or grow with the cut: both of its handles keep their
- * direction and scale by the same ratio, so the far segment's shape adapts
- * to the point's new distance from it instead of holding a fixed length. On
- * a smooth point the near handle also swings colinear through the moved
- * point; a corner's near handle keeps its direction from the point.
+ * the anchor's handle length adjusting to the cut. The far segment is refit
+ * to draw the old path from the moved point to the far anchor: see
+ * refitFarSegment.
  *
  * The parameter is clamped to 0 and 1 and no further in. Zero and one are
  * legal destinations: the point lands on its neighbour and the traveled
@@ -232,81 +232,83 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
   for (let i = 0; i < handles.length; i++) {
     newPoints[firstHandleIndex + i] = handles[i];
   }
-  adjustFarHandle(newPoints, adjacent, pointIndex, side, handles, destination, point);
+  refitFarSegment(newPoints, adjacent, side, replacement, destination);
   return { points: newPoints, isClosed: contour.isClosed, movedPointIndex: pointIndex };
 }
 
 /**
- * Rescale the far segment around its own fixed anchor to follow the point's
- * new distance from it, and swing its near handle to the point's new angle.
- * The next segment's handles always start at pointIndex + 1 (they trail the
- * array when it wraps); the previous segment's handles run from
- * startIndex + 1 up to pointIndex - 1, or the array's tail when that segment
- * wraps.
+ * Refit the far segment so it keeps drawing the path it now spans. The piece
+ * of the traveled segment the point slid past joins the far segment: when P
+ * slides toward A, P' -> B must draw the rest of the old A -> P curve followed
+ * by the old P -> B curve. The far segment's handle directions are pinned to
+ * that path's tangents at both ends (so the join with the traveled piece
+ * stays exactly as smooth as the curve the point sits on, and the far anchor
+ * keeps its angle); only the two handle lengths are solved, by least squares
+ * against samples of the path. A cubic cannot always draw two cubics
+ * exactly, so this is a best fit, exact whenever the point slides nowhere.
+ * The far segment's handles always sit at startIndex + 1 and + 2, trailing
+ * the array when it wraps.
  */
-function adjustFarHandle(
-  newPoints,
-  adjacent,
-  pointIndex,
-  side,
-  handles,
-  destination,
-  point
-) {
-  const farSegment = side === "previous" ? adjacent.next : adjacent.previous;
-  if (!farSegment?.handles.length) return;
-  const wraps = farSegment.endIndex <= farSegment.startIndex;
-  // The handle nearest the moved point, and the handle nearest the far,
-  // unmoving anchor.
-  const nearIndex = side === "previous" ? pointIndex + 1 : wraps
-      ? newPoints.length - 1
-      : pointIndex - 1;
-  const farIndex = side === "previous"
-    ? wraps
-      ? newPoints.length - 1
-      : farSegment.endIndex - 1
-    : farSegment.startIndex + 1;
-  const nearHandle = newPoints[nearIndex];
-  const farHandle = newPoints[farIndex];
-  const anchor = side === "previous" ? adjacent.next.points.at(-1) : adjacent.previous.points[0];
-  if (!nearHandle?.type || !farHandle?.type || !anchor) return;
-
-  // The far segment's shape follows the change in distance between the
-  // point and its fixed anchor, the same way the traveled segment's own
-  // handles shrink or grow with the cut.
-  const oldChord = Math.hypot(anchor.x - point.x, anchor.y - point.y);
-  const newChord = Math.hypot(anchor.x - destination.x, anchor.y - destination.y);
-  if (!oldChord) return;
-  const ratio = newChord / oldChord;
-
-  // The far handle keeps its direction from the anchor, only its length
-  // scales.
-  newPoints[farIndex] = {
-    ...farHandle,
-    x: anchor.x + (farHandle.x - anchor.x) * ratio,
-    y: anchor.y + (farHandle.y - anchor.y) * ratio,
-  };
-
-  const nearLength = Math.hypot(nearHandle.x - point.x, nearHandle.y - point.y) * ratio;
-  let direction;
-  if (point.smooth) {
-    // Colinear with the traveled side's handle at the point's new angle.
-    const reference =
-      side === "previous"
-        ? handles[1] || adjacent.previous.points[0]
-        : handles[0] || adjacent.next.points.at(-1);
-    direction = { x: destination.x - reference.x, y: destination.y - reference.y };
-  } else {
-    // A corner: the handle keeps its direction from the point.
-    direction = { x: nearHandle.x - point.x, y: nearHandle.y - point.y };
+function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
+  const far = side === "previous" ? adjacent.next : adjacent.previous;
+  const traveled = side === "previous" ? adjacent.previous : adjacent.next;
+  if (!far?.handles.length) return;
+  const passed =
+    traveled.kind === "line"
+      ? side === "previous"
+        ? [destination, traveled.points.at(-1)]
+        : [traveled.points[0], destination]
+      : side === "previous"
+        ? [destination, replacement[3], replacement[4], traveled.points.at(-1)]
+        : [traveled.points[0], replacement[0], replacement[1], destination];
+  const pieces = side === "previous" ? [passed, far.points] : [far.points, passed];
+  const start = pieces[0][0];
+  const end = pieces[1].at(-1);
+  const leftTangent = unitToward(start, pieces[0]);
+  const rightTangent = unitToward(end, [...pieces[1]].reverse());
+  if (!leftTangent || !rightTangent) return;
+  const samples = [];
+  for (const [p, piece] of pieces.entries()) {
+    for (let i = p ? 1 : 0; i <= FIT_SAMPLES; i++) {
+      samples.push(evaluatePiece(piece, i / FIT_SAMPLES));
+    }
   }
-  const magnitude = Math.hypot(direction.x, direction.y);
-  if (!magnitude || !nearLength) return;
-  newPoints[nearIndex] = {
-    ...nearHandle,
-    x: destination.x + (direction.x * nearLength) / magnitude,
-    y: destination.y + (direction.y * nearLength) / magnitude,
-  };
+  // fitCubic stops refining once its squared error improves by under half a
+  // unit, which leaves visible drift here; iterate to convergence instead.
+  let parameters = chordLengthParameterize(samples);
+  let bezier;
+  for (let i = 0; i < FIT_ITERATIONS; i++) {
+    bezier = generateBezier(samples, parameters, leftTangent, rightTangent);
+    parameters = parameterizeAgainstCubic(bezier.points, samples, parameters);
+  }
+  const [, h1, h2] = bezier.points;
+  const first = far.startIndex + 1;
+  newPoints[first] = { ...newPoints[first], x: h1.x, y: h1.y };
+  newPoints[first + 1] = { ...newPoints[first + 1], x: h2.x, y: h2.y };
+}
+
+const FIT_SAMPLES = 32;
+const FIT_ITERATIONS = 50;
+
+// Unit direction from `from` to the first point of `points` that differs
+// from it, or null when every point coincides.
+function unitToward(from, points) {
+  for (const p of points) {
+    const length = Math.hypot(p.x - from.x, p.y - from.y);
+    if (length > 1e-9)
+      return { x: (p.x - from.x) / length, y: (p.y - from.y) / length };
+  }
+  return null;
+}
+
+function evaluatePiece(piece, t) {
+  if (piece.length === 2) {
+    return {
+      x: piece[0].x + (piece[1].x - piece[0].x) * t,
+      y: piece[0].y + (piece[1].y - piece[0].y) * t,
+    };
+  }
+  return cubicPointAt(piece, t);
 }
 
 /**

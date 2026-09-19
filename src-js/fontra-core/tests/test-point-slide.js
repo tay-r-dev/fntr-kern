@@ -8,6 +8,7 @@ import {
   slidePointOnContour,
   splitSegmentAt,
 } from "@fontra/core/point-slide.js";
+import { Bezier } from "bezier-js";
 import { expect } from "chai";
 
 // Plain contour points, exactly as they come out of VarPackedPath's unpacked
@@ -105,19 +106,20 @@ function expectSamePiece(actual, expected) {
   });
 }
 
-// The far segment rescales around its own fixed anchor by the change in
-// distance between the moved point and that anchor: the far handle (nearest
-// the anchor) keeps its direction from the anchor and scales by that ratio;
-// the near handle (nearest the moved point) scales its length by the same
-// ratio, direction handled separately per point kind.
-function expectFarSegmentAdapted(contour, candidate, pointIndex, nearIndex, farIndex, anchorIndex) {
+// The far segment is refit to the old path it now spans. Its anchor keeps
+// its handle direction, and at the moved point it leaves along the old curve:
+// colinear with the traveled piece's handle, so the join stays smooth.
+function expectFarSegmentAdapted(
+  contour,
+  candidate,
+  pointIndex,
+  nearIndex,
+  farIndex,
+  anchorIndex,
+  traveledHandleIndex
+) {
   const anchor = contour.points[anchorIndex];
-  const oldPoint = contour.points[pointIndex];
-  const newPoint = candidate.points[pointIndex];
-  const oldChord = Math.hypot(anchor.x - oldPoint.x, anchor.y - oldPoint.y);
-  const newChord = Math.hypot(anchor.x - newPoint.x, anchor.y - newPoint.y);
-  const ratio = newChord / oldChord;
-
+  expect(candidate.points[anchorIndex]).to.deep.include({ x: anchor.x, y: anchor.y });
   const oldFarVec = {
     x: contour.points[farIndex].x - anchor.x,
     y: contour.points[farIndex].y - anchor.y,
@@ -126,23 +128,17 @@ function expectFarSegmentAdapted(contour, candidate, pointIndex, nearIndex, farI
     x: candidate.points[farIndex].x - anchor.x,
     y: candidate.points[farIndex].y - anchor.y,
   };
-  expect(Math.hypot(newFarVec.x, newFarVec.y)).to.be.closeTo(
-    Math.hypot(oldFarVec.x, oldFarVec.y) * ratio,
-    1e-6
-  );
   const cross = oldFarVec.x * newFarVec.y - oldFarVec.y * newFarVec.x;
   const dot = oldFarVec.x * newFarVec.x + oldFarVec.y * newFarVec.y;
   expect(Math.abs((Math.atan2(cross, dot) * 180) / Math.PI)).to.be.closeTo(0, 1e-6);
-
-  const oldNearLength = Math.hypot(
-    contour.points[nearIndex].x - oldPoint.x,
-    contour.points[nearIndex].y - oldPoint.y
-  );
-  const newNearLength = Math.hypot(
-    candidate.points[nearIndex].x - newPoint.x,
-    candidate.points[nearIndex].y - newPoint.y
-  );
-  expect(newNearLength).to.be.closeTo(oldNearLength * ratio, 1e-6);
+  const moved = candidate.points[pointIndex];
+  const traveled = candidate.points[traveledHandleIndex];
+  if (Math.hypot(traveled.x - moved.x, traveled.y - moved.y) > 1e-6) {
+    expect(angleBetween(traveled, moved, candidate.points[nearIndex])).to.be.closeTo(
+      180,
+      1e-6
+    );
+  }
 }
 
 // A previous-side slide on bowedContour: the count holds, the traveled
@@ -155,7 +151,7 @@ function expectPreviousSlide(contour, candidate, t) {
   expect(
     pieceDeviation(contour.points.slice(1, 5), 0, t, candidate.points.slice(1, 5))
   ).to.be.lessThan(1e-6);
-  expectFarSegmentAdapted(contour, candidate, 4, 5, 6, 7);
+  expectFarSegmentAdapted(contour, candidate, 4, 5, 6, 7, 3);
   expectSamePiece(candidate.points.slice(7, 9), contour.points.slice(7, 9));
 }
 
@@ -165,7 +161,7 @@ function expectNextSlide(contour, candidate, t) {
   expect(candidate.points).to.have.length(contour.points.length);
   expect(candidate.movedPointIndex).to.equal(4);
   expectSamePiece(candidate.points.slice(0, 2), contour.points.slice(0, 2));
-  expectFarSegmentAdapted(contour, candidate, 4, 3, 2, 1);
+  expectFarSegmentAdapted(contour, candidate, 4, 3, 2, 1, 5);
   expect(
     pieceDeviation(contour.points.slice(4, 8), t, 1, candidate.points.slice(4, 8))
   ).to.be.lessThan(1e-6);
@@ -312,57 +308,81 @@ describe("point-slide geometry", () => {
     }
   });
 
-  it("swings a smooth point's far handle colinear through the slide", () => {
-    const contour = bowedContour();
-    contour.points[4].smooth = true;
-    for (let t = 0.05; t <= 0.95; t += 0.05) {
-      const candidate = makeSlideCandidate(contour, 4, "previous", t);
-      const i = candidate.movedPointIndex;
-      const moved = candidate.points[i];
-      expect(moved.smooth).to.equal(true);
-      const before = candidate.points[i - 1];
-      const after = candidate.points[i + 1];
-      expect(before.type).to.equal("cubic");
-      expect(after.type).to.equal("cubic");
-      // Colinear through the point: the angle at the moved point reads 180.
-      expect(angleBetween(before, moved, after)).to.be.closeTo(180, 1e-6);
-      // The far handle's length scales with the change in distance to B.
-      const anchor = contour.points[7];
-      const ratio =
-        Math.hypot(anchor.x - moved.x, anchor.y - moved.y) /
-        Math.hypot(anchor.x - contour.points[i].x, anchor.y - contour.points[i].y);
-      const oldLength = Math.hypot(
-        contour.points[i + 1].x - contour.points[i].x,
-        contour.points[i + 1].y - contour.points[i].y
-      );
-      const newLength = Math.hypot(after.x - moved.x, after.y - moved.y);
-      expect(newLength).to.be.closeTo(oldLength * ratio, 1e-6);
-      // And the traveled side still draws the original curve.
+  // A smooth arc A -> P -> B with no inflection: one cubic can draw what a
+  // slide leaves the far segment to cover.
+  function arcContour() {
+    return {
+      points: [
+        onCurve(0, 0),
+        control(0, 55.23),
+        control(44.77, 100),
+        onCurve(100, 100, true),
+        control(155.23, 100),
+        control(200, 55.23),
+        onCurve(200, 0),
+      ],
+      isClosed: false,
+    };
+  }
+
+  // The largest distance from the old path between the moved point and the far
+  // anchor to the refit far segment.
+  function farDeviation(oldPieces, farSegment) {
+    const bezier = new Bezier(farSegment);
+    let worst = 0;
+    for (const [piece, t0, t1] of oldPieces) {
+      for (let i = 0; i <= 100; i++) {
+        const p = evalPiece(piece, t0 + ((t1 - t0) * i) / 100);
+        const q = bezier.project(p);
+        worst = Math.max(worst, Math.hypot(q.x - p.x, q.y - p.y));
+      }
+    }
+    return worst;
+  }
+
+  // Near t = 0 the far segment spans almost a half circle, which a single
+  // cubic draws only to about 1.5% of the radius: the bound sits there.
+  it("refits the far segment to keep drawing the old path", () => {
+    const contour = arcContour();
+    const ap = contour.points.slice(0, 4);
+    const pb = contour.points.slice(3, 7);
+    for (let t = 0.1; t <= 0.9; t += 0.1) {
+      const toA = makeSlideCandidate(contour, 3, "previous", t);
       expect(
-        pieceDeviation(contour.points.slice(1, 5), 0, t, candidate.points.slice(1, 5))
-      ).to.be.lessThan(1e-6);
+        farDeviation(
+          [
+            [ap, t, 1],
+            [pb, 0, 1],
+          ],
+          toA.points.slice(3, 7)
+        )
+      ).to.be.lessThan(1.5);
+      const toB = makeSlideCandidate(contour, 3, "next", t);
+      expect(
+        farDeviation(
+          [
+            [ap, 0, 1],
+            [pb, 0, t],
+          ],
+          toB.points.slice(0, 4)
+        )
+      ).to.be.lessThan(1.5);
+      // The traveled side is still exact, the join still smooth.
+      expect(pieceDeviation(ap, 0, t, toA.points.slice(0, 4))).to.be.lessThan(1e-6);
+      expect(angleBetween(toA.points[2], toA.points[3], toA.points[4])).to.be.closeTo(
+        180,
+        1e-6
+      );
     }
   });
 
-  it("carries a corner's far handle with the point, rescaled", () => {
-    const contour = bowedContour();
-    contour.points[4].smooth = false;
-    const candidate = makeSlideCandidate(contour, 4, "previous", 0.4);
-    expect(candidate.points[4].smooth).to.equal(false);
-    // The corner's near handle kept its exact direction from the point,
-    // scaled with the change in distance to B.
-    const moved = candidate.points[4];
-    const anchor = contour.points[7];
-    const ratio =
-      Math.hypot(anchor.x - moved.x, anchor.y - moved.y) /
-      Math.hypot(anchor.x - contour.points[4].x, anchor.y - contour.points[4].y);
-    const oldVec = {
-      x: contour.points[5].x - contour.points[4].x,
-      y: contour.points[5].y - contour.points[4].y,
-    };
-    expect(candidate.points[5].x - moved.x).to.be.closeTo(oldVec.x * ratio, 1e-6);
-    expect(candidate.points[5].y - moved.y).to.be.closeTo(oldVec.y * ratio, 1e-6);
-    expectPreviousSlide(contour, candidate, 0.4);
+  it("leaves the far segment as it was when the point does not move", () => {
+    const contour = arcContour();
+    const candidate = makeSlideCandidate(contour, 3, "previous", 1);
+    for (const i of [4, 5]) {
+      expect(candidate.points[i].x).to.be.closeTo(contour.points[i].x, 1e-3);
+      expect(candidate.points[i].y).to.be.closeTo(contour.points[i].y, 1e-3);
+    }
   });
 
   it("carries the dragged point's attributes to the new position", () => {
@@ -402,7 +422,7 @@ describe("point-slide geometry", () => {
       )
     ).to.be.lessThan(1e-6);
     // The far segment (0 -> 3, next side) rescales around anchor 3.
-    expectFarSegmentAdapted(contour, candidate, 0, 1, 2, 3);
+    expectFarSegmentAdapted(contour, candidate, 0, 1, 2, 3, 11);
     expectSamePiece(candidate.points.slice(3, 9), contour.points.slice(3, 9));
   });
 
@@ -428,7 +448,7 @@ describe("point-slide geometry", () => {
       )
     ).to.be.lessThan(1e-6);
     // The far segment (6 -> 9, previous side) rescales around anchor 6.
-    expectFarSegmentAdapted(contour, candidate, 9, 8, 7, 6);
+    expectFarSegmentAdapted(contour, candidate, 9, 8, 7, 6, 10);
     expectSamePiece(candidate.points.slice(0, 6), contour.points.slice(0, 6));
   });
 
