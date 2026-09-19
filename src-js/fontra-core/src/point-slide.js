@@ -248,6 +248,14 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
  * keeps its angle); only the two handle lengths are solved, by least squares
  * against samples of the path. A cubic cannot always draw two cubics
  * exactly, so this is a best fit, exact whenever the point slides nowhere.
+ *
+ * A corner is different. Where the two segments meet at an angle, the far
+ * segment cannot draw the bend at the point's old position, and chasing the
+ * passed piece would swing the corner's handle onto the traveled side's
+ * direction. So at a corner the far segment keeps both of its own handle
+ * directions and is refit to its own old shape with the point's end dragged
+ * to the new position; only its handle lengths adapt.
+ *
  * The far segment's handles always sit at startIndex + 1 and + 2, trailing
  * the array when it wraps.
  */
@@ -255,26 +263,13 @@ function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
   const far = side === "previous" ? adjacent.next : adjacent.previous;
   const traveled = side === "previous" ? adjacent.previous : adjacent.next;
   if (!far?.handles.length) return;
-  const passed =
-    traveled.kind === "line"
-      ? side === "previous"
-        ? [destination, traveled.points.at(-1)]
-        : [traveled.points[0], destination]
-      : side === "previous"
-        ? [destination, replacement[3], replacement[4], traveled.points.at(-1)]
-        : [traveled.points[0], replacement[0], replacement[1], destination];
-  const pieces = side === "previous" ? [passed, far.points] : [far.points, passed];
-  const start = pieces[0][0];
-  const end = pieces[1].at(-1);
-  const leftTangent = unitToward(start, pieces[0]);
-  const rightTangent = unitToward(end, [...pieces[1]].reverse());
-  if (!leftTangent || !rightTangent) return;
-  const samples = [];
-  for (const [p, piece] of pieces.entries()) {
-    for (let i = p ? 1 : 0; i <= FIT_SAMPLES; i++) {
-      samples.push(evaluatePiece(piece, i / FIT_SAMPLES));
-    }
+  if (isCornerBetween(traveled, far, side)) {
+    dragCornerFarSegment(newPoints, far, side, destination);
+    return;
   }
+  const fit = passedFitTarget(far, traveled, side, replacement, destination);
+  if (!fit) return;
+  const { samples, leftTangent, rightTangent } = fit;
   // fitCubic stops refining once its squared error improves by under half a
   // unit, which leaves visible drift here; iterate to convergence instead.
   let parameters = chordLengthParameterize(samples);
@@ -339,6 +334,80 @@ export function slideInsertions(contour, candidate, side, t, insertions) {
   });
 }
 
+// The slid point is a corner when the two segments leave it in directions
+// that are not opposite: read from the geometry, since a drawn contour's
+// `smooth` flag is often unset on points that are smooth in fact.
+function isCornerBetween(traveled, far, side) {
+  const point = side === "previous" ? far.points[0] : far.points.at(-1);
+  const alongTraveled =
+    side === "previous"
+      ? unitToward(point, [...traveled.points].reverse())
+      : unitToward(point, traveled.points);
+  const alongFar =
+    side === "previous"
+      ? unitToward(point, far.points)
+      : unitToward(point, [...far.points].reverse());
+  if (!alongTraveled || !alongFar) return false;
+  const dot = alongTraveled.x * alongFar.x + alongTraveled.y * alongFar.y;
+  return dot > -Math.cos(CORNER_ANGLE_TOLERANCE);
+}
+
+// A smooth point: the far segment takes over the passed piece of the traveled
+// segment, so the path it has to draw runs through both.
+function passedFitTarget(far, traveled, side, replacement, destination) {
+  const passed =
+    traveled.kind === "line"
+      ? side === "previous"
+        ? [destination, traveled.points.at(-1)]
+        : [traveled.points[0], destination]
+      : side === "previous"
+        ? [destination, replacement[3], replacement[4], traveled.points.at(-1)]
+        : [traveled.points[0], replacement[0], replacement[1], destination];
+  const pieces = side === "previous" ? [passed, far.points] : [far.points, passed];
+  const leftTangent = unitToward(pieces[0][0], pieces[0]);
+  const rightTangent = unitToward(pieces[1].at(-1), [...pieces[1]].reverse());
+  if (!leftTangent || !rightTangent) return null;
+  const samples = [];
+  for (const [p, piece] of pieces.entries()) {
+    for (let i = p ? 1 : 0; i <= FIT_SAMPLES; i++) {
+      samples.push(evaluatePiece(piece, i / FIT_SAMPLES));
+    }
+  }
+  return { samples, leftTangent, rightTangent };
+}
+
+// A corner: the far segment's own old shape with its point end dragged to the
+// new position, the drag fading linearly to nothing at the far anchor. That
+// dragged curve is itself a cubic, its handles shifted by a third and two
+// thirds of the drag. Each handle is then projected onto its own old
+// direction, so the directions hold and only the lengths change; with no drag
+// it is the old segment exactly.
+function dragCornerFarSegment(newPoints, far, side, destination) {
+  const [p0, p1, p2, p3] = far.points;
+  const point = side === "previous" ? p0 : p3;
+  const shift = { x: destination.x - point.x, y: destination.y - point.y };
+  const [w1, w2] = side === "previous" ? [2 / 3, 1 / 3] : [1 / 3, 2 / 3];
+  const start = side === "previous" ? destination : p0;
+  const end = side === "previous" ? p3 : destination;
+  const handleAlong = (anchor, oldAnchor, handle, weight) => {
+    const direction = unitToward(oldAnchor, [handle]);
+    if (!direction) return { x: anchor.x, y: anchor.y };
+    const dragged = { x: handle.x + shift.x * weight, y: handle.y + shift.y * weight };
+    const length = Math.max(
+      0,
+      (dragged.x - anchor.x) * direction.x + (dragged.y - anchor.y) * direction.y
+    );
+    return { x: anchor.x + direction.x * length, y: anchor.y + direction.y * length };
+  };
+  const h1 = handleAlong(start, p0, p1, w1);
+  const h2 = handleAlong(end, p3, p2, w2);
+  const first = far.startIndex + 1;
+  newPoints[first] = { ...newPoints[first], x: h1.x, y: h1.y };
+  newPoints[first + 1] = { ...newPoints[first + 1], x: h2.x, y: h2.y };
+}
+
+// Radians. Two directions this close to opposite count as one smooth line.
+const CORNER_ANGLE_TOLERANCE = 0.01;
 const FIT_SAMPLES = 32;
 const FIT_ITERATIONS = 50;
 

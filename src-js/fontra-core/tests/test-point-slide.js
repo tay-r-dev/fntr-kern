@@ -106,9 +106,12 @@ function expectSamePiece(actual, expected) {
   });
 }
 
-// The far segment is refit to the old path it now spans. Its anchor keeps
-// its handle direction, and at the moved point it leaves along the old curve:
-// colinear with the traveled piece's handle, so the join stays smooth.
+const angleOfVectors = (a, b) =>
+  Math.abs((Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y) * 180) / Math.PI);
+
+// The far segment's anchor always keeps its handle direction. At the moved
+// point: a smooth point leaves along the old curve, colinear with the
+// traveled piece's handle; a corner keeps its own old handle direction.
 function expectFarSegmentAdapted(
   contour,
   candidate,
@@ -131,13 +134,24 @@ function expectFarSegmentAdapted(
   const cross = oldFarVec.x * newFarVec.y - oldFarVec.y * newFarVec.x;
   const dot = oldFarVec.x * newFarVec.x + oldFarVec.y * newFarVec.y;
   expect(Math.abs((Math.atan2(cross, dot) * 180) / Math.PI)).to.be.closeTo(0, 1e-6);
+  const oldPoint = contour.points[pointIndex];
+  const oldNear = contour.points[nearIndex];
+  const wasCorner =
+    angleBetween(contour.points[traveledHandleIndex], oldPoint, oldNear) < 179.4;
   const moved = candidate.points[pointIndex];
+  const near = candidate.points[nearIndex];
+  if (wasCorner) {
+    expect(
+      angleOfVectors(
+        { x: oldNear.x - oldPoint.x, y: oldNear.y - oldPoint.y },
+        { x: near.x - moved.x, y: near.y - moved.y }
+      )
+    ).to.be.closeTo(0, 1e-6);
+    return;
+  }
   const traveled = candidate.points[traveledHandleIndex];
   if (Math.hypot(traveled.x - moved.x, traveled.y - moved.y) > 1e-6) {
-    expect(angleBetween(traveled, moved, candidate.points[nearIndex])).to.be.closeTo(
-      180,
-      1e-6
-    );
+    expect(angleBetween(traveled, moved, near)).to.be.closeTo(180, 1e-6);
   }
 }
 
@@ -493,6 +507,45 @@ describe("point-slide geometry", () => {
     slidePointOnContour(contour, 4, { x: 60, y: 40 });
     makeSlideCandidate(contour, 4, "next", 0.3);
     expect(contour).to.deep.equal(snapshot);
+  });
+
+  it("keeps a corner's curve handle direction while it slides along a straight", () => {
+    // The j bowl: 4 -> 7 is a curve arriving at a corner, 7 -> 0 the closing
+    // straight. Sliding 7 along the straight must not swing handle 6.
+    const contour = {
+      points: [
+        onCurve(472, 364),
+        control(291, 395),
+        control(227, 250),
+        onCurve(282, -14),
+        onCurve(348, -14),
+        control(330, 242),
+        control(383, 292),
+        onCurve(456.170751591, 270.517260874),
+      ],
+      isClosed: true,
+    };
+    const unit = (h, p) => {
+      const length = Math.hypot(h.x - p.x, h.y - p.y);
+      return { x: (h.x - p.x) / length, y: (h.y - p.y) / length };
+    };
+    const before6 = unit(contour.points[6], contour.points[7]);
+    const before5 = unit(contour.points[5], contour.points[4]);
+    for (let t = 0.1; t <= 0.9; t += 0.1) {
+      const candidate = makeSlideCandidate(contour, 7, "next", t);
+      const after6 = unit(candidate.points[6], candidate.points[7]);
+      const after5 = unit(candidate.points[5], candidate.points[4]);
+      expect(after6.x).to.be.closeTo(before6.x, 1e-9);
+      expect(after6.y).to.be.closeTo(before6.y, 1e-9);
+      expect(after5.x).to.be.closeTo(before5.x, 1e-9);
+      expect(after5.y).to.be.closeTo(before5.y, 1e-9);
+    }
+    // No slide, no change.
+    const still = makeSlideCandidate(contour, 7, "next", 0);
+    for (const i of [5, 6]) {
+      expect(still.points[i].x).to.be.closeTo(contour.points[i].x, 1e-9);
+      expect(still.points[i].y).to.be.closeTo(contour.points[i].y, 1e-9);
+    }
   });
 
   it("answers a full slide from a pointer position", () => {
