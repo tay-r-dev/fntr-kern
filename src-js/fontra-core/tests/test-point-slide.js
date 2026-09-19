@@ -19,7 +19,7 @@ const onCurve = (x, y, smooth = false) => ({ x, y, smooth });
 const control = (x, y) => ({ x, y, type: "cubic" });
 
 // A bowed span A -> P -> B with a curve on both sides of P, capped by a
-// straight at each end.
+// straight at each end. P is a corner here; smoothness is set per test.
 function bowedContour() {
   return {
     points: [
@@ -27,7 +27,7 @@ function bowedContour() {
       onCurve(0, 0),
       control(30, 20),
       control(70, 20),
-      onCurve(100, 0, true),
+      onCurve(100, 0),
       control(130, 20),
       control(170, 20),
       onCurve(200, 0),
@@ -36,13 +36,14 @@ function bowedContour() {
     isClosed: false,
   };
 }
-// Indices in bowedContour: A is 1, P is 4, B is 7. A previous-side candidate
-// adds three points before B, so every piece right of the splice shifts by 3.
+// Indices in bowedContour: A is 1, P is 4, B is 7. A slide never changes the
+// point count: the dragged point keeps its slot and the neighbouring
+// on-curves anchor the gesture.
 
 function closedContour() {
   return {
     points: [
-      onCurve(100, 0, true),
+      onCurve(100, 0),
       control(130, 20),
       control(170, 20),
       onCurve(200, 0),
@@ -69,25 +70,28 @@ function evalPiece(piece, t) {
   return cubicPointAt(piece, t);
 }
 
-// The largest distance between the two split pieces and the original segment,
-// compared at matched source parameters: the left piece at u draws the
-// original at t*u, the right piece at u draws the original at t+(1-t)*u. No
-// projection instrument is involved, so the tolerance measures the math and
-// nothing else.
-function splitDeviation(originalSeg, t, left, right) {
+// The largest distance between a candidate piece and the original segment
+// restricted to the source interval [t0, t1], compared at matched parameters:
+// the piece at u draws the original at t0 + (t1 - t0) * u. No projection
+// instrument is involved, so the tolerance measures the math and nothing else.
+function pieceDeviation(originalSeg, t0, t1, piece) {
   let worst = 0;
   for (let i = 0; i <= 200; i++) {
     const u = i / 200;
-    for (const [piece, mapped] of [
-      [left, t * u],
-      [right, t + (1 - t) * u],
-    ]) {
-      const a = evalPiece(piece, u);
-      const b = evalPiece(originalSeg, mapped);
-      worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y));
-    }
+    const a = evalPiece(piece, u);
+    const b = evalPiece(originalSeg, t0 + (t1 - t0) * u);
+    worst = Math.max(worst, Math.hypot(a.x - b.x, a.y - b.y));
   }
   return worst;
+}
+
+// The largest distance between the two split pieces and the original segment,
+// compared at matched source parameters.
+function splitDeviation(originalSeg, t, left, right) {
+  return Math.max(
+    pieceDeviation(originalSeg, 0, t, left),
+    pieceDeviation(originalSeg, t, 1, right)
+  );
 }
 
 // Two pieces must carry the same points in the same order: a piece the slide
@@ -101,33 +105,28 @@ function expectSamePiece(actual, expected) {
   });
 }
 
-// The whole check for a previous-side slide on bowedContour: the split pieces
-// redraw the original previous segment, and every other piece is a copy.
-function expectPreviousSlideExact(contour, candidate, t) {
+// A previous-side slide on bowedContour: the count holds, the traveled
+// segment A -> P' is the split's exact first piece, the far segment keeps its
+// handles, and everything else is a copy.
+function expectPreviousSlide(contour, candidate, t) {
+  expect(candidate.points).to.have.length(contour.points.length);
+  expect(candidate.movedPointIndex).to.equal(4);
   expectSamePiece(candidate.points.slice(0, 2), contour.points.slice(0, 2));
   expect(
-    splitDeviation(
-      contour.points.slice(1, 5),
-      t,
-      candidate.points.slice(1, 5),
-      candidate.points.slice(4, 8)
-    )
+    pieceDeviation(contour.points.slice(1, 5), 0, t, candidate.points.slice(1, 5))
   ).to.be.lessThan(1e-6);
-  expectSamePiece(candidate.points.slice(7, 12), contour.points.slice(4, 9));
+  expectSamePiece(candidate.points.slice(5, 9), contour.points.slice(5, 9));
 }
 
-// The same for a next-side slide.
-function expectNextSlideExact(contour, candidate, t) {
-  expectSamePiece(candidate.points.slice(0, 5), contour.points.slice(0, 5));
+// The same for a next-side slide: P' -> B is the split's exact second piece.
+function expectNextSlide(contour, candidate, t) {
+  expect(candidate.points).to.have.length(contour.points.length);
+  expect(candidate.movedPointIndex).to.equal(4);
+  expectSamePiece(candidate.points.slice(0, 4), contour.points.slice(0, 4));
   expect(
-    splitDeviation(
-      contour.points.slice(4, 8),
-      t,
-      candidate.points.slice(4, 8),
-      candidate.points.slice(7, 11)
-    )
+    pieceDeviation(contour.points.slice(4, 8), t, 1, candidate.points.slice(4, 8))
   ).to.be.lessThan(1e-6);
-  expectSamePiece(candidate.points.slice(10, 12), contour.points.slice(7, 9));
+  expectSamePiece(candidate.points.slice(7, 9), contour.points.slice(7, 9));
 }
 
 function angleBetween(p, q, r) {
@@ -243,40 +242,36 @@ describe("point-slide geometry", () => {
     expect(slidePointOnContour(contour, 8, { x: 200, y: 50 })).to.equal(null);
   });
 
-  it("slides a point along a straight and keeps two straights", () => {
+  it("slides the dragged point itself along a straight, count unchanged", () => {
     const contour = {
       points: [onCurve(0, 0), onCurve(100, 0), onCurve(100, 100)],
       isClosed: false,
     };
     const candidate = slidePointOnContour(contour, 1, { x: 30, y: 5 });
+    // No new point, no leftover: three points in, three points out.
+    expect(candidate.points).to.have.length(3);
     expect(candidate.movedPointIndex).to.equal(1);
-    expect(candidate.points).to.have.length(4);
     const moved = candidate.points[1];
     expect(moved.x).to.be.closeTo(30, 1e-9);
     expect(moved.y).to.be.closeTo(0, 1e-9);
-    // No handles anywhere: both pieces stay straights.
-    expect(candidate.points.every((point) => !point.type)).to.equal(true);
-    // The leftover sits at the old position.
-    expect(candidate.points[2].x).to.equal(100);
-    expect(candidate.points[2].y).to.equal(0);
+    // The anchors did not move.
+    expectSamePiece([candidate.points[0]], [contour.points[0]]);
+    expectSamePiece([candidate.points[2]], [contour.points[2]]);
   });
 
-  it("slides a point along a cubic and redraws the identical curve", () => {
+  it("keeps the traveled segment exact on a cubic, both sides", () => {
     const contour = bowedContour();
     for (let t = 0.02; t <= 0.98; t += 0.02) {
-      expectPreviousSlideExact(
-        contour,
-        makeSlideCandidate(contour, 4, "previous", t),
-        t
-      );
+      expectPreviousSlide(contour, makeSlideCandidate(contour, 4, "previous", t), t);
     }
     for (let t = 0.02; t <= 0.98; t += 0.02) {
-      expectNextSlideExact(contour, makeSlideCandidate(contour, 4, "next", t), t);
+      expectNextSlide(contour, makeSlideCandidate(contour, 4, "next", t), t);
     }
   });
 
-  it("keeps a smooth point's handles colinear through the slide", () => {
+  it("swings a smooth point's far handle colinear through the slide", () => {
     const contour = bowedContour();
+    contour.points[4].smooth = true;
     for (let t = 0.05; t <= 0.95; t += 0.05) {
       const candidate = makeSlideCandidate(contour, 4, "previous", t);
       const i = candidate.movedPointIndex;
@@ -288,32 +283,37 @@ describe("point-slide geometry", () => {
       expect(after.type).to.equal("cubic");
       // Colinear through the point: the angle at the moved point reads 180.
       expect(angleBetween(before, moved, after)).to.be.closeTo(180, 1e-6);
+      // The far handle kept its length.
+      const oldLength = Math.hypot(
+        contour.points[i + 1].x - contour.points[i].x,
+        contour.points[i + 1].y - contour.points[i].y
+      );
+      const newLength = Math.hypot(after.x - moved.x, after.y - moved.y);
+      expect(newLength).to.be.closeTo(oldLength, 1e-9);
+      // And the traveled side still draws the original curve.
+      expect(
+        pieceDeviation(contour.points.slice(1, 5), 0, t, candidate.points.slice(1, 5))
+      ).to.be.lessThan(1e-6);
     }
   });
 
-  it("keeps a corner's flag and leaves the old corner geometry behind", () => {
+  it("leaves a corner's far handle alone", () => {
     const contour = bowedContour();
     contour.points[4].smooth = false;
     const candidate = makeSlideCandidate(contour, 4, "previous", 0.4);
-    const moved = candidate.points[candidate.movedPointIndex];
-    expect(moved.smooth).to.equal(false);
-    // The leftover inherits the old joint's position and its smooth flag,
-    // nothing else.
-    const leftover = candidate.points[candidate.movedPointIndex + 3];
-    expect(leftover.x).to.equal(100);
-    expect(leftover.y).to.equal(0);
-    expect(leftover.smooth).to.equal(false);
-    expectPreviousSlideExact(contour, candidate, 0.4);
+    expect(candidate.points[4].smooth).to.equal(false);
+    // The far segment is a straight copy: handles and far anchor untouched.
+    expectSamePiece(candidate.points.slice(5, 9), contour.points.slice(5, 9));
+    expectPreviousSlide(contour, candidate, 0.4);
   });
 
-  it("keeps the moved point's attributes and adds none to the leftover", () => {
+  it("carries the dragged point's attributes to the new position", () => {
     const contour = bowedContour();
     contour.points[4] = { ...contour.points[4], name: "kept" };
     const candidate = makeSlideCandidate(contour, 4, "previous", 0.4);
-    const moved = candidate.points[candidate.movedPointIndex];
-    expect(moved.name).to.equal("kept");
-    const leftover = candidate.points[candidate.movedPointIndex + 3];
-    expect(leftover.name).to.equal(undefined);
+    expect(candidate.points[4].name).to.equal("kept");
+    // Nothing new was minted: every other slot holds an original point object.
+    expect(candidate.points).to.have.length(contour.points.length);
   });
 
   it("slides across a closed contour's seam", () => {
@@ -327,25 +327,24 @@ describe("point-slide geometry", () => {
     const t = 0.5;
     const candidate = makeSlideCandidate(contour, 0, "previous", t);
     expect(candidate.isClosed).to.equal(true);
-    expect(candidate.points).to.have.length(contour.points.length + 3);
-    // The untouched pieces are copies. The split pair redraws the wrapping
-    // segment: 9 -> moved -> 0, with the tail handles behind index 9.
-    expectSamePiece(candidate.points.slice(0, 10), contour.points.slice(0, 10));
+    expect(candidate.points).to.have.length(contour.points.length);
+    expect(candidate.movedPointIndex).to.equal(0);
+    // The traveled piece is exact: 9 -> tail handles -> moved point 0.
     expect(
-      splitDeviation(
+      pieceDeviation(
         [contour.points[9], contour.points[10], contour.points[11], contour.points[0]],
+        0,
         t,
-        candidate.points.slice(9, 13),
         [
-          candidate.points[12],
-          candidate.points[13],
-          candidate.points[14],
+          candidate.points[9],
+          candidate.points[10],
+          candidate.points[11],
           candidate.points[0],
         ]
       )
     ).to.be.lessThan(1e-6);
-    // The moved point carries the original's attributes.
-    expect(candidate.points[candidate.movedPointIndex].smooth).to.equal(true);
+    // The rest is a copy.
+    expectSamePiece(candidate.points.slice(1, 9), contour.points.slice(1, 9));
   });
 
   it("slides a closed contour's last on-curve forward over the seam", () => {
@@ -353,21 +352,23 @@ describe("point-slide geometry", () => {
     const t = 0.5;
     const candidate = makeSlideCandidate(contour, 9, "next", t);
     expect(candidate.isClosed).to.equal(true);
-    // The split pair trails the array: 9 -> moved -> 0.
-    expectSamePiece(candidate.points.slice(0, 9), contour.points.slice(0, 9));
+    expect(candidate.points).to.have.length(contour.points.length);
+    expect(candidate.movedPointIndex).to.equal(9);
+    // The kept piece trails the array: moved 9 -> tail handles -> 0.
     expect(
-      splitDeviation(
+      pieceDeviation(
         [contour.points[9], contour.points[10], contour.points[11], contour.points[0]],
         t,
-        candidate.points.slice(9, 13),
+        1,
         [
-          candidate.points[12],
-          candidate.points[13],
-          candidate.points[14],
+          candidate.points[9],
+          candidate.points[10],
+          candidate.points[11],
           candidate.points[0],
         ]
       )
     ).to.be.lessThan(1e-6);
+    expectSamePiece(candidate.points.slice(0, 9), contour.points.slice(0, 9));
   });
 
   it("accepts the same slide on two compatible contours", () => {
@@ -377,12 +378,8 @@ describe("point-slide geometry", () => {
     const adjacentA = getAdjacentSegments(first, 4);
     const adjacentB = getAdjacentSegments(second, 4);
     expect(slideIntervalsCompatible(adjacentA, adjacentB)).to.equal(true);
-    expectPreviousSlideExact(first, makeSlideCandidate(first, 4, "previous", 0.4), 0.4);
-    expectPreviousSlideExact(
-      second,
-      makeSlideCandidate(second, 4, "previous", 0.4),
-      0.4
-    );
+    expectPreviousSlide(first, makeSlideCandidate(first, 4, "previous", 0.4), 0.4);
+    expectPreviousSlide(second, makeSlideCandidate(second, 4, "previous", 0.4), 0.4);
   });
 
   it("refuses when two contours disagree on the interval", () => {
@@ -399,15 +396,18 @@ describe("point-slide geometry", () => {
     const contour = bowedContour();
     const atA = makeSlideCandidate(contour, 4, "previous", 0);
     expect(atA.points[atA.movedPointIndex].x).to.be.closeTo(0, 1e-9);
+    expect(atA.points).to.have.length(contour.points.length);
     const atB = makeSlideCandidate(contour, 4, "next", 1);
     expect(atB.points[atB.movedPointIndex].x).to.be.closeTo(200, 1e-9);
-    // And the shape still holds with the point collapsed onto its neighbour.
-    expectPreviousSlideExact(contour, atA, 0);
-    expectNextSlideExact(contour, atB, 1);
+    expect(atB.points).to.have.length(contour.points.length);
+    // The traveled piece still draws the original, degenerate ends included.
+    expectPreviousSlide(contour, atA, 0);
+    expectNextSlide(contour, atB, 1);
   });
 
   it("never mutates the input contour", () => {
     const contour = bowedContour();
+    contour.points[4].smooth = true;
     const snapshot = JSON.parse(JSON.stringify(contour));
     slidePointOnContour(contour, 4, { x: 60, y: 40 });
     makeSlideCandidate(contour, 4, "next", 0.3);
@@ -420,6 +420,6 @@ describe("point-slide geometry", () => {
     expect(candidate).to.not.equal(null);
     expect(candidate.side).to.equal("previous");
     expect(candidate.t).to.be.greaterThan(0).and.lessThan(1);
-    expectPreviousSlideExact(contour, candidate, candidate.t);
+    expectPreviousSlide(contour, candidate, candidate.t);
   });
 });

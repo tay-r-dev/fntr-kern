@@ -895,9 +895,8 @@ export class PointerTool extends BaseTool {
       };
 
       // The slide session carries the edit layer's chosen side and source
-      // parameter to every other layer's entry, and the moved point's new index
-      // back to the selection restore. Reset when the behavior changes
-      // mid-drag, because the rebuilt entries capture fresh geometry.
+      // parameter to every other layer's entry. Reset when the behavior
+      // changes mid-drag, because the rebuilt entries capture fresh geometry.
       let pointSlideSession = {};
       const makeSkeletonTargetEntries = (layerGlyph, name, isPrimary = false) => {
         if (name === POINT_SLIDE_BEHAVIOR_NAME) {
@@ -1162,17 +1161,6 @@ export class PointerTool extends BaseTool {
       }
       // No snap state survives the gesture (spec section 5).
       snapSession.end();
-
-      // A slide changes the point count, so the pre-drag point index is stale.
-      // The entry reported where the moved point landed; keep it selected.
-      if (
-        behaviorName === POINT_SLIDE_BEHAVIOR_NAME &&
-        pointSlideSession.movedPointIndex !== undefined
-      ) {
-        sceneController.selection = new Set([
-          `point/${pointSlideSession.movedPointIndex}`,
-        ]);
-      }
 
       let changes = ChangeCollector.fromChanges(
         editChange,

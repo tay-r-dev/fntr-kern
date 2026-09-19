@@ -55,7 +55,6 @@ function findSlideTarget(layerGlyph, selection, isGeneratedContour) {
   return {
     contourIndex,
     contourPointIndex,
-    startIndex: path.getAbsolutePointIndex(contourIndex, 0),
     contour,
     adjacent,
   };
@@ -107,7 +106,7 @@ export function createPointSlideTargetEntries(
   }
 
   const originalPath = layerGlyph.path.copy();
-  const { contourIndex, contourPointIndex, startIndex, contour, adjacent } = target;
+  const { contourIndex, contourPointIndex, contour, adjacent } = target;
 
   let rollbackChange = null;
   return [
@@ -149,9 +148,6 @@ export function createPointSlideTargetEntries(
           });
         });
         rollbackChange = changes.rollbackChange;
-        if (isPrimary) {
-          session.movedPointIndex = startIndex + candidate.movedPointIndex;
-        }
         return changes.change;
       },
       makeChangeForTransformation() {

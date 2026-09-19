@@ -1,11 +1,13 @@
 import { Bezier } from "bezier-js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 
-// Point slide: move one on-curve point along its own contour without changing
-// the drawn shape. The destination is a new split location on the existing
-// curve, so the operation is exact: de Casteljau on a cubic, linear
-// interpolation on a straight. Nothing is refitted and nothing is
-// approximated.
+// Point slide: move one on-curve point along its own contour. The point the
+// user drags is the point that moves: it keeps its array index, its
+// attributes, and its identity, and the point count never changes. The two
+// neighbouring on-curves are the anchors. The segment traveled keeps its
+// exact shape through the split's kept piece: de Casteljau on a cubic, linear
+// interpolation on a straight. The far segment keeps its handles, and a
+// smooth point's far handle follows the new angle.
 //
 // The path representation this module works on, confirmed against
 // `VarPackedPath.getUnpackedContour` / `setUnpackedContour`:
@@ -18,10 +20,8 @@ import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 //   on-curve back to the first, and its handles sit at the TAIL of the array,
 //   behind the last on-curve. An open contour's first and last points are
 //   on-curves with one neighbour each.
-// - Metadata (`smooth` and any custom attributes) rides on the point object.
-//   A slide changes the point count, so index-based readers (selection,
-//   markers) follow their own existing rules for a topology change; this
-//   module only reports where the moved point landed.
+// - Metadata (`smooth` and any custom attributes) rides on the point object
+//   and travels with it, because the point object itself is reused.
 
 /**
  * The two segments beside an on-curve point.
@@ -177,24 +177,30 @@ export function splitSegmentAt(segmentPoints, t) {
 /**
  * Build the contour with the point slid to a new split location.
  *
- * The moved point keeps the original point's full attribute set: the identity
- * slides. The leftover on-curve at the old position is new scaffolding from
- * the split and carries only the position and the smooth flag, which is the
- * geometry of the joint it inherits. A corner therefore keeps its angle at
- * the old position, and the moved point keeps its flag at the new one; the
- * handles at the new position come from the split, because exactness decides
- * them (the spec's decision 4 outranks the corner's two tangents).
+ * The dragged point itself moves: it keeps its array slot and its full
+ * attribute set, only its coordinates change, and the point count never
+ * changes. The anchors are the two neighbouring on-curves: they do not move,
+ * and nothing is left at the point's old position.
+ *
+ * The segment traveled takes the split's exact piece: toward the previous
+ * on-curve that is the split's first piece, toward the next it is the second
+ * piece. Its handles overwrite the segment's own slots one for one, which is
+ * the anchor's handle length adjusting to the cut. The far segment keeps its
+ * handles, anchored at the far neighbour. On a smooth point the far handle is
+ * then rotated colinear through the moved point, keeping its length: the
+ * point's angle follows the slide. A corner keeps its far handle as it was.
  *
  * The parameter is clamped to 0 and 1 and no further in. Zero and one are
- * legal destinations: the point collapses onto its neighbour and is emitted
- * anyway, and the shape still holds.
+ * legal destinations: the point lands on its neighbour and the traveled
+ * segment degenerates, but the count still holds.
  *
  * @param {Object} contour - {points, isClosed}, never mutated
  * @param {number} pointIndex - array index of the on-curve point
  * @param {string} side - "previous" or "next"
  * @param {number} t - the parameter along that side's segment
  * @returns {Object|null} {points, isClosed, movedPointIndex} or null where
- *   the point or the side does not exist
+ *   the point or the side does not exist. movedPointIndex always equals
+ *   pointIndex: the dragged point keeps its slot
  */
 export function makeSlideCandidate(contour, pointIndex, side, t) {
   const adjacent = getAdjacentSegments(contour, pointIndex);
@@ -204,68 +210,94 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
     return null;
   }
   const { replacement, point: destination } = splitSegmentAt(segment.points, t);
-  const moved = { ...point, x: destination.x, y: destination.y };
-  const leftover = { x: point.x, y: point.y, smooth: point.smooth };
-  const { points, isClosed } = contour;
-  const leftHandles = replacement.length === 1 ? [] : replacement.slice(0, 2);
-  const rightHandles = replacement.length === 1 ? [] : replacement.slice(3);
-  const wraps = segment.endIndex <= segment.startIndex;
-
-  let newPoints;
-  let movedPointIndex;
-  if (side === "previous") {
-    if (!wraps) {
-      // A -> moved -> leftover -> B. The previous segment's handles, at
-      // startIndex+1 .. pointIndex-1, are replaced by the split.
-      newPoints = [
-        ...points.slice(0, segment.startIndex + 1),
-        ...leftHandles,
-        moved,
-        ...rightHandles,
-        leftover,
-        ...points.slice(pointIndex + 1),
-      ];
-      movedPointIndex = segment.startIndex + 1 + leftHandles.length;
-    } else {
-      // The previous segment wraps: A is the last on-curve and its handles
-      // trail the array. The contour still opens with the leftover (the old
-      // point-0 position), and the split lands in the tail behind A.
-      newPoints = [
-        leftover,
-        ...points.slice(1, segment.startIndex + 1),
-        ...leftHandles,
-        moved,
-        ...rightHandles,
-      ];
-      movedPointIndex = segment.startIndex + 1 + leftHandles.length;
-    }
-  } else {
-    if (!wraps) {
-      // A -> leftover -> moved -> B. The next segment's handles are replaced
-      // by the split, and the leftover takes the point's old slot.
-      newPoints = [
-        ...points.slice(0, pointIndex),
-        leftover,
-        ...leftHandles,
-        moved,
-        ...rightHandles,
-        ...points.slice(segment.endIndex),
-      ];
-      movedPointIndex = pointIndex + 1 + leftHandles.length;
-    } else {
-      // The point is the last on-curve and the next segment wraps to index 0.
-      // The split lands in the tail behind the leftover.
-      newPoints = [
-        ...points.slice(0, pointIndex),
-        leftover,
-        ...leftHandles,
-        moved,
-        ...rightHandles,
-      ];
-      movedPointIndex = pointIndex + 1 + leftHandles.length;
-    }
+  // Toward the previous on-curve the contour keeps the split's FIRST piece.
+  // Toward the next it keeps the SECOND piece. A straight has no handles
+  // either way.
+  const handles =
+    replacement.length === 1
+      ? []
+      : side === "previous"
+        ? replacement.slice(0, 2)
+        : replacement.slice(3);
+  const newPoints = [...contour.points];
+  newPoints[pointIndex] = { ...point, x: destination.x, y: destination.y };
+  // The wrapping segment's handles trail the array. Every other segment's
+  // handles sit between its two on-curves. Either way the kept piece's
+  // handles overwrite the segment's own slots one for one.
+  const firstHandleIndex = segment.startIndex + 1;
+  for (let i = 0; i < handles.length; i++) {
+    newPoints[firstHandleIndex + i] = handles[i];
   }
-  return { points: newPoints, isClosed, movedPointIndex };
+  if (point.smooth) {
+    rotateFarHandleColinear(
+      newPoints,
+      adjacent,
+      pointIndex,
+      side,
+      handles,
+      destination
+    );
+  }
+  return { points: newPoints, isClosed: contour.isClosed, movedPointIndex: pointIndex };
+}
+
+/**
+ * Swing the far segment's near handle around the moved point until it is
+ * colinear with the handle on the traveled side, keeping its length. This is
+ * the smooth point's angle following the slide. The next segment's handles
+ * always start at pointIndex + 1 (they trail the array when it wraps); the
+ * previous segment's last handle sits at pointIndex - 1, or at the array's
+ * tail when that segment wraps.
+ */
+function rotateFarHandleColinear(
+  newPoints,
+  adjacent,
+  pointIndex,
+  side,
+  handles,
+  destination
+) {
+  let reference;
+  let farHandleIndex;
+  let sign;
+  if (side === "previous") {
+    // Direction through the moved point, away from the traveled side.
+    reference = handles[1] || adjacent.previous.points[0];
+    if (!adjacent.next?.handles.length) return;
+    farHandleIndex = pointIndex + 1;
+    sign = 1;
+  } else {
+    reference = handles[0] || adjacent.next.points.at(-1);
+    if (!adjacent.previous?.handles.length) return;
+    farHandleIndex =
+      adjacent.previous.endIndex <= adjacent.previous.startIndex
+        ? newPoints.length - 1
+        : pointIndex - 1;
+    sign = -1;
+  }
+  const farHandle = newPoints[farHandleIndex];
+  const oldPoint = contour_point(adjacent, side);
+  if (!farHandle?.type || !oldPoint) return;
+  // Keep the handle's length: measured from the point's old position.
+  const length = Math.hypot(farHandle.x - oldPoint.x, farHandle.y - oldPoint.y);
+  const direction = {
+    x: destination.x - reference.x,
+    y: destination.y - reference.y,
+  };
+  const magnitude = Math.hypot(direction.x, direction.y);
+  if (!magnitude || !length) return;
+  newPoints[farHandleIndex] = {
+    ...farHandle,
+    x: destination.x + (sign * direction.x * length) / magnitude,
+    y: destination.y + (sign * direction.y * length) / magnitude,
+  };
+}
+
+// The point being slid, read off the segment it travels: the previous
+// segment ends on it, the next segment starts on it.
+function contour_point(adjacent, side) {
+  const segment = side === "previous" ? adjacent.previous : adjacent.next;
+  return side === "previous" ? segment?.points.at(-1) : segment?.points[0];
 }
 
 /**
