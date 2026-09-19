@@ -188,7 +188,8 @@ export function splitSegmentAt(segmentPoints, t) {
  * the anchor's handle length adjusting to the cut. The far segment keeps its
  * handles, anchored at the far neighbour. On a smooth point the far handle is
  * then rotated colinear through the moved point, keeping its length: the
- * point's angle follows the slide. A corner keeps its far handle as it was.
+ * point's angle follows the slide. A corner's far handle travels with the
+ * point, keeping its vector relative to it.
  *
  * The parameter is clamped to 0 and 1 and no further in. Zero and one are
  * legal destinations: the point lands on its neighbour and the traveled
@@ -228,34 +229,28 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
   for (let i = 0; i < handles.length; i++) {
     newPoints[firstHandleIndex + i] = handles[i];
   }
-  if (point.smooth) {
-    rotateFarHandleColinear(
-      newPoints,
-      adjacent,
-      pointIndex,
-      side,
-      handles,
-      destination
-    );
-  }
+  adjustFarHandle(newPoints, adjacent, pointIndex, side, handles, destination, point);
   return { points: newPoints, isClosed: contour.isClosed, movedPointIndex: pointIndex };
 }
 
 /**
- * Swing the far segment's near handle around the moved point until it is
- * colinear with the handle on the traveled side, keeping its length. This is
- * the smooth point's angle following the slide. The next segment's handles
+ * Move the far segment's near handle with the point. A smooth point's handle
+ * swings colinear with the handle on the traveled side, keeping its length:
+ * the point's angle follows the slide. A corner's handle keeps its vector
+ * relative to the point, so the corner's geometry travels unchanged. The far
+ * segment's other handle stays with its anchor. The next segment's handles
  * always start at pointIndex + 1 (they trail the array when it wraps); the
  * previous segment's last handle sits at pointIndex - 1, or at the array's
  * tail when that segment wraps.
  */
-function rotateFarHandleColinear(
+function adjustFarHandle(
   newPoints,
   adjacent,
   pointIndex,
   side,
   handles,
-  destination
+  destination,
+  point
 ) {
   let reference;
   let farHandleIndex;
@@ -276,10 +271,18 @@ function rotateFarHandleColinear(
     sign = -1;
   }
   const farHandle = newPoints[farHandleIndex];
-  const oldPoint = contour_point(adjacent, side);
-  if (!farHandle?.type || !oldPoint) return;
-  // Keep the handle's length: measured from the point's old position.
-  const length = Math.hypot(farHandle.x - oldPoint.x, farHandle.y - oldPoint.y);
+  if (!farHandle?.type) return;
+  if (!point.smooth) {
+    // A corner: the handle keeps its vector relative to the point.
+    newPoints[farHandleIndex] = {
+      ...farHandle,
+      x: farHandle.x + destination.x - point.x,
+      y: farHandle.y + destination.y - point.y,
+    };
+    return;
+  }
+  // A smooth point: colinear through the moved point, length kept.
+  const length = Math.hypot(farHandle.x - point.x, farHandle.y - point.y);
   const direction = {
     x: destination.x - reference.x,
     y: destination.y - reference.y,
@@ -291,13 +294,6 @@ function rotateFarHandleColinear(
     x: destination.x + (sign * direction.x * length) / magnitude,
     y: destination.y + (sign * direction.y * length) / magnitude,
   };
-}
-
-// The point being slid, read off the segment it travels: the previous
-// segment ends on it, the next segment starts on it.
-function contour_point(adjacent, side) {
-  const segment = side === "previous" ? adjacent.previous : adjacent.next;
-  return side === "previous" ? segment?.points.at(-1) : segment?.points[0];
 }
 
 /**

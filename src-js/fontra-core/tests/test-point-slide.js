@@ -105,9 +105,28 @@ function expectSamePiece(actual, expected) {
   });
 }
 
+// The far handle must keep its vector relative to the moved point: a corner
+// travels unchanged, a smooth point rotates to the same effect on direction.
+function expectFarHandleKept(contour, candidate, handleIndex, pointIndex) {
+  const before = {
+    x: contour.points[handleIndex].x - contour.points[pointIndex].x,
+    y: contour.points[handleIndex].y - contour.points[pointIndex].y,
+  };
+  const after = {
+    x: candidate.points[handleIndex].x - candidate.points[pointIndex].x,
+    y: candidate.points[handleIndex].y - candidate.points[pointIndex].y,
+  };
+  const length = Math.hypot(after.x, after.y);
+  expect(length).to.be.closeTo(Math.hypot(before.x, before.y), 1e-9);
+  // Same direction: the angle between the two vectors reads zero.
+  const cross = before.x * after.y - before.y * after.x;
+  const dot = before.x * after.x + before.y * after.y;
+  expect(Math.abs((Math.atan2(cross, dot) * 180) / Math.PI)).to.be.closeTo(0, 1e-6);
+}
+
 // A previous-side slide on bowedContour: the count holds, the traveled
-// segment A -> P' is the split's exact first piece, the far segment keeps its
-// handles, and everything else is a copy.
+// segment A -> P' is the split's exact first piece, the far handle travels
+// with the point, and everything else is a copy.
 function expectPreviousSlide(contour, candidate, t) {
   expect(candidate.points).to.have.length(contour.points.length);
   expect(candidate.movedPointIndex).to.equal(4);
@@ -115,14 +134,16 @@ function expectPreviousSlide(contour, candidate, t) {
   expect(
     pieceDeviation(contour.points.slice(1, 5), 0, t, candidate.points.slice(1, 5))
   ).to.be.lessThan(1e-6);
-  expectSamePiece(candidate.points.slice(5, 9), contour.points.slice(5, 9));
+  expectFarHandleKept(contour, candidate, 5, 4);
+  expectSamePiece(candidate.points.slice(6, 9), contour.points.slice(6, 9));
 }
 
 // The same for a next-side slide: P' -> B is the split's exact second piece.
 function expectNextSlide(contour, candidate, t) {
   expect(candidate.points).to.have.length(contour.points.length);
   expect(candidate.movedPointIndex).to.equal(4);
-  expectSamePiece(candidate.points.slice(0, 4), contour.points.slice(0, 4));
+  expectSamePiece(candidate.points.slice(0, 3), contour.points.slice(0, 3));
+  expectFarHandleKept(contour, candidate, 3, 4);
   expect(
     pieceDeviation(contour.points.slice(4, 8), t, 1, candidate.points.slice(4, 8))
   ).to.be.lessThan(1e-6);
@@ -297,13 +318,23 @@ describe("point-slide geometry", () => {
     }
   });
 
-  it("leaves a corner's far handle alone", () => {
+  it("carries a corner's far handle with the point", () => {
     const contour = bowedContour();
     contour.points[4].smooth = false;
     const candidate = makeSlideCandidate(contour, 4, "previous", 0.4);
     expect(candidate.points[4].smooth).to.equal(false);
-    // The far segment is a straight copy: handles and far anchor untouched.
-    expectSamePiece(candidate.points.slice(5, 9), contour.points.slice(5, 9));
+    // The corner's far handle kept its exact vector relative to the point.
+    const moved = candidate.points[4];
+    expect(candidate.points[5].x - moved.x).to.be.closeTo(
+      contour.points[5].x - contour.points[4].x,
+      1e-9
+    );
+    expect(candidate.points[5].y - moved.y).to.be.closeTo(
+      contour.points[5].y - contour.points[4].y,
+      1e-9
+    );
+    // The far anchor's own handle did not move.
+    expectSamePiece(candidate.points.slice(6, 9), contour.points.slice(6, 9));
     expectPreviousSlide(contour, candidate, 0.4);
   });
 
@@ -343,8 +374,9 @@ describe("point-slide geometry", () => {
         ]
       )
     ).to.be.lessThan(1e-6);
-    // The rest is a copy.
-    expectSamePiece(candidate.points.slice(1, 9), contour.points.slice(1, 9));
+    // The far handle (index 1) travels with the point; the rest is a copy.
+    expectFarHandleKept(contour, candidate, 1, 0);
+    expectSamePiece(candidate.points.slice(2, 9), contour.points.slice(2, 9));
   });
 
   it("slides a closed contour's last on-curve forward over the seam", () => {
@@ -368,7 +400,9 @@ describe("point-slide geometry", () => {
         ]
       )
     ).to.be.lessThan(1e-6);
-    expectSamePiece(candidate.points.slice(0, 9), contour.points.slice(0, 9));
+    // The far handle (index 8) travels with the point; the rest is a copy.
+    expectFarHandleKept(contour, candidate, 8, 9);
+    expectSamePiece(candidate.points.slice(0, 7), contour.points.slice(0, 7));
   });
 
   it("accepts the same slide on two compatible contours", () => {
