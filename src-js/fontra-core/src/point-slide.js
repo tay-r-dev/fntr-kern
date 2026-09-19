@@ -227,10 +227,12 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
   newPoints[pointIndex] = { ...point, x: destination.x, y: destination.y };
   // The wrapping segment's handles trail the array. Every other segment's
   // handles sit between its two on-curves. Either way the kept piece's
-  // handles overwrite the segment's own slots one for one.
+  // handles overwrite the segment's own slots one for one, keeping each slot's
+  // own attributes (a skeleton handle's id among them).
   const firstHandleIndex = segment.startIndex + 1;
   for (let i = 0; i < handles.length; i++) {
-    newPoints[firstHandleIndex + i] = handles[i];
+    const slot = firstHandleIndex + i;
+    newPoints[slot] = { ...contour.points[slot], x: handles[i].x, y: handles[i].y };
   }
   refitFarSegment(newPoints, adjacent, side, replacement, destination);
   return { points: newPoints, isClosed: contour.isClosed, movedPointIndex: pointIndex };
@@ -285,6 +287,56 @@ function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
   const first = far.startIndex + 1;
   newPoints[first] = { ...newPoints[first], x: h1.x, y: h1.y };
   newPoints[first + 1] = { ...newPoints[first + 1], x: h2.x, y: h2.y };
+}
+
+/**
+ * Carry the insertion points on the two slid segments along with a slide.
+ * An insertion is {pointId, t, ...}: it sits on the segment that starts at
+ * the on-curve with that id, at source parameter t. One on the kept piece of
+ * the traveled segment stays exactly where it was on the curve, its t rescaled
+ * to the shorter segment. Every other one (on the passed piece, or on the far
+ * segment) keeps its old position as nearly as the refit far segment allows:
+ * it is projected onto that segment and addressed to it.
+ *
+ * @param {Object} contour - the contour before the slide; points carry `id`
+ * @param {Object} candidate - makeSlideCandidate's result for that contour
+ * @param {string} side - the side the candidate was built for
+ * @param {number} t - the parameter the candidate was built for
+ * @param {Array} insertions - the contour's insertions, never mutated
+ * @returns {Array} the insertions after the slide, same order, same fields
+ */
+export function slideInsertions(contour, candidate, side, t, insertions) {
+  const pointIndex = candidate.movedPointIndex;
+  const before = getAdjacentSegments(contour, pointIndex);
+  const after = getAdjacentSegments(candidate, pointIndex);
+  const traveled = side === "previous" ? before.previous : before.next;
+  const oldFar = side === "previous" ? before.next : before.previous;
+  const newFar = side === "previous" ? after.next : after.previous;
+  const idAt = (index) => contour.points[index].id;
+  const traveledId = idAt(traveled.startIndex);
+  const farId = idAt(oldFar.startIndex);
+  return insertions.map((insertion) => {
+    let segment;
+    if (insertion.pointId === traveledId) {
+      if (side === "previous" && insertion.t <= t) {
+        return { ...insertion, t: t ? insertion.t / t : 0 };
+      }
+      if (side === "next" && insertion.t >= t) {
+        return { ...insertion, t: t < 1 ? (insertion.t - t) / (1 - t) : 0 };
+      }
+      segment = traveled;
+    } else if (insertion.pointId === farId) {
+      segment = oldFar;
+    } else {
+      return insertion;
+    }
+    const position = evaluatePiece(segment.points, insertion.t);
+    return {
+      ...insertion,
+      pointId: farId,
+      t: projectPointToSegment(newFar, position).t,
+    };
+  });
 }
 
 const FIT_SAMPLES = 32;

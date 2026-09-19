@@ -903,6 +903,7 @@ export class PointerTool extends BaseTool {
           return createPointSlideTargetEntries(layerGlyph, sceneController.selection, {
             isGeneratedContour: (contourIndex) =>
               this.sceneModel.isGeneratedPathContour(contourIndex),
+            referenceSkeletonData,
             initialPointer: initialPoint,
             isPrimary,
             session: pointSlideSession,

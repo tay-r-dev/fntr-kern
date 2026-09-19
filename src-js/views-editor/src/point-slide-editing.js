@@ -3,19 +3,27 @@ import {
   chooseSlideInterval,
   getAdjacentSegments,
   makeSlideCandidate,
+  slideInsertions,
   slideIntervalsCompatible,
 } from "@fontra/core/point-slide.js";
+import { getSkeletonData, parseSkeletonPointKey } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
+import {
+  cloneLayerGlyphForSkeletonEdit,
+  makeEditSkeletonChange,
+  resolveSkeletonAddressAcrossLayers,
+} from "./skeleton-editing.js";
 
 export const POINT_SLIDE_BEHAVIOR_NAME = "point-slide";
 
 /**
- * Point slide engages on V-hold with exactly one on-curve point selected. The
- * point needs two bounding on-curves to slide between, so an open contour's
- * endpoint does not engage, and neither does a generated contour. When the
- * slide is not possible the behavior name is null and the drag falls through
- * to the plain move.
+ * Point slide engages on V-hold with exactly one on-curve point selected: a
+ * drawn point or a skeleton centerline point. The point needs two bounding
+ * on-curves to slide between, so an open contour's endpoint does not engage,
+ * and neither does a point on a generated contour (its skeleton owns it).
+ * When the slide is not possible the behavior name is null and the drag falls
+ * through to the plain move.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
  * @param {Set} selection - The current selection
@@ -31,20 +39,38 @@ export function getPointSlideBehaviorName(
   { isGeneratedContour = null } = {}
 ) {
   if (!modifiers?.pointSlideMode) return null;
-  if (targetKinds?.has("skeletonPoint") || targetKinds?.has("skeletonRib")) return null;
-  const slideTarget = findSlideTarget(layerGlyph, selection, isGeneratedContour);
+  if (targetKinds?.has("skeletonRib")) return null;
+  const slideTarget = findSlideTarget(layerGlyph, selection, {
+    isGeneratedContour,
+  });
   return slideTarget ? POINT_SLIDE_BEHAVIOR_NAME : null;
 }
 
 /**
- * Resolve the selection to a slide target: a single on-curve point on a
- * non-generated contour with a segment on both sides.
+ * Resolve the selection to a slide target: a single on-curve point with a
+ * segment on both sides, either on a drawn contour or on a skeleton
+ * centerline. A skeleton selection is addressed through the edit layer's
+ * skeleton data and resolved into this layer by structural ordinal.
  */
-function findSlideTarget(layerGlyph, selection, isGeneratedContour) {
-  const { point: pointSelection } = parseSelection(selection || new Set());
-  if (pointSelection?.length !== 1 || !layerGlyph?.path) return null;
+function findSlideTarget(
+  layerGlyph,
+  selection,
+  { isGeneratedContour = null, referenceSkeletonData = null } = {}
+) {
+  const { point: pointSelection, skeletonPoint } = parseSelection(
+    selection || new Set()
+  );
+  const pointCount = pointSelection?.length ?? 0;
+  const skeletonCount = skeletonPoint?.length ?? 0;
+  if (pointCount + skeletonCount !== 1) return null;
+  return skeletonCount
+    ? findSkeletonSlideTarget(layerGlyph, skeletonPoint[0], referenceSkeletonData)
+    : findPathSlideTarget(layerGlyph, pointSelection[0], isGeneratedContour);
+}
+
+function findPathSlideTarget(layerGlyph, pointIndex, isGeneratedContour) {
+  if (!layerGlyph?.path) return null;
   const path = layerGlyph.path;
-  const pointIndex = pointSelection[0];
   const point = path.getPoint(pointIndex);
   if (!point || point.type) return null;
   const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
@@ -52,11 +78,34 @@ function findSlideTarget(layerGlyph, selection, isGeneratedContour) {
   const contour = path.getUnpackedContour(contourIndex);
   const adjacent = getAdjacentSegments(contour, contourPointIndex);
   if (!adjacent.previous || !adjacent.next) return null;
+  return { contourIndex, contourPointIndex, contour, adjacent };
+}
+
+function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
+  const skeletonData = getSkeletonData(layerGlyph);
+  if (!skeletonData) return null;
+  const parsed = parseSkeletonPointKey(key);
+  if (!parsed) return null;
+  const address = resolveSkeletonAddressAcrossLayers(
+    referenceSkeletonData || skeletonData,
+    skeletonData,
+    parsed.contourId,
+    parsed.pointId
+  );
+  if (!address || address.point.type) return null;
+  const contour = {
+    points: structuredClone(address.contour.points),
+    isClosed: address.contour.closed === true,
+  };
+  const adjacent = getAdjacentSegments(contour, address.pointIndex);
+  if (!adjacent.previous || !adjacent.next) return null;
   return {
-    contourIndex,
-    contourPointIndex,
+    skeleton: true,
+    contourIndex: address.contourIndex,
+    contourPointIndex: address.pointIndex,
     contour,
     adjacent,
+    insertions: structuredClone(address.contour.insertions || []),
   };
 }
 
@@ -69,15 +118,18 @@ function findSlideTarget(layerGlyph, selection, isGeneratedContour) {
  * interval does not match the edit layer's is left untouched for the whole
  * gesture.
  *
- * The entry records against a fresh copy of the pre-drag path every frame, the
- * same scratch-per-frame the base expand entry uses, so the shape cannot creep
- * and the rollback describes the whole gesture.
+ * A drawn contour is written straight into the path. A skeleton centerline is
+ * written into the skeleton data, insertion points carried along, and the
+ * outline regenerated through the one skeleton write path.
+ *
+ * Every frame records against a fresh copy of the pre-drag layer, so the shape
+ * cannot creep and the rollback describes the whole gesture.
  *
  * @param {Object} layerGlyph - The layer glyph being edited
  * @param {Set} selection - The current selection
- * @param {Object} options - `isGeneratedContour`, `initialPointer` in glyph
- *   coordinates, `isPrimary` for the edit layer, and the per-drag `session`
- *   shared across layers
+ * @param {Object} options - `isGeneratedContour`, `referenceSkeletonData` (the
+ *   edit layer's), `initialPointer` in glyph coordinates, `isPrimary` for the
+ *   edit layer, and the per-drag `session` shared across layers
  * @returns {Array} Zero or one target entry
  */
 export function createPointSlideTargetEntries(
@@ -85,12 +137,16 @@ export function createPointSlideTargetEntries(
   selection,
   {
     isGeneratedContour = null,
+    referenceSkeletonData = null,
     initialPointer = null,
     isPrimary = false,
     session = null,
   } = {}
 ) {
-  const target = findSlideTarget(layerGlyph, selection, isGeneratedContour);
+  const target = findSlideTarget(layerGlyph, selection, {
+    isGeneratedContour,
+    referenceSkeletonData,
+  });
   if (!target || !initialPointer || !session) return [];
 
   // The edit layer publishes the interval every frame. Every other layer is
@@ -105,8 +161,10 @@ export function createPointSlideTargetEntries(
     return [];
   }
 
-  const originalPath = layerGlyph.path.copy();
   const { contourIndex, contourPointIndex, contour, adjacent } = target;
+  const write = target.skeleton
+    ? makeSkeletonWriter(layerGlyph, target)
+    : makePathWriter(layerGlyph, contourIndex);
 
   let rollbackChange = null;
   return [
@@ -140,13 +198,7 @@ export function createPointSlideTargetEntries(
         }
         const candidate = makeSlideCandidate(contour, contourPointIndex, side, t);
         if (!candidate) return null;
-        const scratch = { ...layerGlyph, path: originalPath.copy() };
-        const changes = recordChanges(scratch, (layerGlyphProxy) => {
-          layerGlyphProxy.path.setUnpackedContour(contourIndex, {
-            points: candidate.points,
-            isClosed: candidate.isClosed,
-          });
-        });
+        const changes = write(candidate, side, t);
         rollbackChange = changes.rollbackChange;
         return changes.change;
       },
@@ -155,4 +207,30 @@ export function createPointSlideTargetEntries(
       },
     },
   ];
+}
+
+function makePathWriter(layerGlyph, contourIndex) {
+  const originalPath = layerGlyph.path.copy();
+  return (candidate) => {
+    const scratch = { ...layerGlyph, path: originalPath.copy() };
+    return recordChanges(scratch, (layerGlyphProxy) => {
+      layerGlyphProxy.path.setUnpackedContour(contourIndex, {
+        points: candidate.points,
+        isClosed: candidate.isClosed,
+      });
+    });
+  };
+}
+
+function makeSkeletonWriter(layerGlyph, target) {
+  const { contourIndex, contour, insertions } = target;
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layerGlyph);
+  return (candidate, side, t) => {
+    const movedInsertions = slideInsertions(contour, candidate, side, t, insertions);
+    return makeEditSkeletonChange(originalLayerGlyph, (working) => {
+      const workingContour = working.contours[contourIndex];
+      workingContour.points = structuredClone(candidate.points);
+      workingContour.insertions = structuredClone(movedInsertions);
+    });
+  };
 }
