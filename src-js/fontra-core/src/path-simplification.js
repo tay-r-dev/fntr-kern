@@ -515,3 +515,142 @@ export function simplifyRun(run, options = {}) {
   }
   return result;
 }
+
+function roundCoordinate(value) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function directionBetween(a, b) {
+  return { x: b.x - a.x, y: b.y - a.y };
+}
+
+function angleBetweenDegrees(v1, v2) {
+  if (vectorLength(v1) === 0 || vectorLength(v2) === 0) {
+    return 0;
+  }
+  let delta = Math.abs(Math.atan2(v1.y, v1.x) - Math.atan2(v2.y, v2.x));
+  if (delta > Math.PI) {
+    delta = 2 * Math.PI - delta;
+  }
+  return (delta * 180) / Math.PI;
+}
+
+// The tangent direction with which a piece arrives at its end point.
+function pieceEndTangent(piece) {
+  const points = piece.points;
+  return directionBetween(points.at(-2), points.at(-1));
+}
+
+// The tangent direction with which a piece leaves its start point.
+function pieceStartTangent(piece) {
+  return directionBetween(piece.points[0], piece.points[1]);
+}
+
+// Rebuild an unpacked contour ({points, isClosed}) from the analysis and the
+// final sequence of pieces (merged replacements and untouched originals).
+export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
+  const { sourcePointMap, isClosed } = analysis;
+  const originalPoints = analysis.contour.points;
+
+  const makeOnCurvePoint = (key, incomingPiece, outgoingPiece) => {
+    let point;
+    if (typeof key === "number") {
+      const original = originalPoints[key];
+      point = { x: roundCoordinate(original.x), y: roundCoordinate(original.y) };
+      if (original.smooth === true) {
+        // Keep smooth only when the new joint is still tangent-continuous.
+        const stillSmooth =
+          incomingPiece &&
+          outgoingPiece &&
+          angleBetweenDegrees(
+            pieceEndTangent(incomingPiece),
+            pieceStartTangent(outgoingPiece)
+          ) <= DEFAULT_MAX_TANGENT_ANGLE;
+        if (stillSmooth) {
+          point.smooth = true;
+        }
+      }
+      if (hasNonEmptyAttrs(original)) {
+        point.attrs = original.attrs;
+      }
+    } else {
+      // Inserted extrema point: fresh point, smooth by construction (the
+      // split preserves the tangent on both sides).
+      const inserted = sourcePointMap.get(key).point;
+      point = {
+        x: roundCoordinate(inserted.x),
+        y: roundCoordinate(inserted.y),
+        smooth: true,
+      };
+    }
+    return point;
+  };
+
+  const points = [];
+  const numPieces = simplifiedPieces.length;
+  for (const [i, piece] of simplifiedPieces.entries()) {
+    const prevPiece =
+      simplifiedPieces[(i - 1 + numPieces) % numPieces];
+    const nextPiece = simplifiedPieces[(i + 1) % numPieces];
+    if (i === 0) {
+      points.push(makeOnCurvePoint(piece.startKey, isClosed ? prevPiece : null, piece));
+    }
+    // Interior off-curve points.
+    for (const handle of piece.points.slice(1, -1)) {
+      const out = {
+        x: roundCoordinate(handle.x),
+        y: roundCoordinate(handle.y),
+      };
+      // Fitted candidate handles carry no `type`; take it from the piece.
+      const type = handle.type ?? (piece.kind === "cubic" ? "cubic" : undefined);
+      if (type) {
+        out.type = type;
+      }
+      points.push(out);
+    }
+    // End on-curve point, except for the closing piece of a closed contour
+    // (its end point is the contour's first point).
+    const isClosingPiece = isClosed && i === numPieces - 1;
+    if (!isClosingPiece) {
+      points.push(makeOnCurvePoint(piece.endKey, piece, nextPiece));
+    }
+  }
+
+  return { points, isClosed };
+}
+
+// Simplify one unpacked contour. Returns a new {points, isClosed} contour,
+// or null when nothing can be merged.
+export function simplifyContour(contour, options = {}) {
+  const analysis = classifySimplifyContour(contour, options);
+  analysis.contour = contour;
+  const runs = buildSimplifyRuns(analysis);
+  if (!runs.length) {
+    return null;
+  }
+
+  const runByFirstPiece = new Map();
+  for (const run of runs) {
+    runByFirstPiece.set(run.pieces[0], run);
+  }
+
+  const finalPieces = [];
+  let mergedAny = false;
+  for (let i = 0; i < analysis.pieces.length; i++) {
+    const piece = analysis.pieces[i];
+    const run = runByFirstPiece.get(piece);
+    if (run) {
+      const simplifiedRun = simplifyRun(run, options);
+      mergedAny = mergedAny || simplifiedRun.some((p) => p.merged);
+      finalPieces.push(...simplifiedRun);
+      i += run.pieces.length - 1;
+    } else {
+      finalPieces.push(piece);
+    }
+  }
+
+  if (!mergedAny) {
+    return null;
+  }
+  return rebuildSimplifiedContour(analysis, finalPieces);
+}

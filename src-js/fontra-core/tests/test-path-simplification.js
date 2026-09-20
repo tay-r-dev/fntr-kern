@@ -409,3 +409,121 @@ describe("canMergeCubicPieces / simplifyRun", () => {
     expect(simplified.length).to.equal(2);
   });
 });
+
+import {
+  rebuildSimplifiedContour,
+  simplifyContour,
+} from "@fontra/core/path-simplification.js";
+
+// A closed "lens" made of two arcs, each pre-split at its apex:
+// 4 cubic segments, 4 smooth on-curve points, no interior extrema.
+const lensContour = {
+  isClosed: true,
+  points: [
+    { x: 0, y: 0, smooth: true },
+    { x: 30, y: 40, type: "cubic" },
+    { x: 65, y: 60, type: "cubic" },
+    { x: 100, y: 60, smooth: true },
+    { x: 135, y: 60, type: "cubic" },
+    { x: 170, y: 40, type: "cubic" },
+    { x: 200, y: 0, smooth: true },
+    { x: 170, y: -40, type: "cubic" },
+    { x: 135, y: -60, type: "cubic" },
+    { x: 100, y: -60, smooth: true },
+    { x: 65, y: -60, type: "cubic" },
+    { x: 30, y: -40, type: "cubic" },
+  ],
+};
+
+function signedArea(contour) {
+  // Sample the actual curve segments; on-curve points alone collapse to a
+  // degenerate polygon after merging.
+  const samples = [];
+  for (const piece of contourToCubicPieces(contour)) {
+    const ts = piece.kind === "cubic" ? [0, 0.25, 0.5, 0.75] : [0];
+    for (const t of ts) {
+      samples.push(
+        piece.kind === "cubic" ? cubicPoint(piece.points, t) : piece.points[0]
+      );
+    }
+  }
+  let area = 0;
+  for (let i = 0; i < samples.length; i++) {
+    const a = samples[i];
+    const b = samples[(i + 1) % samples.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
+}
+
+describe("simplifyContour / rebuildSimplifiedContour", () => {
+  it("keeps both endpoints of an open contour unchanged", () => {
+    const openContour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 40, type: "cubic" },
+        { x: 65, y: 60, type: "cubic" },
+        { x: 100, y: 60, smooth: true },
+        { x: 135, y: 60, type: "cubic" },
+        { x: 170, y: 40, type: "cubic" },
+        { x: 200, y: 0 },
+      ],
+    };
+    const simplified = simplifyContour(openContour, { tolerance: 1.0 });
+    expect(simplified).to.not.equal(null);
+    expect(simplified.isClosed).to.be.false;
+    expectPointClose(simplified.points[0], 0, 0);
+    expectPointClose(simplified.points.at(-1), 200, 0);
+    // The two halves merge into a single cubic.
+    const onCurves = simplified.points.filter((p) => !p.type);
+    expect(onCurves.length).to.equal(2);
+  });
+
+  it("preserves closed state and winding direction", () => {
+    const simplified = simplifyContour(lensContour, { tolerance: 1.0 });
+    expect(simplified).to.not.equal(null);
+    expect(simplified.isClosed).to.be.true;
+    expect(Math.sign(signedArea(simplified))).to.equal(
+      Math.sign(signedArea(lensContour))
+    );
+    // Two arcs: 4 segments merge into 2.
+    const onCurves = simplified.points.filter((p) => !p.type);
+    expect(onCurves.length).to.equal(2);
+  });
+
+  it("keeps attrs on a surviving protected point", () => {
+    const contour = {
+      isClosed: true,
+      points: lensContour.points.map((p, i) =>
+        i === 6 ? { ...p, attrs: { note: "keep" } } : { ...p }
+      ),
+    };
+    const simplified = simplifyContour(contour, { tolerance: 1.0 });
+    const withAttrs = simplified.points.filter((p) => p.attrs?.note === "keep");
+    expect(withAttrs.length).to.equal(1);
+    expectPointClose(withAttrs[0], 200, 0);
+  });
+
+  it("repeating simplify produces no additional change", () => {
+    const once = simplifyContour(lensContour, { tolerance: 1.0 });
+    // null = no change; the simplified contour is a fixed point.
+    expect(simplifyContour(once, { tolerance: 1.0 })).to.equal(null);
+  });
+
+  it("returns null when nothing can be simplified", () => {
+    const cornered = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 0, type: "cubic" },
+        { x: 60, y: 30, type: "cubic" },
+        { x: 60, y: 60 }, // corner
+        { x: 90, y: 60, type: "cubic" },
+        { x: 120, y: 90, type: "cubic" },
+        { x: 150, y: 90 },
+      ],
+    };
+    expect(simplifyContour(cornered, { tolerance: 1.0 })).to.equal(null);
+  });
+});
