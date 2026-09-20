@@ -449,33 +449,54 @@ describe("offset-cubic: U^1 integration sweep", () => {
 // they are, so the drawn handle is longer than the constructed one by that
 // slide. A hand may put a handle exactly on its point, and the point it must
 // reach is the DRAWN one. Bounded at the constructed zero instead, the handle
-// stopped a whole slide short: on the `e` of skeletron, a 50-unit nudge held
-// the right handle of skeleton point 3 at 0.82 tension however far it was
-// dragged. This is the floor's half of the slide rule the ceiling already has.
-describe("offset-cubic: the on-curve slide moves the authored floor", () => {
-  const slidRequest = (slide) => ({
+// stopped a whole slide short: on the `e` of skeletron, a 47-unit nudge held the
+// right handle of skeleton point 3 at 0.82 tension however far it was dragged.
+//
+// The construction keeps its floor at zero, because a negative constructed
+// length is no curve the pin, the tension identity or the domain can read. The
+// remainder is granted as an emission slide instead, published the way a Z-mode
+// carry is, so the drawn handle lands where the hand put it and the curvature
+// gizmo still measures a real segment.
+describe("offset-cubic: a hand below the floor is granted as a slide", () => {
+  const slidRequest = (slide, detached = false) => ({
     ...authoredBaseRequest(),
     endOnCurveSlide: slide,
-    endAdjustment: { x: 400, y: 0, detached: false },
+    endAdjustment: { x: 400, y: 0, detached },
+  });
+  // q3 sits at (120, 10) and u1 runs at (-1, 0), so 50 units of slide toward
+  // the handle's own point is 50 units of +x.
+  const drawnHandle = (result, request) => ({
+    x:
+      Math.round(request.q3.x + request.u1.x * result.endLength) +
+      (result.endSlide?.x ?? 0),
+    y:
+      Math.round(request.q3.y + request.u1.y * result.endLength) +
+      (result.endSlide?.y ?? 0),
   });
 
-  it("lets an attached handle reach the drawn on-curve", () => {
-    const slide = -50;
-    const result = offsetCubicSide(slidRequest(slide));
-    expect(result.endLength).to.be.closeTo(slide, 1e-9);
+  it("holds the constructed handle on its rib point and slides the rest", () => {
+    const request = slidRequest(-50);
+    const result = offsetCubicSide(request);
+    expect(result.endLength).to.equal(0);
+    expect(drawnHandle(result, request)).to.deep.equal({ x: 170, y: 10 });
   });
 
-  it("lets a detached handle reach the drawn on-curve", () => {
-    const slide = -50;
-    const result = offsetCubicSide({
-      ...slidRequest(slide),
-      endAdjustment: { x: 400, y: 0, detached: true },
-    });
-    expect(result.endLength).to.be.closeTo(slide, 1e-9);
+  it("grants a detached placement the same way", () => {
+    const request = slidRequest(-50, true);
+    const result = offsetCubicSide(request);
+    expect(result.endLength).to.equal(0);
+    expect(drawnHandle(result, request)).to.deep.equal({ x: 170, y: 10 });
   });
 
-  it("keeps the floor at zero where nothing slides", () => {
+  it("counts the slide as honored, so a stored request is not clawed back", () => {
+    const natural = offsetCubicSide(authoredBaseRequest()).endLength;
+    const result = offsetCubicSide(slidRequest(-50));
+    expect(result.honoredEndAdjustment).to.be.closeTo(-50 - natural, 1e-9);
+  });
+
+  it("slides nothing where nothing slides", () => {
     const result = offsetCubicSide(slidRequest(0));
     expect(result.endLength).to.equal(0);
+    expect(result.endSlide).to.equal(null);
   });
 });

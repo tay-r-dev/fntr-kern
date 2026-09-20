@@ -33,12 +33,12 @@ function constrain(handles, domain, { startByHand = false, endByHand = false } =
     {
       start: clamp(
         tensions.start,
-        startByHand ? domain.handFloorStartTension : domain.minStartTension,
+        startByHand ? 0 : domain.minStartTension,
         domain.maxStartTension
       ),
       end: clamp(
         tensions.end,
-        endByHand ? domain.handFloorEndTension : domain.minEndTension,
+        endByHand ? 0 : domain.minEndTension,
         domain.maxEndTension
       ),
     },
@@ -60,31 +60,82 @@ function placedLength(anchor, direction, adjustment, baseLength = 0) {
   return (placed.x - anchor.x) * direction.x + (placed.y - anchor.y) * direction.y;
 }
 
+// What a hand asked for below the construction's own zero. Emission slides the
+// on-curve along its edge and leaves the handles, so the drawn handle is longer
+// than the constructed one by that slide, and the drawn handle reaches its own
+// point only where the constructed one goes behind its rib point. A negative
+// constructed length is not a curve anyone solves: the pin, the tension identity
+// and the domain all read it as a length, so the curvature gizmo measured one
+// number and the generator reproduced another, and a bare grab jumped.
+//
+// So the construction keeps its floor at zero and the remainder is handed to
+// emission, which is where every other slide already lives. The handle lands
+// exactly where the designer put it, the construction segment stays a curve, and
+// the gizmo's reader takes this slide off with the rest (rail R-D: it is
+// published, never recovered).
+function slideBelowFloor(requestedLength, anchor, direction, floorTension, reach) {
+  if (requestedLength >= 0) {
+    return null;
+  }
+  const length = Math.max(requestedLength, Math.min(floorTension * reach, 0));
+  if (!(length < 0)) {
+    return null;
+  }
+  // The construction handle sits exactly on its rib point whenever this fires,
+  // and emission rounds that point before adding the slide. Measure from the
+  // rounded point, so the sum is the grid position the designer placed.
+  const rounded = { x: Math.round(anchor.x), y: Math.round(anchor.y) };
+  return {
+    length,
+    displacement: {
+      x: anchor.x + direction.x * length - rounded.x,
+      y: anchor.y + direction.y * length - rounded.y,
+    },
+  };
+}
+
 function applyAttachedAdjustments(handles, request, domain) {
   const byHand = (adjustment) => !!adjustment && !adjustment.detached;
   const attached = (adjustment, anchor, direction, length) =>
     !byHand(adjustment) ? length : placedLength(anchor, direction, adjustment, length);
-  return constrain(
-    {
-      startLength: attached(
-        request.startAdjustment,
-        request.q0,
-        request.u0,
-        handles.startLength
-      ),
-      endLength: attached(
-        request.endAdjustment,
-        request.q3,
-        request.u1,
-        handles.endLength
-      ),
-    },
-    domain,
-    {
+  const requested = {
+    startLength: attached(
+      request.startAdjustment,
+      request.q0,
+      request.u0,
+      handles.startLength
+    ),
+    endLength: attached(
+      request.endAdjustment,
+      request.q3,
+      request.u1,
+      handles.endLength
+    ),
+  };
+  return {
+    lengths: constrain(requested, domain, {
       startByHand: byHand(request.startAdjustment),
       endByHand: byHand(request.endAdjustment),
-    }
-  );
+    }),
+    startSlide: byHand(request.startAdjustment)
+      ? slideBelowFloor(
+          requested.startLength,
+          request.q0,
+          request.u0,
+          domain.handFloorStartTension,
+          domain.startReach
+        )
+      : null,
+    endSlide: byHand(request.endAdjustment)
+      ? slideBelowFloor(
+          requested.endLength,
+          request.q3,
+          request.u1,
+          domain.handFloorEndTension,
+          domain.endReach
+        )
+      : null,
+  };
 }
 
 // A pin is written by the curvature gizmo, which measures each handle against
@@ -136,21 +187,40 @@ function applyPinnedTension(handles, pinnedTension, domain) {
   );
 }
 
-function applyDetachedHandles(handles, request, domain) {
-  const floor = (tension, reach) => Math.min(tension * reach, 0);
+// A detached handle is absolute, and it reaches below the construction's zero
+// the same way an attached one does: through emission, not through a negative
+// constructed length.
+function applyDetachedHandles(handles, slides, request, domain) {
+  const place = (adjustment, anchor, direction, floorTension, reach, length) => {
+    if (!adjustment?.detached) {
+      return { length, slide: null };
+    }
+    const requested = placedLength(anchor, direction, adjustment);
+    return {
+      length: Math.max(requested, 0),
+      slide: slideBelowFloor(requested, anchor, direction, floorTension, reach),
+    };
+  };
+  const start = place(
+    request.startAdjustment,
+    request.q0,
+    request.u0,
+    domain.handFloorStartTension,
+    domain.startReach,
+    handles.startLength
+  );
+  const end = place(
+    request.endAdjustment,
+    request.q3,
+    request.u1,
+    domain.handFloorEndTension,
+    domain.endReach,
+    handles.endLength
+  );
   return {
-    startLength: request.startAdjustment?.detached
-      ? Math.max(
-          placedLength(request.q0, request.u0, request.startAdjustment),
-          floor(domain.handFloorStartTension, domain.startReach)
-        )
-      : handles.startLength,
-    endLength: request.endAdjustment?.detached
-      ? Math.max(
-          placedLength(request.q3, request.u1, request.endAdjustment),
-          floor(domain.handFloorEndTension, domain.endReach)
-        )
-      : handles.endLength,
+    lengths: { startLength: start.length, endLength: end.length },
+    startSlide: request.startAdjustment?.detached ? start.slide : slides.startSlide,
+    endSlide: request.endAdjustment?.detached ? end.slide : slides.endSlide,
   };
 }
 
@@ -175,16 +245,24 @@ export function offsetCubicSide(request) {
   // segment's tension is. Running the detached placement last instead made it
   // overwrite the pin, so the gizmo did nothing on a detached handle.
   const attached = applyAttachedAdjustments(natural, request, domain);
-  const placed = applyDetachedHandles(attached, request, domain);
+  const placed = applyDetachedHandles(attached.lengths, attached, request, domain);
   // How much of each attached adjustment survived the ceiling. A stored offset
   // is a request, and the clamp above can refuse most of it; a caller that
   // keeps the request has to be able to see what was granted, or the store
   // climbs past the ceiling and a drag back does nothing until it returns.
   // Measured before the pin, because the pin is a separate contribution that
   // its own callers already account for.
+  // A slide below the floor was granted in full, so it counts as honored: the
+  // handle is where the designer put it, and a caller that trims its stored
+  // request against this number must not claw that part back.
+  const granted = (slide) => slide?.length ?? 0;
   return {
-    ...applyPinnedTension(placed, request.pinnedTension, domain),
-    honoredStartAdjustment: attached.startLength - natural.startLength,
-    honoredEndAdjustment: attached.endLength - natural.endLength,
+    ...applyPinnedTension(placed.lengths, request.pinnedTension, domain),
+    startSlide: placed.startSlide?.displacement ?? null,
+    endSlide: placed.endSlide?.displacement ?? null,
+    honoredStartAdjustment:
+      attached.lengths.startLength + granted(placed.startSlide) - natural.startLength,
+    honoredEndAdjustment:
+      attached.lengths.endLength + granted(placed.endSlide) - natural.endLength,
   };
 }

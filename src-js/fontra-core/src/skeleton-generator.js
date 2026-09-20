@@ -1037,23 +1037,15 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
       // handles, where a unit of rounding is a large angle.
       const lockedAxis = sharedLockedAxis(prevPoint, nextPoint);
       if (lockedAxis && lenIn >= 0.001 && lenOut >= 0.001) {
-        // Keep each handle on the side of the anchor it was constructed on. The
-        // anchor is the un-nudged rib point, so a handle whose on-curve slid out
-        // from under it can legitimately sit BEHIND that anchor while still
-        // standing ahead of the on-curve the designer sees. Placing it by its
-        // length alone reflects it through the anchor instead, which turned a
-        // drag toward the point into a jump the other way.
-        const signIn = vector.dotVector(vecIn, lockedAxis) < 0 ? -1 : 1;
-        const signOut = vector.dotVector(vecOut, lockedAxis) > 0 ? -1 : 1;
         points[prevIdx] = {
           ...prevPoint,
-          x: smoothAnchor.x + lockedAxis.x * lenIn * signIn,
-          y: smoothAnchor.y + lockedAxis.y * lenIn * signIn,
+          x: smoothAnchor.x + lockedAxis.x * lenIn,
+          y: smoothAnchor.y + lockedAxis.y * lenIn,
         };
         points[nextIdx] = {
           ...nextPoint,
-          x: smoothAnchor.x - lockedAxis.x * lenOut * signOut,
-          y: smoothAnchor.y - lockedAxis.y * lenOut * signOut,
+          x: smoothAnchor.x - lockedAxis.x * lenOut,
+          y: smoothAnchor.y - lockedAxis.y * lenOut,
         };
         continue;
       }
@@ -3994,6 +3986,12 @@ function generateOffsetPointsForSegment(
         side,
         endHalfWidth
       );
+      // A hand that asked the handle below the construction's own zero is
+      // granted through emission, exactly like a Z-mode carry, and travels with
+      // it so that one published displacement takes the reader back to the
+      // curve the generator solved.
+      const addSlide = (nudge, slide) =>
+        slide ? { x: nudge.x + slide.x, y: nudge.y + slide.y } : nudge;
       const emittedNudge = (anchor, displacement) => {
         const translated = translateRibPoint(anchor, displacement);
         return { x: translated.x - anchor.x, y: translated.y - anchor.y };
@@ -4009,41 +4007,47 @@ function generateOffsetPointsForSegment(
         const emitted = emittedNudge(anchor, displacement);
         return emitted.x * direction.x + emitted.y * direction.y;
       };
-      const { startLength, endLength, honoredStartAdjustment, honoredEndAdjustment } =
-        offsetCubicSide({
-          startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
-          endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
-          startOnCurveSlide: alongDirection(fixedStart, startNudge, startDir),
-          endOnCurveSlide: alongDirection(fixedEnd, endNudge, endDir),
-          p0: segment.startPoint,
-          p1: controls[0],
-          p2: controls[controls.length - 1],
-          p3: segment.endPoint,
-          d0: sideSign * startHalfWidth,
-          d3: sideSign * endHalfWidth,
-          q0: fixedStart,
-          q3: fixedEnd,
-          u0: startDir,
-          u1: endDir,
-          // The pin lives on the skeleton segment's start point, so it reads the
-          // same for both sides regardless of which way each side is emitted.
-          // Read off the generator's own flattened point shape, not the canonical
-          // one - by here the points have been through canonicalToGeneratorInput.
-          //
-          // Withheld on a serif terminal's own segment, and applied after the
-          // splice instead. The serif finds its release ON this wall, so a pin
-          // applied here reshapes the wall the release is found on and walks the
-          // whole terminal up and down the stem. The `out` handle at a segment's
-          // start point is claimed for exactly the segments a serif terminal owns,
-          // which is why the same key set gates all three authored layers.
-          pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
-            ? undefined
-            : isLeftSide
-              ? segment.startPoint.leftSegmentCurvature
-              : segment.startPoint.rightSegmentCurvature,
-          startAdjustment,
-          endAdjustment,
-        });
+      const {
+        startLength,
+        endLength,
+        startSlide,
+        endSlide,
+        honoredStartAdjustment,
+        honoredEndAdjustment,
+      } = offsetCubicSide({
+        startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
+        endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
+        startOnCurveSlide: alongDirection(fixedStart, startNudge, startDir),
+        endOnCurveSlide: alongDirection(fixedEnd, endNudge, endDir),
+        p0: segment.startPoint,
+        p1: controls[0],
+        p2: controls[controls.length - 1],
+        p3: segment.endPoint,
+        d0: sideSign * startHalfWidth,
+        d3: sideSign * endHalfWidth,
+        q0: fixedStart,
+        q3: fixedEnd,
+        u0: startDir,
+        u1: endDir,
+        // The pin lives on the skeleton segment's start point, so it reads the
+        // same for both sides regardless of which way each side is emitted.
+        // Read off the generator's own flattened point shape, not the canonical
+        // one - by here the points have been through canonicalToGeneratorInput.
+        //
+        // Withheld on a serif terminal's own segment, and applied after the
+        // splice instead. The serif finds its release ON this wall, so a pin
+        // applied here reshapes the wall the release is found on and walks the
+        // whole terminal up and down the stem. The `out` handle at a segment's
+        // start point is claimed for exactly the segments a serif terminal owns,
+        // which is why the same key set gates all three authored layers.
+        pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+          ? undefined
+          : isLeftSide
+            ? segment.startPoint.leftSegmentCurvature
+            : segment.startPoint.rightSegmentCurvature,
+        startAdjustment,
+        endAdjustment,
+      });
       if (shouldAddStart)
         output.push(
           buildGeneratedOnCurve(
@@ -4072,7 +4076,7 @@ function generateOffsetPointsForSegment(
           segment.startPoint,
           "out",
           startDir,
-          emittedNudge(fixedStart, startHandleNudge),
+          addSlide(emittedNudge(fixedStart, startHandleNudge), startSlide),
           startAdjustment,
           honoredStartAdjustment,
         ],
@@ -4081,7 +4085,7 @@ function generateOffsetPointsForSegment(
           segment.endPoint,
           "in",
           endDir,
-          emittedNudge(fixedEnd, endHandleNudge),
+          addSlide(emittedNudge(fixedEnd, endHandleNudge), endSlide),
           endAdjustment,
           honoredEndAdjustment,
         ],
