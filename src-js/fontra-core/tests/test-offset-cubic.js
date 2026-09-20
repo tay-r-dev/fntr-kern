@@ -444,3 +444,38 @@ describe("offset-cubic: U^1 integration sweep", () => {
     });
   }
 });
+
+// Emission slides the on-curve along its own edge and leaves the handles where
+// they are, so the drawn handle is longer than the constructed one by that
+// slide. A hand may put a handle exactly on its point, and the point it must
+// reach is the DRAWN one. Bounded at the constructed zero instead, the handle
+// stopped a whole slide short: on the `e` of skeletron, a 50-unit nudge held
+// the right handle of skeleton point 3 at 0.82 tension however far it was
+// dragged. This is the floor's half of the slide rule the ceiling already has.
+describe("offset-cubic: the on-curve slide moves the authored floor", () => {
+  const slidRequest = (slide) => ({
+    ...authoredBaseRequest(),
+    endOnCurveSlide: slide,
+    endAdjustment: { x: 400, y: 0, detached: false },
+  });
+
+  it("lets an attached handle reach the drawn on-curve", () => {
+    const slide = -50;
+    const result = offsetCubicSide(slidRequest(slide));
+    expect(result.endLength).to.be.closeTo(slide, 1e-9);
+  });
+
+  it("lets a detached handle reach the drawn on-curve", () => {
+    const slide = -50;
+    const result = offsetCubicSide({
+      ...slidRequest(slide),
+      endAdjustment: { x: 400, y: 0, detached: true },
+    });
+    expect(result.endLength).to.be.closeTo(slide, 1e-9);
+  });
+
+  it("keeps the floor at zero where nothing slides", () => {
+    const result = offsetCubicSide(slidRequest(0));
+    expect(result.endLength).to.equal(0);
+  });
+});

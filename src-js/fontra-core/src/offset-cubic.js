@@ -5,7 +5,10 @@ import { shiftTensionsToMean } from "./tunni-calculations.js";
 // generator's own answer: below it the solved handle stops holding still and
 // starts riding along with the rib end. A hand on the handle outranks that —
 // an authored offset, a detached placement and a pinned curvature may all put a
-// handle exactly on its point, because zero is a legal setting.
+// handle exactly on its point, because zero is a legal setting. The point it
+// lands on is the DRAWN one, so where emission slides the on-curve out from
+// under the handle, that hand floor sits a slide below the constructed zero:
+// `handFloor*Tension` in the domain.
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(value, minimum), maximum);
 }
@@ -30,12 +33,12 @@ function constrain(handles, domain, { startByHand = false, endByHand = false } =
     {
       start: clamp(
         tensions.start,
-        startByHand ? 0 : domain.minStartTension,
+        startByHand ? domain.handFloorStartTension : domain.minStartTension,
         domain.maxStartTension
       ),
       end: clamp(
         tensions.end,
-        endByHand ? 0 : domain.minEndTension,
+        endByHand ? domain.handFloorEndTension : domain.minEndTension,
         domain.maxEndTension
       ),
     },
@@ -133,13 +136,20 @@ function applyPinnedTension(handles, pinnedTension, domain) {
   );
 }
 
-function applyDetachedHandles(handles, request) {
+function applyDetachedHandles(handles, request, domain) {
+  const floor = (tension, reach) => Math.min(tension * reach, 0);
   return {
     startLength: request.startAdjustment?.detached
-      ? Math.max(placedLength(request.q0, request.u0, request.startAdjustment), 0)
+      ? Math.max(
+          placedLength(request.q0, request.u0, request.startAdjustment),
+          floor(domain.handFloorStartTension, domain.startReach)
+        )
       : handles.startLength,
     endLength: request.endAdjustment?.detached
-      ? Math.max(placedLength(request.q3, request.u1, request.endAdjustment), 0)
+      ? Math.max(
+          placedLength(request.q3, request.u1, request.endAdjustment),
+          floor(domain.handFloorEndTension, domain.endReach)
+        )
       : handles.endLength,
   };
 }
@@ -148,6 +158,8 @@ export function offsetCubicSide(request) {
   const domain = buildHandleDomain(request.q0, request.q3, request.u0, request.u1, {
     startNudge: request.startHandleNudge || 0,
     endNudge: request.endHandleNudge || 0,
+    startOnCurveSlide: request.startOnCurveSlide || 0,
+    endOnCurveSlide: request.endOnCurveSlide || 0,
   });
   const natural = solveNaturalHandles({
     skeletonControlPoints: [request.p0, request.p1, request.p2, request.p3],
@@ -163,7 +175,7 @@ export function offsetCubicSide(request) {
   // segment's tension is. Running the detached placement last instead made it
   // overwrite the pin, so the gizmo did nothing on a detached handle.
   const attached = applyAttachedAdjustments(natural, request, domain);
-  const placed = applyDetachedHandles(attached, request);
+  const placed = applyDetachedHandles(attached, request, domain);
   // How much of each attached adjustment survived the ceiling. A stored offset
   // is a request, and the clamp above can refuse most of it; a caller that
   // keeps the request has to be able to see what was granted, or the store

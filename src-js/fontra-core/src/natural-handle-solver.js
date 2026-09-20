@@ -156,7 +156,7 @@ export function buildHandleDomain(
   endPoint,
   startDirection,
   endDirection,
-  { startNudge = 0, endNudge = 0 } = {}
+  { startNudge = 0, endNudge = 0, startOnCurveSlide = 0, endOnCurveSlide = 0 } = {}
 ) {
   const chordLength = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
   const floor = Math.max(chordLength * REACH_FLOOR_RATIO, MIN_HANDLE_LENGTH);
@@ -189,8 +189,23 @@ export function buildHandleDomain(
   );
   const uncertainty =
     sinTurn > EPSILON ? GRID_UNCERTAINTY * (1 / sinTurn - 1) : Infinity;
-  const projectedDomain = (anchor, direction, nudge) => {
-    if (!tunni) return { reach: cap, maxTension: 1, intersection: 1 };
+  // The shortest a hand may make this handle, as a length. Emission slides the
+  // on-curve along its own edge and leaves the handle where it is, so the drawn
+  // handle is longer than the constructed one by the difference between the two
+  // slides. Zero is a legal setting, and the point a handle collapses onto is
+  // the drawn one, so the constructed floor sits a slide below zero. This is the
+  // floor's half of the rule the ceiling states below: a bound on the drawn
+  // curve is the only kind the designer can see.
+  const handFloor = (onCurveSlide, nudge) => onCurveSlide - nudge;
+  const projectedDomain = (anchor, direction, nudge, onCurveSlide) => {
+    if (!tunni) {
+      return {
+        reach: cap,
+        maxTension: 1,
+        intersection: 1,
+        floor: handFloor(onCurveSlide, nudge) / cap,
+      };
+    }
     const realReach = dot(subtract(tunni, anchor), direction);
     // A crossing nearer than the grid can account for is the grid's answer and
     // not the drawing's, so it is refused the same way an exactly parallel pair
@@ -202,7 +217,12 @@ export function buildHandleDomain(
     // handle that governs it, until the other handle moved far enough to open
     // the angle again.
     if (!(realReach > Math.max(EPSILON, uncertainty))) {
-      return { reach: cap, maxTension: 1, intersection: 1 };
+      return {
+        reach: cap,
+        maxTension: 1,
+        intersection: 1,
+        floor: handFloor(onCurveSlide, nudge) / cap,
+      };
     }
     // The scale stays the geometry's own, so the coordinate system every stage
     // works in does not move when a nudge changes. Only the ceiling shifts.
@@ -225,10 +245,16 @@ export function buildHandleDomain(
       reach,
       intersection,
       maxTension: drawnReach > EPSILON ? Math.min(cap, drawnReach) / reach : 0,
+      floor: handFloor(onCurveSlide, nudge) / reach,
     };
   };
-  const start = projectedDomain(startPoint, startDirection, startNudge);
-  const end = projectedDomain(endPoint, endDirection, endNudge);
+  const start = projectedDomain(
+    startPoint,
+    startDirection,
+    startNudge,
+    startOnCurveSlide
+  );
+  const end = projectedDomain(endPoint, endDirection, endNudge, endOnCurveSlide);
   return {
     startReach: start.reach,
     endReach: end.reach,
@@ -239,6 +265,8 @@ export function buildHandleDomain(
     maxEndTension: end.maxTension,
     intersectionStartTension: start.intersection,
     intersectionEndTension: end.intersection,
+    handFloorStartTension: Math.min(start.floor, start.maxTension),
+    handFloorEndTension: Math.min(end.floor, end.maxTension),
   };
 }
 

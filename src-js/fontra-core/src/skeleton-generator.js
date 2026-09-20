@@ -1037,15 +1037,23 @@ function enforceSmoothColinearity(points, isClosed, options = {}) {
       // handles, where a unit of rounding is a large angle.
       const lockedAxis = sharedLockedAxis(prevPoint, nextPoint);
       if (lockedAxis && lenIn >= 0.001 && lenOut >= 0.001) {
+        // Keep each handle on the side of the anchor it was constructed on. The
+        // anchor is the un-nudged rib point, so a handle whose on-curve slid out
+        // from under it can legitimately sit BEHIND that anchor while still
+        // standing ahead of the on-curve the designer sees. Placing it by its
+        // length alone reflects it through the anchor instead, which turned a
+        // drag toward the point into a jump the other way.
+        const signIn = vector.dotVector(vecIn, lockedAxis) < 0 ? -1 : 1;
+        const signOut = vector.dotVector(vecOut, lockedAxis) > 0 ? -1 : 1;
         points[prevIdx] = {
           ...prevPoint,
-          x: smoothAnchor.x + lockedAxis.x * lenIn,
-          y: smoothAnchor.y + lockedAxis.y * lenIn,
+          x: smoothAnchor.x + lockedAxis.x * lenIn * signIn,
+          y: smoothAnchor.y + lockedAxis.y * lenIn * signIn,
         };
         points[nextIdx] = {
           ...nextPoint,
-          x: smoothAnchor.x - lockedAxis.x * lenOut,
-          y: smoothAnchor.y - lockedAxis.y * lenOut,
+          x: smoothAnchor.x - lockedAxis.x * lenOut * signOut,
+          y: smoothAnchor.y - lockedAxis.y * lenOut * signOut,
         };
         continue;
       }
@@ -3990,8 +3998,13 @@ function generateOffsetPointsForSegment(
         const translated = translateRibPoint(anchor, displacement);
         return { x: translated.x - anchor.x, y: translated.y - anchor.y };
       };
-      // How far emission will slide each handle along its own direction. The
-      // ceiling is a statement about the drawn curve, so it has to know.
+      // How far emission will slide each handle, and each on-curve, along the
+      // handle's own direction. Every bound here is a statement about the drawn
+      // curve, so it has to know both. The ceiling reads the handle's slide
+      // alone, because an on-curve slide carries the drawn end and the drawn
+      // tangent intersection the same way and cancels. The floor reads their
+      // difference, which is exactly the length the on-curve slide adds to the
+      // drawn handle.
       const alongDirection = (anchor, displacement, direction) => {
         const emitted = emittedNudge(anchor, displacement);
         return emitted.x * direction.x + emitted.y * direction.y;
@@ -4000,6 +4013,8 @@ function generateOffsetPointsForSegment(
         offsetCubicSide({
           startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
           endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
+          startOnCurveSlide: alongDirection(fixedStart, startNudge, startDir),
+          endOnCurveSlide: alongDirection(fixedEnd, endNudge, endDir),
           p0: segment.startPoint,
           p1: controls[0],
           p2: controls[controls.length - 1],
