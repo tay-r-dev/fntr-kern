@@ -463,57 +463,7 @@ export function canMergeCubicPieces(originalPieces, tolerance, options = {}) {
 // end on rejection, emit the first original piece when nothing merges.
 // Returns the replacement list of pieces (cubic piece records).
 export function simplifyRun(run, options = {}) {
-  const pieces = run.pieces;
-  const tolerance = options.tolerance ?? 0.5;
-  const result = [];
-  let start = 0;
-  while (start < pieces.length) {
-    let merged = false;
-    for (let end = pieces.length; end > start + 1; end--) {
-      const candidatePieces = pieces.slice(start, end);
-      const first = candidatePieces[0].points;
-      const last = candidatePieces.at(-1).points;
-      const startTangent = {
-        x: first[1].x - first[0].x,
-        y: first[1].y - first[0].y,
-      };
-      const endTangent = {
-        x: last[3].x - last[2].x,
-        y: last[3].y - last[2].y,
-      };
-      const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
-      if (!candidate) {
-        continue;
-      }
-      const maxTangentAngle =
-        options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE;
-      if (
-        maxCubicDeviation(candidatePieces, candidate) <= tolerance &&
-        tangentAngleDegrees(candidate, candidatePieces) <= maxTangentAngle
-      ) {
-        result.push({
-          kind: "cubic",
-          mergeable: true,
-          points: candidate,
-          startKey: candidatePieces[0].startKey,
-          endKey: candidatePieces.at(-1).endKey,
-          startPointIndex: candidatePieces[0].startPointIndex,
-          endPointIndex: candidatePieces.at(-1).endPointIndex,
-          sourceSegmentIndex: candidatePieces[0].sourceSegmentIndex,
-          merged: true,
-          mergedPieces: candidatePieces,
-        });
-        start = end;
-        merged = true;
-        break;
-      }
-    }
-    if (!merged) {
-      result.push(pieces[start]);
-      start++;
-    }
-  }
-  return result;
+  return applyRunPlan(run, planRunMerges(run, options), options);
 }
 
 function roundCoordinate(value) {
@@ -653,4 +603,178 @@ export function simplifyContour(contour, options = {}) {
     return null;
   }
   return rebuildSimplifiedContour(analysis, finalPieces);
+}
+
+// Decide the merge boundaries for one run: a covering list of [start, end)
+// spans (relative piece indices). Spans longer than one piece are accepted
+// merges; single-piece spans are copies. Greedy, longest-first.
+export function planRunMerges(run, options = {}) {
+  const pieces = run.pieces;
+  const tolerance = options.tolerance ?? 0.5;
+  const maxTangentAngle = options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE;
+  const spans = [];
+  let start = 0;
+  while (start < pieces.length) {
+    let acceptedEnd = start + 1;
+    for (let end = pieces.length; end > start + 1; end--) {
+      const candidatePieces = pieces.slice(start, end);
+      const first = candidatePieces[0].points;
+      const last = candidatePieces.at(-1).points;
+      const startTangent = {
+        x: first[1].x - first[0].x,
+        y: first[1].y - first[0].y,
+      };
+      const endTangent = {
+        x: last[3].x - last[2].x,
+        y: last[3].y - last[2].y,
+      };
+      const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
+      if (
+        candidate &&
+        maxCubicDeviation(candidatePieces, candidate) <= tolerance &&
+        tangentAngleDegrees(candidate, candidatePieces) <= maxTangentAngle
+      ) {
+        acceptedEnd = end;
+        break;
+      }
+    }
+    spans.push([start, acceptedEnd]);
+    start = acceptedEnd;
+  }
+  return spans;
+}
+
+// Apply a merge plan to a run, fitting each accepted span to this contour's
+// own geometry.
+export function applyRunPlan(run, spans, options = {}) {
+  const pieces = run.pieces;
+  const result = [];
+  for (const [start, end] of spans) {
+    if (end - start === 1) {
+      result.push(pieces[start]);
+      continue;
+    }
+    const candidatePieces = pieces.slice(start, end);
+    const first = candidatePieces[0].points;
+    const last = candidatePieces.at(-1).points;
+    const startTangent = {
+      x: first[1].x - first[0].x,
+      y: first[1].y - first[0].y,
+    };
+    const endTangent = {
+      x: last[3].x - last[2].x,
+      y: last[3].y - last[2].y,
+    };
+    const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
+    if (!candidate) {
+      result.push(...candidatePieces);
+      continue;
+    }
+    result.push({
+      kind: "cubic",
+      mergeable: true,
+      points: candidate,
+      startKey: candidatePieces[0].startKey,
+      endKey: candidatePieces.at(-1).endKey,
+      startPointIndex: candidatePieces[0].startPointIndex,
+      endPointIndex: candidatePieces.at(-1).endPointIndex,
+      sourceSegmentIndex: candidatePieces[0].sourceSegmentIndex,
+      merged: true,
+      mergedPieces: candidatePieces,
+    });
+  }
+  return result;
+}
+
+// Simplify the same contour across several masters. `contours` is an array
+// of unpacked contours ({points, isClosed}), one per compatible master.
+// A run is merged only when every master accepts the same merge boundaries;
+// otherwise that run is left unchanged in every master. Returns an array of
+// new contours (same order), or null when the masters are structurally
+// incompatible or nothing can be merged.
+export function simplifyContourCompatible(contours, options = {}) {
+  if (!contours.length) {
+    return null;
+  }
+  const analyses = contours.map((contour) => {
+    const analysis = classifySimplifyContour(contour, options);
+    analysis.contour = contour;
+    return analysis;
+  });
+  // Structural compatibility: identical piece kinds and run spans.
+  const reference = analyses[0];
+  for (const analysis of analyses.slice(1)) {
+    if (
+      analysis.pieces.length !== reference.pieces.length ||
+      analysis.pieces.some(
+        (piece, i) => piece.kind !== reference.pieces[i].kind
+      )
+    ) {
+      return null;
+    }
+  }
+
+  const runsPerMaster = analyses.map(buildSimplifyRuns);
+  const referenceRuns = runsPerMaster[0];
+  const runSpanKey = (run) =>
+    `${run.pieces[0].sourceSegmentIndex}:${run.pieces.length}`;
+  for (const runs of runsPerMaster.slice(1)) {
+    if (
+      runs.length !== referenceRuns.length ||
+      runs.some((run, i) => runSpanKey(run) !== runSpanKey(referenceRuns[i]))
+    ) {
+      return null;
+    }
+  }
+
+  // Shared merge plans: a run is simplified only when every master plans the
+  // identical boundaries.
+  const sharedPlans = referenceRuns.map((referenceRun, runIndex) => {
+    const plans = runsPerMaster.map((runs) =>
+      planRunMerges(runs[runIndex], options)
+    );
+    const referencePlan = plans[0];
+    const allAgree = plans.every(
+      (plan) =>
+        plan.length === referencePlan.length &&
+        plan.every(
+          ([s, e], i) =>
+            s === referencePlan[i][0] && e === referencePlan[i][1]
+        )
+    );
+    if (allAgree) {
+      return referencePlan;
+    }
+    // Disagreement: leave the run unchanged in every master.
+    return referenceRun.pieces.map((_, i) => [i, i + 1]);
+  });
+
+  let mergedAny = false;
+  const results = analyses.map((analysis, masterIndex) => {
+    const runs = runsPerMaster[masterIndex];
+    const runByFirstPiece = new Map();
+    for (const [runIndex, run] of runs.entries()) {
+      runByFirstPiece.set(run.pieces[0], { run, runIndex });
+    }
+    const finalPieces = [];
+    for (let i = 0; i < analysis.pieces.length; i++) {
+      const piece = analysis.pieces[i];
+      const entry = runByFirstPiece.get(piece);
+      if (entry) {
+        const simplifiedRun = applyRunPlan(
+          entry.run,
+          sharedPlans[entry.runIndex],
+          options
+        );
+        mergedAny = mergedAny || simplifiedRun.some((p) => p.merged);
+        finalPieces.push(...simplifiedRun);
+        i += entry.run.pieces.length - 1;
+      } else {
+        finalPieces.push(piece);
+      }
+    }
+    return rebuildSimplifiedContour(analysis, finalPieces);
+  });
+
+  return mergedAny ? results : null;
 }

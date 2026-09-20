@@ -527,3 +527,63 @@ describe("simplifyContour / rebuildSimplifiedContour", () => {
     expect(simplifyContour(cornered, { tolerance: 1.0 })).to.equal(null);
   });
 });
+
+import { simplifyContourCompatible } from "@fontra/core/path-simplification.js";
+
+function scaleContour(contour, factor) {
+  return {
+    ...contour,
+    points: contour.points.map((p) => ({
+      ...p,
+      x: p.x * factor,
+      y: p.y * factor,
+    })),
+  };
+}
+
+describe("simplifyContourCompatible (multi-master)", () => {
+  it("two compatible masters receive identical merge boundaries", () => {
+    const masterA = lensContour;
+    const masterB = scaleContour(lensContour, 0.8);
+    const results = simplifyContourCompatible([masterA, masterB], {
+      tolerance: 1.0,
+    });
+    expect(results).to.not.equal(null);
+    expect(results.length).to.equal(2);
+    // Both masters merged to the same topology: 2 cubics, 2 on-curve points.
+    for (const result of results) {
+      const onCurves = result.points.filter((p) => !p.type);
+      expect(onCurves.length).to.equal(2);
+    }
+    // Point types sequence identical across masters.
+    const types = results.map((r) => r.points.map((p) => p.type ?? "on"));
+    expect(types[0]).to.deep.equal(types[1]);
+  });
+
+  it("incompatible masters remain unchanged for the disagreeing run", () => {
+    // Master B's first arc is replaced by two cubics joined at an angle:
+    // it cannot merge, so no master may merge that run.
+    const kinked = {
+      isClosed: true,
+      points: [
+        { x: 0, y: 0, smooth: true },
+        { x: 30, y: 0, type: "cubic" },
+        { x: 70, y: 0, type: "cubic" },
+        { x: 100, y: 60, smooth: true },
+        { x: 135, y: 60, type: "cubic" },
+        { x: 170, y: 40, type: "cubic" },
+        { x: 200, y: 0, smooth: true },
+        { x: 170, y: -40, type: "cubic" },
+        { x: 135, y: -60, type: "cubic" },
+        { x: 100, y: -60, smooth: true },
+        { x: 65, y: -60, type: "cubic" },
+        { x: 30, y: -40, type: "cubic" },
+      ],
+    };
+    const results = simplifyContourCompatible([lensContour, kinked], {
+      tolerance: 1.0,
+    });
+    // Nothing is written when masters disagree.
+    expect(results).to.equal(null);
+  });
+});
