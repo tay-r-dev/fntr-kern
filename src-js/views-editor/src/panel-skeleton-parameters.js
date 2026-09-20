@@ -596,7 +596,14 @@ export default class SkeletonParametersPanel {
           this._undo("set-insertion-width-mode")
         )
     );
-    this.insertionWidthRow.append(this.insertionAbsoluteButton);
+    // In an icon tray, not bare. An icon-button is an inline element with no
+    // size of its own -- its inner button fills 100 per cent of a host that is
+    // zero high -- so one dropped straight into a flex row draws nothing at all.
+    // Every icon row in this app wraps its buttons for exactly this reason, and
+    // the rule that sizes them comes with the class.
+    this.insertionWidthRow.append(
+      html.div({ class: "selection-row-group-icons" }, [this.insertionAbsoluteButton])
+    );
 
     // Tied ribs reflects the selection: greyed where no point has a straight
     // to tie across, and on, off or mixed over the points that do.
