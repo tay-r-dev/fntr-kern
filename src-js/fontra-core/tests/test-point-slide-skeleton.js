@@ -124,6 +124,24 @@ describe("point slide on a skeleton centerline", () => {
     expect(JSON.stringify(layer.path)).to.not.equal(outlineBefore);
   });
 
+  it("refits the far segment as the point slides", () => {
+    const layer = makeLayer();
+    const handleOf = (id) => {
+      const point = contourOf(layer).points.find((entry) => entry.id === id);
+      return { x: point.x, y: point.y };
+    };
+    // The segment on the far side of the slid point, before and after.
+    const before = [handleOf(21), handleOf(22)];
+    slide(layer, { x: -70, y: -30 });
+    const after = [handleOf(21), handleOf(22)];
+    // It has to follow the slide, or the far half of the curve tears away
+    // from the point that moved.
+    const moved = before.map((point, i) =>
+      Math.hypot(after[i].x - point.x, after[i].y - point.y)
+    );
+    expect(Math.max(...moved)).to.be.greaterThan(1);
+  });
+
   it("carries insertion points with the slide", () => {
     const layer = makeLayer();
     const onKept = insertionPosition(layer, 50);

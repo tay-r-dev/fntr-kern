@@ -2586,10 +2586,17 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   // Generated geometry is emitted on whole units, the same as every other
   // construction here. Cutting a side at an insertion is the one place that
   // did not round, so an insertion left fractional points behind on an
-  // outline where nothing else has them. Points already whole are unchanged.
-  for (const point of points) {
-    point.x = Math.round(point.x);
-    point.y = Math.round(point.y);
+  // outline where nothing else has them.
+  //
+  // Only the points the cut itself made, and each is replaced rather than
+  // written to: the split returns a fresh array whose untouched entries are
+  // still the caller's own point objects, so writing to them would round the
+  // whole side in place, under the passes that run after this one.
+  for (const index of [at - 2, at - 1, at, at + 1, at + 2]) {
+    const point = points[index];
+    if (point) {
+      points[index] = { ...point, x: Math.round(point.x), y: Math.round(point.y) };
+    }
   }
   // The emitted on-curve and its two neighbouring handles are the insertion
   // point's own geometry. `insertion: true` says which list a reader resolving
