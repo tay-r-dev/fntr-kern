@@ -498,7 +498,8 @@ function oversplit(contour, t = 0.4) {
   return { points, isClosed: contour.isClosed };
 }
 
-// A circle of radius 100, drawn as four cubics meeting at the four extrema.
+// A circle of radius 100, drawn as four cubics meeting at the four extrema,
+// on whole units the way a real drawing is.
 function circleContour() {
   const radius = 100;
   const handle = 0.5522847498 * radius;
@@ -511,12 +512,17 @@ function circleContour() {
   const points = [];
   for (const [i, [x, y]] of onCurves.entries()) {
     const [nextX, nextY] = onCurves[(i + 1) % onCurves.length];
+    const round = (value) => Math.round(value);
     points.push(
       { x, y, smooth: true },
-      { x: x - (y / radius) * handle, y: y + (x / radius) * handle, type: "cubic" },
       {
-        x: nextX + (nextY / radius) * handle,
-        y: nextY - (nextX / radius) * handle,
+        x: round(x - (y / radius) * handle),
+        y: round(y + (x / radius) * handle),
+        type: "cubic",
+      },
+      {
+        x: round(nextX + (nextY / radius) * handle),
+        y: round(nextY - (nextX / radius) * handle),
         type: "cubic",
       }
     );
@@ -544,6 +550,48 @@ function signedArea(contour) {
   }
   return area / 2;
 }
+
+describe("fitCubicToSpan on a long piece and a sliver", () => {
+  // Straight off a real drawing: the run that merges most of one segment with
+  // the short leftover an extremum split off the next. Its error surface has
+  // a narrow valley, and a fit that walks downhill from a single guess steps
+  // over it and settles on wildly uneven handles that draw a visibly worse
+  // curve.
+  const pieces = [
+    {
+      points: [
+        { x: 167, y: 248 },
+        { x: 167, y: 186 },
+        { x: 205, y: 149 },
+        { x: 256, y: 144 },
+      ],
+    },
+    {
+      points: [
+        { x: 256, y: 144 },
+        { x: 260.695, y: 143.448 },
+        { x: 265.399, y: 143.175 },
+        { x: 270.082, y: 143.175 },
+      ],
+    },
+  ];
+
+  it("finds the even-handled fit, not the lopsided one", () => {
+    const first = pieces[0].points;
+    const last = pieces.at(-1).points;
+    const fitted = fitCubicToSpan(
+      pieces,
+      { x: first[1].x - first[0].x, y: first[1].y - first[0].y },
+      { x: last[3].x - last[2].x, y: last[3].y - last[2].y }
+    );
+    const start = Math.hypot(fitted[1].x - first[0].x, fitted[1].y - first[0].y);
+    const end = Math.hypot(fitted[2].x - last[3].x, fitted[2].y - last[3].y);
+    // The lopsided answer this used to return was 86 against 37.
+    expect(Math.max(start, end) / Math.min(start, end)).to.be.lessThan(1.5);
+    // And it really is the better fit, not merely the prettier one.
+    expect(maxCubicDeviation(pieces, fitted)).to.be.lessThan(0.2);
+  });
+});
 
 describe("simplifyContour / rebuildSimplifiedContour", () => {
   it("keeps both endpoints of an open contour unchanged", () => {

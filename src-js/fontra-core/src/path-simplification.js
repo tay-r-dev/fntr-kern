@@ -186,6 +186,19 @@ function isAxisAligned(tangent) {
   );
 }
 
+// The coarse grid of starting handle lengths, as multiples of a third of the
+// run's chord, and how many of its best cells are refined.
+const FIT_GRID_STEPS = 16;
+const FIT_REFINED_STARTS = 3;
+
+function fitGridMultiplier(index) {
+  return 0.15 + (3.0 - 0.15) * (index / (FIT_GRID_STEPS - 1));
+}
+
+// Two fits whose largest distance differs by less than this are as good as
+// each other, and the evener one wins.
+const FIT_ERROR_TIE = 0.05;
+
 // About a third of a degree off axis still counts as on axis.
 const AXIS_ALIGNED_RATIO = 0.006;
 
@@ -390,13 +403,18 @@ function distanceToSegment(p, a, b) {
 // count if sub-0.01-unit tolerances ever need to be trusted.
 const CANDIDATE_POLYLINE_STEPS = 64;
 
-function candidatePolyline(candidate) {
+function candidatePolyline(candidate, steps = CANDIDATE_POLYLINE_STEPS) {
   const polyline = [];
-  for (let i = 0; i <= CANDIDATE_POLYLINE_STEPS; i++) {
-    polyline.push(cubicPoint(candidate, i / CANDIDATE_POLYLINE_STEPS));
+  for (let i = 0; i <= steps; i++) {
+    polyline.push(cubicPoint(candidate, i / steps));
   }
   return polyline;
 }
+
+// While searching, the two curves are compared at a quarter of the detail.
+// The search only needs to know which of two candidates is better, and the
+// winner is measured again at full detail before it is accepted.
+const SEARCH_POLYLINE_STEPS = 16;
 
 // Measure the largest distance between a run of original cubic pieces and a
 // candidate replacement cubic. The two curves are not parameterized alike --
@@ -410,7 +428,19 @@ function candidatePolyline(candidate) {
 // search skips it for speed; acceptance always uses it.
 export function maxCubicDeviation(originalPieces, candidate, options = {}) {
   const reverse = options.reverse ?? true;
-  const polyline = candidatePolyline(candidate);
+  return deviationAgainst(
+    originalPieces,
+    candidate,
+    reverse ? (options.originalPolyline ?? piecesPolyline(originalPieces)) : null
+  );
+}
+
+// `originalPolyline` is the original run drawn out as a polyline, or null to
+// skip the reverse direction. The caller passes it in when it is about to
+// measure many candidates against the same run: building it per candidate
+// costs more than everything else here put together.
+function deviationAgainst(originalPieces, candidate, originalPolyline, steps) {
+  const polyline = candidatePolyline(candidate, steps);
   let maxDistance = 0;
   for (const piece of originalPieces) {
     for (const t of SAMPLE_TS) {
@@ -420,8 +450,7 @@ export function maxCubicDeviation(originalPieces, candidate, options = {}) {
       );
     }
   }
-  if (reverse) {
-    const originalPolyline = piecesPolyline(originalPieces);
+  if (originalPolyline) {
     for (const point of polyline) {
       maxDistance = Math.max(maxDistance, nearestDistance(point, originalPolyline));
     }
@@ -437,11 +466,11 @@ function nearestDistance(point, polyline) {
   return nearest;
 }
 
-function piecesPolyline(pieces) {
+function piecesPolyline(pieces, steps = CANDIDATE_POLYLINE_STEPS) {
   const polyline = [];
   for (const piece of pieces) {
-    for (let i = 0; i <= CANDIDATE_POLYLINE_STEPS; i++) {
-      polyline.push(cubicPoint(piece.points, i / CANDIDATE_POLYLINE_STEPS));
+    for (let i = 0; i <= steps; i++) {
+      polyline.push(cubicPoint(piece.points, i / steps));
     }
   }
   return polyline;
@@ -516,7 +545,79 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
     p3,
   ];
 
-  // Starting guess: fold the run back into one cubic, pair by pair.
+  // The full two-way measure, the same one acceptance uses. A one-way
+  // measure is blind to a candidate that bulges away from the original while
+  // every sample of the original still lies near some part of it, and the
+  // search walks straight into exactly that: lopsided handles that score well
+  // one way and badly the other.
+  const searchPolyline = piecesPolyline(originalPieces, SEARCH_POLYLINE_STEPS);
+  const measure = (alphaL, alphaR) =>
+    deviationAgainst(
+      originalPieces,
+      buildCandidate(alphaL, alphaR),
+      searchPolyline,
+      SEARCH_POLYLINE_STEPS
+    );
+
+  // Pattern search from one starting pair: halve the step whenever no
+  // neighbour improves.
+  const search = (start) => {
+    let best = start;
+    let bestError = measure(best[0], best[1]);
+    let step = Math.max(best[0], best[1]) / 4;
+    const minStep = base * 1e-6;
+    // ponytail: the round cap also bounds a search that keeps improving by
+    // vanishing amounts; raise it only if fits visibly stop short.
+    for (let round = 0; round < 200 && step > minStep; round++) {
+      let improved = false;
+      for (const [dL, dR] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+      ]) {
+        const alphaL = best[0] + dL * step;
+        const alphaR = best[1] + dR * step;
+        if (alphaL <= 0 || alphaR <= 0) {
+          continue;
+        }
+        const error = measure(alphaL, alphaR);
+        if (error < bestError) {
+          bestError = error;
+          best = [alphaL, alphaR];
+          improved = true;
+        }
+      }
+      if (!improved) {
+        step /= 2;
+      }
+    }
+    return { lengths: best, error: bestError };
+  };
+
+  // Where to start from. The error surface has narrow valleys: on a real
+  // contour 63 and 63 scores 0.10 while 60 and 60 scores 1.62, so a search
+  // that walks downhill from one guess steps straight over the good answer.
+  // A coarse grid finds which valleys exist, and the best few are refined.
+  //
+  // Folding the run back into a single cubic, pair by pair, is added as well:
+  // it is exact when the run really was one curve, which no grid would land
+  // on by chance.
+  const starts = [];
+  const gridErrors = [];
+  for (let i = 0; i < FIT_GRID_STEPS; i++) {
+    for (let j = 0; j < FIT_GRID_STEPS; j++) {
+      const lengths = [base * fitGridMultiplier(i), base * fitGridMultiplier(j)];
+      gridErrors.push({ lengths, error: measure(lengths[0], lengths[1]) });
+    }
+  }
+  gridErrors.sort((a, b) => a.error - b.error);
+  starts.push(...gridErrors.slice(0, FIT_REFINED_STARTS).map((entry) => entry.lengths));
+
   let folded = originalPieces[0].points;
   for (const piece of originalPieces.slice(1)) {
     const t = estimateSplitParameter(folded, piece.points);
@@ -526,8 +627,6 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
     }
     folded = unsplitCubic(folded, piece.points, t);
   }
-
-  let best = [base, base];
   if (folded) {
     const alphaL = Math.hypot(folded[1].x - p0.x, folded[1].y - p0.y);
     const alphaR = Math.hypot(folded[2].x - p3.x, folded[2].y - p3.y);
@@ -537,48 +636,28 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
       Number.isFinite(alphaL) &&
       Number.isFinite(alphaR)
     ) {
-      best = [alphaL, alphaR];
+      starts.push([alphaL, alphaR]);
     }
   }
-  const measure = (alphaL, alphaR) =>
-    maxCubicDeviation(originalPieces, buildCandidate(alphaL, alphaR), {
-      reverse: false,
-    });
-  let bestError = measure(best[0], best[1]);
 
-  // Pattern search: halve the step whenever no neighbour improves.
-  let step = Math.max(best[0], best[1]) / 4;
-  const minStep = base * 1e-6;
-  // ponytail: the round cap also bounds a search that keeps improving by
-  // vanishing amounts; raise it only if fits visibly stop short.
-  for (let round = 0; round < 200 && step > minStep; round++) {
-    let improved = false;
-    for (const [dL, dR] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-      [1, 1],
-      [1, -1],
-      [-1, 1],
-      [-1, -1],
-    ]) {
-      const alphaL = best[0] + dL * step;
-      const alphaR = best[1] + dR * step;
-      if (alphaL <= 0 || alphaR <= 0) {
-        continue;
-      }
-      const error = measure(alphaL, alphaR);
-      if (error < bestError) {
-        bestError = error;
-        best = [alphaL, alphaR];
-        improved = true;
-      }
-    }
-    if (!improved) {
-      step /= 2;
-    }
-  }
+  const results = starts.map(search).map((result) => ({
+    ...result,
+    // Judged again at full detail: the coarse search only ranked candidates.
+    error: maxCubicDeviation(
+      originalPieces,
+      buildCandidate(result.lengths[0], result.lengths[1])
+    ),
+  }));
+  const lowestError = Math.min(...results.map((result) => result.error));
+  // The objective is the LARGEST distance, and it has a flat floor: many pairs
+  // of handle lengths score within a hair of each other, one of them wildly
+  // lopsided. Among those that fit equally well, take the evenest pair, which
+  // is the one that draws the curve a designer would have drawn.
+  const imbalance = ({ lengths: [left, right] }) =>
+    Math.abs(left - right) / (left + right);
+  const best = results
+    .filter((result) => result.error <= lowestError + FIT_ERROR_TIE)
+    .sort((a, b) => imbalance(a) - imbalance(b))[0].lengths;
 
   return buildCandidate(best[0], best[1]);
 }
@@ -633,8 +712,11 @@ export function simplifyRun(run, options = {}) {
   return applyRunPlan(run, planRunMerges(run, options), options);
 }
 
+// Points live on whole units, the same as everywhere else in the editor. The
+// fitting above works in floating point throughout; this is the one place the
+// result is written back, which is where it lands on the grid.
 function roundCoordinate(value) {
-  return Math.round(value * 1000) / 1000;
+  return Math.round(value);
 }
 
 function directionBetween(a, b) {
