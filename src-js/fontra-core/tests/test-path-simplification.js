@@ -7,6 +7,7 @@ import {
   cubicDerivative,
   cubicExtremaParameters,
   cubicPoint,
+  insertExtremaPoints,
   splitCubic,
 } from "@fontra/core/path-simplification.js";
 
@@ -287,16 +288,18 @@ describe("classifySimplifyContour", () => {
 
 describe("buildSimplifyRuns", () => {
   it("merges consecutive cubic pieces between protected points into one run", () => {
+    // The joint runs diagonally: a joint on a flat top or side would be an
+    // extremum, and extrema are protected, which would split the run in two.
     const contour = {
       isClosed: false,
       points: [
         { x: 0, y: 0 },
         { x: 10, y: 10, type: "cubic" },
-        { x: 20, y: 10, type: "cubic" },
-        { x: 30, y: 10, smooth: true },
-        { x: 40, y: 10, type: "cubic" },
-        { x: 50, y: 10, type: "cubic" },
-        { x: 60, y: 0 },
+        { x: 20, y: 15, type: "cubic" },
+        { x: 30, y: 20, smooth: true },
+        { x: 40, y: 25, type: "cubic" },
+        { x: 50, y: 30, type: "cubic" },
+        { x: 60, y: 40 },
       ],
     };
     const analysis = classifySimplifyContour(contour);
@@ -470,6 +473,57 @@ const lensContour = {
   ],
 };
 
+// Cut every cubic segment of a contour in two, at a parameter that is not an
+// extremum. The shape is unchanged; the extra on-curve points are exactly the
+// redundant ones Simplify is meant to remove.
+function oversplit(contour, t = 0.4) {
+  const points = [];
+  for (const piece of contourToCubicPieces(contour)) {
+    points.push(contour.points[piece.startPointIndex]);
+    if (piece.kind !== "cubic") {
+      continue;
+    }
+    const { left, right } = splitCubic(piece.points, t);
+    points.push(
+      { ...left[1], type: "cubic" },
+      { ...left[2], type: "cubic" },
+      { x: left[3].x, y: left[3].y, smooth: true },
+      { ...right[1], type: "cubic" },
+      { ...right[2], type: "cubic" }
+    );
+  }
+  if (!contour.isClosed) {
+    points.push(contour.points.at(-1));
+  }
+  return { points, isClosed: contour.isClosed };
+}
+
+// A circle of radius 100, drawn as four cubics meeting at the four extrema.
+function circleContour() {
+  const radius = 100;
+  const handle = 0.5522847498 * radius;
+  const onCurves = [
+    [radius, 0],
+    [0, radius],
+    [-radius, 0],
+    [0, -radius],
+  ];
+  const points = [];
+  for (const [i, [x, y]] of onCurves.entries()) {
+    const [nextX, nextY] = onCurves[(i + 1) % onCurves.length];
+    points.push(
+      { x, y, smooth: true },
+      { x: x - (y / radius) * handle, y: y + (x / radius) * handle, type: "cubic" },
+      {
+        x: nextX + (nextY / radius) * handle,
+        y: nextY - (nextX / radius) * handle,
+        type: "cubic",
+      }
+    );
+  }
+  return { points, isClosed: true };
+}
+
 function signedArea(contour) {
   // Sample the actual curve segments; on-curve points alone collapse to a
   // degenerate polygon after merging.
@@ -505,33 +559,34 @@ describe("simplifyContour / rebuildSimplifiedContour", () => {
         { x: 200, y: 0 },
       ],
     };
-    const simplified = simplifyContour(openContour, { tolerance: 1.0 });
+    const simplified = simplifyContour(oversplit(openContour), { tolerance: 1.0 });
     expect(simplified).to.not.equal(null);
     expect(simplified.isClosed).to.be.false;
     expectPointClose(simplified.points[0], 0, 0);
     expectPointClose(simplified.points.at(-1), 200, 0);
-    // The two halves merge into a single cubic.
+    // The redundant split points go; the top extremum stays.
     const onCurves = simplified.points.filter((p) => !p.type);
-    expect(onCurves.length).to.equal(2);
+    expect(onCurves.length).to.equal(3);
+    expectPointClose(onCurves[1], 100, 60, 0.05);
   });
 
   it("preserves closed state and winding direction", () => {
-    const simplified = simplifyContour(lensContour, { tolerance: 1.0 });
+    const simplified = simplifyContour(oversplit(lensContour), { tolerance: 1.0 });
     expect(simplified).to.not.equal(null);
     expect(simplified.isClosed).to.be.true;
     expect(Math.sign(signedArea(simplified))).to.equal(
-      Math.sign(signedArea(lensContour))
+      Math.sign(signedArea(oversplit(lensContour)))
     );
-    // Two arcs: 4 segments merge into 2.
+    // The 8 split segments merge back to the original 4, one per extremum.
     const onCurves = simplified.points.filter((p) => !p.type);
-    expect(onCurves.length).to.equal(2);
+    expect(onCurves.length).to.equal(4);
   });
 
   it("keeps attrs on a surviving protected point", () => {
     const contour = {
       isClosed: true,
-      points: lensContour.points.map((p, i) =>
-        i === 6 ? { ...p, attrs: { note: "keep" } } : { ...p }
+      points: oversplit(lensContour).points.map((p, i) =>
+        p.x === 200 && p.y === 0 ? { ...p, attrs: { note: "keep" } } : { ...p }
       ),
     };
     const simplified = simplifyContour(contour, { tolerance: 1.0 });
@@ -541,9 +596,86 @@ describe("simplifyContour / rebuildSimplifiedContour", () => {
   });
 
   it("repeating simplify produces no additional change", () => {
-    const once = simplifyContour(lensContour, { tolerance: 1.0 });
+    const once = simplifyContour(oversplit(lensContour), { tolerance: 1.0 });
     // null = no change; the simplified contour is a fixed point.
     expect(simplifyContour(once, { tolerance: 1.0 })).to.equal(null);
+  });
+
+  it("leaves an on-curve point on every extremum of the result", () => {
+    const simplified = simplifyContour(oversplit(lensContour), { tolerance: 1.0 });
+    // Asking again for the extrema finds them all occupied already.
+    expect(insertExtremaPoints([simplified])[0]).to.deep.equal(simplified);
+  });
+
+  it("brings an over-pointed circle back to four points, one per extremum", () => {
+    const circle = circleContour();
+    // A circle drawn the usual way is already as simple as it gets.
+    expect(simplifyContour(circle, { tolerance: 1.0 })).to.equal(null);
+    // Cut every quarter in two and it comes straight back.
+    const simplified = simplifyContour(oversplit(circle), { tolerance: 1.0 });
+    expect(simplified.points.length).to.equal(circle.points.length);
+    const onCurves = simplified.points.filter((p) => !p.type);
+    expect(onCurves.length).to.equal(4);
+    for (const [i, expected] of [
+      [100, 0],
+      [0, 100],
+      [-100, 0],
+      [0, -100],
+    ].entries()) {
+      expectPointClose(onCurves[i], expected[0], expected[1], 0.05);
+    }
+  });
+
+  it("drops a point sitting in the middle of a straight", () => {
+    // A stem drawn with a stray point halfway up its side.
+    const contour = {
+      isClosed: true,
+      points: [
+        { x: 0, y: 0 },
+        { x: 0, y: 250 },
+        { x: 0, y: 500 },
+        { x: 80, y: 500 },
+        { x: 80, y: 0 },
+      ],
+    };
+    const simplified = simplifyContour(contour, { tolerance: 1.0 });
+    expect(simplified.points.length).to.equal(4);
+    expect(simplified.points.some((p) => p.y === 250)).to.be.false;
+    // The corners stay put.
+    expectPointClose(simplified.points[0], 0, 0);
+  });
+
+  it("keeps a point that only looks collinear", () => {
+    const contour = {
+      isClosed: true,
+      points: [
+        { x: 0, y: 0 },
+        { x: 20, y: 250 },
+        { x: 0, y: 500 },
+        { x: 80, y: 500 },
+        { x: 80, y: 0 },
+      ],
+    };
+    expect(simplifyContour(contour, { tolerance: 1.0 })).to.equal(null);
+  });
+
+  it("simplifies a closed contour that starts on a removable point", () => {
+    // Runs do not wrap around the end of a closed contour, so the point the
+    // contour happens to start on must not be privileged: here the start is a
+    // redundant split point, and it has to go like all the others.
+    const split = oversplit(circleContour());
+    const rotated = {
+      isClosed: true,
+      // Move the start three points along, onto the first split point.
+      points: [...split.points.slice(3), ...split.points.slice(0, 3)],
+    };
+    const simplified = simplifyContour(rotated, { tolerance: 1.0 });
+    const onCurves = simplified.points.filter((p) => !p.type);
+    expect(onCurves.length).to.equal(4);
+    for (const point of onCurves) {
+      // Every surviving point is on a turning point of the circle.
+      expect(Math.min(Math.abs(point.x), Math.abs(point.y))).to.be.closeTo(0, 0.05);
+    }
   });
 
   it("returns null when nothing can be simplified", () => {
@@ -578,17 +710,17 @@ function scaleContour(contour, factor) {
 
 describe("simplifyContourCompatible (multi-master)", () => {
   it("two compatible masters receive identical merge boundaries", () => {
-    const masterA = lensContour;
-    const masterB = scaleContour(lensContour, 0.8);
+    const masterA = oversplit(lensContour);
+    const masterB = oversplit(scaleContour(lensContour, 0.8));
     const results = simplifyContourCompatible([masterA, masterB], {
       tolerance: 1.0,
     });
     expect(results).to.not.equal(null);
     expect(results.length).to.equal(2);
-    // Both masters merged to the same topology: 2 cubics, 2 on-curve points.
+    // Both masters merged to the same topology: 4 cubics, 4 on-curve points.
     for (const result of results) {
       const onCurves = result.points.filter((p) => !p.type);
-      expect(onCurves.length).to.equal(2);
+      expect(onCurves.length).to.equal(4);
     }
     // Point types sequence identical across masters.
     const types = results.map((r) => r.points.map((p) => p.type ?? "on"));
@@ -615,7 +747,7 @@ describe("simplifyContourCompatible (multi-master)", () => {
         { x: 30, y: -40, type: "cubic" },
       ],
     };
-    const results = simplifyContourCompatible([lensContour, kinked], {
+    const results = simplifyContourCompatible([oversplit(lensContour), kinked], {
       tolerance: 1.0,
     });
     // Nothing is written when masters disagree.

@@ -116,7 +116,8 @@ describe("point slide on a skeleton centerline", () => {
     expect(moved.x).to.be.lessThan(100);
     expect(moved.smooth).to.equal(true);
     // Still on the old arc: distance from its center (100, 0) stays ~100.
-    expect(Math.hypot(moved.x - 100, moved.y)).to.be.closeTo(100, 0.1);
+    // The slide lands on whole units, which can sit up to ~0.7 off the arc.
+    expect(Math.hypot(moved.x - 100, moved.y)).to.be.closeTo(100, 1);
     // The anchors did not move.
     expect(points[0]).to.deep.include({ x: 0, y: 0 });
     expect(points[6]).to.deep.include({ x: 200, y: 0 });
@@ -128,10 +129,11 @@ describe("point slide on a skeleton centerline", () => {
     const onKept = insertionPosition(layer, 50);
     const onFar = insertionPosition(layer, 51);
     slide(layer, { x: -70, y: -30 });
-    // On the kept piece: exactly where it was.
+    // On the kept piece: where it was, up to the whole unit both the slide
+    // and the generated outline now round to.
     const keptAfter = insertionPosition(layer, 50);
-    expect(keptAfter.x).to.be.closeTo(onKept.x, 1e-6);
-    expect(keptAfter.y).to.be.closeTo(onKept.y, 1e-6);
+    expect(keptAfter.x).to.be.closeTo(onKept.x, 1);
+    expect(keptAfter.y).to.be.closeTo(onKept.y, 1);
     // On the refit far segment: within the fit's reach.
     const farAfter = insertionPosition(layer, 51);
     expect(Math.hypot(farAfter.x - onFar.x, farAfter.y - onFar.y)).to.be.lessThan(1.5);

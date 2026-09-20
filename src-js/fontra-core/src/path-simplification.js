@@ -164,6 +164,31 @@ export function contourToCubicPieces(contour) {
   return pieces;
 }
 
+// Two points this close together are the same point as far as rounding is
+// concerned. Used for comparing results, not for deciding where points go.
+const SAME_POINT_DISTANCE = 0.01;
+
+// Default spacing below which an extremum is not worth its own point. The
+// caller normally passes the tolerance instead.
+const DEFAULT_EXTREMA_MIN_DISTANCE = 1;
+
+// A tangent pointing straight along x or y marks a turning point of the
+// curve. The test is relative to the tangent's own length, so it holds at any
+// drawing scale.
+function isAxisAligned(tangent) {
+  const length = Math.hypot(tangent.x, tangent.y);
+  if (length === 0) {
+    return false;
+  }
+  return (
+    Math.abs(tangent.x) / length < AXIS_ALIGNED_RATIO ||
+    Math.abs(tangent.y) / length < AXIS_ALIGNED_RATIO
+  );
+}
+
+// About a third of a degree off axis still counts as on axis.
+const AXIS_ALIGNED_RATIO = 0.006;
+
 function hasNonEmptyAttrs(point) {
   return !!point.attrs && Object.keys(point.attrs).length > 0;
 }
@@ -181,6 +206,8 @@ function hasNonEmptyAttrs(point) {
 // - sourcePointMap: Map from inserted extrema key to
 //   {point, sourceSegmentIndex, t}.
 export function classifySimplifyContour(contour, options = {}) {
+  const insertExtrema = options.insertExtrema ?? true;
+  const extremaMinDistance = options.tolerance ?? DEFAULT_EXTREMA_MIN_DISTANCE;
   const { points, isClosed } = contour;
   const basePieces = contourToCubicPieces(contour);
   const protectedPointKeys = new Set();
@@ -203,6 +230,23 @@ export function classifySimplifyContour(contour, options = {}) {
     }
   }
 
+  // A point that already sits on an extremum is protected as firmly as one we
+  // would have inserted there. Without this a circle, whose four points are
+  // all extrema and all smooth, has nothing holding its runs apart: the whole
+  // outline becomes one run, merges at the wrong places, and the extrema pass
+  // then scatters fresh points near the old ones.
+  for (const piece of basePieces) {
+    if (piece.kind !== "cubic") {
+      continue;
+    }
+    if (isAxisAligned(cubicDerivative(piece.points, 0))) {
+      protectedPointKeys.add(piece.startPointIndex);
+    }
+    if (isAxisAligned(cubicDerivative(piece.points, 1))) {
+      protectedPointKeys.add(piece.endPointIndex);
+    }
+  }
+
   const pieces = [];
   let insertedCounter = 0;
   for (const piece of basePieces) {
@@ -211,7 +255,9 @@ export function classifySimplifyContour(contour, options = {}) {
       pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
       continue;
     }
-    const extremaTs = cubicExtremaParameters(piece.points);
+    const extremaTs = insertExtrema
+      ? interiorExtremaParameters(piece.points, extremaMinDistance)
+      : [];
     if (!extremaTs.length) {
       pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
       continue;
@@ -262,7 +308,28 @@ export function classifySimplifyContour(contour, options = {}) {
     });
   }
 
-  return { pieces, protectedPointKeys, sourcePointMap, isClosed };
+  // Runs never wrap around the end of a closed contour, so whatever point the
+  // contour happens to start on can never be merged away. Start the walk on a
+  // protected point instead: then the seam falls where a run would have ended
+  // anyway, and no point is privileged by the accident of being written first.
+  // The shape is unchanged; the points are listed from a different starting
+  // place. Every master rotates to the same place, because they share which
+  // points are protected.
+  const rotated =
+    isClosed && pieces.length && !protectedPointKeys.has(pieces[0].startKey)
+      ? rotateToProtectedStart(pieces, protectedPointKeys)
+      : pieces;
+
+  return { pieces: rotated, protectedPointKeys, sourcePointMap, isClosed };
+}
+
+function rotateToProtectedStart(pieces, protectedPointKeys) {
+  const start = pieces.findIndex((piece) => protectedPointKeys.has(piece.startKey));
+  if (start <= 0) {
+    // Nothing is protected anywhere: leave the order alone.
+    return pieces;
+  }
+  return [...pieces.slice(start), ...pieces.slice(0, start)];
 }
 
 // Group neighboring mergeable cubic pieces into runs bounded by protected
@@ -306,32 +373,128 @@ function vectorLength(v) {
   return Math.hypot(v.x, v.y);
 }
 
+// Distance from a point to a line segment.
+function distanceToSegment(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  let t = 0;
+  if (lengthSquared > 0) {
+    t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared;
+    t = Math.min(1, Math.max(0, t));
+  }
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+}
+
+// ponytail: 64-segment polyline approximation of the candidate; raise the
+// count if sub-0.01-unit tolerances ever need to be trusted.
+const CANDIDATE_POLYLINE_STEPS = 64;
+
+function candidatePolyline(candidate) {
+  const polyline = [];
+  for (let i = 0; i <= CANDIDATE_POLYLINE_STEPS; i++) {
+    polyline.push(cubicPoint(candidate, i / CANDIDATE_POLYLINE_STEPS));
+  }
+  return polyline;
+}
+
 // Measure the largest distance between a run of original cubic pieces and a
-// candidate replacement cubic, at fixed sample parameters.
-export function maxCubicDeviation(originalPieces, candidate) {
-  const n = originalPieces.length;
+// candidate replacement cubic. The two curves are not parameterized alike --
+// a piece covering a short arc still spans t=0..1 -- so each original sample
+// is measured against the *closest* point on the candidate, not against a
+// guessed parameter.
+//
+// `reverse` also measures the candidate against the original. Without it a
+// candidate with over-long handles can bulge away and still pass, because
+// every original sample happens to lie near some part of it. The inner fit
+// search skips it for speed; acceptance always uses it.
+export function maxCubicDeviation(originalPieces, candidate, options = {}) {
+  const reverse = options.reverse ?? true;
+  const polyline = candidatePolyline(candidate);
   let maxDistance = 0;
-  for (const [i, piece] of originalPieces.entries()) {
+  for (const piece of originalPieces) {
     for (const t of SAMPLE_TS) {
-      const originalPoint = cubicPoint(piece.points, t);
-      // Map the sample to the candidate's normalized span parameter.
-      const candidateT = (i + t) / n;
-      const candidatePoint = cubicPoint(candidate, candidateT);
-      const distance = Math.hypot(
-        originalPoint.x - candidatePoint.x,
-        originalPoint.y - candidatePoint.y
+      maxDistance = Math.max(
+        maxDistance,
+        nearestDistance(cubicPoint(piece.points, t), polyline)
       );
-      maxDistance = Math.max(maxDistance, distance);
+    }
+  }
+  if (reverse) {
+    const originalPolyline = piecesPolyline(originalPieces);
+    for (const point of polyline) {
+      maxDistance = Math.max(maxDistance, nearestDistance(point, originalPolyline));
     }
   }
   return maxDistance;
 }
 
-// Fit a single cubic to a run of cubic pieces. Endpoint positions and
-// endpoint tangent directions are fixed; only the two handle lengths are
-// searched (deterministically: a coarse grid, then local refinement).
-// `originalPieces` are the run's pieces; tangents are direction vectors
-// (their magnitudes are ignored). Returns [p0, c1, c2, p3] or null.
+function nearestDistance(point, polyline) {
+  let nearest = Infinity;
+  for (let i = 0; i < polyline.length - 1; i++) {
+    nearest = Math.min(nearest, distanceToSegment(point, polyline[i], polyline[i + 1]));
+  }
+  return nearest;
+}
+
+function piecesPolyline(pieces) {
+  const polyline = [];
+  for (const piece of pieces) {
+    for (let i = 0; i <= CANDIDATE_POLYLINE_STEPS; i++) {
+      polyline.push(cubicPoint(piece.points, i / CANDIDATE_POLYLINE_STEPS));
+    }
+  }
+  return polyline;
+}
+
+// Estimate the parameter at which a single cubic would have been split to
+// produce these two adjacent pieces. The joint's two neighbouring handles are
+// collinear for a true split, and the parameter is where the joint sits
+// between them. Returns null when the geometry gives no usable answer.
+function estimateSplitParameter(leftPoints, rightPoints) {
+  const joint = leftPoints[3];
+  const before =
+    Math.abs(leftPoints[2].x - joint.x) + Math.abs(leftPoints[2].y - joint.y);
+  const after =
+    Math.abs(rightPoints[1].x - joint.x) + Math.abs(rightPoints[1].y - joint.y);
+  const total = before + after;
+  if (before === 0 || after === 0 || total === 0) {
+    return null;
+  }
+  const t = before / total;
+  return t > 0 && t < 1 ? t : null;
+}
+
+// Undo a de Casteljau split: given two adjacent pieces and the parameter that
+// produced them, recover the single cubic they came from. The recovered
+// handles stay on the original endpoint tangent lines, so a run's start and
+// end tangent directions survive untouched.
+function unsplitCubic(leftPoints, rightPoints, t) {
+  const p0 = leftPoints[0];
+  const p3 = rightPoints[3];
+  return [
+    p0,
+    {
+      x: p0.x + (leftPoints[1].x - p0.x) / t,
+      y: p0.y + (leftPoints[1].y - p0.y) / t,
+    },
+    {
+      x: p3.x + (rightPoints[2].x - p3.x) / (1 - t),
+      y: p3.y + (rightPoints[2].y - p3.y) / (1 - t),
+    },
+    p3,
+  ];
+}
+
+// Fit a single cubic to a run of cubic pieces. Endpoint positions and endpoint
+// tangent directions are fixed; only the two handle lengths vary.
+//
+// The starting guess folds the run pairwise with `unsplitCubic`, which is
+// exact whenever the run really is one curve that was cut up (the common case
+// after extrema insertion). A short pattern search then refines the two
+// lengths for runs that were never one curve. `originalPieces` are the run's
+// pieces; tangents are direction vectors (magnitudes ignored). Returns
+// [p0, c1, c2, p3] or null.
 export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
   const p0 = originalPieces[0].points[0];
   const p3 = originalPieces.at(-1).points[3];
@@ -353,50 +516,67 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
     p3,
   ];
 
-  let best = null;
-  let bestError = Infinity;
-
-  // Coarse deterministic grid: 20 multipliers per handle length.
-  const multipliers = [];
-  for (let i = 0; i < 20; i++) {
-    multipliers.push(0.05 + (3.0 - 0.05) * (i / 19));
+  // Starting guess: fold the run back into one cubic, pair by pair.
+  let folded = originalPieces[0].points;
+  for (const piece of originalPieces.slice(1)) {
+    const t = estimateSplitParameter(folded, piece.points);
+    if (t === null) {
+      folded = null;
+      break;
+    }
+    folded = unsplitCubic(folded, piece.points, t);
   }
-  for (const mulL of multipliers) {
-    for (const mulR of multipliers) {
-      const error = maxCubicDeviation(
-        originalPieces,
-        buildCandidate(base * mulL, base * mulR)
-      );
-      if (error < bestError) {
-        bestError = error;
-        best = [base * mulL, base * mulR];
-      }
+
+  let best = [base, base];
+  if (folded) {
+    const alphaL = Math.hypot(folded[1].x - p0.x, folded[1].y - p0.y);
+    const alphaR = Math.hypot(folded[2].x - p3.x, folded[2].y - p3.y);
+    if (
+      alphaL > 0 &&
+      alphaR > 0 &&
+      Number.isFinite(alphaL) &&
+      Number.isFinite(alphaR)
+    ) {
+      best = [alphaL, alphaR];
     }
   }
+  const measure = (alphaL, alphaR) =>
+    maxCubicDeviation(originalPieces, buildCandidate(alphaL, alphaR), {
+      reverse: false,
+    });
+  let bestError = measure(best[0], best[1]);
 
-  // Local refinement around the grid winner.
-  let stepL = (base * (3.0 - 0.05)) / 19;
-  let stepR = stepL;
-  for (let round = 0; round < 3; round++) {
+  // Pattern search: halve the step whenever no neighbour improves.
+  let step = Math.max(best[0], best[1]) / 4;
+  const minStep = base * 1e-6;
+  // ponytail: the round cap also bounds a search that keeps improving by
+  // vanishing amounts; raise it only if fits visibly stop short.
+  for (let round = 0; round < 200 && step > minStep; round++) {
     let improved = false;
-    for (let dL = -2; dL <= 2; dL++) {
-      for (let dR = -2; dR <= 2; dR++) {
-        const alphaL = best[0] + dL * stepL * 0.5;
-        const alphaR = best[1] + dR * stepR * 0.5;
-        if (alphaL <= 0 || alphaR <= 0) {
-          continue;
-        }
-        const error = maxCubicDeviation(originalPieces, buildCandidate(alphaL, alphaR));
-        if (error < bestError) {
-          bestError = error;
-          best = [alphaL, alphaR];
-          improved = true;
-        }
+    for (const [dL, dR] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ]) {
+      const alphaL = best[0] + dL * step;
+      const alphaR = best[1] + dR * step;
+      if (alphaL <= 0 || alphaR <= 0) {
+        continue;
+      }
+      const error = measure(alphaL, alphaR);
+      if (error < bestError) {
+        bestError = error;
+        best = [alphaL, alphaR];
+        improved = true;
       }
     }
     if (!improved) {
-      stepL /= 4;
-      stepR /= 4;
+      step /= 2;
     }
   }
 
@@ -483,6 +663,197 @@ function pieceStartTangent(piece) {
   return directionBetween(piece.points[0], piece.points[1]);
 }
 
+// Drop on-curve points that sit in the middle of a straight.
+//
+// Two line segments meeting in a straight line need no point between them:
+// the point adds nothing to the shape and everything to the editing. A point
+// is only dropped when it is off the straight by no more than the tolerance,
+// carries no attributes, and is not an endpoint of an open contour.
+//
+// Several contours are passed together when they are interpolation-compatible
+// masters, and a point goes only when every master agrees it is redundant, so
+// the masters keep identical point counts.
+export function removeStraightLinePoints(contours, options = {}) {
+  const tolerance = options.tolerance ?? DEFAULT_EXTREMA_MIN_DISTANCE;
+
+  const removablePerContour = contours.map((contour) => {
+    const { points, isClosed } = contour;
+    const onCurveIndices = points
+      .map((point, i) => (point.type ? -1 : i))
+      .filter((i) => i >= 0);
+    const removable = new Set();
+    // A closed contour needs three corners to enclose anything; an open one
+    // needs its two ends.
+    const minimum = isClosed ? 3 : 2;
+    if (onCurveIndices.length <= minimum) {
+      return removable;
+    }
+    for (const [ordinal, pointIndex] of onCurveIndices.entries()) {
+      const isEnd = ordinal === 0 || ordinal === onCurveIndices.length - 1;
+      if ((!isClosed && isEnd) || hasNonEmptyAttrs(points[pointIndex])) {
+        continue;
+      }
+      // Both neighbours must be on-curve, which is what makes both of this
+      // point's segments straight lines.
+      const previous = points[(pointIndex - 1 + points.length) % points.length];
+      const next = points[(pointIndex + 1) % points.length];
+      if (previous.type || next.type) {
+        continue;
+      }
+      if (distanceToSegment(points[pointIndex], previous, next) <= tolerance) {
+        removable.add(pointIndex);
+      }
+    }
+    return removable;
+  });
+
+  // Every master has to agree, and they only line up at all if their point
+  // counts already match.
+  const counts = contours.map((contour) => contour.points.length);
+  if (counts.some((count) => count !== counts[0])) {
+    return contours;
+  }
+  const agreed = [...removablePerContour[0]].filter((pointIndex) =>
+    removablePerContour.every((removable) => removable.has(pointIndex))
+  );
+  if (!agreed.length) {
+    return contours;
+  }
+  const drop = new Set(agreed);
+  return contours.map((contour) => ({
+    points: contour.points.filter((_, i) => !drop.has(i)),
+    isClosed: contour.isClosed,
+  }));
+}
+
+// Put an on-curve point at every interior extremum of every cubic segment.
+//
+// This runs last, on the already-merged contour, because a merge can create
+// an extremum that none of the original segments had. Running it here instead
+// of only up front also makes Simplify a fixed point: a second run finds
+// every extremum already occupied and changes nothing.
+//
+// Several contours are passed together when they are interpolation-compatible
+// masters. A segment is only split when every master finds the same number of
+// extrema in it, so the masters keep identical point counts.
+export function insertExtremaPoints(contours, options = {}) {
+  const minDistance = options.tolerance ?? DEFAULT_EXTREMA_MIN_DISTANCE;
+  const piecesPerContour = contours.map((contour) =>
+    contour.points.length && !contour.points[0].type
+      ? contourToCubicPieces(contour)
+      : null
+  );
+  if (piecesPerContour.some((pieces) => pieces === null)) {
+    // A contour starting on an off-curve point is not something this walker
+    // can index safely; leave every master alone rather than guess.
+    return contours;
+  }
+
+  const rootsPerContour = piecesPerContour.map((pieces) =>
+    pieces.map((piece) =>
+      piece.kind === "cubic" ? interiorExtremaParameters(piece.points, minDistance) : []
+    )
+  );
+  const numSegments = rootsPerContour[0].length;
+  if (rootsPerContour.some((roots) => roots.length !== numSegments)) {
+    return contours;
+  }
+  // Drop a segment's extrema unless every master agrees on how many there are.
+  for (let s = 0; s < numSegments; s++) {
+    const count = rootsPerContour[0][s].length;
+    if (rootsPerContour.some((roots) => roots[s].length !== count)) {
+      for (const roots of rootsPerContour) {
+        roots[s] = [];
+      }
+    }
+  }
+  if (rootsPerContour.every((roots) => roots.every((ts) => !ts.length))) {
+    return contours;
+  }
+
+  return contours.map((contour, contourIndex) => {
+    const pieces = piecesPerContour[contourIndex];
+    const roots = rootsPerContour[contourIndex];
+    const points = [];
+    for (const [s, piece] of pieces.entries()) {
+      // The segment's start on-curve point, kept exactly as it was.
+      points.push(contour.points[piece.startPointIndex]);
+      if (piece.kind !== "cubic" || !roots[s].length) {
+        points.push(...piece.points.slice(1, -1));
+        continue;
+      }
+      let rest = piece.points;
+      let consumed = 0;
+      for (const t of roots[s]) {
+        const { left, right } = splitCubic(rest, (t - consumed) / (1 - consumed));
+        points.push(
+          { ...left[1], type: "cubic" },
+          { ...left[2], type: "cubic" },
+          { x: left[3].x, y: left[3].y, smooth: true }
+        );
+        rest = right;
+        consumed = t;
+      }
+      points.push({ ...rest[1], type: "cubic" }, { ...rest[2], type: "cubic" });
+    }
+    if (!contour.isClosed) {
+      points.push(contour.points.at(-1));
+    }
+    return { points: points.map(roundPoint), isClosed: contour.isClosed };
+  });
+}
+
+// Interior extrema of one cubic that are worth a point of their own.
+//
+// An extremum closer than `minDistance` to one of the segment's own end
+// points is dropped: the outline already turns there as far as anyone can
+// see, and inserting a point on top of an existing one is how a "simplify"
+// command ends up adding points. Extrema that crowd each other are thinned
+// the same way, which matters on an overshooting segment where the curve
+// doubles back on itself near a cusp.
+function interiorExtremaParameters(points, minDistance = DEFAULT_EXTREMA_MIN_DISTANCE) {
+  const kept = [];
+  const keptPoints = [points[0], points[3]];
+  for (const t of cubicExtremaParameters(points)) {
+    const splitPoint = cubicPoint(points, t);
+    const crowded = keptPoints.some(
+      (other) =>
+        Math.hypot(splitPoint.x - other.x, splitPoint.y - other.y) <= minDistance
+    );
+    if (!crowded) {
+      kept.push(t);
+      keptPoints.push(splitPoint);
+    }
+  }
+  return kept;
+}
+
+// Two unpacked contours describe the same outline: same points, same flags.
+function sameContour(a, b) {
+  return (
+    !!a &&
+    !!b &&
+    a.isClosed === b.isClosed &&
+    a.points.length === b.points.length &&
+    a.points.every((point, i) => {
+      const other = b.points[i];
+      return (
+        Math.abs(point.x - other.x) <= SAME_POINT_DISTANCE &&
+        Math.abs(point.y - other.y) <= SAME_POINT_DISTANCE &&
+        (point.type ?? null) === (other.type ?? null)
+      );
+    })
+  );
+}
+
+function roundPoint(point) {
+  const out = { ...point, x: roundCoordinate(point.x), y: roundCoordinate(point.y) };
+  if (out.type === undefined) {
+    delete out.type;
+  }
+  return out;
+}
+
 // Rebuild an unpacked contour ({points, isClosed}) from the analysis and the
 // final sequence of pieces (merged replacements and untouched originals).
 export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
@@ -561,9 +932,6 @@ export function simplifyContour(contour, options = {}) {
   const analysis = classifySimplifyContour(contour, options);
   analysis.contour = contour;
   const runs = buildSimplifyRuns(analysis);
-  if (!runs.length) {
-    return null;
-  }
 
   const runByFirstPiece = new Map();
   for (const run of runs) {
@@ -571,13 +939,11 @@ export function simplifyContour(contour, options = {}) {
   }
 
   const finalPieces = [];
-  let mergedAny = false;
   for (let i = 0; i < analysis.pieces.length; i++) {
     const piece = analysis.pieces[i];
     const run = runByFirstPiece.get(piece);
     if (run) {
       const simplifiedRun = simplifyRun(run, options);
-      mergedAny = mergedAny || simplifiedRun.some((p) => p.merged);
       finalPieces.push(...simplifiedRun);
       i += run.pieces.length - 1;
     } else {
@@ -585,10 +951,18 @@ export function simplifyContour(contour, options = {}) {
     }
   }
 
-  if (!mergedAny) {
-    return null;
-  }
-  return rebuildSimplifiedContour(analysis, finalPieces);
+  const rebuilt = insertExtremaPoints(
+    removeStraightLinePoints(
+      [rebuildSimplifiedContour(analysis, finalPieces)],
+      options
+    ),
+    options
+  )[0];
+  // Inserting the extrema points is itself a result worth writing, even when
+  // no run merges. Conversely a merge that the extrema pass splits straight
+  // back apart is no result at all, so the outcome is judged by comparing the
+  // finished contour with the original, not by whether a merge happened.
+  return sameContour(rebuilt, contour) ? null : rebuilt;
 }
 
 // Decide the merge boundaries for one run: a covering list of [start, end)
@@ -682,18 +1056,26 @@ export function simplifyContourCompatible(contours, options = {}) {
   if (!contours.length) {
     return null;
   }
-  const analyses = contours.map((contour) => {
-    const analysis = classifySimplifyContour(contour, options);
-    analysis.contour = contour;
-    return analysis;
-  });
-  // Structural compatibility: identical piece kinds and run spans.
-  const reference = analyses[0];
-  for (const analysis of analyses.slice(1)) {
-    if (
-      analysis.pieces.length !== reference.pieces.length ||
-      analysis.pieces.some((piece, i) => piece.kind !== reference.pieces[i].kind)
-    ) {
+  const analyze = (insertExtrema) =>
+    contours.map((contour) => {
+      const analysis = classifySimplifyContour(contour, { ...options, insertExtrema });
+      analysis.contour = contour;
+      return analysis;
+    });
+  const structurallyEqual = (analyses) =>
+    analyses.every(
+      (analysis) =>
+        analysis.pieces.length === analyses[0].pieces.length &&
+        analysis.pieces.every((piece, i) => piece.kind === analyses[0].pieces[i].kind)
+    );
+
+  // Masters can have extrema in different places, which would give them
+  // different point counts. Rather than refuse the whole contour, fall back
+  // to leaving the extrema alone and merging only.
+  let analyses = analyze(options.insertExtrema ?? true);
+  if (!structurallyEqual(analyses)) {
+    analyses = analyze(false);
+    if (!structurallyEqual(analyses)) {
       return null;
     }
   }
@@ -730,7 +1112,6 @@ export function simplifyContourCompatible(contours, options = {}) {
     return referenceRun.pieces.map((_, i) => [i, i + 1]);
   });
 
-  let mergedAny = false;
   const results = analyses.map((analysis, masterIndex) => {
     const runs = runsPerMaster[masterIndex];
     const runByFirstPiece = new Map();
@@ -747,7 +1128,6 @@ export function simplifyContourCompatible(contours, options = {}) {
           sharedPlans[entry.runIndex],
           options
         );
-        mergedAny = mergedAny || simplifiedRun.some((p) => p.merged);
         finalPieces.push(...simplifiedRun);
         i += entry.run.pieces.length - 1;
       } else {
@@ -757,5 +1137,10 @@ export function simplifyContourCompatible(contours, options = {}) {
     return rebuildSimplifiedContour(analysis, finalPieces);
   });
 
-  return mergedAny ? results : null;
+  const finalResults = insertExtremaPoints(
+    removeStraightLinePoints(results, options),
+    options
+  );
+  const changed = finalResults.some((result, i) => !sameContour(result, contours[i]));
+  return changed ? finalResults : null;
 }

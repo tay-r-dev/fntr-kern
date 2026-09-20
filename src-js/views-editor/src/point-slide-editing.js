@@ -196,8 +196,21 @@ export function createPointSlideTargetEntries(
           t = session.t;
           if (side === undefined || t === undefined) return null;
         }
-        const candidate = makeSlideCandidate(contour, contourPointIndex, side, t);
-        if (!candidate) return null;
+        const slid = makeSlideCandidate(contour, contourPointIndex, side, t);
+        if (!slid) return null;
+        // The slide lands on whole units, like every other drag. Only the
+        // points it actually moved are rounded: a contour may hold fractional
+        // points the slide never touched, and those are not this drag's to
+        // change.
+        const candidate = {
+          ...slid,
+          points: slid.points.map((point, i) => {
+            const original = contour.points[i];
+            return point.x === original?.x && point.y === original?.y
+              ? point
+              : { ...point, x: Math.round(point.x), y: Math.round(point.y) };
+          }),
+        };
         const changes = write(candidate, side, t);
         rollbackChange = changes.rollbackChange;
         return changes.change;

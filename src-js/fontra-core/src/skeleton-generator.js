@@ -2583,6 +2583,14 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   }
   const points = cut.points;
   const at = cut.insertedIndex;
+  // Generated geometry is emitted on whole units, the same as every other
+  // construction here. Cutting a side at an insertion is the one place that
+  // did not round, so an insertion left fractional points behind on an
+  // outline where nothing else has them. Points already whole are unchanged.
+  for (const point of points) {
+    point.x = Math.round(point.x);
+    point.y = Math.round(point.y);
+  }
   // The emitted on-curve and its two neighbouring handles are the insertion
   // point's own geometry. `insertion: true` says which list a reader resolving
   // this id must look in: an insertion id is not a point id, and a lookup that

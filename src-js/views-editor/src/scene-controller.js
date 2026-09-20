@@ -25,7 +25,11 @@ import {
   getMyGlyphSets,
   readProjectGlyphSets,
 } from "@fontra/core/glyphsets-controller.js";
-import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
+import {
+  balancePathInPlace,
+  expandToJoints,
+  harmonizePathInPlace,
+} from "@fontra/core/harmonization.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
 import { simplifyContourCompatible } from "@fontra/core/path-simplification.js";
@@ -144,6 +148,22 @@ import {
 //
 // These values are chosen arbitrarily and in the future there may
 // be some merit to letting users configure this to their own taste.
+// Simplify's tolerance, in font units.
+const MIN_SIMPLIFY_TOLERANCE = 1;
+
+// Every point index of the given contours, in path order.
+function pointIndicesOfContours(path, contourIndices) {
+  const indices = [];
+  for (const contourIndex of contourIndices) {
+    const count = path.getNumPointsOfContour(contourIndex);
+    for (let i = 0; i < count; i++) {
+      indices.push(path.getAbsolutePointIndex(contourIndex, i));
+    }
+  }
+  return indices;
+}
+const MAX_SIMPLIFY_TOLERANCE = 10;
+
 const MIN_PIX_PER_EM = 5;
 const MAX_PIX_PER_UNIT = 200;
 
@@ -2259,10 +2279,17 @@ export class SceneController {
           await sendIncrementalChange(appliedPreview.rollbackChange, true);
           appliedPreview = null;
         }
+        // Simplify renumbers the points, so anything the selection still
+        // names may be gone. Drop it for the duration of the preview; the
+        // final selection is set once the result is committed, and cancelling
+        // puts the original selection back.
+        this.selection = new Set();
+
         const results = computeResults(tolerance);
-        const collector = new ChangeCollector();
+        let collector = new ChangeCollector();
         for (const [layerIndex, { layerName, layerGlyph }] of layerInfo.entries()) {
           const layerChange = recordChanges(layerGlyph, (lg) => {
+            const rewritten = [];
             for (const [i, contourIndex] of contourIndices.entries()) {
               const newContour = results[i]?.[layerIndex];
               if (!newContour) {
@@ -2271,9 +2298,25 @@ export class SceneController {
               // Net-zero contour count: no skeleton bookkeeping needed.
               lg.path.deleteContour(contourIndex);
               lg.path.insertContour(contourIndex, packContour(newContour));
+              rewritten.push(contourIndex);
+            }
+            // Fitting one curve where there were several leaves the two
+            // handles of a segment lopsided. Balancing evens them out while
+            // holding the segment's own fullness, so the outline keeps its
+            // shape and only the handle split changes. Same rule as the
+            // Tunni gizmo's equalize gesture.
+            //
+            // Only the contours this run actually rewrote: an empty list
+            // means the whole path to balancePathInPlace, which would rebalance
+            // contours the designer never selected.
+            if (rewritten.length) {
+              balancePathInPlace(lg.path, pointIndicesOfContours(lg.path, rewritten));
             }
           });
-          collector.concat(layerChange.prefixed(["layers", layerName, "glyph"]));
+          // concat returns a new collector; it does not add to this one.
+          collector = collector.concat(
+            layerChange.prefixed(["layers", layerName, "glyph"])
+          );
         }
         if (collector.hasChange) {
           await sendIncrementalChange(collector.change, true);
@@ -2282,17 +2325,23 @@ export class SceneController {
         return results.some((result) => result !== null);
       };
 
+      // Tolerance is a distance in font units, so whole units are the only
+      // setting a designer can reason about; a tenth of a unit is noise.
+      let anythingSimplified = false;
       const toleranceInput = html.input({
         type: "number",
-        min: 0.01,
-        max: 10,
-        step: 0.1,
-        value: 0.5,
+        min: MIN_SIMPLIFY_TOLERANCE,
+        max: MAX_SIMPLIFY_TOLERANCE,
+        step: 1,
         style: "width: 6em;",
         oninput: async () => {
-          const tolerance = Number(toleranceInput.value);
-          if (Number.isFinite(tolerance) && tolerance >= 0.01 && tolerance <= 10) {
-            await applyPreview(tolerance);
+          const tolerance = Math.round(Number(toleranceInput.value));
+          if (
+            Number.isFinite(tolerance) &&
+            tolerance >= MIN_SIMPLIFY_TOLERANCE &&
+            tolerance <= MAX_SIMPLIFY_TOLERANCE
+          ) {
+            anythingSimplified = await applyPreview(tolerance);
           }
         },
       });
@@ -2315,24 +2364,46 @@ export class SceneController {
       );
       dialogBox.setContent(content);
 
-      const anythingSimplified = await applyPreview(0.5);
-      if (!anythingSimplified) {
-        // Nothing merges: revert the (empty) preview and say so.
-        if (appliedPreview) {
-          applyChange(glyph, appliedPreview.rollbackChange);
-          await sendIncrementalChange(appliedPreview.rollbackChange);
-        }
-        message(
-          translate("action.simplify-contour.title"),
-          translate("action.simplify-contour.nothing-to-simplify")
+      // Don't make the designer guess a tolerance up front: walk the whole
+      // units from the smallest upwards and stop at the first that actually
+      // removes points. The dialog opens on that value, so the preview is
+      // already the gentlest simplification that does anything, and raising
+      // the number from there trades accuracy for fewer points.
+      // A contour that yields no result keeps its original points, so it
+      // counts as itself rather than dropping out of the comparison.
+      const countPoints = (results) =>
+        results.reduce(
+          (total, perMaster, i) =>
+            total + (perMaster?.[0] ?? originalContours[i][0]).points.length,
+          0
         );
-        return {};
+      const originalPointCount = countPoints(originalContours.map(() => null));
+      let chosenTolerance = MIN_SIMPLIFY_TOLERANCE;
+      for (let t = MIN_SIMPLIFY_TOLERANCE; t <= MAX_SIMPLIFY_TOLERANCE; t++) {
+        const results = computeResults(t);
+        if (countPoints(results) < originalPointCount) {
+          chosenTolerance = t;
+          break;
+        }
       }
+      toleranceInput.value = chosenTolerance;
+      anythingSimplified = await applyPreview(chosenTolerance);
 
       if (!(await dialogBox.run())) {
         // Cancel: revert the preview and record nothing.
         applyChange(glyph, appliedPreview.rollbackChange);
         await sendIncrementalChange(appliedPreview.rollbackChange);
+        return {};
+      }
+
+      if (!anythingSimplified) {
+        // OK with nothing merged at this tolerance: revert and say so.
+        applyChange(glyph, appliedPreview.rollbackChange);
+        await sendIncrementalChange(appliedPreview.rollbackChange);
+        message(
+          translate("action.simplify-contour.title"),
+          translate("action.simplify-contour.nothing-to-simplify")
+        );
         return {};
       }
 
