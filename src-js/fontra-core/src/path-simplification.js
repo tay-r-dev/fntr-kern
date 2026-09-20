@@ -9,16 +9,8 @@ export function cubicPoint(points, t) {
   const [p0, p1, p2, p3] = points;
   const u = 1 - t;
   return {
-    x:
-      u ** 3 * p0.x +
-      3 * u ** 2 * t * p1.x +
-      3 * u * t ** 2 * p2.x +
-      t ** 3 * p3.x,
-    y:
-      u ** 3 * p0.y +
-      3 * u ** 2 * t * p1.y +
-      3 * u * t ** 2 * p2.y +
-      t ** 3 * p3.y,
+    x: u ** 3 * p0.x + 3 * u ** 2 * t * p1.x + 3 * u * t ** 2 * p2.x + t ** 3 * p3.x,
+    y: u ** 3 * p0.y + 3 * u ** 2 * t * p1.y + 3 * u * t ** 2 * p2.y + t ** 3 * p3.y,
   };
 }
 
@@ -120,9 +112,7 @@ export function contourToCubicPieces(contour) {
     return pieces;
   }
 
-  const numSegments = isClosed
-    ? onCurveIndices.length
-    : onCurveIndices.length - 1;
+  const numSegments = isClosed ? onCurveIndices.length : onCurveIndices.length - 1;
 
   for (let s = 0; s < numSegments; s++) {
     const startPointIndex = onCurveIndices[s];
@@ -396,10 +386,7 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
         if (alphaL <= 0 || alphaR <= 0) {
           continue;
         }
-        const error = maxCubicDeviation(
-          originalPieces,
-          buildCandidate(alphaL, alphaR)
-        );
+        const error = maxCubicDeviation(originalPieces, buildCandidate(alphaL, alphaR));
         if (error < bestError) {
           bestError = error;
           best = [alphaL, alphaR];
@@ -539,8 +526,7 @@ export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
   const points = [];
   const numPieces = simplifiedPieces.length;
   for (const [i, piece] of simplifiedPieces.entries()) {
-    const prevPiece =
-      simplifiedPieces[(i - 1 + numPieces) % numPieces];
+    const prevPiece = simplifiedPieces[(i - 1 + numPieces) % numPieces];
     const nextPiece = simplifiedPieces[(i + 1) % numPieces];
     if (i === 0) {
       points.push(makeOnCurvePoint(piece.startKey, isClosed ? prevPiece : null, piece));
@@ -706,9 +692,7 @@ export function simplifyContourCompatible(contours, options = {}) {
   for (const analysis of analyses.slice(1)) {
     if (
       analysis.pieces.length !== reference.pieces.length ||
-      analysis.pieces.some(
-        (piece, i) => piece.kind !== reference.pieces[i].kind
-      )
+      analysis.pieces.some((piece, i) => piece.kind !== reference.pieces[i].kind)
     ) {
       return null;
     }
@@ -730,16 +714,13 @@ export function simplifyContourCompatible(contours, options = {}) {
   // Shared merge plans: a run is simplified only when every master plans the
   // identical boundaries.
   const sharedPlans = referenceRuns.map((referenceRun, runIndex) => {
-    const plans = runsPerMaster.map((runs) =>
-      planRunMerges(runs[runIndex], options)
-    );
+    const plans = runsPerMaster.map((runs) => planRunMerges(runs[runIndex], options));
     const referencePlan = plans[0];
     const allAgree = plans.every(
       (plan) =>
         plan.length === referencePlan.length &&
         plan.every(
-          ([s, e], i) =>
-            s === referencePlan[i][0] && e === referencePlan[i][1]
+          ([s, e], i) => s === referencePlan[i][0] && e === referencePlan[i][1]
         )
     );
     if (allAgree) {

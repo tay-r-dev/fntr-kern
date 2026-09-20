@@ -83,6 +83,11 @@ export const strings = {
   "action.select-all": "Select All",
   "action.select-none": "Select None",
   "action.set-contour-start": "Set Start Point",
+  "action.simplify-contour": "Simplify Contour",
+  "action.simplify-contour.tolerance": "Tolerance",
+  "action.simplify-contour.title": "Simplify Contour",
+  "action.simplify-contour.nothing-to-simplify":
+    "The selected contours cannot be simplified: nothing merges within the tolerance, the masters disagree, or the contour structure is incompatible.",
   "action.toggle-snap-diagonals": "Toggle Diagonal Snapping",
   "action.toggle-snapping": "Toggle Snapping",
   "action.undo": "Undo",

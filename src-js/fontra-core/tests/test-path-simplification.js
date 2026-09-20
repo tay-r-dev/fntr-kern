@@ -127,10 +127,7 @@ describe("splitCubic", () => {
       for (const sampleT of [0.125, 0.5, 0.875]) {
         const expected = cubicPoint(points, splitT * sampleT);
         expectPointClose(cubicPoint(left, sampleT), expected.x, expected.y, 1e-7);
-        const expectedRight = cubicPoint(
-          points,
-          splitT + (1 - splitT) * sampleT
-        );
+        const expectedRight = cubicPoint(points, splitT + (1 - splitT) * sampleT);
         expectPointClose(
           cubicPoint(right, sampleT),
           expectedRight.x,
@@ -354,8 +351,24 @@ import {
 describe("fitCubicToSpan", () => {
   it("returns null for a zero-length tangent", () => {
     const pieces = [
-      { kind: "cubic", points: [{x:0,y:0},{x:0,y:0},{x:50,y:50},{x:100,y:100}] },
-      { kind: "cubic", points: [{x:100,y:100},{x:150,y:150},{x:200,y:200},{x:300,y:200}] },
+      {
+        kind: "cubic",
+        points: [
+          { x: 0, y: 0 },
+          { x: 0, y: 0 },
+          { x: 50, y: 50 },
+          { x: 100, y: 100 },
+        ],
+      },
+      {
+        kind: "cubic",
+        points: [
+          { x: 100, y: 100 },
+          { x: 150, y: 150 },
+          { x: 200, y: 200 },
+          { x: 300, y: 200 },
+        ],
+      },
     ];
     const candidate = fitCubicToSpan(pieces, { x: 0, y: 0 }, { x: 1, y: 0 });
     expect(candidate).to.equal(null);
@@ -365,7 +378,10 @@ describe("fitCubicToSpan", () => {
 describe("maxCubicDeviation", () => {
   it("is zero when the candidate reproduces the original run exactly", () => {
     const original = [
-      {x: 0, y: 0}, {x: 30, y: 90}, {x: 100, y: 90}, {x: 130, y: 0},
+      { x: 0, y: 0 },
+      { x: 30, y: 90 },
+      { x: 100, y: 90 },
+      { x: 130, y: 0 },
     ];
     const { left, right } = splitCubic(original, 0.5);
     const pieces = [
@@ -380,7 +396,10 @@ describe("maxCubicDeviation", () => {
 describe("canMergeCubicPieces / simplifyRun", () => {
   // A smooth run: one cubic split in half. Merging must reproduce it.
   const arc = [
-    {x: 0, y: 0}, {x: 10, y: 55}, {x: 45, y: 90}, {x: 90, y: 100},
+    { x: 0, y: 0 },
+    { x: 10, y: 55 },
+    { x: 45, y: 90 },
+    { x: 90, y: 100 },
   ];
   const { left, right } = splitCubic(arc, 0.5);
   const smoothPieces = [
@@ -401,8 +420,24 @@ describe("canMergeCubicPieces / simplifyRun", () => {
   it("the same run does not merge when tolerance is tiny", () => {
     // Two cubics joined at a visible angle cannot become one cubic.
     const kinkPieces = [
-      { kind: "cubic", points: [{x:0,y:0},{x:30,y:0},{x:60,y:0},{x:90,y:0}] },
-      { kind: "cubic", points: [{x:90,y:0},{x:90,y:30},{x:90,y:60},{x:90,y:90}] },
+      {
+        kind: "cubic",
+        points: [
+          { x: 0, y: 0 },
+          { x: 30, y: 0 },
+          { x: 60, y: 0 },
+          { x: 90, y: 0 },
+        ],
+      },
+      {
+        kind: "cubic",
+        points: [
+          { x: 90, y: 0 },
+          { x: 90, y: 30 },
+          { x: 90, y: 60 },
+          { x: 90, y: 90 },
+        ],
+      },
     ];
     expect(canMergeCubicPieces(kinkPieces, 0.01)).to.be.false;
     const simplified = simplifyRun({ pieces: kinkPieces }, { tolerance: 0.01 });

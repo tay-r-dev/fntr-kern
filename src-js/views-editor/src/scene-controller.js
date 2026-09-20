@@ -28,6 +28,7 @@ import {
 import { expandToJoints, harmonizePathInPlace } from "@fontra/core/harmonization.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
+import { simplifyContourCompatible } from "@fontra/core/path-simplification.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import {
@@ -808,6 +809,13 @@ export class SceneController {
     );
 
     registerAction(
+      "action.simplify-contour",
+      { topic },
+      () => this.doSimplifySelectedContours(),
+      () => this.contextMenuState.simplifiableContours?.length
+    );
+
+    registerAction(
       "action.set-contour-start",
       { topic },
       () => this.doSetStartPoint(),
@@ -1298,6 +1306,25 @@ export class SceneController {
         !this.sceneModel.isGeneratedPathContour(contourIndex)
     );
 
+    // Which contours Simplify may work on: the selection must name at least
+    // one on-curve point of the contour, and generated contours are excluded
+    // (they are rebuilt from their skeleton and must never be edited in place).
+    const editPath =
+      this.sceneModel.getSelectedPositionedGlyph()?.glyph?.instance?.path;
+    this.contextMenuState.simplifiableContours = editPath
+      ? [
+          ...new Set(
+            (pointSelection || [])
+              .filter((pointIndex) => !editPath.getPoint(pointIndex)?.type)
+              .map((pointIndex) => editPath.getContourIndex(pointIndex))
+          ),
+        ].filter(
+          (contourIndex) =>
+            Number.isInteger(contourIndex) &&
+            !this.sceneModel.isGeneratedPathContour(contourIndex)
+        )
+      : [];
+
     // The skeleton's own answer to the same two questions the path answers
     // below. A join wants two open ends on two contours; a close wants ends of
     // one. Both are read off the selected centerline points alone: a rib says
@@ -1347,6 +1374,7 @@ export class SceneController {
       },
       { actionIdentifier: "action.break-contour" },
       { actionIdentifier: "action.reverse-contour" },
+      { actionIdentifier: "action.simplify-contour" },
       { actionIdentifier: "action.set-contour-start" },
       { actionIdentifier: "action.harmonize" },
       { actionIdentifier: "action.realize-skeleton-contours" },
@@ -2185,6 +2213,143 @@ export class SceneController {
       }
       this.selection = selection;
       return translate("action.reverse-contour");
+    });
+  }
+
+  // Simplify selected contours: remove unnecessary cubic curve points within a
+  // user-chosen tolerance. Generated contours are never offered (see
+  // contextMenuState.simplifiableContours). All editing layers (masters) are
+  // simplified together, and only runs whose merge boundaries every master
+  // accepts are written, so compatible interpolation topology is preserved.
+  //
+  // The dialog previews live: each tolerance change reverts the previous
+  // preview and applies a fresh one as an incremental change. OK commits the
+  // final preview as one undoable change; Cancel reverts to the original.
+  async doSimplifySelectedContours() {
+    const contourIndices = [...(this.contextMenuState.simplifiableContours || [])].sort(
+      (a, b) => a - b
+    );
+    if (!contourIndices.length) {
+      return;
+    }
+
+    await this.editGlyph(async (sendIncrementalChange, glyph) => {
+      const layerInfo = Object.entries(
+        this.getEditingLayerFromGlyphLayers(glyph.layers)
+      ).map(([layerName, layerGlyph]) => ({ layerName, layerGlyph }));
+
+      // Snapshot the original contours once; every preview is computed from
+      // these, never from a previously previewed state.
+      const originalContours = contourIndices.map((contourIndex) =>
+        layerInfo.map(({ layerGlyph }) =>
+          layerGlyph.path.getUnpackedContour(contourIndex)
+        )
+      );
+
+      const computeResults = (tolerance) =>
+        originalContours.map((perMaster) =>
+          simplifyContourCompatible(perMaster, { tolerance })
+        );
+
+      let appliedPreview = null; // ChangeCollector of the visible preview
+      const applyPreview = async (tolerance) => {
+        if (appliedPreview) {
+          // Back to the original outline before computing the next preview.
+          applyChange(glyph, appliedPreview.rollbackChange);
+          await sendIncrementalChange(appliedPreview.rollbackChange, true);
+          appliedPreview = null;
+        }
+        const results = computeResults(tolerance);
+        const collector = new ChangeCollector();
+        for (const [layerIndex, { layerName, layerGlyph }] of layerInfo.entries()) {
+          const layerChange = recordChanges(layerGlyph, (lg) => {
+            for (const [i, contourIndex] of contourIndices.entries()) {
+              const newContour = results[i]?.[layerIndex];
+              if (!newContour) {
+                continue;
+              }
+              // Net-zero contour count: no skeleton bookkeeping needed.
+              lg.path.deleteContour(contourIndex);
+              lg.path.insertContour(contourIndex, packContour(newContour));
+            }
+          });
+          collector.concat(layerChange.prefixed(["layers", layerName, "glyph"]));
+        }
+        if (collector.hasChange) {
+          await sendIncrementalChange(collector.change, true);
+        }
+        appliedPreview = collector;
+        return results.some((result) => result !== null);
+      };
+
+      const toleranceInput = html.input({
+        type: "number",
+        min: 0.01,
+        max: 10,
+        step: 0.1,
+        value: 0.5,
+        style: "width: 6em;",
+        oninput: async () => {
+          const tolerance = Number(toleranceInput.value);
+          if (Number.isFinite(tolerance) && tolerance >= 0.01 && tolerance <= 10) {
+            await applyPreview(tolerance);
+          }
+        },
+      });
+
+      const content = html.div({ style: "display: grid; gap: 0.6em;" }, [
+        html.div({}, [
+          translate("action.simplify-contour.tolerance"),
+          " ",
+          toleranceInput,
+        ]),
+      ]);
+
+      const dialogBox = await dialogSetup(
+        translate("action.simplify-contour.title"),
+        null,
+        [
+          { title: translate("dialog.cancel"), isCancelButton: true },
+          { title: translate("dialog.okay"), isDefaultButton: true, resultValue: true },
+        ]
+      );
+      dialogBox.setContent(content);
+
+      const anythingSimplified = await applyPreview(0.5);
+      if (!anythingSimplified) {
+        // Nothing merges: revert the (empty) preview and say so.
+        if (appliedPreview) {
+          applyChange(glyph, appliedPreview.rollbackChange);
+          await sendIncrementalChange(appliedPreview.rollbackChange);
+        }
+        message(
+          translate("action.simplify-contour.title"),
+          translate("action.simplify-contour.nothing-to-simplify")
+        );
+        return {};
+      }
+
+      if (!(await dialogBox.run())) {
+        // Cancel: revert the preview and record nothing.
+        applyChange(glyph, appliedPreview.rollbackChange);
+        await sendIncrementalChange(appliedPreview.rollbackChange);
+        return {};
+      }
+
+      // Keep the selection on surviving points: the first on-curve point of
+      // each simplified contour always survives.
+      const primaryPath = layerInfo[0].layerGlyph.path;
+      this.selection = new Set(
+        contourIndices.map(
+          (contourIndex) =>
+            `point/${primaryPath.getAbsolutePointIndex(contourIndex, 0)}`
+        )
+      );
+
+      return {
+        changes: appliedPreview,
+        undoLabel: translate("action.simplify-contour"),
+      };
     });
   }
 
