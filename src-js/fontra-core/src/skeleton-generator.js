@@ -2895,9 +2895,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       const delta = Math.tan((Math.abs(clampedAngle) * Math.PI) / 180) * capWidth;
       const hasAngle = Math.abs(clampedAngle) > 0.001;
       const hasDistance = startDistance > 0.001;
-      let moveLeft = clampedAngle > 0;
-      if (startCapLeftHW < 0.5 && startCapRightHW > 0.5) moveLeft = false;
-      if (startCapRightHW < 0.5 && startCapLeftHW > 0.5) moveLeft = true;
+      const tilt = squareCapTilt(clampedAngle, startCapLeftHW, startCapRightHW, delta);
+      const moveLeft = tilt.moveLeft;
 
       const leftStart = getFirstOnCurvePoint(roundedLeftSide);
       const rightStart = getFirstOnCurvePoint(roundedRightSide);
@@ -2905,8 +2904,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       const rightHandleDir = getSideHandleDirection(roundedRightSide, "start");
       const addLeft = hasDistance || (hasAngle && moveLeft);
       const addRight = hasDistance || (hasAngle && !moveLeft);
-      const leftDelta = hasAngle && moveLeft ? delta : 0;
-      const rightDelta = hasAngle && !moveLeft ? delta : 0;
+      const leftDelta = hasAngle && moveLeft ? tilt.delta : 0;
+      const rightDelta = hasAngle && !moveLeft ? tilt.delta : 0;
       if (addLeft) {
         const leftExtra = createSquareCapPoint(
           leftStart,
@@ -2915,7 +2914,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           hasDistance ? startDistance : 0,
           leftDelta
         );
-        if (leftExtra) roundedLeftSide.unshift(leftExtra);
+        attachSquareCapPoint(roundedLeftSide, "start", leftExtra);
       }
       if (addRight) {
         const rightExtra = createSquareCapPoint(
@@ -2925,7 +2924,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           hasDistance ? startDistance : 0,
           rightDelta
         );
-        if (rightExtra) roundedRightSide.unshift(rightExtra);
+        attachSquareCapPoint(roundedRightSide, "start", rightExtra);
       }
     } else if (startIsDrop) {
       const startTangent = getSegmentTangent(segments[0], "start");
@@ -3095,9 +3094,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       const delta = Math.tan((Math.abs(clampedAngle) * Math.PI) / 180) * capWidth;
       const hasAngle = Math.abs(clampedAngle) > 0.001;
       const hasDistance = endDistance > 0.001;
-      let moveLeft = clampedAngle > 0;
-      if (endCapLeftHW < 0.5 && endCapRightHW > 0.5) moveLeft = false;
-      if (endCapRightHW < 0.5 && endCapLeftHW > 0.5) moveLeft = true;
+      const tilt = squareCapTilt(clampedAngle, endCapLeftHW, endCapRightHW, delta);
+      const moveLeft = tilt.moveLeft;
 
       const leftEnd = getLastOnCurvePoint(roundedLeftSide);
       const rightEnd = getLastOnCurvePoint(roundedRightSide);
@@ -3105,8 +3103,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
       const rightHandleDir = getSideHandleDirection(roundedRightSide, "end");
       const addLeft = hasDistance || (hasAngle && moveLeft);
       const addRight = hasDistance || (hasAngle && !moveLeft);
-      const leftDelta = hasAngle && moveLeft ? delta : 0;
-      const rightDelta = hasAngle && !moveLeft ? delta : 0;
+      const leftDelta = hasAngle && moveLeft ? tilt.delta : 0;
+      const rightDelta = hasAngle && !moveLeft ? tilt.delta : 0;
       if (addLeft) {
         const leftExtra = createSquareCapPoint(
           leftEnd,
@@ -3115,7 +3113,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           hasDistance ? endDistance : 0,
           leftDelta
         );
-        if (leftExtra) roundedLeftSide.push(leftExtra);
+        attachSquareCapPoint(roundedLeftSide, "end", leftExtra);
       }
       if (addRight) {
         const rightExtra = createSquareCapPoint(
@@ -3125,7 +3123,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           hasDistance ? endDistance : 0,
           rightDelta
         );
-        if (rightExtra) roundedRightSide.push(rightExtra);
+        attachSquareCapPoint(roundedRightSide, "end", rightExtra);
       }
     } else if (endIsDrop) {
       const endTangent = getSegmentTangent(segments[segments.length - 1], "end");
@@ -4458,10 +4456,16 @@ function getSideHandleDirection(points, position) {
     for (let i = startIdx + 1; i < points.length; i++) {
       const point = points[i];
       if (!point) continue;
-      if (!point.type) break;
+      // A straight edge has no handle to read the direction from. Its
+      // direction is the line to the next point along, which is what a cap
+      // extending that edge has to follow; without this it followed the cap
+      // tangent instead and put a corner where the edge is straight.
       const dir = { x: point.x - startPoint.x, y: point.y - startPoint.y };
       const len = Math.hypot(dir.x, dir.y);
-      if (len > 0.001) return { x: dir.x / len, y: dir.y / len };
+      if (len > 0.001) {
+        return { x: dir.x / len, y: dir.y / len };
+      }
+      if (!point.type) break;
     }
     return null;
   }
@@ -4477,18 +4481,92 @@ function getSideHandleDirection(points, position) {
   for (let i = endIdx - 1; i >= 0; i--) {
     const point = points[i];
     if (!point) continue;
-    if (!point.type) break;
     const dir = { x: point.x - endPoint.x, y: point.y - endPoint.y };
     const len = Math.hypot(dir.x, dir.y);
-    if (len > 0.001) return { x: dir.x / len, y: dir.y / len };
+    if (len > 0.001) {
+      return { x: dir.x / len, y: dir.y / len };
+    }
+    if (!point.type) break;
   }
   return null;
+}
+
+// Attach a square cap's corner to one side of the stroke.
+//
+// Where the side ends in a curve the corner is a new point: the curve ends,
+// the straight cap begins, and the join between them is a real corner. Where
+// the side ends straight the corner lies on that same straight line, so the
+// old end point is not a corner at all -- it is a point in the middle of a
+// line, and leaving it there both adds a point nobody asked for and, when the
+// cap leans inwards, makes the outline run past its own end and double back.
+// There the corner replaces the end point instead.
+function attachSquareCapPoint(side, position, corner) {
+  if (!corner) {
+    return;
+  }
+  const endIndex =
+    position === "start"
+      ? side.findIndex((point) => point && !point.type)
+      : (() => {
+          for (let i = side.length - 1; i >= 0; i--) {
+            if (side[i] && !side[i].type) {
+              return i;
+            }
+          }
+          return -1;
+        })();
+  const endPoint = endIndex >= 0 ? side[endIndex] : null;
+  const neighbour = position === "start" ? side[endIndex + 1] : side[endIndex - 1];
+  if (
+    endPoint &&
+    neighbour &&
+    !neighbour.type &&
+    isCollinear(corner, endPoint, neighbour)
+  ) {
+    side[endIndex] = { ...endPoint, x: corner.x, y: corner.y };
+    return;
+  }
+  if (position === "start") {
+    side.unshift(corner);
+  } else {
+    side.push(corner);
+  }
+}
+
+// Whether b sits on the line through a and c, to within a unit. Generated
+// points are rounded to whole units, so three points that are collinear by
+// construction still miss the line by a fraction of one.
+function isCollinear(a, b, c) {
+  const cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const span = Math.hypot(c.x - a.x, c.y - a.y);
+  return span > 0.001 && Math.abs(cross) / span < 1;
+}
+
+// Which side of a square cap carries the tilt, and how far.
+//
+// The angle's sign is carried by WHICH side moves, not by the distance: a
+// positive angle pushes the left edge out, a negative one the right. Where a
+// side is collapsed -- single-sided mode -- it has no edge to push out, so
+// the live side carries the tilt instead, and it carries it BACKWARDS so the
+// two signs still mirror each other. Forcing the live side out for both
+// signs, which is what this used to do, gave the same cap either way.
+function squareCapTilt(angle, leftHalfWidth, rightHalfWidth, delta) {
+  let moveLeft = angle > 0;
+  const leftCollapsed = leftHalfWidth < 0.5 && rightHalfWidth > 0.5;
+  const rightCollapsed = rightHalfWidth < 0.5 && leftHalfWidth > 0.5;
+  if (leftCollapsed && moveLeft) {
+    return { moveLeft: false, delta: -delta };
+  }
+  if (rightCollapsed && !moveLeft) {
+    return { moveLeft: true, delta: -delta };
+  }
+  return { moveLeft, delta };
 }
 
 function createSquareCapPoint(basePoint, handleDir, capTangent, baseDistance, delta) {
   if (!basePoint) return null;
   const hasDistance = baseDistance > 0.001;
-  const hasDelta = delta > 0.001;
+  const hasDelta = Math.abs(delta) > 0.001;
   if (!hasDistance && !hasDelta) {
     return { x: basePoint.x, y: basePoint.y, smooth: false };
   }
@@ -4513,7 +4591,7 @@ function createSquareCapPoint(basePoint, handleDir, capTangent, baseDistance, de
     }
     t += delta / denom;
   }
-  if (!(t > 0.001)) {
+  if (!(Math.abs(t) > 0.001)) {
     return { x: basePoint.x, y: basePoint.y, smooth: false };
   }
   return {

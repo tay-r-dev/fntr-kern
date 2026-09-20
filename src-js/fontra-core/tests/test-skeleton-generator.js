@@ -1,6 +1,8 @@
 import {
   canonicalToGeneratorInput,
+  generateContoursFromSkeleton,
   generateFromSkeleton,
+  generateOutlineFromSkeletonContour,
   outlineContourToPackedPath,
   removeCollapsedOutlinePoints,
   solveSkeletonContourSides,
@@ -4453,5 +4455,133 @@ describe("skeleton insertion points reach the generator", () => {
     // must pass through the centerline point at that parameter.
     expect(ends.left.x).to.be.closeTo(ends.right.x, 0.5);
     expect(ends.left.x).to.be.closeTo(261 + 0.4 * (399 - 261), 0.5);
+  });
+});
+
+describe("square cap angle on a single-sided stroke", () => {
+  // A straight stroke, all of its width on one side, capped square at both
+  // ends. The cap angle's sign is carried by which edge moves, and a
+  // single-sided stroke has only one edge to move: the tilt has to come out
+  // of that edge in both directions, or the two signs draw the same cap.
+  function outlineFor(capAngle, singleSidedDirection) {
+    const contour = {
+      id: 1,
+      closed: false,
+      defaultWidth: 80,
+      capStyle: "square",
+      capAngle,
+      singleSided: true,
+      singleSidedDirection,
+      insertions: [],
+      points: [
+        { id: 1, x: 0, y: 0, type: null, smooth: false, capAngle },
+        { id: 2, x: 0, y: 300, type: null, smooth: false, capAngle },
+      ],
+    };
+    const [outline] = generateOutlineFromSkeletonContour(contour, {
+      singleSided: true,
+      singleSidedDirection,
+    });
+    return outline.points.map((point) => [point.x, point.y]);
+  }
+
+  for (const direction of ["left", "right"]) {
+    it(`tilts the ${direction}-hand edge both ways`, () => {
+      const square = outlineFor(0, direction);
+      const positive = outlineFor(30, direction);
+      const negative = outlineFor(-30, direction);
+
+      // Both signs do something, and they do opposite things.
+      expect(positive).to.not.deep.equal(square);
+      expect(negative).to.not.deep.equal(square);
+      expect(positive).to.not.deep.equal(negative);
+
+      // The stroke runs up the y axis from 0 to 300 with its width on one
+      // side, so the cap corner is the point on that live edge which is not
+      // level with either end. A tilt moves it past the end or back inside.
+      const corners = (outline) => {
+        const edge = Math.max(...outline.map(([x]) => Math.abs(x)));
+        const offsets = outline
+          .filter(([x]) => Math.abs(Math.abs(x) - edge) < 0.5)
+          .map(([, y]) => y)
+          .filter((y) => Math.abs(y) > 0.5 && Math.abs(y - 300) > 0.5);
+        return {
+          top: Math.max(...offsets) - 300,
+          bottom: Math.min(...offsets),
+        };
+      };
+      const up = corners(positive);
+      const down = corners(negative);
+      // Equal and opposite: one sign leans the cap one way, the other leans
+      // it the other way by the same amount.
+      expect(up.top).to.be.closeTo(-down.top, 0.5);
+      expect(up.bottom).to.be.closeTo(-down.bottom, 0.5);
+      expect(Math.abs(up.top)).to.be.greaterThan(10);
+    });
+  }
+});
+
+describe("square cap on a straight single-sided stroke", () => {
+  // Taken from a real glyph: a tapering single-sided stem, capped square with
+  // a 21 degree lean. Both edges are straight, so the cap's corner lies on
+  // the edge it extends and the edge's old end point is not a corner at all.
+  function outline() {
+    const contour = {
+      id: 29,
+      closed: false,
+      defaultWidth: 80,
+      capStyle: "butt",
+      singleSided: "right",
+      insertions: [],
+      points: [
+        {
+          id: 31,
+          x: 64,
+          y: 500,
+          type: null,
+          smooth: false,
+          capStyle: "square",
+          capAngle: 21,
+          width: { left: 76.5, linked: true, right: 76.5, tied: true },
+        },
+        {
+          id: 30,
+          x: 64,
+          y: 0,
+          type: null,
+          smooth: false,
+          width: { left: 40, linked: true, right: 40, tied: true },
+        },
+      ],
+    };
+    const [generated] = generateContoursFromSkeleton(
+      normalizeSkeletonData({ contours: [contour] })
+    );
+    return generated.points.map((point) => [point.x, point.y]);
+  }
+
+  it("emits one point per corner and no more", () => {
+    const points = outline();
+    // Centreline down, across the narrow end, and back up the leaning edge.
+    expect(points.length).to.equal(4);
+    // No point sits in the middle of a straight run.
+    for (let i = 0; i < points.length; i++) {
+      const [ax, ay] = points[(i - 1 + points.length) % points.length];
+      const [bx, by] = points[i];
+      const [cx, cy] = points[(i + 1) % points.length];
+      const cross = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      const span = Math.hypot(cx - ax, cy - ay);
+      expect(Math.abs(cross) / span).to.be.greaterThan(1);
+    }
+  });
+
+  it("puts the leaning corner on the edge it extends", () => {
+    const points = outline();
+    // The wide end of the edge runs from (144, 0) up to the cap corner; the
+    // corner has to stay on that line, not jog off it.
+    const corner = points.find(([, y]) => y > 400 && y < 500);
+    expect(corner).to.not.equal(undefined);
+    const cross = (corner[0] - 144) * (500 - 0) - (corner[1] - 0) * (217 - 144);
+    expect(Math.abs(cross) / Math.hypot(217 - 144, 500)).to.be.lessThan(1);
   });
 });
