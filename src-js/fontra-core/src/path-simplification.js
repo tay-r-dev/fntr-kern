@@ -186,6 +186,14 @@ function isAxisAligned(tangent) {
   );
 }
 
+// A fold that reproduces the run this closely, with handles this even, is
+// taken as the answer rather than a starting guess. Not zero, because a
+// drawing on whole units is a rounded drawing: the pieces of what was once a
+// single curve no longer fold back to it exactly, and half a unit covers that
+// while staying inside the smallest tolerance the command will use.
+const FIT_EXACT_ENOUGH = 0.5;
+const FIT_BALANCED_RATIO = 1.5;
+
 // The coarse grid of starting handle lengths, as multiples of a third of the
 // run's chord, and how many of its best cells are refined.
 const FIT_GRID_STEPS = 16;
@@ -414,6 +422,11 @@ function candidatePolyline(candidate, steps = CANDIDATE_POLYLINE_STEPS) {
 // While searching, the two curves are compared at a quarter of the detail.
 // The search only needs to know which of two candidates is better, and the
 // winner is measured again at full detail before it is accepted.
+//
+// Cutting this further to make long runs cheaper was tried and reverted: at
+// 4 steps a 96-point circle came back as 24 points instead of 12, because a
+// coarsely ranked fit is a worse fit and the longer merges stop being
+// accepted.
 const SEARCH_POLYLINE_STEPS = 16;
 
 // Measure the largest distance between a run of original cubic pieces and a
@@ -550,13 +563,14 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
   // every sample of the original still lies near some part of it, and the
   // search walks straight into exactly that: lopsided handles that score well
   // one way and badly the other.
-  const searchPolyline = piecesPolyline(originalPieces, SEARCH_POLYLINE_STEPS);
+  const searchSteps = SEARCH_POLYLINE_STEPS;
+  const searchPolyline = piecesPolyline(originalPieces, searchSteps);
   const measure = (alphaL, alphaR) =>
     deviationAgainst(
       originalPieces,
       buildCandidate(alphaL, alphaR),
       searchPolyline,
-      SEARCH_POLYLINE_STEPS
+      searchSteps
     );
 
   // Pattern search from one starting pair: halve the step whenever no
@@ -599,25 +613,12 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
     return { lengths: best, error: bestError };
   };
 
-  // Where to start from. The error surface has narrow valleys: on a real
-  // contour 63 and 63 scores 0.10 while 60 and 60 scores 1.62, so a search
-  // that walks downhill from one guess steps straight over the good answer.
-  // A coarse grid finds which valleys exist, and the best few are refined.
-  //
-  // Folding the run back into a single cubic, pair by pair, is added as well:
-  // it is exact when the run really was one curve, which no grid would land
-  // on by chance.
+  // Folding the run back into a single cubic, pair by pair, is exact when the
+  // run really was one curve that got cut up — which is the common case,
+  // since inserting extrema cuts curves. When that start already reproduces
+  // the run to well under a hundredth of a unit there is nothing left to
+  // look for, and the grid below is skipped.
   const starts = [];
-  const gridErrors = [];
-  for (let i = 0; i < FIT_GRID_STEPS; i++) {
-    for (let j = 0; j < FIT_GRID_STEPS; j++) {
-      const lengths = [base * fitGridMultiplier(i), base * fitGridMultiplier(j)];
-      gridErrors.push({ lengths, error: measure(lengths[0], lengths[1]) });
-    }
-  }
-  gridErrors.sort((a, b) => a.error - b.error);
-  starts.push(...gridErrors.slice(0, FIT_REFINED_STARTS).map((entry) => entry.lengths));
-
   let folded = originalPieces[0].points;
   for (const piece of originalPieces.slice(1)) {
     const t = estimateSplitParameter(folded, piece.points);
@@ -636,9 +637,41 @@ export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
       Number.isFinite(alphaL) &&
       Number.isFinite(alphaR)
     ) {
+      // Judged at full detail, not by the coarse search measure, whose own
+      // 16-step chord error is on the same scale as this threshold.
+      //
+      // Accurate is not enough on its own: the fold that had to be hunted
+      // down with the grid was wrong by 0.42, inside any threshold loose
+      // enough to cover rounding, and its handles were 86 against 37. An
+      // evenly built fold that reproduces the run is the answer; a lopsided
+      // one is a guess, however well it scores, so it goes to the grid.
+      const foldedCandidate = buildCandidate(alphaL, alphaR);
+      const lopsided =
+        Math.max(alphaL, alphaR) / Math.min(alphaL, alphaR) > FIT_BALANCED_RATIO;
+      if (
+        !lopsided &&
+        maxCubicDeviation(originalPieces, foldedCandidate) < FIT_EXACT_ENOUGH
+      ) {
+        return foldedCandidate;
+      }
       starts.push([alphaL, alphaR]);
     }
   }
+
+  // Otherwise the run was never one curve. The error surface then has narrow
+  // valleys: on a real contour 63 and 63 scores 0.10 while 60 and 60 scores
+  // 1.62, so a search that walks downhill from one guess steps straight over
+  // the good answer. A coarse grid finds which valleys exist, and the best
+  // few are refined.
+  const gridErrors = [];
+  for (let i = 0; i < FIT_GRID_STEPS; i++) {
+    for (let j = 0; j < FIT_GRID_STEPS; j++) {
+      const lengths = [base * fitGridMultiplier(i), base * fitGridMultiplier(j)];
+      gridErrors.push({ lengths, error: measure(lengths[0], lengths[1]) });
+    }
+  }
+  gridErrors.sort((a, b) => a.error - b.error);
+  starts.push(...gridErrors.slice(0, FIT_REFINED_STARTS).map((entry) => entry.lengths));
 
   const results = starts.map(search).map((result) => ({
     ...result,
@@ -1050,6 +1083,28 @@ export function simplifyContour(contour, options = {}) {
 // Decide the merge boundaries for one run: a covering list of [start, end)
 // spans (relative piece indices). Spans longer than one piece are accepted
 // merges; single-piece spans are copies. Greedy, longest-first.
+// Fit one span of a run, remembering the answer. Deciding a merge and then
+// applying it asks for the same fit twice, and every master asks again, so
+// the fit is kept on the run it belongs to.
+function fitSpan(run, start, end) {
+  const cache = (run.fits ??= new Map());
+  const key = `${start}:${end}`;
+  if (!cache.has(key)) {
+    const candidatePieces = run.pieces.slice(start, end);
+    const first = candidatePieces[0].points;
+    const last = candidatePieces.at(-1).points;
+    cache.set(key, {
+      pieces: candidatePieces,
+      candidate: fitCubicToSpan(
+        candidatePieces,
+        { x: first[1].x - first[0].x, y: first[1].y - first[0].y },
+        { x: last[3].x - last[2].x, y: last[3].y - last[2].y }
+      ),
+    });
+  }
+  return cache.get(key);
+}
+
 export function planRunMerges(run, options = {}) {
   const pieces = run.pieces;
   const tolerance = options.tolerance ?? 0.5;
@@ -1059,18 +1114,7 @@ export function planRunMerges(run, options = {}) {
   while (start < pieces.length) {
     let acceptedEnd = start + 1;
     for (let end = pieces.length; end > start + 1; end--) {
-      const candidatePieces = pieces.slice(start, end);
-      const first = candidatePieces[0].points;
-      const last = candidatePieces.at(-1).points;
-      const startTangent = {
-        x: first[1].x - first[0].x,
-        y: first[1].y - first[0].y,
-      };
-      const endTangent = {
-        x: last[3].x - last[2].x,
-        y: last[3].y - last[2].y,
-      };
-      const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
+      const { pieces: candidatePieces, candidate } = fitSpan(run, start, end);
       if (
         candidate &&
         maxCubicDeviation(candidatePieces, candidate) <= tolerance &&
@@ -1096,18 +1140,7 @@ export function applyRunPlan(run, spans, options = {}) {
       result.push(pieces[start]);
       continue;
     }
-    const candidatePieces = pieces.slice(start, end);
-    const first = candidatePieces[0].points;
-    const last = candidatePieces.at(-1).points;
-    const startTangent = {
-      x: first[1].x - first[0].x,
-      y: first[1].y - first[0].y,
-    };
-    const endTangent = {
-      x: last[3].x - last[2].x,
-      y: last[3].y - last[2].y,
-    };
-    const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
+    const { pieces: candidatePieces, candidate } = fitSpan(run, start, end);
     if (!candidate) {
       result.push(...candidatePieces);
       continue;

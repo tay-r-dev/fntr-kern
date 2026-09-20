@@ -151,6 +151,30 @@ import {
 // Simplify's tolerance, in font units.
 const MIN_SIMPLIFY_TOLERANCE = 1;
 
+// Simplify one contour across its masters with the least deviation that
+// achieves anything: the smallest whole-unit tolerance that removes a point.
+// Failing that, the smallest result that changes the contour at all, which is
+// how a contour missing points on its extrema still gets them.
+function simplifyWithLeastDeviation(perMaster) {
+  let gentlest = null;
+  const before = perMaster[0].points.length;
+  for (
+    let tolerance = MIN_SIMPLIFY_TOLERANCE;
+    tolerance <= MAX_SIMPLIFY_TOLERANCE;
+    tolerance++
+  ) {
+    const results = simplifyContourCompatible(perMaster, { tolerance });
+    if (!results) {
+      continue;
+    }
+    if (results[0].points.length < before) {
+      return results;
+    }
+    gentlest = gentlest ?? results;
+  }
+  return gentlest;
+}
+
 // Every point index of the given contours, in path order.
 function pointIndicesOfContours(path, contourIndices) {
   const indices = [];
@@ -2236,15 +2260,16 @@ export class SceneController {
     });
   }
 
-  // Simplify selected contours: remove unnecessary cubic curve points within a
-  // user-chosen tolerance. Generated contours are never offered (see
+  // Simplify selected contours: remove unnecessary cubic curve points.
+  // Generated contours are never offered (see
   // contextMenuState.simplifiableContours). All editing layers (masters) are
   // simplified together, and only runs whose merge boundaries every master
   // accepts are written, so compatible interpolation topology is preserved.
   //
-  // The dialog previews live: each tolerance change reverts the previous
-  // preview and applies a fresh one as an incremental change. OK commits the
-  // final preview as one undoable change; Cancel reverts to the original.
+  // There is nothing to choose: it applies the gentlest simplification that
+  // removes any points at all, as one undoable change. A tolerance control
+  // only ever asked the designer to guess a number the command can find for
+  // itself, and every answer other than the smallest is a worse drawing.
   async doSimplifySelectedContours() {
     const contourIndices = [...(this.contextMenuState.simplifiableContours || [])].sort(
       (a, b) => a - b
@@ -2253,175 +2278,57 @@ export class SceneController {
       return;
     }
 
-    await this.editGlyph(async (sendIncrementalChange, glyph) => {
-      const layerInfo = Object.entries(
-        this.getEditingLayerFromGlyphLayers(glyph.layers)
-      ).map(([layerName, layerGlyph]) => ({ layerName, layerGlyph }));
-
-      // Snapshot the original contours once; every preview is computed from
-      // these, never from a previously previewed state.
-      const originalContours = contourIndices.map((contourIndex) =>
-        layerInfo.map(({ layerGlyph }) =>
+    let simplifiedAny = false;
+    await this.editLayersAndRecordChanges((layerGlyphs) => {
+      const layers = Object.values(layerGlyphs);
+      const rewritten = [];
+      for (const contourIndex of contourIndices) {
+        const perMaster = layers.map((layerGlyph) =>
           layerGlyph.path.getUnpackedContour(contourIndex)
-        )
-      );
-
-      const computeResults = (tolerance) =>
-        originalContours.map((perMaster) =>
-          simplifyContourCompatible(perMaster, { tolerance })
         );
-
-      let appliedPreview = null; // ChangeCollector of the visible preview
-      const applyPreview = async (tolerance) => {
-        if (appliedPreview) {
-          // Back to the original outline before computing the next preview.
-          applyChange(glyph, appliedPreview.rollbackChange);
-          await sendIncrementalChange(appliedPreview.rollbackChange, true);
-          appliedPreview = null;
+        const results = simplifyWithLeastDeviation(perMaster);
+        if (!results) {
+          continue;
         }
-        // Simplify renumbers the points, so anything the selection still
-        // names may be gone. Drop it for the duration of the preview; the
-        // final selection is set once the result is committed, and cancelling
-        // puts the original selection back.
-        this.selection = new Set();
-
-        const results = computeResults(tolerance);
-        let collector = new ChangeCollector();
-        for (const [layerIndex, { layerName, layerGlyph }] of layerInfo.entries()) {
-          const layerChange = recordChanges(layerGlyph, (lg) => {
-            const rewritten = [];
-            for (const [i, contourIndex] of contourIndices.entries()) {
-              const newContour = results[i]?.[layerIndex];
-              if (!newContour) {
-                continue;
-              }
-              // Net-zero contour count: no skeleton bookkeeping needed.
-              lg.path.deleteContour(contourIndex);
-              lg.path.insertContour(contourIndex, packContour(newContour));
-              rewritten.push(contourIndex);
-            }
-            // Fitting one curve where there were several leaves the two
-            // handles of a segment lopsided. Balancing evens them out while
-            // holding the segment's own fullness, so the outline keeps its
-            // shape and only the handle split changes. Same rule as the
-            // Tunni gizmo's equalize gesture.
-            //
-            // Only the contours this run actually rewrote: an empty list
-            // means the whole path to balancePathInPlace, which would rebalance
-            // contours the designer never selected.
-            if (rewritten.length) {
-              balancePathInPlace(lg.path, pointIndicesOfContours(lg.path, rewritten));
-            }
-          });
-          // concat returns a new collector; it does not add to this one.
-          collector = collector.concat(
-            layerChange.prefixed(["layers", layerName, "glyph"])
-          );
+        for (const [layerIndex, layerGlyph] of layers.entries()) {
+          // Net-zero contour count: no skeleton bookkeeping needed.
+          layerGlyph.path.deleteContour(contourIndex);
+          layerGlyph.path.insertContour(contourIndex, packContour(results[layerIndex]));
         }
-        if (collector.hasChange) {
-          await sendIncrementalChange(collector.change, true);
-        }
-        appliedPreview = collector;
-        return results.some((result) => result !== null);
-      };
-
-      // Tolerance is a distance in font units, so whole units are the only
-      // setting a designer can reason about; a tenth of a unit is noise.
-      let anythingSimplified = false;
-      const toleranceInput = html.input({
-        type: "number",
-        min: MIN_SIMPLIFY_TOLERANCE,
-        max: MAX_SIMPLIFY_TOLERANCE,
-        step: 1,
-        style: "width: 6em;",
-        oninput: async () => {
-          const tolerance = Math.round(Number(toleranceInput.value));
-          if (
-            Number.isFinite(tolerance) &&
-            tolerance >= MIN_SIMPLIFY_TOLERANCE &&
-            tolerance <= MAX_SIMPLIFY_TOLERANCE
-          ) {
-            anythingSimplified = await applyPreview(tolerance);
-          }
-        },
-      });
-
-      const content = html.div({ style: "display: grid; gap: 0.6em;" }, [
-        html.div({}, [
-          translate("action.simplify-contour.tolerance"),
-          " ",
-          toleranceInput,
-        ]),
-      ]);
-
-      const dialogBox = await dialogSetup(
-        translate("action.simplify-contour.title"),
-        null,
-        [
-          { title: translate("dialog.cancel"), isCancelButton: true },
-          { title: translate("dialog.okay"), isDefaultButton: true, resultValue: true },
-        ]
-      );
-      dialogBox.setContent(content);
-
-      // Don't make the designer guess a tolerance up front: walk the whole
-      // units from the smallest upwards and stop at the first that actually
-      // removes points. The dialog opens on that value, so the preview is
-      // already the gentlest simplification that does anything, and raising
-      // the number from there trades accuracy for fewer points.
-      // A contour that yields no result keeps its original points, so it
-      // counts as itself rather than dropping out of the comparison.
-      const countPoints = (results) =>
-        results.reduce(
-          (total, perMaster, i) =>
-            total + (perMaster?.[0] ?? originalContours[i][0]).points.length,
-          0
+        rewritten.push(contourIndex);
+      }
+      if (!rewritten.length) {
+        return undefined;
+      }
+      // Fitting one curve where there were several leaves the two handles of
+      // a segment lopsided. Balancing evens them out while holding the
+      // segment's own fullness, so the outline keeps its shape and only the
+      // handle split changes. Same rule as the Tunni gizmo's equalize
+      // gesture. Scoped to the contours this run rewrote: an empty list means
+      // the whole path to balancePathInPlace.
+      for (const layerGlyph of layers) {
+        balancePathInPlace(
+          layerGlyph.path,
+          pointIndicesOfContours(layerGlyph.path, rewritten)
         );
-      const originalPointCount = countPoints(originalContours.map(() => null));
-      let chosenTolerance = MIN_SIMPLIFY_TOLERANCE;
-      for (let t = MIN_SIMPLIFY_TOLERANCE; t <= MAX_SIMPLIFY_TOLERANCE; t++) {
-        const results = computeResults(t);
-        if (countPoints(results) < originalPointCount) {
-          chosenTolerance = t;
-          break;
-        }
       }
-      toleranceInput.value = chosenTolerance;
-      anythingSimplified = await applyPreview(chosenTolerance);
-
-      if (!(await dialogBox.run())) {
-        // Cancel: revert the preview and record nothing.
-        applyChange(glyph, appliedPreview.rollbackChange);
-        await sendIncrementalChange(appliedPreview.rollbackChange);
-        return {};
-      }
-
-      if (!anythingSimplified) {
-        // OK with nothing merged at this tolerance: revert and say so.
-        applyChange(glyph, appliedPreview.rollbackChange);
-        await sendIncrementalChange(appliedPreview.rollbackChange);
-        message(
-          translate("action.simplify-contour.title"),
-          translate("action.simplify-contour.nothing-to-simplify")
-        );
-        return {};
-      }
-
-      // Keep the selection on surviving points: the first on-curve point of
-      // each simplified contour always survives.
-      const primaryPath = layerInfo[0].layerGlyph.path;
+      // The first on-curve point of each simplified contour always survives.
       this.selection = new Set(
-        contourIndices.map(
+        rewritten.map(
           (contourIndex) =>
-            `point/${primaryPath.getAbsolutePointIndex(contourIndex, 0)}`
+            `point/${layers[0].path.getAbsolutePointIndex(contourIndex, 0)}`
         )
       );
-
-      return {
-        changes: appliedPreview,
-        undoLabel: translate("action.simplify-contour"),
-      };
+      simplifiedAny = true;
+      return translate("action.simplify-contour");
     });
+
+    if (!simplifiedAny) {
+      message(
+        translate("action.simplify-contour.title"),
+        translate("action.simplify-contour.nothing-to-simplify")
+      );
+    }
   }
 
   // Reverse, for a skeleton. It flips the flag the generator already reads, so
