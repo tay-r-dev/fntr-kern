@@ -67,6 +67,18 @@ export const DEFAULT_SKELETON_WIDTH = 80;
 // stands. The identity the whole feature rests on.
 export const DEFAULT_INSERTION_RATIO = 1;
 
+// The unit that ratio is stated in. `relative` is the identity above, and it
+// stays the default: a point that states a share of the stroke slides along a
+// tapering one without changing the shape. `absolute` states the distance from
+// the centerline out to the point, in font units, for a swell that must measure
+// the same whatever the stroke around it does.
+//
+// One number is stored either way, and the mode says how to read it. The toggle
+// converts it against the width the stroke draws there, so flipping the mode
+// moves nothing.
+export const INSERTION_WIDTH_MODES = ["relative", "absolute"];
+export const DEFAULT_INSERTION_WIDTH_MODE = "relative";
+
 // Mirrors MIN_HANDLE_LENGTH in offset-cubic.js: the shortest handle the
 // generator will emit. The on-curve gizmo stops before driving a handle past it,
 // because beyond that point the generator floors the length and the handle
@@ -5121,11 +5133,33 @@ function normalizeInsertionEasing(easing) {
 }
 
 function normalizeInsertionWidth(width) {
+  const mode = INSERTION_WIDTH_MODES.includes(width?.mode)
+    ? width.mode
+    : DEFAULT_INSERTION_WIDTH_MODE;
+  const fallback = mode === "absolute" ? 0 : DEFAULT_INSERTION_RATIO;
   return {
-    left: asNonNegativeNumber(width?.left, DEFAULT_INSERTION_RATIO),
-    right: asNonNegativeNumber(width?.right, DEFAULT_INSERTION_RATIO),
+    left: asNonNegativeNumber(width?.left, fallback),
+    right: asNonNegativeNumber(width?.right, fallback),
     linked: width?.linked !== false,
+    mode,
   };
+}
+
+// What the generator must multiply the drawn offset by, given what the stroke
+// draws at the point. In `relative` the stored number is that multiplier
+// already. In `absolute` it is the distance asked for, so the multiplier is
+// that distance over the one the stroke drew.
+//
+// A side standing on the centerline has no distance and therefore no direction,
+// so no distance can be asked of it: it stays collapsed, which is the same
+// answer the collapsed-side rule gives everywhere else.
+export function insertionSideRatio(insertion, side, drawnHalfWidth) {
+  const stored = side === "left" ? insertion?.width?.left : insertion?.width?.right;
+  const value = asNonNegativeNumber(stored, DEFAULT_INSERTION_RATIO);
+  if (insertion?.width?.mode !== "absolute") {
+    return value;
+  }
+  return drawnHalfWidth > 0 ? value / drawnHalfWidth : 1;
 }
 
 function normalizeWidth(width) {

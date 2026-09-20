@@ -26,6 +26,7 @@ import {
   getSkeletonData,
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
+  getSkeletonInsertionPosition,
   getSkeletonPointHalfWidth,
   getSkeletonPointPreset,
   getSkeletonPointWidth,
@@ -524,6 +525,85 @@ export async function setPanelInsertionValuesStream(
     },
     undoLabel
   );
+}
+
+// Percent of the stroke, or a distance from the centerline in font units.
+//
+// The number is converted as the mode is written, so the letter does not move:
+// what both readings are stated against is the distance the stroke draws where
+// the point stands, and that is measured rather than computed from the two ribs
+// beside it. The solve fits the offset and lands a unit or two off the width it
+// was asked for, so a point told to hold still would drift by exactly that much.
+//
+// Measuring means one regeneration with the point's own width neutralized,
+// which is what the curvature bake and the detach conversion already do.
+//
+// The absolute number is rounded to whole units, because that is what the field
+// edits and what the outline is quantized to. So the conversion holds the point
+// to within the grid, which is as well as it can be held.
+export async function setSelectedInsertionWidthMode(
+  sceneController,
+  insertionAddresses,
+  absolute,
+  undoLabel
+) {
+  if (!insertionAddresses.length) {
+    return null;
+  }
+  const mode = absolute ? "absolute" : "relative";
+  return runSkeletonPanelEdit(sceneController, undoLabel, (working, reference) => {
+    const neutral = structuredClone(working);
+    for (const address of insertionAddresses) {
+      const resolved = resolveSkeletonInsertionAcrossLayers(
+        reference,
+        neutral,
+        address.contourId,
+        address.insertionId
+      );
+      if (resolved) {
+        resolved.insertion.width = {
+          ...resolved.insertion.width,
+          mode: "relative",
+          left: 1,
+          right: 1,
+        };
+      }
+    }
+    const drawn = generateFromSkeleton(neutral);
+    for (const address of insertionAddresses) {
+      const resolved = resolveSkeletonInsertionAcrossLayers(
+        reference,
+        working,
+        address.contourId,
+        address.insertionId
+      );
+      if (!resolved || resolved.insertion.width.mode === mode) {
+        continue;
+      }
+      const center = getSkeletonInsertionPosition(resolved.contour, resolved.insertion);
+      for (const side of ["left", "right"]) {
+        const stood = findGeneratedOutputPosition(
+          drawn,
+          resolved.contour.id,
+          resolved.insertion.id,
+          side,
+          "onCurve"
+        );
+        // No drawn point on this side is a collapsed one, and a side lying on
+        // the centerline states no distance in either unit. Leave the number
+        // where it is rather than inventing one.
+        const natural =
+          center && stood ? Math.hypot(stood.x - center.x, stood.y - center.y) : 0;
+        if (!(natural > 0)) {
+          continue;
+        }
+        resolved.insertion.width[side] = absolute
+          ? Math.round(resolved.insertion.width[side] * natural)
+          : resolved.insertion.width[side] / natural;
+      }
+      resolved.insertion.width.mode = mode;
+    }
+  });
 }
 
 // One insertion point's width on one side, as a ratio of the width the stroke

@@ -33,6 +33,7 @@ import {
   getEffectiveNormal,
   getEffectiveRibHalfWidth,
   getSkeletonCornerDistances,
+  insertionSideRatio,
   isStraightControlledSmoothPoint,
   meanHalfWidth,
   normalizeSkeletonData,
@@ -2652,7 +2653,14 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   // The ratio moves the emitted on-curve out along the line from the centerline
   // point at the same parameter. The reference is the stroke as the solve drew
   // it, which is why sliding the point along a tapering stroke changes nothing.
-  const ratio = side === "left" ? insertion.width.left : insertion.width.right;
+  //
+  // In absolute mode the stored number is that distance rather than a share of
+  // it, so it is divided by the one the stroke drew here and the geometry below
+  // is untouched. The distance is measured, never assumed from the two ribs: the
+  // solve fits the offset and lands a unit or two off the width it was asked
+  // for, and a swell told to hold still would drift by exactly that much.
+  const drawnHalfWidth = Math.hypot(points[at].x - center.x, points[at].y - center.y);
+  const ratio = insertionSideRatio(insertion, side, drawnHalfWidth);
   const moved = applyInsertionRatio(points, at, center, ratio);
   const easing = insertion.easing[side];
   // At zero easing a cut straight goes back to plain straights and corners.

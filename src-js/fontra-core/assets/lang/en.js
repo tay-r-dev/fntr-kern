@@ -757,6 +757,8 @@ export const strings = {
   "sidebar.skeleton-parameters.corner-curvature-right": "Curvature R",
   "sidebar.skeleton-parameters.corner-distribution": "Distribution",
   "sidebar.skeleton-parameters.insertion": "Insertion point",
+  "sidebar.skeleton-parameters.insertion-absolute":
+    "Width in units from the centerline, not percent of the stroke",
   "sidebar.skeleton-parameters.insertion-easing-left": "Left easing",
   "sidebar.skeleton-parameters.insertion-easing-right": "Right easing",
   "sidebar.skeleton-parameters.locked.handles": "Lock handles",
@@ -772,6 +774,8 @@ export const strings = {
   "sidebar.skeleton-parameters.reset-handles": "Reset handles",
   "sidebar.skeleton-parameters.reset-this-handle": "Reset this handle",
   "sidebar.skeleton-parameters.undo.set-defaults": "set skeleton defaults",
+  "sidebar.skeleton-parameters.undo.set-insertion-width-mode":
+    "set insertion width units",
   "sidebar.skeleton-parameters.undo.set-linked": "set linked widths",
   "sidebar.skeleton-parameters.undo.set-tied": "set tied ribs",
   "sidebar.skeleton-parameters.undo.set-total-width": "set point total width",

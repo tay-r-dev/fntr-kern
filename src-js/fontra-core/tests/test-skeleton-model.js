@@ -2414,7 +2414,7 @@ describe("skeleton insertion points", () => {
       id: 12,
       pointId: 11,
       t: 0.5,
-      width: { left: 1, right: 1, linked: true },
+      width: { left: 1, right: 1, linked: true, mode: "relative" },
       easing: { left: 0, right: 0 },
     });
   });

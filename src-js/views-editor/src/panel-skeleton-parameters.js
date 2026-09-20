@@ -68,6 +68,7 @@ import {
   setInsertionWidthLinked,
   setInsertionWidthRatio,
   setPanelInsertionValuesStream,
+  setSelectedInsertionWidthMode,
   setPanelPointValuesStream,
   setPanelRibAngleLock,
   setPanelRibAngleLockMode,
@@ -500,8 +501,10 @@ export default class SkeletonParametersPanel {
         `${side}-width`,
         {
           // Percent of the width the stroke draws at the point, 100 wherever
-          // it stands. A drag moves each point by the change, so a mixed
-          // selection stays mixed.
+          // it stands — or, in units mode, the distance from the centerline.
+          // A drag moves each point by the change, so a mixed selection stays
+          // mixed. A distance has no default to return to, the way the
+          // Generation widths have none.
           defaultValue: Math.round(DEFAULT_INSERTION_RATIO * 100),
           scrub: (valueStream, startValue) =>
             setPanelInsertionValuesStream(
@@ -512,7 +515,10 @@ export default class SkeletonParametersPanel {
                 setInsertionWidthRatio(
                   insertion,
                   side,
-                  insertion.width[side] + Number(change) / 100
+                  insertion.width[side] +
+                    (insertion.width.mode === "absolute"
+                      ? Number(change)
+                      : Number(change) / 100)
                 ),
               this._undo("set-insertion-width")
             ),
@@ -576,6 +582,22 @@ export default class SkeletonParametersPanel {
       );
       return button;
     };
+    // An insertion point's width reads as a share of the stroke or as a distance
+    // from the centerline. The toggle sits on the width row it governs, and the
+    // write converts the number so the letter does not move.
+    this.insertionAbsoluteButton = toggleButton(
+      "/tabler-icons/ruler-measure.svg",
+      "insertion-absolute",
+      (value) =>
+        setSelectedInsertionWidthMode(
+          this.sceneController,
+          this._insertions || [],
+          value,
+          this._undo("set-insertion-width-mode")
+        )
+    );
+    this.insertionWidthRow.append(this.insertionAbsoluteButton);
+
     // Tied ribs reflects the selection: greyed where no point has a straight
     // to tie across, and on, off or mixed over the points that do.
     this.tiedButton = toggleButton("/tabler-icons/link-plus.svg", "tied", (value) =>
@@ -2403,13 +2425,35 @@ export default class SkeletonParametersPanel {
     // keep their direction through their own outer handles now, whatever the
     // middle does, so the tie has nothing left to take away from the point
     // between them. A stem is exactly where a designer reaches for this control.
+    // Units mode across the whole selection, or neither. Where the two modes are
+    // mixed the numbers beside the toggle are a percentage and a distance, which
+    // are not one quantity, so the fields show mixed until a click settles it.
+    const absolute = summary.absolute.mixed ? null : summary.absolute.value === true;
+    this.insertionAbsoluteButton.mixed = summary.absolute.mixed;
+    this.insertionAbsoluteButton.on = absolute === true;
     for (const side of ["left", "right"]) {
       const disabled = side === "right" && linked === true;
+      const ratio = side === "left" ? summary.ratioLeft : summary.ratioRight;
+      // A distance is the stored number itself; a share is shown as percent.
+      // Mixed modes make the pair incomparable, so the field says mixed.
+      const width =
+        absolute === null
+          ? { ...ratio, mixed: true }
+          : absolute
+            ? ratio
+            : percentOfRatio(ratio);
+      this.insertionFields[side].defaultValue = absolute
+        ? undefined
+        : Math.round(DEFAULT_INSERTION_RATIO * 100);
       this._refreshCompactField(
         this.insertionFields[side],
         `insertion:${side}`,
-        percentOfRatio(side === "left" ? summary.ratioLeft : summary.ratioRight),
-        { disabled, minValue: 0, round: true }
+        width,
+        {
+          disabled,
+          minValue: 0,
+          round: true,
+        }
       );
       const easing = side === "left" ? summary.easingLeft : summary.easingRight;
       this._refreshCompactField(
@@ -2718,11 +2762,18 @@ export default class SkeletonParametersPanel {
     if (name !== "left" && name !== "right") {
       return;
     }
-    // A typed number is percent.
+    // A typed number is percent, or a distance in font units where the point
+    // reads that way. Each point answers for itself, so a mixed selection takes
+    // the number in its own unit rather than one of the two.
     await editSelectedSkeletonInsertions(
       this.sceneController,
       insertions,
-      (insertion) => setInsertionWidthRatio(insertion, name, Number(value) / 100),
+      (insertion) =>
+        setInsertionWidthRatio(
+          insertion,
+          name,
+          insertion.width.mode === "absolute" ? Number(value) : Number(value) / 100
+        ),
       this._undo("set-insertion-width")
     );
   }

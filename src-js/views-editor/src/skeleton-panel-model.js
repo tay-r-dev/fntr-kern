@@ -715,6 +715,12 @@ export function summarizeSkeletonInsertionSelection(selectedInsertions) {
     linked: reduceValues(
       selectedInsertions.map((entry) => entry.insertion.width.linked !== false)
     ),
+    // Percent of the stroke, or a distance in font units. Mixed across the
+    // selection means the two numbers beside it are not comparable, so the
+    // panel says so rather than showing one of them.
+    absolute: reduceValues(
+      selectedInsertions.map((entry) => entry.insertion.width.mode === "absolute")
+    ),
     easingLeft: reduceValues(
       selectedInsertions.map((entry) => entry.insertion.easing.left)
     ),

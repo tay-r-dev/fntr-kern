@@ -4382,6 +4382,101 @@ describe("skeleton insertion points reach the generator", () => {
     expect(worst).to.be.lessThan(6);
   });
 
+  // Absolute mode states the distance from the centerline instead of a share of
+  // the stroke. The centerline of this fixture runs along the x axis, so that
+  // distance is the emitted point's own y.
+  const taperedWithWidth = (t, width) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          capStyle: "butt",
+          points: [
+            { id: 11, x: 0, y: 0, width: { left: 15, right: 15 } },
+            { id: 12, x: 200, y: 0, width: { left: 45, right: 45 } },
+          ],
+          insertions: [{ id: 13, pointId: 11, t, width }],
+        },
+      ],
+    });
+
+  const insertedLeftPoint = (result) => {
+    const index = result.provenance[0].pointMap.findIndex(
+      (entry) => entry?.insertion && entry.role === "onCurve" && entry.side === "left"
+    );
+    return result.contours[0].points[index];
+  };
+
+  it("puts an absolute insertion width at the distance it states", () => {
+    const result = generateFromSkeleton(
+      taperedWithWidth(0.5, { left: 50, right: 50, mode: "absolute" })
+    );
+    expect(Math.abs(insertedLeftPoint(result).y)).to.be.closeTo(50, 0.5);
+  });
+
+  it("holds an absolute width as the point slides along a taper", () => {
+    // The mirror of the ratio's own sweep above: there the share is held and the
+    // distance grows with the stroke, here the distance is held and the share
+    // gives way.
+    let worst = 0;
+    for (let i = 5; i <= 95; i++) {
+      const result = generateFromSkeleton(
+        taperedWithWidth(i / 100, { left: 50, right: 50, mode: "absolute" })
+      );
+      worst = Math.max(worst, Math.abs(Math.abs(insertedLeftPoint(result).y) - 50));
+    }
+    expect(worst).to.be.lessThan(1);
+  });
+
+  it("draws the same letter from either mode where the numbers agree", () => {
+    // What the panel's toggle rests on: read the distance the point already
+    // stands at, write it as the absolute number, and nothing moves.
+    const relative = generateFromSkeleton(
+      taperedWithWidth(0.4, { left: 1.4, right: 1.4, mode: "relative" })
+    );
+    const stood = Math.abs(insertedLeftPoint(relative).y);
+    const absolute = generateFromSkeleton(
+      taperedWithWidth(0.4, { left: stood, right: stood, mode: "absolute" })
+    );
+    expect(absolute.contours[0].points).to.have.length(
+      relative.contours[0].points.length
+    );
+    for (const [i, point] of absolute.contours[0].points.entries()) {
+      const was = relative.contours[0].points[i];
+      expect(Math.hypot(point.x - was.x, point.y - was.y)).to.be.lessThan(1.5);
+    }
+  });
+
+  it("leaves a collapsed side on the centerline whatever distance is asked", () => {
+    // A side with no distance has no direction to be pushed out along, and the
+    // collapsed-side rule says it lies on the skeleton exactly.
+    const singleSided = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 60,
+          capStyle: "butt",
+          singleSided: "right",
+          points: [
+            { id: 11, x: 0, y: 0 },
+            { id: 12, x: 200, y: 0 },
+          ],
+          insertions: [
+            {
+              id: 13,
+              pointId: 11,
+              t: 0.5,
+              width: { left: 70, right: 70, mode: "absolute" },
+            },
+          ],
+        },
+      ],
+    });
+    const result = generateFromSkeleton(singleSided);
+    expect(Math.abs(insertedLeftPoint(result).y)).to.be.lessThan(0.5);
+  });
+
   it("puts the emitted points on the segment the insertion names", () => {
     // A curve then a straight. The bug this guards: the anchor was guessed from
     // whether a segment's pushed run opened with an on-curve, which is true for
