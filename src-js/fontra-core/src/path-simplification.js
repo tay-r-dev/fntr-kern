@@ -173,3 +173,138 @@ export function contourToCubicPieces(contour) {
   }
   return pieces;
 }
+
+function hasNonEmptyAttrs(point) {
+  return !!point.attrs && Object.keys(point.attrs).length > 0;
+}
+
+// Analyze one unpacked contour: split cubic pieces at interior extrema and
+// classify which points must survive simplification.
+//
+// Returns {pieces, protectedPointKeys, sourcePointMap, isClosed}:
+// - pieces: segment pieces in contour order. Cubic pieces are split at every
+//   interior extremum, so no piece contains an extremum. Each piece carries
+//   startKey/endKey identifying its on-curve boundary points.
+// - protectedPointKeys: Set of point keys that must not be removed.
+//   Original points are keyed by their contour point index (a number);
+//   inserted extrema points get a generated string key.
+// - sourcePointMap: Map from inserted extrema key to
+//   {point, sourceSegmentIndex, t}.
+export function classifySimplifyContour(contour, options = {}) {
+  const { points, isClosed } = contour;
+  const basePieces = contourToCubicPieces(contour);
+  const protectedPointKeys = new Set();
+  const sourcePointMap = new Map();
+
+  const onCurveIndices = [];
+  for (let i = 0; i < points.length; i++) {
+    if (!points[i].type) {
+      onCurveIndices.push(i);
+    }
+  }
+
+  for (const [onCurveOrdinal, pointIndex] of onCurveIndices.entries()) {
+    const point = points[pointIndex];
+    const isOpenEndpoint =
+      !isClosed &&
+      (onCurveOrdinal === 0 || onCurveOrdinal === onCurveIndices.length - 1);
+    if (isOpenEndpoint || point.smooth !== true || hasNonEmptyAttrs(point)) {
+      protectedPointKeys.add(pointIndex);
+    }
+  }
+
+  const pieces = [];
+  let insertedCounter = 0;
+  for (const piece of basePieces) {
+    const startKey = piece.startPointIndex;
+    if (piece.kind !== "cubic") {
+      pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
+      continue;
+    }
+    const extremaTs = cubicExtremaParameters(piece.points);
+    if (!extremaTs.length) {
+      pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
+      continue;
+    }
+    // Split the piece at each extremum, left to right.
+    let currentPoints = piece.points;
+    let currentStartKey = startKey;
+    let currentStartPointIndex = piece.startPointIndex;
+    let tOffset = 0;
+    let tScale = 1;
+    for (const [i, t] of extremaTs.entries()) {
+      // t is relative to the original piece; convert to the current remainder.
+      const localT = (t - tOffset) / tScale;
+      const { left, right } = splitCubic(currentPoints, localT);
+      const extremaKey = `extrema-${piece.sourceSegmentIndex}-${i}-${insertedCounter++}`;
+      const extremaPoint = left[3];
+      sourcePointMap.set(extremaKey, {
+        point: extremaPoint,
+        sourceSegmentIndex: piece.sourceSegmentIndex,
+        t,
+      });
+      protectedPointKeys.add(extremaKey);
+      pieces.push({
+        kind: "cubic",
+        mergeable: true,
+        points: left,
+        startPointIndex: currentStartPointIndex,
+        endPointIndex: null,
+        startKey: currentStartKey,
+        endKey: extremaKey,
+        sourceSegmentIndex: piece.sourceSegmentIndex,
+      });
+      currentPoints = right;
+      currentStartKey = extremaKey;
+      currentStartPointIndex = null;
+      tOffset = t;
+      tScale = 1 - t;
+    }
+    pieces.push({
+      kind: "cubic",
+      mergeable: true,
+      points: currentPoints,
+      startPointIndex: currentStartPointIndex,
+      endPointIndex: piece.endPointIndex,
+      startKey: currentStartKey,
+      endKey: piece.endPointIndex,
+      sourceSegmentIndex: piece.sourceSegmentIndex,
+    });
+  }
+
+  return { pieces, protectedPointKeys, sourcePointMap, isClosed };
+}
+
+// Group neighboring mergeable cubic pieces into runs bounded by protected
+// points, line segments, or contour endpoints. Runs with fewer than two
+// pieces are dropped: a single piece is copied unchanged.
+export function buildSimplifyRuns(analysis) {
+  const { pieces, protectedPointKeys } = analysis;
+  const runs = [];
+  let currentRun = null;
+
+  const flushRun = () => {
+    if (currentRun && currentRun.pieces.length >= 2) {
+      runs.push(currentRun);
+    }
+    currentRun = null;
+  };
+
+  for (const piece of pieces) {
+    if (piece.kind !== "cubic" || !piece.mergeable) {
+      flushRun();
+      continue;
+    }
+    if (!currentRun) {
+      currentRun = { pieces: [], startKey: piece.startKey };
+    }
+    currentRun.pieces.push(piece);
+    if (protectedPointKeys.has(piece.endKey)) {
+      currentRun.endKey = piece.endKey;
+      flushRun();
+    }
+  }
+  flushRun();
+  // Do not wrap a run across the closed-contour seam (piece order boundary).
+  return runs;
+}

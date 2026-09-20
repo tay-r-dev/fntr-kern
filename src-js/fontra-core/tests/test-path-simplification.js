@@ -1,6 +1,8 @@
 import { expect } from "chai";
 
 import {
+  buildSimplifyRuns,
+  classifySimplifyContour,
   contourToCubicPieces,
   cubicDerivative,
   cubicExtremaParameters,
@@ -193,5 +195,151 @@ describe("contourToCubicPieces", () => {
     const pieces = contourToCubicPieces(contour);
     expect(pieces[0].startPointIndex).to.equal(0);
     expect(pieces[0].endPointIndex).to.equal(3);
+  });
+});
+
+describe("classifySimplifyContour", () => {
+  it("protects a corner (non-smooth on-curve point)", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 0, type: "cubic" },
+        { x: 60, y: 30, type: "cubic" },
+        { x: 60, y: 60 }, // corner: smooth absent
+        { x: 90, y: 60, type: "cubic" },
+        { x: 120, y: 90, type: "cubic" },
+        { x: 150, y: 90 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    expect(analysis.protectedPointKeys.has(3)).to.be.true;
+  });
+
+  it("does not protect an interior smooth point", () => {
+    const contour = {
+      isClosed: true,
+      points: [
+        { x: 0, y: 0, smooth: true },
+        { x: 30, y: 30, type: "cubic" },
+        { x: 70, y: 30, type: "cubic" },
+        { x: 100, y: 0, smooth: true },
+        { x: 70, y: -30, type: "cubic" },
+        { x: 30, y: -30, type: "cubic" },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    expect(analysis.protectedPointKeys.has(0)).to.be.false;
+    expect(analysis.protectedPointKeys.has(3)).to.be.false;
+  });
+
+  it("inserts and protects an extrema point", () => {
+    // Single open cubic arc with a y extremum at t=0.5.
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 100, type: "cubic" },
+        { x: 70, y: 100, type: "cubic" },
+        { x: 100, y: 0 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    // The original cubic is split into two pieces at the extremum.
+    expect(analysis.pieces.length).to.equal(2);
+    // The inserted extrema point appears in sourcePointMap and is protected.
+    const insertedKeys = [...analysis.sourcePointMap.keys()];
+    expect(insertedKeys.length).to.equal(1);
+    expect(analysis.protectedPointKeys.has(insertedKeys[0])).to.be.true;
+    const inserted = analysis.sourcePointMap.get(insertedKeys[0]);
+    expect(inserted.sourceSegmentIndex).to.equal(0);
+    expect(inserted.t).to.be.closeTo(0.5, 1e-9);
+  });
+
+  it("protects a point with non-empty attrs", () => {
+    const contour = {
+      isClosed: true,
+      points: [
+        { x: 0, y: 0, smooth: true, attrs: { name: "keepme" } },
+        { x: 30, y: 30, type: "cubic" },
+        { x: 70, y: 30, type: "cubic" },
+        { x: 100, y: 0, smooth: true },
+        { x: 70, y: -30, type: "cubic" },
+        { x: 30, y: -30, type: "cubic" },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    expect(analysis.protectedPointKeys.has(0)).to.be.true;
+  });
+
+  it("protects both endpoints of an open contour", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0, smooth: true },
+        { x: 30, y: 0, type: "cubic" },
+        { x: 70, y: 0, type: "cubic" },
+        { x: 100, y: 0, smooth: true },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    expect(analysis.protectedPointKeys.has(0)).to.be.true;
+    expect(analysis.protectedPointKeys.has(3)).to.be.true;
+  });
+});
+
+describe("buildSimplifyRuns", () => {
+  it("merges consecutive cubic pieces between protected points into one run", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 10, y: 10, type: "cubic" },
+        { x: 20, y: 10, type: "cubic" },
+        { x: 30, y: 10, smooth: true },
+        { x: 40, y: 10, type: "cubic" },
+        { x: 50, y: 10, type: "cubic" },
+        { x: 60, y: 0 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    const runs = buildSimplifyRuns(analysis);
+    expect(runs.length).to.equal(1);
+    expect(runs[0].pieces.length).to.equal(2);
+  });
+
+  it("stops a run at a corner", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 10, y: 10, type: "cubic" },
+        { x: 20, y: 10, type: "cubic" },
+        { x: 30, y: 10 }, // corner
+        { x: 40, y: 10, type: "cubic" },
+        { x: 50, y: 10, type: "cubic" },
+        { x: 60, y: 0 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    const runs = buildSimplifyRuns(analysis);
+    // Each side of the corner is a one-piece run, which is not mergeable.
+    expect(runs.length).to.equal(0);
+  });
+
+  it("stops a run at a line segment", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 0 },
+        { x: 40, y: 10, type: "cubic" },
+        { x: 50, y: 10, type: "cubic" },
+        { x: 60, y: 0 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour);
+    const runs = buildSimplifyRuns(analysis);
+    expect(runs.length).to.equal(0);
   });
 });
