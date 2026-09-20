@@ -196,8 +196,32 @@ const FIT_BALANCED_RATIO = 1.5;
 
 // The coarse grid of starting handle lengths, as multiples of a third of the
 // run's chord, and how many of its best cells are refined.
-const FIT_GRID_STEPS = 16;
-const FIT_REFINED_STARTS = 3;
+const FIT_GRID_STEPS = 8;
+const FIT_REFINED_STARTS = 2;
+
+// A single cubic cannot hold much more than a quarter turn without sagging
+// away from what it replaces, so a span that turns further than this is
+// refused before it is fitted. Fitting it and measuring the result costs
+// hundreds of times more than adding up its tangents, and the answer is the
+// same: no.
+const MAX_SPAN_TURN_DEGREES = 170;
+
+// How far the outline's direction turns from one end of a run to the other,
+// following each piece and each joint between them.
+function spanTurnDegrees(pieces) {
+  let total = 0;
+  let previousTangent = null;
+  for (const piece of pieces) {
+    const start = pieceStartTangent(piece);
+    const end = pieceEndTangent(piece);
+    if (previousTangent) {
+      total += angleBetweenDegrees(previousTangent, start);
+    }
+    total += angleBetweenDegrees(start, end);
+    previousTangent = end;
+  }
+  return total;
+}
 
 function fitGridMultiplier(index) {
   return 0.15 + (3.0 - 0.15) * (index / (FIT_GRID_STEPS - 1));
@@ -537,7 +561,46 @@ function unsplitCubic(leftPoints, rightPoints, t) {
 // lengths for runs that were never one curve. `originalPieces` are the run's
 // pieces; tangents are direction vectors (magnitudes ignored). Returns
 // [p0, c1, c2, p3] or null.
+// Fitting depends only on the geometry handed to it, never on the tolerance,
+// yet the command asks for the same fits again at every tolerance it tries.
+// The answers are kept here, keyed by that geometry.
+//
+// ponytail: a plain Map with a size cap, cleared wholesale when it fills.
+// An LRU would be better if this ever holds a whole font's worth of fits.
+const fitCache = new Map();
+const FIT_CACHE_LIMIT = 4096;
+
+function fitCacheKey(pieces, startTangent, endTangent) {
+  const parts = [startTangent.x, startTangent.y, endTangent.x, endTangent.y];
+  for (const piece of pieces) {
+    for (const point of piece.points) {
+      parts.push(point.x, point.y);
+    }
+    parts.push("|");
+  }
+  return parts.join(",");
+}
+
 export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
+  if (
+    originalPieces.length > 1 &&
+    spanTurnDegrees(originalPieces) > MAX_SPAN_TURN_DEGREES
+  ) {
+    return null;
+  }
+  const cacheKey = fitCacheKey(originalPieces, startTangent, endTangent);
+  if (fitCache.has(cacheKey)) {
+    return fitCache.get(cacheKey);
+  }
+  const fitted = fitCubicToSpanUncached(originalPieces, startTangent, endTangent);
+  if (fitCache.size >= FIT_CACHE_LIMIT) {
+    fitCache.clear();
+  }
+  fitCache.set(cacheKey, fitted);
+  return fitted;
+}
+
+function fitCubicToSpanUncached(originalPieces, startTangent, endTangent) {
   const p0 = originalPieces[0].points[0];
   const p3 = originalPieces.at(-1).points[3];
   const startLength = vectorLength(startTangent);
