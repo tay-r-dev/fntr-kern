@@ -308,3 +308,210 @@ export function buildSimplifyRuns(analysis) {
   // Do not wrap a run across the closed-contour seam (piece order boundary).
   return runs;
 }
+
+const SAMPLE_TS = [0.125, 0.25, 0.5, 0.75, 0.875];
+const DEFAULT_MAX_TANGENT_ANGLE = 1; // degrees
+
+function vectorLength(v) {
+  return Math.hypot(v.x, v.y);
+}
+
+// Measure the largest distance between a run of original cubic pieces and a
+// candidate replacement cubic, at fixed sample parameters.
+export function maxCubicDeviation(originalPieces, candidate) {
+  const n = originalPieces.length;
+  let maxDistance = 0;
+  for (const [i, piece] of originalPieces.entries()) {
+    for (const t of SAMPLE_TS) {
+      const originalPoint = cubicPoint(piece.points, t);
+      // Map the sample to the candidate's normalized span parameter.
+      const candidateT = (i + t) / n;
+      const candidatePoint = cubicPoint(candidate, candidateT);
+      const distance = Math.hypot(
+        originalPoint.x - candidatePoint.x,
+        originalPoint.y - candidatePoint.y
+      );
+      maxDistance = Math.max(maxDistance, distance);
+    }
+  }
+  return maxDistance;
+}
+
+// Fit a single cubic to a run of cubic pieces. Endpoint positions and
+// endpoint tangent directions are fixed; only the two handle lengths are
+// searched (deterministically: a coarse grid, then local refinement).
+// `originalPieces` are the run's pieces; tangents are direction vectors
+// (their magnitudes are ignored). Returns [p0, c1, c2, p3] or null.
+export function fitCubicToSpan(originalPieces, startTangent, endTangent) {
+  const p0 = originalPieces[0].points[0];
+  const p3 = originalPieces.at(-1).points[3];
+  const startLength = vectorLength(startTangent);
+  const endLength = vectorLength(endTangent);
+  if (startLength === 0 || endLength === 0) {
+    return null;
+  }
+  const startDir = { x: startTangent.x / startLength, y: startTangent.y / startLength };
+  const endDir = { x: endTangent.x / endLength, y: endTangent.y / endLength };
+
+  const chord = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+  const base = chord / 3 || Math.max(startLength, endLength) / 3 || 1;
+
+  const buildCandidate = (alphaL, alphaR) => [
+    p0,
+    { x: p0.x + startDir.x * alphaL, y: p0.y + startDir.y * alphaL },
+    { x: p3.x - endDir.x * alphaR, y: p3.y - endDir.y * alphaR },
+    p3,
+  ];
+
+  let best = null;
+  let bestError = Infinity;
+
+  // Coarse deterministic grid: 20 multipliers per handle length.
+  const multipliers = [];
+  for (let i = 0; i < 20; i++) {
+    multipliers.push(0.05 + (3.0 - 0.05) * (i / 19));
+  }
+  for (const mulL of multipliers) {
+    for (const mulR of multipliers) {
+      const error = maxCubicDeviation(
+        originalPieces,
+        buildCandidate(base * mulL, base * mulR)
+      );
+      if (error < bestError) {
+        bestError = error;
+        best = [base * mulL, base * mulR];
+      }
+    }
+  }
+
+  // Local refinement around the grid winner.
+  let stepL = (base * (3.0 - 0.05)) / 19;
+  let stepR = stepL;
+  for (let round = 0; round < 3; round++) {
+    let improved = false;
+    for (let dL = -2; dL <= 2; dL++) {
+      for (let dR = -2; dR <= 2; dR++) {
+        const alphaL = best[0] + dL * stepL * 0.5;
+        const alphaR = best[1] + dR * stepR * 0.5;
+        if (alphaL <= 0 || alphaR <= 0) {
+          continue;
+        }
+        const error = maxCubicDeviation(
+          originalPieces,
+          buildCandidate(alphaL, alphaR)
+        );
+        if (error < bestError) {
+          bestError = error;
+          best = [alphaL, alphaR];
+          improved = true;
+        }
+      }
+    }
+    if (!improved) {
+      stepL /= 4;
+      stepR /= 4;
+    }
+  }
+
+  return buildCandidate(best[0], best[1]);
+}
+
+function tangentAngleDegrees(candidate, originalPieces) {
+  const first = originalPieces[0].points;
+  const last = originalPieces.at(-1).points;
+  const angleAt = (candidateVector, originalVector) => {
+    const angle = (v) => Math.atan2(v.y, v.x);
+    let delta = Math.abs(angle(candidateVector) - angle(originalVector));
+    if (delta > Math.PI) {
+      delta = 2 * Math.PI - delta;
+    }
+    return (delta * 180) / Math.PI;
+  };
+  const startError = angleAt(
+    { x: candidate[1].x - candidate[0].x, y: candidate[1].y - candidate[0].y },
+    { x: first[1].x - first[0].x, y: first[1].y - first[0].y }
+  );
+  const endError = angleAt(
+    { x: candidate[3].x - candidate[2].x, y: candidate[3].y - candidate[2].y },
+    { x: last[3].x - last[2].x, y: last[3].y - last[2].y }
+  );
+  return Math.max(startError, endError);
+}
+
+// Fit a single cubic to the run and check it against the tolerance and the
+// maximum tangent angle error.
+export function canMergeCubicPieces(originalPieces, tolerance, options = {}) {
+  const maxTangentAngle = options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE;
+  const first = originalPieces[0].points;
+  const last = originalPieces.at(-1).points;
+  const startTangent = { x: first[1].x - first[0].x, y: first[1].y - first[0].y };
+  const endTangent = { x: last[3].x - last[2].x, y: last[3].y - last[2].y };
+  const candidate = fitCubicToSpan(originalPieces, startTangent, endTangent);
+  if (!candidate) {
+    return false;
+  }
+  if (maxCubicDeviation(originalPieces, candidate) > tolerance) {
+    return false;
+  }
+  if (tangentAngleDegrees(candidate, originalPieces) > maxTangentAngle) {
+    return false;
+  }
+  return true;
+}
+
+// Greedily simplify one run: try the longest candidate first, shorten the
+// end on rejection, emit the first original piece when nothing merges.
+// Returns the replacement list of pieces (cubic piece records).
+export function simplifyRun(run, options = {}) {
+  const pieces = run.pieces;
+  const tolerance = options.tolerance ?? 0.5;
+  const result = [];
+  let start = 0;
+  while (start < pieces.length) {
+    let merged = false;
+    for (let end = pieces.length; end > start + 1; end--) {
+      const candidatePieces = pieces.slice(start, end);
+      const first = candidatePieces[0].points;
+      const last = candidatePieces.at(-1).points;
+      const startTangent = {
+        x: first[1].x - first[0].x,
+        y: first[1].y - first[0].y,
+      };
+      const endTangent = {
+        x: last[3].x - last[2].x,
+        y: last[3].y - last[2].y,
+      };
+      const candidate = fitCubicToSpan(candidatePieces, startTangent, endTangent);
+      if (!candidate) {
+        continue;
+      }
+      const maxTangentAngle =
+        options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE;
+      if (
+        maxCubicDeviation(candidatePieces, candidate) <= tolerance &&
+        tangentAngleDegrees(candidate, candidatePieces) <= maxTangentAngle
+      ) {
+        result.push({
+          kind: "cubic",
+          mergeable: true,
+          points: candidate,
+          startKey: candidatePieces[0].startKey,
+          endKey: candidatePieces.at(-1).endKey,
+          startPointIndex: candidatePieces[0].startPointIndex,
+          endPointIndex: candidatePieces.at(-1).endPointIndex,
+          sourceSegmentIndex: candidatePieces[0].sourceSegmentIndex,
+          merged: true,
+          mergedPieces: candidatePieces,
+        });
+        start = end;
+        merged = true;
+        break;
+      }
+    }
+    if (!merged) {
+      result.push(pieces[start]);
+      start++;
+    }
+  }
+  return result;
+}
