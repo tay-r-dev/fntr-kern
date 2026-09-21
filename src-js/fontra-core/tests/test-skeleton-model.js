@@ -539,6 +539,7 @@ describe("skeleton-model handle offset helpers", () => {
       y: 0,
       detached: false,
       collapsedByCurvature: false,
+      turn: 0,
     });
   });
 
