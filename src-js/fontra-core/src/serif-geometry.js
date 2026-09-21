@@ -119,7 +119,15 @@ export function computeSerifFrame({
   // builds its answer off the tangent's own angle and can come back pointing
   // either way, so the orientation is settled again afterwards. That second
   // pass is a no-op wherever the guard did not fire.
-  axis = orientToLeft(separateFromTangent(axis, outward), normal);
+  //
+  // Only a free axis is held off. A forced one names its direction outright,
+  // and the guard turned a Vertical serif off vertical whenever its stroke was
+  // dragged within 15 degrees of vertical. Forced that close, the foot runs
+  // along the stem, which is what the designer asked for; the outline stays
+  // bounded all the way to parallel.
+  if (axisMode === "perpendicular" || axisMode === "tilt") {
+    axis = orientToLeft(separateFromTangent(axis, outward), normal);
+  }
 
   const depth = depthForAxis(axis, outward);
 

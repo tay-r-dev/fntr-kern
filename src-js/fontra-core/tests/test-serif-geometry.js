@@ -92,13 +92,15 @@ describe("serif frame", () => {
     expectClose(frame.axis.y, Math.sin(Math.PI / 6));
   });
 
-  it("keeps the axis at least 15 degrees off the tangent", () => {
-    // Horizontal axis on a horizontal stroke would collapse the frame.
+  it("keeps a free axis at least 15 degrees off the tangent", () => {
+    // Tilted 90 degrees off the rib, the axis would lie along the stroke and
+    // collapse the frame. A forced angle is not held off it: see below.
     const frame = computeSerifFrame({
       endpoint: { x: 0, y: 0 },
       tangent: { x: 1, y: 0 },
       normal: { x: 0, y: -1 },
-      axisMode: "horizontal",
+      axisMode: "tilt",
+      axisTilt: 90,
     });
     const cross = Math.abs(frame.axis.x * 0 - frame.axis.y * 1);
     expectClose(cross, Math.sin((15 * Math.PI) / 180));
@@ -270,15 +272,26 @@ describe("serif axis tilt", () => {
     // An axis five degrees off the stroke belongs fifteen degrees off on the
     // side it came in on. Pushed across, it leaves thirty degrees from where it
     // arrived, which under a tilt is a 150 degree flip of the whole frame at one
-    // value of one slider. Stated on an absolute angle, because the fault was
-    // reachable there before the tilt existed.
-    const frame = computeSerifFrame({
+    // value of one slider. (A forced angle is not held off the stroke at all.)
+    const tangent = startTerminal.tangent;
+    const crossWithTangent = (axis) => axis.x * tangent.y - axis.y * tangent.x;
+    const arriving = computeSerifFrame({
       ...startTerminal,
-      axisMode: "absolute",
-      axisAngle: -85,
+      axisMode: "tilt",
+      axisTilt: 70,
     });
-    expectClose(frame.axis.x, Math.cos((-75 * Math.PI) / 180));
-    expectClose(frame.axis.y, Math.sin((-75 * Math.PI) / 180));
+    for (const axisTilt of [80, 85, 89]) {
+      const frame = computeSerifFrame({ ...startTerminal, axisMode: "tilt", axisTilt });
+      expectClose(
+        Math.abs(crossWithTangent(frame.axis)),
+        Math.sin((15 * Math.PI) / 180),
+        `separation at tilt ${axisTilt}`
+      );
+      expect(
+        Math.sign(crossWithTangent(frame.axis)),
+        `side at tilt ${axisTilt}`
+      ).to.equal(Math.sign(crossWithTangent(arriving.axis)));
+    }
   });
 
   it("ignores the tilt in every other mode", () => {
@@ -1422,4 +1435,32 @@ describe("serif wing on a leaning wall", () => {
     expectClose(half.tipTop.u, 40);
     expectClose(half.tipBottom.u, 40);
   });
+});
+
+// A forced angle is forced. Reported on the `l` of skeletron: a serif set to
+// Vertical turned off vertical as its stroke was dragged toward vertical, because
+// the guard that holds an axis 15 degrees off the stroke also held a forced one.
+describe("a serif's forced angle", () => {
+  const frameFor = (axisMode, degreesFromVertical) => {
+    const radians = (degreesFromVertical * Math.PI) / 180;
+    return computeSerifFrame({
+      endpoint: { x: 0, y: 0 },
+      tangent: { x: -Math.sin(radians), y: -Math.cos(radians) },
+      normal: { x: Math.cos(radians), y: -Math.sin(radians) },
+      axisMode,
+    });
+  };
+
+  for (const degrees of [5, 12, 30]) {
+    it(`stays vertical with the stroke ${degrees} degrees off vertical`, () => {
+      const { axis } = frameFor("vertical", degrees);
+      expectClose(axis.x, 0, `axis x at ${degrees}`);
+      expectClose(Math.abs(axis.y), 1, `axis y at ${degrees}`);
+    });
+    it(`stays horizontal with the stroke ${degrees} degrees off horizontal`, () => {
+      const { axis } = frameFor("horizontal", 90 - degrees);
+      expectClose(Math.abs(axis.x), 1, `axis x at ${degrees}`);
+      expectClose(axis.y, 0, `axis y at ${degrees}`);
+    });
+  }
 });
