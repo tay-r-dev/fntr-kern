@@ -934,3 +934,38 @@ export function hasForwardTangentIntersection(segmentPoints) {
 function signedReach(onCurvePoint, direction, tunniPoint) {
   return dotVector(subVectors(tunniPoint, onCurvePoint), direction);
 }
+
+// A rounding's two handles, as corner rounding and a serif's easing both build
+// it: each is the tension times its own end's distance to where the two tangent
+// rays meet, so 0 cuts a straight chamfer and 1 puts both handles on that
+// corner. Where the rays never meet, half the chord each. One copy (rail R-B).
+export function computeTunniHandleLengths(
+  startPoint,
+  startDir,
+  endPoint,
+  endDir,
+  tension
+) {
+  const dir1 = normalizeVector(startDir);
+  const dir2 = normalizeVector(endDir);
+  const line1End = addVectors(startPoint, dir1);
+  const line2End = addVectors(endPoint, dir2);
+
+  const intersection = intersect(startPoint, line1End, endPoint, line2End);
+  if (
+    intersection &&
+    Number.isFinite(intersection.t1) &&
+    Number.isFinite(intersection.t2)
+  ) {
+    const distStartToTunni = Math.abs(intersection.t1);
+    const distEndToTunni = Math.abs(intersection.t2);
+    return {
+      startLen: distStartToTunni * tension,
+      endLen: distEndToTunni * tension,
+    };
+  }
+
+  const distTotal = distance(startPoint, endPoint);
+  const fallbackLen = (distTotal * tension) / 2;
+  return { startLen: fallbackLen, endLen: fallbackLen };
+}

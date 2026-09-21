@@ -1,3 +1,4 @@
+import { computeTunniHandleLengths } from "./tunni-calculations.js";
 import * as vector from "./vector.js";
 
 // A serif whose axis runs along the stroke has no wings to speak of and no
@@ -440,22 +441,6 @@ function alongUV(origin, direction, distance) {
   };
 }
 
-// Where two lines meet, given a point and a direction on each. Null when they
-// are too near parallel to name a meeting point: the caller falls back to a
-// bound of its own rather than chasing an intersection at infinity.
-function lineIntersection(originA, directionA, originB, directionB) {
-  const denominator = directionA.u * directionB.v - directionA.v * directionB.u;
-  if (Math.abs(denominator) < 1e-9) {
-    return null;
-  }
-  const delta = subUV(originB, originA);
-  const t = (delta.u * directionB.v - delta.v * directionB.u) / denominator;
-  return {
-    u: originA.u + directionA.u * t,
-    v: originA.v + directionA.v * t,
-  };
-}
-
 function splitCubic(p0, p1, p2, p3, t) {
   const a = lerpUV(p0, p1, t);
   const b = lerpUV(p1, p2, t);
@@ -663,21 +648,23 @@ export function buildHalfSerif({ side, wall, params }) {
   const wallOut = wall.tangentAt(releaseParameter);
   const flankDirection = { u: -wallOut.u, v: -wallOut.v };
   const bracketDirection = subUV(bracket.second[1], easeOnBracket);
-  const meeting = lineIntersection(
-    release,
-    flankDirection,
-    easeOnBracket,
-    bracketDirection
+  // Corner rounding's own rule, so the two read the same: each handle is the
+  // curvature times its own end's distance to the corner the two surfaces
+  // make, and at 1 both land on it. Both handles used to take one length -- the
+  // shorter of the two distances, and no more than the easing distance -- so on
+  // a curved wall the bracket's handle stopped short of the corner at full
+  // curvature: 8.5 units short on the `l` of skeletron, and halfway at an easing
+  // distance of 40.
+  const asXY = ({ u, v }) => ({ x: u, y: v });
+  const { startLen, endLen } = computeTunniHandleLengths(
+    asXY(release),
+    asXY(flankDirection),
+    asXY(easeOnBracket),
+    asXY(bracketDirection),
+    easeCurvature
   );
-  const easeReach =
-    easeCurvature *
-    Math.min(
-      meeting ? lengthUV(subUV(meeting, release)) : easeDistance,
-      meeting ? lengthUV(subUV(meeting, easeOnBracket)) : easeDistance,
-      easeDistance
-    );
-  const easeFlankHandle = alongUV(release, flankDirection, easeReach);
-  const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, easeReach);
+  const easeFlankHandle = alongUV(release, flankDirection, startLen);
+  const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, endLen);
 
   return {
     junction,

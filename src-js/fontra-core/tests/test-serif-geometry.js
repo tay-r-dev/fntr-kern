@@ -630,22 +630,58 @@ describe("half serif in frame coordinates", () => {
     ),
   });
 
-  it("gives the rounding two handles of equal length", () => {
-    // A rounding is symmetric or it is not a rounding. Pulling each handle
-    // toward its own neighbour instead makes the two legs different lengths,
-    // because the split bracket's control leg has nothing to do with the ease
-    // distance, and the curve reads as a lopsided scoop.
-    for (const concavity of [-0.9, -0.4, 0, 0.5, 0.95]) {
-      for (const easeCurvature of [0.2, 0.6, 1]) {
-        const half = eased({ concavity, easeCurvature });
-        const { flank, bracket } = legs(half);
-        expectClose(
-          flank,
-          bracket,
-          `concavity ${concavity} curvature ${easeCurvature}`
-        );
-        expect(flank).to.be.above(0);
+  // The same rule as corner rounding: each handle is the curvature times its
+  // own end's distance to the corner the two surfaces make, so at 1 both land
+  // on that corner. Reported on the `l` of skeletron: both handles took one
+  // length, the shorter of the two distances and no more than the easing
+  // distance, so on a curved wall the bracket's handle stopped 8.5 short of the
+  // corner at full curvature, and halfway at an easing of 40.
+  it("puts each handle the curvature's share of the way to the corner", () => {
+    const corner = (half) => {
+      const flank = {
+        u: half.easeFlankHandle.u - half.release.u,
+        v: half.easeFlankHandle.v - half.release.v,
+      };
+      const bracket = {
+        u: half.easeBracketHandle.u - half.easeOnBracket.u,
+        v: half.easeBracketHandle.v - half.easeOnBracket.v,
+      };
+      const denominator = flank.u * bracket.v - flank.v * bracket.u;
+      const t =
+        ((half.easeOnBracket.u - half.release.u) * bracket.v -
+          (half.easeOnBracket.v - half.release.v) * bracket.u) /
+        denominator;
+      return { u: half.release.u + flank.u * t, v: half.release.v + flank.v * t };
+    };
+    for (const concavity of [-0.4, 0, 0.5]) {
+      const full = eased({ concavity, easeCurvature: 1 });
+      const meeting = corner(full);
+      for (const [from, handle] of [
+        [full.release, full.easeFlankHandle],
+        [full.easeOnBracket, full.easeBracketHandle],
+      ]) {
+        expectClose(handle.u, meeting.u, `concavity ${concavity}`, 1e-6);
+        expectClose(handle.v, meeting.v, `concavity ${concavity}`, 1e-6);
+        expect(Math.hypot(from.u - meeting.u, from.v - meeting.v)).to.be.above(0);
       }
+      const partial = eased({ concavity, easeCurvature: 0.4 });
+      const { flank, bracket } = legs(partial);
+      expectClose(
+        flank,
+        0.4 * Math.hypot(full.release.u - meeting.u, full.release.v - meeting.v),
+        `flank share at concavity ${concavity}`,
+        1e-6
+      );
+      expectClose(
+        bracket,
+        0.4 *
+          Math.hypot(
+            full.easeOnBracket.u - meeting.u,
+            full.easeOnBracket.v - meeting.v
+          ),
+        `bracket share at concavity ${concavity}`,
+        1e-6
+      );
     }
   });
 

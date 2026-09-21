@@ -46,7 +46,10 @@ import {
   skeletonSegmentTangentAt,
 } from "./skeleton-model.js";
 import { easedWidth, jointWidthRate } from "./skeleton-width-rate.js";
-import { shiftTensionsToMean } from "./tunni-calculations.js";
+import {
+  computeTunniHandleLengths,
+  shiftTensionsToMean,
+} from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
 
@@ -5295,31 +5298,6 @@ function createSquareCapPoint(basePoint, handleDir, capTangent, baseDistance, de
     y: Math.round(basePoint.y + dir.y * t),
     smooth: false,
   };
-}
-
-function computeTunniHandleLengths(startPoint, startDir, endPoint, endDir, tension) {
-  const dir1 = vector.normalizeVector(startDir);
-  const dir2 = vector.normalizeVector(endDir);
-  const line1End = vector.addVectors(startPoint, dir1);
-  const line2End = vector.addVectors(endPoint, dir2);
-
-  const intersection = vector.intersect(startPoint, line1End, endPoint, line2End);
-  if (
-    intersection &&
-    Number.isFinite(intersection.t1) &&
-    Number.isFinite(intersection.t2)
-  ) {
-    const distStartToTunni = Math.abs(intersection.t1);
-    const distEndToTunni = Math.abs(intersection.t2);
-    return {
-      startLen: distStartToTunni * tension,
-      endLen: distEndToTunni * tension,
-    };
-  }
-
-  const distTotal = vector.distance(startPoint, endPoint);
-  const fallbackLen = (distTotal * tension) / 2;
-  return { startLen: fallbackLen, endLen: fallbackLen };
 }
 
 /**
