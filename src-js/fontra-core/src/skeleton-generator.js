@@ -379,6 +379,7 @@ function copyHandleOffsetsToGenerator(generatorPoint, side, offset, inOut) {
   generatorPoint[`${prefix}Detached`] = offset.detached === true;
   // Copied across explicitly, like every per-point field (§7).
   generatorPoint[`${prefix}Turn`] = Number.isFinite(offset.turn) ? offset.turn : 0;
+  generatorPoint[`${prefix}TurnKeepsLength`] = offset.turnKeepsLength === true;
 }
 
 /**
@@ -4057,7 +4058,7 @@ function generateOffsetPointsForSegment(
               return { x: -travel.x, y: -travel.y };
             })()
           : skeletonEndDir;
-      // A turn placed by hand (Alt+Z) goes on top of the generator's own. A
+      // A turn placed by hand (Shift+Z) goes on top of the generator's own. A
       // detached handle keeps the skeleton's axis, so it takes none.
       const handTurn = (point, dir, role) =>
         isDetached(point, dir, role)
@@ -4119,6 +4120,62 @@ function generateOffsetPointsForSegment(
         const emitted = emittedNudge(anchor, displacement);
         return emitted.x * direction.x + emitted.y * direction.y;
       };
+      const solveSide = (startDir, endDir) =>
+        offsetCubicSide({
+          startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
+          endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
+          startOnCurveSlide: alongDirection(fixedStart, startNudge, startDir),
+          endOnCurveSlide: alongDirection(fixedEnd, endNudge, endDir),
+          p0: segment.startPoint,
+          p1: controls[0],
+          p2: controls[controls.length - 1],
+          p3: segment.endPoint,
+          d0: sideSign * startHalfWidth,
+          d3: sideSign * endHalfWidth,
+          // Per unit of t, as the solver reads them.
+          startWidthRate: rates ? startSignedRate * rates.length : undefined,
+          endWidthRate: rates ? endSignedRate * rates.length : undefined,
+          q0: fixedStart,
+          q3: fixedEnd,
+          startDetachedAnchor: ribStart,
+          endDetachedAnchor: ribEnd,
+          u0: startDir,
+          u1: endDir,
+          // The pin lives on the skeleton segment's start point, so it reads the
+          // same for both sides regardless of which way each side is emitted.
+          // Read off the generator's own flattened point shape, not the canonical
+          // one - by here the points have been through canonicalToGeneratorInput.
+          //
+          // Withheld on a serif terminal's own segment, and applied after the
+          // splice instead. The serif finds its release ON this wall, so a pin
+          // applied here reshapes the wall the release is found on and walks the
+          // whole terminal up and down the stem. The `out` handle at a segment's
+          // start point is claimed for exactly the segments a serif terminal owns,
+          // which is why the same key set gates all three authored layers.
+          pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
+            ? undefined
+            : isLeftSide
+              ? segment.startPoint.leftSegmentCurvature
+              : segment.startPoint.rightSegmentCurvature,
+          startAdjustment,
+          endAdjustment,
+        });
+      const solved = solveSide(startDir, endDir);
+      // A hand turn that keeps its length changes the angle only: the segment's
+      // two handles keep the lengths the fit gives them without that turn.
+      const keepsLength = (point, dir, role) =>
+        handTurn(point, dir, role) !== 0 &&
+        point?.[`${side}Handle${role === "in" ? "In" : "Out"}TurnKeepsLength`] === true;
+      const startKeeps = keepsLength(segment.startPoint, startHandleDir, "out");
+      const endKeeps = keepsLength(segment.endPoint, endHandleDir, "in");
+      if (startKeeps || endKeeps) {
+        const unturned = solveSide(
+          startKeeps ? autoStartDir : startDir,
+          endKeeps ? autoEndDir : endDir
+        );
+        solved.startLength = unturned.startLength;
+        solved.endLength = unturned.endLength;
+      }
       const {
         startLength,
         endLength,
@@ -4126,45 +4183,7 @@ function generateOffsetPointsForSegment(
         endSlide,
         honoredStartAdjustment,
         honoredEndAdjustment,
-      } = offsetCubicSide({
-        startHandleNudge: alongDirection(fixedStart, startHandleNudge, startDir),
-        endHandleNudge: alongDirection(fixedEnd, endHandleNudge, endDir),
-        startOnCurveSlide: alongDirection(fixedStart, startNudge, startDir),
-        endOnCurveSlide: alongDirection(fixedEnd, endNudge, endDir),
-        p0: segment.startPoint,
-        p1: controls[0],
-        p2: controls[controls.length - 1],
-        p3: segment.endPoint,
-        d0: sideSign * startHalfWidth,
-        d3: sideSign * endHalfWidth,
-        // Per unit of t, as the solver reads them.
-        startWidthRate: rates ? startSignedRate * rates.length : undefined,
-        endWidthRate: rates ? endSignedRate * rates.length : undefined,
-        q0: fixedStart,
-        q3: fixedEnd,
-        startDetachedAnchor: ribStart,
-        endDetachedAnchor: ribEnd,
-        u0: startDir,
-        u1: endDir,
-        // The pin lives on the skeleton segment's start point, so it reads the
-        // same for both sides regardless of which way each side is emitted.
-        // Read off the generator's own flattened point shape, not the canonical
-        // one - by here the points have been through canonicalToGeneratorInput.
-        //
-        // Withheld on a serif terminal's own segment, and applied after the
-        // splice instead. The serif finds its release ON this wall, so a pin
-        // applied here reshapes the wall the release is found on and walks the
-        // whole terminal up and down the stem. The `out` handle at a segment's
-        // start point is claimed for exactly the segments a serif terminal owns,
-        // which is why the same key set gates all three authored layers.
-        pinnedTension: authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
-          ? undefined
-          : isLeftSide
-            ? segment.startPoint.leftSegmentCurvature
-            : segment.startPoint.rightSegmentCurvature,
-        startAdjustment,
-        endAdjustment,
-      });
+      } = solved;
       if (shouldAddStart)
         output.push(
           buildGeneratedOnCurve(

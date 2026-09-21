@@ -4762,6 +4762,33 @@ describe("skeleton-generator: the edge turns with the width", () => {
     expect(difference).to.be.closeTo(8, 2);
   });
 
+  it("keeps the handle lengths of a turn that holds its length", () => {
+    const skeleton = makeD();
+    const lengths = (generated) => {
+      const a = at(generated, 5, "onCurve");
+      const b = at(generated, 14, "onCurve");
+      return [
+        Math.hypot(at(generated, 5, "out").x - a.x, at(generated, 5, "out").y - a.y),
+        Math.hypot(at(generated, 14, "in").x - b.x, at(generated, 14, "in").y - b.y),
+      ];
+    };
+    const plain = lengths(generateFromSkeleton(skeleton));
+    const turnedBy = (turnKeepsLength) => {
+      const turned = structuredClone(skeleton);
+      turned.contours[0].points[0].handleOffsets = {
+        rightOut: { x: 0, y: 0, turn: 25, turnKeepsLength },
+      };
+      return lengths(generateFromSkeleton(turned));
+    };
+    // The ordinary turn refits the lengths, so the test is not vacuous.
+    const refit = turnedBy(false);
+    expect(Math.abs(refit[0] - plain[0]) + Math.abs(refit[1] - plain[1])).to.be.above(2);
+    const held = turnedBy(true);
+    // The handles are rounded to the grid.
+    expect(held[0]).to.be.closeTo(plain[0], 1);
+    expect(held[1]).to.be.closeTo(plain[1], 1);
+  });
+
   it("turns a terminal's handle by 10 degrees at most", () => {
     const generated = generateFromSkeleton(makeD());
     const a = at(generated, 5, "onCurve");

@@ -541,7 +541,21 @@ describe("skeleton-model handle offset helpers", () => {
       detached: false,
       collapsedByCurvature: false,
       turn: 0,
+      turnKeepsLength: false,
     });
+  });
+
+  it("stores whether a hand turn keeps the handle's length", () => {
+    const point = makeSkeletonPoint();
+    setSkeletonHandleTurn(point, "left", "out", 12, { keepsLength: true });
+    expect(getSkeletonHandleOffset(point, "left", "out").turnKeepsLength).to.be.true;
+    // An offset write that says nothing about the turn keeps it, flag and all.
+    setSkeletonHandleOffset(point, "left", "out", { x: 3, y: 4 });
+    const offset = getSkeletonHandleOffset(point, "left", "out");
+    expect(offset.turn).to.equal(12);
+    expect(offset.turnKeepsLength).to.be.true;
+    setSkeletonHandleTurn(point, "left", "out", 12);
+    expect(getSkeletonHandleOffset(point, "left", "out").turnKeepsLength).to.be.false;
   });
 
   it("sets rounded canonical 2D handle offsets", () => {

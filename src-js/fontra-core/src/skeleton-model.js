@@ -2784,6 +2784,7 @@ export function getSkeletonHandleOffset(point, side, role) {
     detached: offset?.detached === true,
     collapsedByCurvature: offset?.collapsedByCurvature === true,
     turn: asFiniteNumber(offset?.turn, 0),
+    turnKeepsLength: offset?.turnKeepsLength === true,
   };
 }
 
@@ -2805,13 +2806,19 @@ export function setSkeletonHandleOffset(
       ...markCollapsedByCurvature(offset?.collapsedByCurvature),
       // The turn is its own statement, written by its own gesture. An offset
       // write that says nothing about it keeps it.
-      ...keepTurn(offset?.turn ?? existing.turn),
+      ...keepTurn(
+        offset?.turn ?? existing.turn,
+        offset?.turnKeepsLength ?? existing.turnKeepsLength
+      ),
     },
   };
 }
 
-function keepTurn(turn) {
-  return Number.isFinite(turn) && turn !== 0 ? { turn } : {};
+// A turn can hold the handle's length: the generator then keeps the length it
+// fits without the turn, and only the angle changes. Stored only where true.
+function keepTurn(turn, keepsLength = false) {
+  if (!Number.isFinite(turn) || turn === 0) return {};
+  return keepsLength === true ? { turn, turnKeepsLength: true } : { turn };
 }
 
 // The directions a hand-turned handle snaps to: 0, 30, 45, 60 and 90 degrees in
@@ -2837,11 +2844,20 @@ export function snapHandleAngle(angle) {
 // How far a generated handle is turned by hand off the direction the generator
 // gives it, in degrees, counter-clockwise. Written by Alt+Z on a corner or a
 // terminal handle. Added on top of the generator's own turn.
-export function setSkeletonHandleTurn(point, side, role, degrees) {
+export function setSkeletonHandleTurn(
+  point,
+  side,
+  role,
+  degrees,
+  { keepsLength = false } = {}
+) {
   const key = getSkeletonHandleOffsetKey(side, role);
   const handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
-  const { turn: _old, ...rest } = handleOffsets[key] || {};
-  handleOffsets[key] = { ...rest, ...keepTurn(asFiniteNumber(degrees, 0)) };
+  const { turn: _old, turnKeepsLength: _oldKeeps, ...rest } = handleOffsets[key] || {};
+  handleOffsets[key] = {
+    ...rest,
+    ...keepTurn(asFiniteNumber(degrees, 0), keepsLength),
+  };
   point.handleOffsets = handleOffsets;
 }
 
