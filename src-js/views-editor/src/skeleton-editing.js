@@ -142,6 +142,23 @@ export function skeletonRibBehaviorIsTangentSlide(behaviorName) {
   return behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
 }
 
+// The drags that edit a rib's width, and so the only ones the width plaque has
+// anything to report on. Alt and Z move the rib end without editing the width
+// the plaque quotes. Stated as the width set, so a new rib gesture shows no
+// plaque until it is added here.
+const WIDTH_EDITING_RIB_BEHAVIOR_NAMES = new Set([
+  "rib-default",
+  "rib-independent",
+  "fixed-rib",
+  "fixed-rib-compress",
+  "fixed-rib-independent",
+  "fixed-rib-compress-independent",
+]);
+
+export function skeletonRibBehaviorShowsWidth(behaviorName) {
+  return WIDTH_EDITING_RIB_BEHAVIOR_NAMES.has(behaviorName);
+}
+
 export function getSelectionTargetKinds(selection) {
   const parsed = parseSelection([...selection]);
   const kinds = new Set();

@@ -65,7 +65,7 @@ import {
   makeSkeletonInsertionKey,
   makeSkeletonPointKey,
   parseSkeletonPointKey,
-  skeletonRibBehaviorIsTangentSlide,
+  skeletonRibBehaviorShowsWidth,
 } from "./skeleton-editing.js";
 
 export class SceneModel {
@@ -1334,10 +1334,9 @@ export class SceneModel {
     if (!this.initialClickedSkeletonRibKey) {
       return null;
     }
-    // The plaque reports a width. A Z-drag slides the rib end along its tangent
-    // and changes no width, so during one it would be quoting a number that
-    // nothing on screen is editing.
-    if (skeletonRibBehaviorIsTangentSlide(this.skeletonDragBehaviorName)) {
+    // The plaque reports a width. Alt and Z move the rib end without editing
+    // it, so during them it would be quoting a number nothing is editing.
+    if (!skeletonRibBehaviorShowsWidth(this.skeletonDragBehaviorName)) {
       return null;
     }
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);

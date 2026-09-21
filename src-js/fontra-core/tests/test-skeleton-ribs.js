@@ -35,6 +35,7 @@ import {
   createEditableGeneratedPointTargetEntries,
   createSkeletonRibTargetEntries,
   editSkeleton,
+  skeletonRibBehaviorShowsWidth,
 } from "../../views-editor/src/skeleton-editing.js";
 import { computeRibDetachConversions } from "../../views-editor/src/skeleton-panel-edits.js";
 
@@ -1625,5 +1626,33 @@ describe("a rib slide at a forced rib angle", () => {
     const along = 10 / Math.SQRT2;
     const result = executor.applyDelta({ x: along, y: along });
     expect(Math.abs(result.nudge)).to.equal(10);
+  });
+});
+
+// The width plaque reports a width, so it shows only on the drags that edit one.
+describe("which rib drags show the width plaque", () => {
+  it("shows on the width drags", () => {
+    for (const name of [
+      "rib-default",
+      "rib-independent",
+      "fixed-rib",
+      "fixed-rib-compress",
+      "fixed-rib-independent",
+      "fixed-rib-compress-independent",
+    ]) {
+      expect(skeletonRibBehaviorShowsWidth(name), name).to.equal(true);
+    }
+  });
+
+  it("hides on Alt and Z, and on anything else", () => {
+    for (const name of [
+      "rib-interpolate",
+      "rib-tangent",
+      "rib-tangent-interpolate",
+      "point-slide",
+      undefined,
+    ]) {
+      expect(skeletonRibBehaviorShowsWidth(name), String(name)).to.equal(false);
+    }
   });
 });
