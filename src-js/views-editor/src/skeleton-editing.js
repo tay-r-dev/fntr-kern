@@ -46,6 +46,7 @@ import {
   parseSkeletonRibKey,
   setSkeletonData,
   setSkeletonHandleOffset,
+  setSkeletonHandleTurn,
   setSkeletonSegmentCurvature,
   transformSkeletonContourMetadata,
   transformSkeletonPointMetadata,
@@ -2028,6 +2029,13 @@ function createEditableGeneratedHandleExecutorForEditing(
           draggedBake
         )
       : null;
+  if (behaviorName === GENERATED_HANDLE_TURN_BEHAVIOR_NAME) {
+    return createEditableGeneratedHandleTurnExecutor(
+      address,
+      originalPath,
+      skeletonData
+    );
+  }
   return {
     applyDelta(target, delta, { round = Math.round } = {}) {
       // Direct manipulation outranks a curvature the gizmo pinned earlier, for
@@ -2064,6 +2072,75 @@ function createEditableGeneratedHandleExecutorForEditing(
           delta,
           round
         )
+      );
+    },
+  };
+}
+
+// Alt+Z on a generated handle turns it around its on-curve, at a corner or a
+// terminal only: a smooth point's two handles share one line, and turning one
+// would kink it. The turn is half the angle the cursor sweeps around the
+// on-curve, so a large movement makes a small, precise change. Stored as a
+// turn in degrees on top of the generator's own; the length stays the fit's.
+export const GENERATED_HANDLE_TURN_BEHAVIOR_NAME = "generated-handle-turn";
+const GENERATED_HANDLE_TURN_SPEED = 0.5;
+
+function createEditableGeneratedHandleTurnExecutor(
+  address,
+  originalPath,
+  skeletonData
+) {
+  const noop = { applyDelta() {} };
+  if (address.point.smooth || !originalPath || !skeletonData) {
+    return noop;
+  }
+  const positionOf = (role) => {
+    const pathAddress = findGeneratedPathAddress(
+      skeletonData,
+      address.contour.id,
+      address.point.id,
+      address.side,
+      role
+    );
+    if (!pathAddress) return null;
+    try {
+      return originalPath.getPoint(
+        originalPath.getAbsolutePointIndex(
+          pathAddress.pathContourIndex,
+          pathAddress.contourPointIndex
+        )
+      );
+    } catch {
+      return null;
+    }
+  };
+  const onCurve = positionOf("onCurve");
+  const handle = positionOf(address.role);
+  if (!onCurve || !handle || (onCurve.x === handle.x && onCurve.y === handle.y)) {
+    return noop;
+  }
+  const startTurn = getSkeletonHandleOffset(
+    address.point,
+    address.side,
+    address.role
+  ).turn;
+  const startAngle = Math.atan2(handle.y - onCurve.y, handle.x - onCurve.x);
+  // The sweep is unwrapped against the previous frame, so a cursor circling
+  // past the far side of the on-curve keeps turning instead of jumping 360.
+  let lastSwept = 0;
+  return {
+    applyDelta(target, delta) {
+      const cursor = { x: handle.x + delta.x, y: handle.y + delta.y };
+      let swept = Math.atan2(cursor.y - onCurve.y, cursor.x - onCurve.x) - startAngle;
+      swept += 2 * Math.PI * Math.round((lastSwept - swept) / (2 * Math.PI));
+      lastSwept = swept;
+      const degrees =
+        startTurn + ((swept * 180) / Math.PI) * GENERATED_HANDLE_TURN_SPEED;
+      setSkeletonHandleTurn(
+        target.point,
+        target.side,
+        target.role,
+        Math.round(degrees * 10) / 10
       );
     },
   };

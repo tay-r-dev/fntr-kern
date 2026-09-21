@@ -1688,9 +1688,13 @@ function hasEditableGeneratedHandleSelection(selection) {
 }
 
 // Generated handles move only under a modifier (donor side-lock model): Z
-// moves the handle, Alt equalizes. The name carries Z so that pressing or
-// releasing it mid-drag rebuilds the behavior through the normal path.
+// moves the handle, Alt equalizes, and Alt with Z turns it, at a corner or a
+// terminal. The name carries Z so that pressing or releasing it mid-drag
+// rebuilds the behavior through the normal path.
 function getGeneratedHandleBehaviorName(event, modifiers = {}) {
+  if (event?.altKey && modifiers.tangentRibMode) {
+    return "generated-handle-turn";
+  }
   if (event?.altKey) {
     return getBehaviorName(event);
   }
@@ -1702,6 +1706,7 @@ function getGeneratedHandleBehaviorName(event, modifiers = {}) {
 function isGeneratedHandleAdjustBehavior(name) {
   return (
     name === "generated-handle-move" ||
+    name === "generated-handle-turn" ||
     name === "alternate" ||
     name === "alternate-constrain" ||
     name?.startsWith("equalize") === true

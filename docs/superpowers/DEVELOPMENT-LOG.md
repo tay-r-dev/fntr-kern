@@ -1234,6 +1234,11 @@ slides along its handles and never turns them. A terminal slides up to 2 units
   from 0 to 82 units in a quarter unit. That is the documented
   forward-to-behind event, moved to a width the uncapped turn avoided.
 - **The slide anchor went from 2 to 4 units** of fit, on the designer's call.
+- **Alt+Z turns a corner or terminal handle by hand**, at half the cursor's
+  sweep. Before this, Alt+Z did what Alt did. **Manual matrix owed** (rail R-G):
+  turn a terminal handle both ways; turn one arm of a corner and check the other
+  holds; try it on a smooth point (nothing may move); circle the cursor past the
+  far side of the on-curve (no jump); mirror a turned handle; reset it.
 - **Cost**: the D regenerates in 0.67 ms against about 0.1 for an untapered
   glyph, some 0.3 ms per tapered smooth point per side.
 
