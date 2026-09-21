@@ -4,6 +4,7 @@ import {
   getAdjacentSegments,
   makeSlideCandidate,
   projectPointToSegment,
+  roundSlideCandidate,
   slideIntervalsCompatible,
   slidePointOnContour,
   splitSegmentAt,
@@ -555,5 +556,52 @@ describe("point-slide geometry", () => {
     expect(candidate.side).to.equal("previous");
     expect(candidate.t).to.be.greaterThan(0).and.lessThan(1);
     expectPreviousSlide(contour, candidate, candidate.t);
+  });
+});
+
+describe("roundSlideCandidate", () => {
+  const cross = (o, a, b) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  // A closed S-ish contour whose every on-curve is smooth.
+  const contour = {
+    points: [
+      onCurve(0, 0, true),
+      control(40, -13),
+      control(97, 21),
+      onCurve(131, 60, true),
+      control(170, 104),
+      control(233, 137),
+      onCurve(300, 131, true),
+      control(367, 125),
+      control(-40, 13),
+    ],
+    isClosed: true,
+  };
+
+  it("keeps every smooth point's handles on one line after rounding", () => {
+    for (const t of [0.137, 0.41, 0.73]) {
+      for (const side of ["previous", "next"]) {
+        const slid = makeSlideCandidate(contour, 3, side, t);
+        const rounded = roundSlideCandidate(contour, slid);
+        const pts = rounded.points;
+        for (const [h0, o, h1] of [
+          [2, 3, 4],
+          [5, 6, 7],
+          [8, 0, 1],
+        ]) {
+          const length = Math.hypot(pts[h1].x - pts[o].x, pts[h1].y - pts[o].y);
+          expect(Math.abs(cross(pts[o], pts[h0], pts[h1])) / length).to.be.below(1e-6);
+        }
+        // The slid on-curve lands on whole units.
+        expect(Number.isInteger(pts[3].x) && Number.isInteger(pts[3].y)).to.be.true;
+      }
+    }
+  });
+
+  it("leaves points the slide did not move untouched", () => {
+    const slid = makeSlideCandidate(contour, 3, "next", 0.3);
+    const rounded = roundSlideCandidate(contour, slid);
+    expect(rounded.points[0]).to.deep.equal(contour.points[0]);
+    expect(rounded.points[7]).to.deep.equal(contour.points[7]);
   });
 });

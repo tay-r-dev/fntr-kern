@@ -481,3 +481,59 @@ export function slidePointOnContour(contour, pointIndex, pointer, options = {}) 
   );
   return candidate ? { ...candidate, side: destination.side, t: destination.t } : null;
 }
+
+/**
+ * Round a slide candidate to whole units without breaking a smooth point.
+ * Only the points the slide moved are rounded: the contour may hold
+ * fractional points the slide never touched. Rounding each moved point on its
+ * own tilts the two handles of a smooth on-curve apart, so every on-curve
+ * that was smooth before the slide gets its moved handles put back on one
+ * line through its (rounded) position. The line is an unmoved handle's, when
+ * one is left; else the longer handle's rounded direction, the shorter handle
+ * keeping its rounded length along it.
+ *
+ * @param {Object} contour - the contour before the slide, never mutated
+ * @param {Object} candidate - makeSlideCandidate's result for that contour
+ * @returns {Object} the candidate with rounded points, same shape
+ */
+export function roundSlideCandidate(contour, candidate) {
+  const original = contour.points;
+  const moved = (i) =>
+    candidate.points[i].x !== original[i]?.x || candidate.points[i].y !== original[i]?.y;
+  const points = candidate.points.map((point, i) =>
+    moved(i) ? { ...point, x: Math.round(point.x), y: Math.round(point.y) } : point
+  );
+  const count = points.length;
+  const at = (i) => (i + count) % count;
+  for (let i = 0; i < count; i++) {
+    if (original[i].type) continue;
+    const before = at(i - 1);
+    const after = at(i + 1);
+    if (!contour.isClosed && (i === 0 || i === count - 1)) continue;
+    if (!original[before].type || !original[after].type) continue;
+    if (!moved(i) && !moved(before) && !moved(after)) continue;
+    // Smooth before the slide, read from the geometry like isCornerBetween.
+    const inward = unitToward(original[i], [original[before]]);
+    const outward = unitToward(original[i], [original[after]]);
+    if (!inward || !outward) continue;
+    if (inward.x * outward.x + inward.y * outward.y > -Math.cos(CORNER_ANGLE_TOLERANCE)) {
+      continue;
+    }
+    const anchor = points[i];
+    const length = (j) => Math.hypot(points[j].x - anchor.x, points[j].y - anchor.y);
+    let keep;
+    if (!moved(before) && !moved(i)) keep = before;
+    else if (!moved(after) && !moved(i)) keep = after;
+    else keep = length(before) >= length(after) ? before : after;
+    const other = keep === before ? after : before;
+    const direction = unitToward(anchor, [points[keep]]);
+    if (!direction) continue;
+    const reach = length(other);
+    points[other] = {
+      ...points[other],
+      x: anchor.x - direction.x * reach,
+      y: anchor.y - direction.y * reach,
+    };
+  }
+  return { ...candidate, points };
+}
