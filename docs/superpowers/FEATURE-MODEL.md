@@ -301,8 +301,8 @@ averaged normal at a plain half-width and one outline point per side.
 The durable construction is:
 
 ```text
-exact rib endpoints + skeleton-owned directions
-    -> fixed requested-offset samples at source parameters
+exact rib endpoints + directions (the skeleton's, turned to the edge where the width changes)
+    -> fixed requested-offset samples at source parameters, on the eased width
     -> convex perpendicular-error fit inside the handle domain
        + a pull toward the skeleton's own tension, with a ratio from the
          skeleton and widths and a positive fixed frame-influence scale
@@ -431,22 +431,39 @@ Three discontinuities are deliberate. No continuity test may span any of them.
 - The forward-to-behind tangent-intersection event.
 - Grid rounding, at authored placement or at generator emission.
 
-**Two limits here are permanent, and neither is a bug to chase.**
+**Where the width changes, the generated handles turn to the edge.** On a tapered stroke the
+true edge does not run the skeleton's way. It runs along `T (1 + w k) + n w'`, where `w'` is how
+fast the width changes along the arc, and no handle _length_ can make up a direction. So each end
+of a generated cubic takes the edge's own direction (`skeleton-width-rate.js`). At constant width
+`w'` is zero and the axis is the skeleton's own, exactly as before.
 
-The first limit is direction. The skeleton owns the generated handle direction (§3, and that
-ownership is what keeps the smoothing pass inert). On a **tapered** stroke the true offset's
-tangent is not parallel to the skeleton's. We measured 6°–79° across realistic tapers. So a
-tapered segment deviates from the true offset by 3.6–14.4 units, against 0.11–0.49 at constant
-width. No choice of handle _length_ can absorb a direction error. Tilting the axis per end would
-recover almost all of it, and we **reject** that fix. The axis is skeleton-owned and stays that
-way.
+The turn only stays smooth because of a second rule. **Each on-curve owns one width rate**, and
+the width eases between on-curves at those rates instead of changing evenly. With an even change
+per segment, the rate jumps at every on-curve, so the true edge itself kinks at a tapered smooth
+point and its two segments would ask for two directions. With one rate per point, and one
+curvature, the mean of the two segments', both segments turn by the same angle. The rate is the
+harmonic mean of the change per unit of length on both sides. It is zero where the width peaks,
+bottoms out, or stops changing, so the eased width never overshoots a typed value. Beside a
+straight, the point takes the straight's own change, so a tied straight (zero change) keeps its
+curve's handle on the skeleton's axis.
 
-The second limit is representability. A bold stroke on a tight curve brings the offset distance
+The rule is always on and reads the skeleton and the widths alone, never the fit, so it adds no
+threshold and no event. Three places keep the skeleton's axis. A **corner** does, because the
+corner join meets its arms along the skeleton's directions. A **detached** handle does, because it
+is absolute and a width edit must not move it; detach holds both handles of a rib side, so they
+stay on one line. And a side with **constant width** does, because there the turn is zero.
+
+The cost: a width edit now reaches one segment further on each side, through the rate at the
+neighbouring on-curve.
+
+**One limit here is permanent, and it is not a bug to chase.**
+
+The limit is representability. A bold stroke on a tight curve brings the offset distance
 close to half the endpoint curvature radius. There a single cubic **cannot** represent the offset
 at all, and point-count stability forbids splitting the segment. Errors there run into the
 hundreds for every strategy, including a numerical optimum.
 
-Both limits are why the curvature gizmo (§7) exists. Where the automatic answer cannot be right,
+This limit is why the curvature gizmo (§7) exists. Where the automatic answer cannot be right,
 the designer gets the control instead of the collapse.
 
 ### Step 3 — Corner rounding
@@ -642,6 +659,9 @@ If the code loses any of these, the product regresses.
 - **Pairwise corner-trim limiting.** It stops adjacent rounded corners from eating each other. A
   reimplementation loses it easily.
 - **Point-count stability** across parameter values (§3). This is the interpolation contract.
+- **One width rate per on-curve** (§3.2). Both segments at a smooth on-curve read the same rate
+  and the same curvature, or their generated handles turn by different angles and the joint
+  kinks. The rate reads only the skeleton and the widths.
 - **Fixed sample identity** (§3.2). The automatic solve always uses the same five source
   parameters. No projection, root finding, iterative refit or error-budget search belongs in this
   path.
@@ -1245,7 +1265,7 @@ once.
 | Idea                                                                          | Why it is closed                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Restore the old sample-and-fit offset path**                                | An adaptive threshold jumps a step when an input nudges. The output is therefore discontinuous, and two masters land on different answers. Endpoints become free samples, which destroys provenance. A variable curve count destroys point-count stability.                                                                                                                                                                                                                                                                                                 |
-| **Tilt the generated handle axis to the true offset tangent**                 | It recovers nearly all of the taper defect, and we still reject it. The axis is skeleton-owned (§3.2). A single shared tilt recovers under half the gain, and on some cases it is _worse than pinned_.                                                                                                                                                                                                                                                                                                                                                      |
+| **Tilt the generated handle axis per segment, with the width changing evenly** | Reopened 2026-09-21 and built differently (§3.2). With an even change per segment, the true edge itself kinks at every tapered smooth point, so the two segments at the point ask for two directions, and a single shared tilt recovered under half the gain. The answer was one width rate per on-curve, with the width eased between them. Then the edge has one direction at the point and both segments turn to it. |
 | **A harmonize pass on generated joints**                                      | Measured. Unrounded, the generated contour already reproduces the true offset's joint curvature to within 1.7%, and to floating point where the skeleton is G2. Where a step does exist it is the skeleton's own step, faithfully reproduced. Harmonizing would erase a curvature the designer asked for.                                                                                                                                                                                                                                                   |
 | **A post-fit equalization walk, absolute or proportional allowance**          | Removed. It makes the automatic answer depend on whether a candidate crosses an error budget. A fixed trip count makes the search deterministic, and cannot make that threshold map continuous. The skeleton reference now participates in the one convex objective instead.                                                                                                                                                                                                                                                                                |
 | **Judging or rescaling candidate splits after the fit**                       | Removed with the walk. `solveHandleScale` and candidate normalization optimized a second answer on a second objective. The current solver has no candidate family. Fit, reference and bounds produce one minimizer.                                                                                                                                                                                                                                                                                                                                         |

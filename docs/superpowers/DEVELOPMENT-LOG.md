@@ -1164,6 +1164,40 @@ zero, where the offset genuinely cusps. Not jitter.
 The corpus carries no handle nudge at all, so it cannot see round 9. No golden
 fixture moved for it — a gap rather than a result.
 
+### Round 10: the direction limit was the width profile's, not the axis's
+
+Reported on the `D` of skeletron-test: a skeleton point with handle tensions
+0.75 and 0.53 generated 0.63 and 712. The width runs 11, 41, 80 over two short
+curves, single-sided. The edge leaves 17 degrees off the skeleton, so the
+skeleton-owned axis was 17 degrees wrong at any length. The fit made the handle
+57 units long to pull the middle of the curve over. The tangent crossing then
+fell 1.1 units behind the point, and the tension label divided by nearly
+nothing.
+
+- **The tilt was rejected for the wrong reason.** It was measured with the width
+  changing evenly per segment. That width changes its rate at every on-curve, so
+  the true edge itself kinks at a tapered smooth point, and no single axis can
+  suit both sides. One rate per on-curve, with the width eased between, removes
+  the kink from the target, and then one axis suits both sides exactly.
+- **Worst deviation from the true edge, before and after**, each against its own
+  width profile: the D's tapered segment 10.2 to 0.5; U1 single-sided 77.8 to
+  19.4 and 54.1 to 9.5; U1 double-sided 21.4 to 4.8 and 22.2 to 8.1; the tight
+  taper 44.8 to 4.0; a mild taper 2.9 to 0.4; constant width 0.07 unchanged.
+  The D's second segment went 7.1 to 8.3: it turns 90 degrees in 56 units at
+  width 80, the representability limit, which the turn cannot help.
+- **Two fixtures moved**, the tied-straight pair, by up to 30 units. Against the
+  true edge they improved on seven of eight sides (9.4 to 2.6 at best). One
+  side, into a corner, lost a unit (2.1 to 3.2), because a corner keeps the
+  skeleton's axis.
+- **Sweeps on the D, 0.25-unit width steps**: jumps over 5 units went from 23 to
+  16. The worst went from 55 to 9 on one sweep and from 50 to 35 on another, and
+  rose from 84 to 103 on a third, at the same width as before. Every jump that
+  remains sits where the second segment's offset reaches its own radius, and
+  every one of them except two neighbouring steps was there before.
+- **A detached handle moved with the taper** on the first build. It is placed by
+  projecting its stored offset onto the axis, so a turning axis moved it. A
+  detached end keeps the skeleton's axis.
+
 ---
 
 ## Rib and skeleton editing (map F7, skeleton)
