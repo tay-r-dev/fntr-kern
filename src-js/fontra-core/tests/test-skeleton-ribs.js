@@ -1589,3 +1589,41 @@ describe("a slid smooth point", () => {
     }
   });
 });
+
+describe("a rib slide at a forced rib angle", () => {
+  // A diagonal centerline with its rib forced horizontal: the rib's own
+  // tangent is vertical, but the stroke runs at 45 degrees.
+  const makeAddress = () => {
+    const skeleton = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          closed: false,
+          defaultWidth: 40,
+          points: [
+            makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+            makeSkeletonPoint({
+              id: 2,
+              x: 100,
+              y: 100,
+              width: { left: 20, right: 20, linked: true },
+            }),
+            makeSkeletonPoint({ id: 3, x: 200, y: 200 }),
+          ],
+        },
+      ],
+    });
+    skeleton.contours[0].points[1].ribAngleLock = "horizontal";
+    return getSkeletonRibAddress(skeleton, 10, 2, "left");
+  };
+
+  it("measures a Z-drag along the centerline, the way the generator slides", () => {
+    const address = makeAddress();
+    // The rib is forced, so the test is about the forced rib.
+    expect(address.normal.y).to.equal(0);
+    const executor = createSkeletonRibExecutor(address, "rib-tangent");
+    const along = 10 / Math.SQRT2;
+    const result = executor.applyDelta({ x: along, y: along });
+    expect(Math.abs(result.nudge)).to.equal(10);
+  });
+});

@@ -487,7 +487,7 @@ export function slidePointOnContour(contour, pointIndex, pointer, options = {}) 
  * Only the points the slide moved are rounded: the contour may hold
  * fractional points the slide never touched. Rounding each moved point on its
  * own tilts the two handles of a smooth on-curve apart, so every on-curve
- * that was smooth before the slide gets its moved handles put back on one
+ * that was smooth before the slide (flagged, or in fact) gets its handles put back on one
  * line through its (rounded) position. The line is an unmoved handle's, when
  * one is left; else the longer handle's rounded direction, the shorter handle
  * keeping its rounded length along it.
@@ -499,7 +499,8 @@ export function slidePointOnContour(contour, pointIndex, pointer, options = {}) 
 export function roundSlideCandidate(contour, candidate) {
   const original = contour.points;
   const moved = (i) =>
-    candidate.points[i].x !== original[i]?.x || candidate.points[i].y !== original[i]?.y;
+    candidate.points[i].x !== original[i]?.x ||
+    candidate.points[i].y !== original[i]?.y;
   const points = candidate.points.map((point, i) =>
     moved(i) ? { ...point, x: Math.round(point.x), y: Math.round(point.y) } : point
   );
@@ -512,13 +513,15 @@ export function roundSlideCandidate(contour, candidate) {
     if (!contour.isClosed && (i === 0 || i === count - 1)) continue;
     if (!original[before].type || !original[after].type) continue;
     if (!moved(i) && !moved(before) && !moved(after)) continue;
-    // Smooth before the slide, read from the geometry like isCornerBetween.
+    // Smooth before the slide: flagged smooth, or smooth in fact, read from
+    // the geometry like isCornerBetween. A flagged point whose handles had
+    // already drifted apart is straightened here too.
     const inward = unitToward(original[i], [original[before]]);
     const outward = unitToward(original[i], [original[after]]);
     if (!inward || !outward) continue;
-    if (inward.x * outward.x + inward.y * outward.y > -Math.cos(CORNER_ANGLE_TOLERANCE)) {
-      continue;
-    }
+    const straight =
+      inward.x * outward.x + inward.y * outward.y <= -Math.cos(CORNER_ANGLE_TOLERANCE);
+    if (!straight && original[i].smooth !== true) continue;
     const anchor = points[i];
     const length = (j) => Math.hypot(points[j].x - anchor.x, points[j].y - anchor.y);
     let keep;

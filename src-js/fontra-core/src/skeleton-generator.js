@@ -3519,6 +3519,8 @@ function generateOffsetPointsForSegment(
         : calculateCornerJoin(prevSegment, segment);
     let startNormal = startJoin ? startJoin.normal : normal;
     // Apply angle override if set on the point
+    // A rib slide runs along the centerline, not across a forced rib.
+    const startSlideNormal = startNormal;
     startNormal = getEffectiveNormal(segment.startPoint, startNormal);
     // A smooth point is not a corner: the centerline does not change direction
     // there, so it keeps the averaged normal at a plain half-width.
@@ -3563,7 +3565,7 @@ function generateOffsetPointsForSegment(
       // Apply nudge offset if point is editable
       const startLeftNudge = ribNudgeDisplacement(
         segment.startPoint,
-        startNormal,
+        startSlideNormal,
         "left",
         startLeftHW
       );
@@ -3593,7 +3595,7 @@ function generateOffsetPointsForSegment(
 
       const startRightNudge = ribNudgeDisplacement(
         segment.startPoint,
-        startNormal,
+        startSlideNormal,
         "right",
         startRightHW
       );
@@ -3638,6 +3640,8 @@ function generateOffsetPointsForSegment(
         : calculateCornerJoin(segment, nextSegment);
     let endNormal = endJoin ? endJoin.normal : normal;
     // Apply angle override if set on the point
+    // A rib slide runs along the centerline, not across a forced rib.
+    const endSlideNormal = endNormal;
     endNormal = getEffectiveNormal(segment.endPoint, endNormal);
     // A smooth point is not a corner and keeps the averaged normal at a plain
     // half-width.
@@ -3680,7 +3684,7 @@ function generateOffsetPointsForSegment(
       // Apply nudge offset if point is editable
       const endLeftNudge = ribNudgeDisplacement(
         segment.endPoint,
-        endNormal,
+        endSlideNormal,
         "left",
         endLeftHW
       );
@@ -3710,7 +3714,7 @@ function generateOffsetPointsForSegment(
 
       const endRightNudge = ribNudgeDisplacement(
         segment.endPoint,
-        endNormal,
+        endSlideNormal,
         "right",
         endRightHW
       );
@@ -3897,25 +3901,25 @@ function generateOffsetPointsForSegment(
 
     const nudgeStartLeft = ribNudgeDisplacement(
       segment.startPoint,
-      startNormal,
+      startUnlockedNormal,
       "left",
       startLeftHW
     );
     const nudgeStartRight = ribNudgeDisplacement(
       segment.startPoint,
-      startNormal,
+      startUnlockedNormal,
       "right",
       startRightHW
     );
     const nudgeEndLeft = ribNudgeDisplacement(
       segment.endPoint,
-      endNormal,
+      endUnlockedNormal,
       "left",
       endLeftHW
     );
     const nudgeEndRight = ribNudgeDisplacement(
       segment.endPoint,
-      endNormal,
+      endUnlockedNormal,
       "right",
       endRightHW
     );
@@ -4089,13 +4093,13 @@ function generateOffsetPointsForSegment(
           : null;
       const startHandleNudge = ribHandleNudgeDisplacement(
         segment.startPoint,
-        startNormal,
+        startUnlockedNormal,
         side,
         startHalfWidth
       );
       const endHandleNudge = ribHandleNudgeDisplacement(
         segment.endPoint,
-        endNormal,
+        endUnlockedNormal,
         side,
         endHalfWidth
       );

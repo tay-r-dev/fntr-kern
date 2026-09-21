@@ -4206,7 +4206,18 @@ export function getSkeletonRibPosition(contour, point, side, outline = null) {
   // reaches the edge the stroke's own width puts there rather than stopping at
   // the width itself.
   const reach = skeletonRibReach(contour, pointIndex >= 0 ? pointIndex : point.id);
-  return projectSkeletonRibPoint(point, normal, halfWidth * reach, side, nudge);
+  const slideNormal = skeletonRibGeometry(
+    contour,
+    pointIndex >= 0 ? pointIndex : point.id
+  ).unlocked;
+  return projectSkeletonRibPoint(
+    point,
+    normal,
+    halfWidth * reach,
+    side,
+    nudge,
+    slideNormal
+  );
 }
 
 // Both ends of one point's rib. In a single-sided contour one end is the
@@ -4375,6 +4386,9 @@ export function getSkeletonRibAddress(skeletonData, contourId, pointId, side) {
     side,
     defaultWidth: contour.defaultWidth,
     normal: calculateNormalAtSkeletonPoint(contour, pointIndex),
+    // A rib slide runs along the centerline, square to the unforced rib, as
+    // the generator slides it.
+    slideNormal: skeletonRibGeometry(contour, pointIndex).unlocked,
     ribReach: skeletonRibReach(contour, pointIndex),
   };
 }
@@ -4505,7 +4519,8 @@ export function createSkeletonRibExecutor(
     : getSkeletonPointHalfWidth(point, defaultWidth, side);
   const originalNudge = getSkeletonPointNudge(point, side, defaultWidth);
   const originalHandleNudge = getSkeletonPointHandleNudge(point, side);
-  const tangent = { x: -normal.y, y: normal.x };
+  const slideNormal = address.slideNormal || normal;
+  const tangent = { x: -slideNormal.y, y: slideNormal.x };
   const adjustable = !isSkeletonSideLocked(point, side, "slide");
   const forceTangent =
     behaviorName === "rib-tangent" || behaviorName === "rib-tangent-interpolate";
@@ -5002,9 +5017,18 @@ export function skeletonRibReach(skeletonContour, pointIndexOrPointId) {
   return skeletonRibGeometry(skeletonContour, pointIndexOrPointId).reach;
 }
 
-export function projectSkeletonRibPoint(point, normal, halfWidth, side, nudge = 0) {
+// The nudge slides along the centerline, square to `slideNormal`: the rib's
+// own normal unless the rib angle is forced.
+export function projectSkeletonRibPoint(
+  point,
+  normal,
+  halfWidth,
+  side,
+  nudge = 0,
+  slideNormal = normal
+) {
   const sign = side === "left" ? 1 : -1;
-  const tangent = { x: -normal.y, y: normal.x };
+  const tangent = { x: -slideNormal.y, y: slideNormal.x };
   const baseX = Math.round(point.x + sign * normal.x * halfWidth);
   const baseY = Math.round(point.y + sign * normal.y * halfWidth);
   return {

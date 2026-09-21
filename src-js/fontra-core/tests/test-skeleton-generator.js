@@ -4836,3 +4836,52 @@ describe("skeleton-generator: the edge turns with the width", () => {
     expect(b.x).to.equal(172);
   });
 });
+
+describe("skeleton-generator: a rib slide at a forced rib angle", () => {
+  // Point 3 of the seven: smooth, its rib forced horizontal, its right rib end
+  // slid 29 units.
+  const makeSeven = (nudge) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 12,
+          closed: false,
+          defaultWidth: 50,
+          singleSided: "right",
+          points: [
+            { id: 17, x: 206, y: 171, width: { left: 24, right: 24, linked: true } },
+            { id: 18, x: 203, y: 222, type: "cubic" },
+            { id: 19, x: 207.4, y: 263.6, type: "cubic" },
+            {
+              id: 20,
+              x: 221,
+              y: 295,
+              smooth: true,
+              ribAngleLock: "horizontal",
+              nudge: { left: 0, right: nudge },
+              width: { left: 25, right: 25, linked: true },
+            },
+            { id: 21, x: 235, y: 322, type: "cubic" },
+            { id: 22, x: 258, y: 339, type: "cubic" },
+            { id: 23, x: 302, y: 339, width: { left: 31, right: 31, linked: true } },
+          ],
+        },
+      ],
+    });
+  const turnAt = (skeleton) => {
+    const generated = generateFromSkeleton(skeleton);
+    const at = (role) => findGeneratedOutputPosition(generated, 12, 20, "right", role);
+    const [a, o, b] = [at("in"), at("onCurve"), at("out")];
+    const u = Math.atan2(a.y - o.y, a.x - o.x);
+    const v = Math.atan2(b.y - o.y, b.x - o.x);
+    const degrees = ((((u - v) * 180) / Math.PI + 540) % 360) - 180;
+    return 180 - Math.abs(degrees);
+  };
+
+  it("keeps a smooth point smooth: the on-curve slides along its handles' line", () => {
+    // Without a slide the point is smooth, so the test is about the slide.
+    expect(turnAt(makeSeven(0))).to.be.below(1);
+    // The on-curve lands on whole units, which tilts it a little.
+    expect(turnAt(makeSeven(29))).to.be.below(2);
+  });
+});

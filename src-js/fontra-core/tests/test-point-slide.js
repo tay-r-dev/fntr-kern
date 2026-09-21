@@ -598,6 +598,16 @@ describe("roundSlideCandidate", () => {
     }
   });
 
+  it("straightens a point flagged smooth whose handles were already apart", () => {
+    const bent = structuredClone(contour);
+    // Point 0's incoming handle, off its line by about two degrees.
+    bent.points[8] = control(-40, 11.5);
+    const slid = makeSlideCandidate(bent, 3, "previous", 0.4);
+    const pts = roundSlideCandidate(bent, slid).points;
+    const length = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+    expect(Math.abs(cross(pts[0], pts[8], pts[1])) / length).to.be.below(1e-6);
+  });
+
   it("leaves points the slide did not move untouched", () => {
     const slid = makeSlideCandidate(contour, 3, "next", 0.3);
     const rounded = roundSlideCandidate(contour, slid);
