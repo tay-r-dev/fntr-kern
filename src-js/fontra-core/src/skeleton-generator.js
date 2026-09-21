@@ -377,6 +377,8 @@ function copyHandleOffsetsToGenerator(generatorPoint, side, offset, inOut) {
   generatorPoint[`${prefix}OffsetX`] = offset.x ?? 0;
   generatorPoint[`${prefix}OffsetY`] = offset.y ?? 0;
   generatorPoint[`${prefix}Detached`] = offset.detached === true;
+  // Copied across explicitly, like every per-point field (§7).
+  generatorPoint[`${prefix}Turn`] = Number.isFinite(offset.turn) ? offset.turn : 0;
 }
 
 /**
@@ -4025,7 +4027,7 @@ function generateOffsetPointsForSegment(
       const rates = edgeRates?.[side];
       const startSignedRate = rates ? sideSign * rates.start.rate : undefined;
       const endSignedRate = rates ? sideSign * rates.end.rate : undefined;
-      const startDir =
+      const autoStartDir =
         rates?.start.turns && !isDetached(segment.startPoint, startHandleDir, "out")
           ? partlyTurned(
               skeletonStartDir,
@@ -4044,7 +4046,7 @@ function generateOffsetPointsForSegment(
         endSignedRate ?? 0,
         rates?.end.curvature ?? 0
       );
-      const endDir =
+      const autoEndDir =
         rates?.end.turns && !isDetached(segment.endPoint, endHandleDir, "in")
           ? (() => {
               const travel = partlyTurned(
@@ -4055,6 +4057,22 @@ function generateOffsetPointsForSegment(
               return { x: -travel.x, y: -travel.y };
             })()
           : skeletonEndDir;
+      // A turn placed by hand (Alt+Z) goes on top of the generator's own. A
+      // detached handle keeps the skeleton's axis, so it takes none.
+      const handTurn = (point, dir, role) =>
+        isDetached(point, dir, role)
+          ? 0
+          : ((point?.[`${side}Handle${role === "in" ? "In" : "Out"}Turn`] ?? 0) *
+              Math.PI) /
+            180;
+      const startDir = rotateVector(
+        autoStartDir,
+        handTurn(segment.startPoint, startHandleDir, "out")
+      );
+      const endDir = rotateVector(
+        autoEndDir,
+        handTurn(segment.endPoint, endHandleDir, "in")
+      );
       const startAdjustment =
         startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
           ? getGeneratedHandleAdjustment(

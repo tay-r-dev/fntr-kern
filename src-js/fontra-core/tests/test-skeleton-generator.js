@@ -4747,6 +4747,21 @@ describe("skeleton-generator: the edge turns with the width", () => {
   const angleOf = (from, to) => Math.atan2(to.y - from.y, to.x - from.x);
   const degrees = (radians) => (radians * 180) / Math.PI;
 
+  it("adds a stored turn to a terminal's handle", () => {
+    const skeleton = makeD();
+    const angle = (generated) => {
+      const a = at(generated, 5, "onCurve");
+      const out = at(generated, 5, "out");
+      return degrees(angleOf(a, out));
+    };
+    const plain = angle(generateFromSkeleton(skeleton));
+    const turned = structuredClone(skeleton);
+    turned.contours[0].points[0].handleOffsets = { rightOut: { x: 0, y: 0, turn: 8 } };
+    let difference = angle(generateFromSkeleton(turned)) - plain;
+    difference = ((difference + 540) % 360) - 180;
+    expect(difference).to.be.closeTo(8, 2);
+  });
+
   it("turns a terminal's handle by 10 degrees at most", () => {
     const generated = generateFromSkeleton(makeD());
     const a = at(generated, 5, "onCurve");

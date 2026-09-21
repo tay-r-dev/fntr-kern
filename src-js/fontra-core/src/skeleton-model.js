@@ -2783,6 +2783,7 @@ export function getSkeletonHandleOffset(point, side, role) {
     y: asFiniteNumber(offset?.y, 0),
     detached: offset?.detached === true,
     collapsedByCurvature: offset?.collapsedByCurvature === true,
+    turn: asFiniteNumber(offset?.turn, 0),
   };
 }
 
@@ -2802,8 +2803,26 @@ export function setSkeletonHandleOffset(
       y: round(asFiniteNumber(offset?.y, 0)),
       detached: offset?.detached === true || existing.detached === true,
       ...markCollapsedByCurvature(offset?.collapsedByCurvature),
+      // The turn is its own statement, written by its own gesture. An offset
+      // write that says nothing about it keeps it.
+      ...keepTurn(offset?.turn ?? existing.turn),
     },
   };
+}
+
+function keepTurn(turn) {
+  return Number.isFinite(turn) && turn !== 0 ? { turn } : {};
+}
+
+// How far a generated handle is turned by hand off the direction the generator
+// gives it, in degrees, counter-clockwise. Written by Alt+Z on a corner or a
+// terminal handle. Added on top of the generator's own turn.
+export function setSkeletonHandleTurn(point, side, role, degrees) {
+  const key = getSkeletonHandleOffsetKey(side, role);
+  const handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
+  const { turn: _old, ...rest } = handleOffsets[key] || {};
+  handleOffsets[key] = { ...rest, ...keepTurn(asFiniteNumber(degrees, 0)) };
+  point.handleOffsets = handleOffsets;
 }
 
 // Which control drove this handle onto its point. The curvature gizmo stores a
@@ -3821,6 +3840,10 @@ export function transformSkeletonPointMetadata(point, affine) {
       const oy = asFiniteNumber(offset.y, 0);
       offset.x = linearX(ox, oy);
       offset.y = linearY(ox, oy);
+      // A mirror reverses which way counts as counter-clockwise.
+      if (Number.isFinite(offset.turn) && affineFlipsOrientation(affine)) {
+        offset.turn = -offset.turn;
+      }
     }
   }
 

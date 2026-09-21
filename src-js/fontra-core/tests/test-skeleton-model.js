@@ -53,6 +53,7 @@ import {
   setSkeletonCornerParameters,
   setSkeletonData,
   setSkeletonHandleDetached,
+  setSkeletonHandleTurn,
   setSkeletonHandleOffset,
   setSkeletonPointRibAngleLock,
   setSkeletonPointSideNudge,
@@ -2617,5 +2618,35 @@ describe("roundSkeletonCoordinates", () => {
     const skeleton = roundSkeletonCoordinates(fractionalSkeleton());
     const before = JSON.stringify(skeleton);
     expect(JSON.stringify(roundSkeletonCoordinates(skeleton))).to.equal(before);
+  });
+});
+
+describe("a generated handle's turn", () => {
+  it("is stored per handle, in degrees, and read back", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonHandleTurn(point, "right", "out", 4.5);
+    expect(getSkeletonHandleOffset(point, "right", "out").turn).to.equal(4.5);
+    expect(getSkeletonHandleOffset(point, "right", "in").turn).to.equal(0);
+  });
+
+  it("survives a later offset write", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonHandleTurn(point, "left", "in", -3);
+    setSkeletonHandleOffset(point, "left", "in", { x: 5, y: 2 });
+    expect(getSkeletonHandleOffset(point, "left", "in").turn).to.equal(-3);
+  });
+
+  it("changes sign under a mirror, with the sides swapped", () => {
+    const point = { x: 0, y: 0 };
+    setSkeletonHandleTurn(point, "left", "out", 6);
+    transformSkeletonPointMetadata(point, {
+      xx: -1,
+      xy: 0,
+      yx: 0,
+      yy: 1,
+      dx: 0,
+      dy: 0,
+    });
+    expect(getSkeletonHandleOffset(point, "right", "out").turn).to.equal(-6);
   });
 });
