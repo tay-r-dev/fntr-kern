@@ -5,6 +5,7 @@ import {
   SCRUB_THRESHOLD,
   clampScrubValue,
   isScrubCancelled,
+  keyStepScrubValue,
   roundScrubValue,
   scrubIncrement,
 } from "@fontra/core/number-scrub.js";
@@ -375,37 +376,91 @@ export class CompactScrubField extends UnlitElement {
     input.focus();
     input.select();
 
+    // Arrow keys step the value live, as a drag does: the first press opens one
+    // stream for the edit, so a caller applying drags live applies these too and
+    // records the whole edit as one undo step. Typed digits still wait for Enter,
+    // where a half-typed number would apply on the way.
+    const editStartValue = this._value;
+    let steppedLive = false;
+    const stepLive = (direction, shiftKey) => {
+      const parsed = parseFloat(input.value);
+      const value = keyStepScrubValue(
+        Number.isFinite(parsed) ? parsed : editStartValue,
+        direction,
+        { ...this._boundsFieldItem, shiftKey }
+      );
+      input.value = String(value);
+      if (!this._dragValueStream) {
+        this._dragValueStream = new QueueIterator(5, true);
+        this.dispatchEvent(
+          new CustomEvent("scrubstart", {
+            detail: { valueStream: this._dragValueStream, startValue: editStartValue },
+          })
+        );
+      }
+      steppedLive = true;
+      this._commit(value);
+    };
+    const endLiveStream = () => {
+      if (this._dragValueStream) {
+        this._dragValueStream.done();
+        this._dragValueStream = null;
+      }
+    };
+
     const finishEdit = (commit) => {
       if (!this._editing) {
         return;
       }
       this._editing = false;
+      if (!commit && steppedLive) {
+        // Escape takes back what the arrows applied.
+        this._commit(
+          roundScrubValue(editStartValue, this._boundsFieldItem),
+          SCRUB_CANCELLED
+        );
+        endLiveStream();
+        return;
+      }
       if (commit) {
         const parsed = parseFloat(input.value);
         // Nothing typed leaves the values alone. Committing the old value would
         // write a blank, which callers read as zero.
         if (!Number.isFinite(parsed)) {
           this._renderValue();
+          endLiveStream();
           return;
         }
-        this._commit(
-          roundScrubValue(
-            clampScrubValue(parsed, this._boundsFieldItem),
-            this._boundsFieldItem
-          )
+        const value = roundScrubValue(
+          clampScrubValue(parsed, this._boundsFieldItem),
+          this._boundsFieldItem
         );
+        // A value typed after the arrows goes down the same stream, so it
+        // lands in the same undo step.
+        if (!steppedLive || value !== this._value) {
+          this._commit(value);
+        }
+        endLiveStream();
       } else {
         this._renderValue();
       }
     };
 
     input.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+        event.preventDefault();
+        stepLive(event.key === "ArrowUp" ? 1 : -1, event.shiftKey);
+      } else if (event.key === "Enter") {
         // .blur() fires the "blur" listener below synchronously, committing
         // the value, before "apply" goes out -- a row's apply handler always
-        // sees the value just typed, never the one before it.
+        // sees the value just typed, never the one before it. An edit the
+        // arrows already applied live is done, and applying it again would
+        // double it.
+        const alreadyApplied = steppedLive;
         input.blur();
-        this.dispatchEvent(new CustomEvent("apply"));
+        if (!alreadyApplied) {
+          this.dispatchEvent(new CustomEvent("apply"));
+        }
       } else if (event.key === "Escape") {
         finishEdit(false);
       }

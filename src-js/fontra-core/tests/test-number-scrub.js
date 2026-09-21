@@ -4,8 +4,10 @@ import {
   SCRUB_FINE_FACTOR,
   clampScrubValue,
   isScrubCancelled,
+  keyStepScrubValue,
   roundScrubValue,
   scrubFactor,
+  scrubAmountSinceStart,
   scrubIncrement,
 } from "@fontra/core/number-scrub.js";
 import { expect } from "chai";
@@ -130,5 +132,43 @@ describe("cancelled scrub", () => {
     for (const value of [0, -1, 1e9, NaN, null, undefined, "cancel", {}]) {
       expect(isScrubCancelled(value), String(value)).to.equal(false);
     }
+  });
+});
+
+// A drag or a typed change applies only what changed since it started. The
+// shape already carries the value the field started from.
+describe("scrub amount since start", () => {
+  it("offsets by the difference", () => {
+    expect(scrubAmountSinceStart(60, 50, "offset")).to.equal(10);
+    expect(scrubAmountSinceStart(-5, 0, "offset")).to.equal(-5);
+  });
+
+  it("scales by the ratio, and by nothing from zero", () => {
+    expect(scrubAmountSinceStart(120, 150, "ratio")).to.be.closeTo(0.8, 1e-12);
+    expect(scrubAmountSinceStart(150, 100, "ratio")).to.be.closeTo(1.5, 1e-12);
+    expect(scrubAmountSinceStart(50, 0, "ratio")).to.equal(1);
+  });
+
+  it("slants by the angle whose tangent is the difference of tangents", () => {
+    const deg = Math.PI / 180;
+    const since = scrubAmountSinceStart(30, 10, "slant");
+    expect(Math.tan(since * deg)).to.be.closeTo(
+      Math.tan(30 * deg) - Math.tan(10 * deg),
+      1e-12
+    );
+    expect(scrubAmountSinceStart(20, 0, "slant")).to.be.closeTo(20, 1e-12);
+  });
+});
+
+describe("key step scrub value", () => {
+  it("steps by the field's step, ten times with Shift", () => {
+    expect(keyStepScrubValue(100, 1, { step: 0.1, integer: false })).to.be.closeTo(100.1, 1e-9);
+    expect(keyStepScrubValue(100, -1, { step: 0.1, integer: false, shiftKey: true })).to.be.closeTo(99, 1e-9);
+    expect(keyStepScrubValue(5, 1, { integer: true })).to.equal(6);
+  });
+
+  it("rounds to the grid and keeps to the bounds", () => {
+    expect(keyStepScrubValue(0.3, 1, { step: 0.1, integer: false })).to.equal(0.4);
+    expect(keyStepScrubValue(1, -1, { integer: true, minValue: 1 })).to.equal(1);
   });
 });

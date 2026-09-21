@@ -8,7 +8,7 @@ import {
 } from "@fontra/core/changes.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
-import { isScrubCancelled } from "@fontra/core/number-scrub.js";
+import { isScrubCancelled, scrubAmountSinceStart } from "@fontra/core/number-scrub.js";
 import {
   filterPathByPointIndices,
   getSelectionByContour,
@@ -376,10 +376,11 @@ export default class TransformationPanel {
   // applies live, through transformSelectionStream: the field's own
   // "scrubstart" opens one streaming edit for the whole gesture, so it ends
   // as a single undo step and never compounds (every frame recomputes the
-  // transform from the pre-drag state and the drag's current TOTAL value,
-  // never a frame-to-frame delta). A typed value still applies once on Enter
-  // (the "apply" event), through the plain one-shot transformSelection via
-  // onApply. 0.1 is the rounding grid, not just the raw drag value, so a
+  // transform from the pre-drag state and the change from the drag's start
+  // value to its current one, never a frame-to-frame delta). The arrow keys
+  // in the typed value stream the same way. A typed value still applies once
+  // on Enter (the "apply" event), through the plain one-shot
+  // transformSelection via onApply. 0.1 is the rounding grid, not just the raw drag value, so a
   // drag lands on a clean number instead of a long, jittery decimal
   // (roundScrubValue's own step handling).
   _buildScrubXYRow({
@@ -419,17 +420,20 @@ export default class TransformationPanel {
     fieldY.addEventListener("change", (event) => onChangeY(event.detail.value));
     fieldX.addEventListener("apply", () => onApply());
     fieldY.addEventListener("apply", () => onApply());
+    // The shape already carries the value a live change starts from, so each
+    // frame's transformation is told that start and applies only the change
+    // since it.
     fieldX.addEventListener("scrubstart", (event) =>
       this.transformSelectionStream(
         event.detail.valueStream,
-        makeTransformationForX,
+        (x) => makeTransformationForX(x, event.detail.startValue),
         undoLabel
       )
     );
     fieldY.addEventListener("scrubstart", (event) =>
       this.transformSelectionStream(
         event.detail.valueStream,
-        makeTransformationForY,
+        (y) => makeTransformationForY(y, event.detail.startValue),
         undoLabel
       )
     );
@@ -557,10 +561,10 @@ export default class TransformationPanel {
             ),
           "move"
         ),
-      makeTransformationForX: (x) => () =>
-        new Transform().translate(x, this.transformParameters.moveY),
-      makeTransformationForY: (y) => () =>
-        new Transform().translate(this.transformParameters.moveX, y),
+      makeTransformationForX: (x, startX) => () =>
+        new Transform().translate(scrubAmountSinceStart(x, startX, "offset"), 0),
+      makeTransformationForY: (y, startY) => () =>
+        new Transform().translate(0, scrubAmountSinceStart(y, startY, "offset")),
       undoLabel: "move",
     });
     this.moveXField = moveXField;
@@ -596,10 +600,16 @@ export default class TransformationPanel {
             ),
           "scale"
         ),
-      makeTransformationForX: (x) => () =>
-        new Transform().scale(x / 100, scaleYFor(x) / 100),
-      makeTransformationForY: (y) => () =>
-        new Transform().scale(this.transformParameters.scaleX / 100, y / 100),
+      // Linked, Y follows X, so both axes take X's ratio.
+      makeTransformationForX: (x, startX) => () => {
+        const ratio = scrubAmountSinceStart(x, startX, "ratio");
+        return new Transform().scale(
+          ratio,
+          this.transformParameters.scaleLinked ? ratio : 1
+        );
+      },
+      makeTransformationForY: (y, startY) => () =>
+        new Transform().scale(1, scrubAmountSinceStart(y, startY, "ratio")),
       undoLabel: "scale",
     });
     this.scaleXField = scaleXField;
@@ -669,7 +679,12 @@ export default class TransformationPanel {
     rotateField.addEventListener("scrubstart", (event) =>
       this.transformSelectionStream(
         event.detail.valueStream,
-        (rotation) => () => new Transform().rotate((rotation * Math.PI) / 180),
+        (rotation) => () =>
+          new Transform().rotate(
+            (scrubAmountSinceStart(rotation, event.detail.startValue, "offset") *
+              Math.PI) /
+              180
+          ),
         "rotate"
       )
     );
@@ -705,15 +720,15 @@ export default class TransformationPanel {
             ),
           "skew"
         ),
-      makeTransformationForX: (x) => () =>
+      makeTransformationForX: (x, startX) => () =>
         new Transform().skew(
-          (x * Math.PI) / 180,
-          (this.transformParameters.skewY * Math.PI) / 180
+          (scrubAmountSinceStart(x, startX, "slant") * Math.PI) / 180,
+          0
         ),
-      makeTransformationForY: (y) => () =>
+      makeTransformationForY: (y, startY) => () =>
         new Transform().skew(
-          (this.transformParameters.skewX * Math.PI) / 180,
-          (y * Math.PI) / 180
+          0,
+          (scrubAmountSinceStart(y, startY, "slant") * Math.PI) / 180
         ),
       undoLabel: "skew",
     });

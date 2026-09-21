@@ -90,3 +90,30 @@ export const SCRUB_CANCELLED = Object.freeze({ scrubCancelled: true });
 export function isScrubCancelled(value) {
   return value === SCRUB_CANCELLED;
 }
+
+// One arrow-key press while the value is typed. The field's step, ten times with
+// Shift, then rounded and clamped the way a drag is.
+export function keyStepScrubValue(value, direction, { shiftKey, ...fieldItem } = {}) {
+  const step = fieldItem.integer === false ? fieldItem.step || 1 : 1;
+  const next = Number(value || 0) + direction * step * (shiftKey ? 10 : 1);
+  return roundScrubValue(clampScrubValue(next, fieldItem), fieldItem);
+}
+
+// What a live change applies to a shape that already carries the value the
+// field started from. Applying the field's whole value again compounded it:
+// after a linked scale to 150, a drag on Y alone scaled X by 1.5 a second time.
+//   "offset": moves and turns add, so the difference.
+//   "ratio":  scales multiply, so the quotient. From zero there is nothing to
+//             scale, so nothing.
+//   "slant":  skews in degrees add their tangents, so the angle whose tangent
+//             is the difference.
+export function scrubAmountSinceStart(value, startValue, kind) {
+  if (kind === "ratio") {
+    return startValue ? value / startValue : 1;
+  }
+  if (kind === "slant") {
+    const deg = Math.PI / 180;
+    return Math.atan(Math.tan(value * deg) - Math.tan(startValue * deg)) / deg;
+  }
+  return value - startValue;
+}
