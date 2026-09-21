@@ -29,10 +29,7 @@ import {
 import { offsetCubicSide } from "./offset-cubic.js";
 import { alignHandle, alignHandles } from "./path-functions.js";
 import { PathHitTester } from "./path-hit-tester.js";
-import {
-  DEFAULT_UNDERSIDE_CUP_TENSION,
-  maxSerifEaseDistance,
-} from "./serif-geometry.js";
+import { DEFAULT_UNDERSIDE_CUP_TENSION } from "./serif-geometry.js";
 import {
   areTensionsEqualized,
   calculateControlPointsFromCurvatureDelta,
@@ -3145,17 +3142,6 @@ export function setSkeletonSerifParameters(point, values) {
         serif[otherSide][field] = value;
       }
     }
-  }
-  for (const side of ["left", "right"]) {
-    // The ease distance stops where the rounding runs out of bracket to eat.
-    // Every path into a serif comes through here — the panel field, the scrub,
-    // a preset — so the ceiling belongs here rather than on any one of them,
-    // and it is re-applied on every write because moving the wing or the reach
-    // moves the ceiling.
-    serif[side].easeDistance = Math.min(
-      serif[side].easeDistance,
-      Math.round(maxSerifEaseDistance(serif[side]))
-    );
   }
   if (VALID_SERIF_AXIS_MODES.has(values.axisMode)) {
     serif.axisMode = values.axisMode;

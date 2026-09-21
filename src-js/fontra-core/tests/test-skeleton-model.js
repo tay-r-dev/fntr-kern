@@ -1433,24 +1433,16 @@ describe("skeleton-model serif schema", () => {
     expect(Object.keys(point.serif.left)).to.have.length(9);
   });
 
-  // Every path into a serif goes through this writer, so the ease ceiling has
-  // to live here. Bounding it further out left the typed field and the preset
-  // able to store a number the terminal was never going to draw.
-  it("stops the ease distance at the end of the bracket", () => {
+  // The writer cannot see the wall, so it cannot know where the bracket ends:
+  // bounded here from the numbers alone it stopped easing at the wing slope's
+  // value on a leaning wall. It stores what is typed, and the shape stops where
+  // the bracket as drawn runs out, the way reach already does.
+  it("stores the ease distance as typed", () => {
     const point = { x: 0, y: 0 };
     setSkeletonSerifParameters(point, {
-      left: { wingLength: 30, wingSlope: 10, reach: 30, easeDistance: 4000 },
+      left: { wingLength: 0, wingSlope: 10, reach: 0, easeDistance: 40 },
     });
-    expect(point.serif.left.easeDistance).to.equal(50);
-  });
-
-  it("re-reads the ease ceiling from the bracket in the same write", () => {
-    const point = { x: 0, y: 0 };
-    setSkeletonSerifParameters(point, {
-      left: { wingLength: 30, wingSlope: 10, reach: 30, easeDistance: 50 },
-    });
-    setSkeletonSerifParameters(point, { left: { reach: 0 } });
-    expect(point.serif.left.easeDistance).to.equal(Math.round(Math.hypot(30, 10)));
+    expect(point.serif.left.easeDistance).to.equal(40);
   });
 
   it("defaults the axis mode, both sides and every link closed", () => {

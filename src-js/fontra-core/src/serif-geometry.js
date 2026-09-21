@@ -406,24 +406,6 @@ export function makeSerifWall(points) {
 // that produces.
 export const MAX_TIP_CUT_ANGLE = 80;
 
-// How far the rounding can step back from the junction before it has eaten the
-// whole bracket. The bracket-side end stops where the bracket meets the wing,
-// at the top of the tip, and the flank end stops at the same distance so the
-// scoop stays symmetric. There is nothing to round past that: the rounding has
-// replaced the bracket entirely.
-//
-// This is the straight-line distance from the junction to the top of the tip,
-// which is what both ends are measured by.
-//
-// Exported for the same reason as the cut-angle limit. The scrub bounds its
-// drag with this, so the stored number stops where the shape does.
-export function maxSerifEaseDistance(params) {
-  const wingLength = params?.wingLength ?? 0;
-  const wingSlope = params?.wingSlope ?? 0;
-  const reach = Math.max(params?.reach ?? 0, 0);
-  return Math.hypot(wingLength, wingSlope + reach);
-}
-
 function lerpUV(a, b, t) {
   return { u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t };
 }
@@ -516,8 +498,7 @@ export function buildHalfSerif({ side, wall, params }) {
   // that used to stop it, and the "wing swallowed" case it led to, measured the
   // wing from the foot; a wall leaning over the wing then met the tip's top.
   const tipThickness = wantedTipThickness;
-  const tipU =
-    wall.pointAt(wall.parameterAtDepth(tipThickness)).u + side * wingLength;
+  const tipU = wall.pointAt(wall.parameterAtDepth(tipThickness)).u + side * wingLength;
 
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
 
@@ -570,29 +551,36 @@ export function buildHalfSerif({ side, wall, params }) {
   const room = Math.max(wall.maxLength - wall.lengthAt(cornerParameter), 0);
   const wantedReach = Math.max(params.reach ?? 0, 0);
   const reach = Math.min(wantedReach, room);
-  // At full concavity the bracket already leaves the junction along the flank,
-  // so there is no corner left to round and the rounding has nothing to do. Only
-  // then: a partly hollow bracket still meets the flank at an angle, and wants
-  // rounding as much as a bulging one does.
-  const easeOff = concavity >= 1;
-  const wantedEase = easeOff ? 0 : Math.max(params.easeDistance ?? 0, 0);
-  // The rounding runs out where the bracket meets the wing, and the same bound
-  // holds both ends: the flank end stops where the bracket end stops, or the
-  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
-  const easeDistance = Math.min(
-    wantedEase,
-    maxSerifEaseDistance(params),
-    Math.max(room - reach, 0)
-  );
-  const depthClamped =
-    wantedReach > reach ||
-    wantedEase > easeDistance;
-  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
-
   // Where the serif lets go of the stroke, and the straight run below it. Both
   // sit ON the wall above the corner, at their own depths.
   const junctionParameter = wall.parameterAtDistance(cornerParameter, reach);
   const junction = wall.pointAt(junctionParameter);
+  // The rounding runs out where the bracket meets the wing, and the same bound
+  // holds both ends: the flank end stops where the bracket end stops, or the
+  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
+  //
+  // The bracket measured as it is drawn: straight from the junction to the top
+  // of the tip, which is what both ends of the rounding are measured by.
+  // Worked out from the numbers alone -- across by the wing, up by the slope
+  // and the reach -- it was the bracket on a wall standing straight up, and on
+  // the leaning wall of the `l` of skeletron that is the slope, 10, against a
+  // bracket many times longer. Easing stopped at the slope's value.
+  //
+  // Nothing switches easing off. It used to stand down at full concavity, on the
+  // reasoning that the bracket then leaves along the wall and leaves no corner.
+  // That holds on a straight wall only: on a curved one the bracket meets it
+  // at an angle, 16 and 19 degrees on the same `l`, and easing is the control
+  // for exactly that. On a straight wall it rounds a joint that is already
+  // smooth, which stays smooth.
+  const wantedEase = Math.max(params.easeDistance ?? 0, 0);
+  const easeDistance = Math.min(
+    wantedEase,
+    lengthUV(subUV(tipTop, junction)),
+    Math.max(room - reach, 0)
+  );
+  const depthClamped = wantedReach > reach || wantedEase > easeDistance;
+  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
+
   const releaseParameter = wall.parameterAtDistance(junctionParameter, easeDistance);
   const release = wall.pointAt(releaseParameter);
 

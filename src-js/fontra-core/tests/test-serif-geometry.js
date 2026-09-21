@@ -3,7 +3,6 @@ import {
   buildSerifTerminal,
   computeSerifFrame,
   makeSerifWall,
-  maxSerifEaseDistance,
 } from "@fontra/core/serif-geometry.js";
 import { expect } from "chai";
 
@@ -556,13 +555,41 @@ describe("half serif in frame coordinates", () => {
     expectClose(far.release.v - far.junction.v, gap(far.tipTop, far.junction));
   });
 
-  // The scrub reads its ceiling from here, so it has to agree with the shape.
-  it("reports the ease ceiling the geometry actually stops at", () => {
-    const params = { wingLength: 60, wingSlope: 10, reach: 30 };
-    const half = build({ ...params, easeDistance: 4000 });
+  // Reported on the `l` of skeletron: easing stopped at the wing slope's value.
+  // Its ceiling was the bracket's length worked out from the numbers alone, as
+  // if the wall stood straight up: across by the wing, up by the slope and the
+  // reach. With no wing and no reach that is the slope, 10, while the bracket
+  // actually drawn up that leaning wall was many times longer.
+  it("stops the easing at the bracket as drawn, on a leaning wall", () => {
+    const wall = makeSerifWall([
+      { u: -90, v: 0 },
+      { u: 30, v: 400 },
+    ]);
+    const params = { wingLength: 0, tipThickness: 20, wingSlope: 10, reach: 0 };
+    const unlimited = buildHalfSerif({
+      side: -1,
+      wall,
+      params: { ...params, easeDistance: 4000 },
+    });
+    const bracket = Math.hypot(
+      unlimited.tipTop.u - unlimited.junction.u,
+      unlimited.tipTop.v - unlimited.junction.v
+    );
+    expect(bracket, "the bracket this wall draws").to.be.above(10);
+    const asked = Math.min(bracket, 30);
+    const eased = buildHalfSerif({
+      side: -1,
+      wall,
+      params: { ...params, easeDistance: asked },
+    });
     expectClose(
-      maxSerifEaseDistance(params),
-      Math.hypot(half.tipTop.u - half.junction.u, half.tipTop.v - half.junction.v)
+      Math.hypot(
+        eased.easeOnBracket.u - eased.junction.u,
+        eased.easeOnBracket.v - eased.junction.v
+      ),
+      asked,
+      "easing along the bracket",
+      1e-3
     );
   });
 
@@ -642,10 +669,14 @@ describe("half serif in frame coordinates", () => {
     expect(legs(half).flank).to.be.above(0);
   });
 
-  it("snaps the rounding off at full concavity", () => {
+  // Easing used to stand down at full concavity, on the reasoning that the
+  // bracket then leaves along the wall and leaves no corner to round. That is
+  // true of a straight wall only; on the curved one of the `l` of skeletron the
+  // bracket met the wall at 16 and 19 degrees and the easing did nothing.
+  it("rounds at full concavity too", () => {
     const half = build({ concavity: 1, easeDistance: 20, easeCurvature: 0.6 });
-    expectClose(half.release.v, half.junction.v);
-    expectClose(half.easeOnBracket.u, half.junction.u);
+    expectClose(half.release.v - half.junction.v, 20);
+    expect(legs(half).flank).to.be.above(0);
   });
 });
 
