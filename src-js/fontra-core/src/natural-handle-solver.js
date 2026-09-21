@@ -1,3 +1,4 @@
+import { easedWidth } from "./skeleton-width-rate.js";
 import { calculateTunniPoint } from "./tunni-calculations.js";
 
 const EPSILON = 1e-9;
@@ -70,7 +71,23 @@ function curvatureAt(points, parameter) {
   );
 }
 
-function buildOffsetSamples(points, startSignedWidth, endSignedWidth) {
+// The signed width at t. A segment with no rates changes evenly; one with
+// rates eases between them (skeleton-width-rate.js), so both segments at a
+// smooth on-curve pass it at the rate that point owns.
+function signedWidthAt(request, parameter) {
+  const w0 = request.startSignedWidth;
+  const w1 = request.endSignedWidth;
+  return easedWidth(
+    w0,
+    w1,
+    request.startWidthRate ?? w1 - w0,
+    request.endWidthRate ?? w1 - w0,
+    parameter
+  );
+}
+
+function buildOffsetSamples(request) {
+  const points = request.skeletonControlPoints;
   return OFFSET_SAMPLE_PARAMETERS.map((parameter) => {
     const { point, derivative } = cubicPointAndDerivative(points, parameter);
     const speed = Math.hypot(derivative.x, derivative.y);
@@ -78,7 +95,7 @@ function buildOffsetSamples(points, startSignedWidth, endSignedWidth) {
       speed === 0
         ? { x: 0, y: 0 }
         : { x: derivative.y / speed, y: -derivative.x / speed };
-    const width = startSignedWidth + (endSignedWidth - startSignedWidth) * parameter;
+    const width = signedWidthAt(request, parameter);
     return {
       parameter,
       skeletonNormal: normal,
@@ -373,9 +390,7 @@ function pullWeightRatio(request) {
       minimumCuspFactor = -Infinity;
       break;
     }
-    const width =
-      request.startSignedWidth +
-      (request.endSignedWidth - request.startSignedWidth) * parameter;
+    const width = signedWidthAt(request, parameter);
     minimumCuspFactor = Math.min(minimumCuspFactor, 1 + width * curvature);
   }
   const positiveCuspFactor = Math.max(minimumCuspFactor, 0);
@@ -393,11 +408,7 @@ function pullWeightRatio(request) {
 export function solveNaturalHandles(request) {
   const domain = request.handleDomain;
   const reference = referenceHandles(request);
-  const samples = buildOffsetSamples(
-    request.skeletonControlPoints,
-    request.startSignedWidth,
-    request.endSignedWidth
-  );
+  const samples = buildOffsetSamples(request);
   const fit = buildPerpendicularErrorSystem(request, samples, domain);
   const ratio = pullWeightRatio(request);
   const { tensions } = minimizeInsideRectangle(

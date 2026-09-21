@@ -927,3 +927,26 @@ describe("natural-handle-solver: the grid cannot invent a ceiling", () => {
     );
   });
 });
+
+describe("natural-handle-solver: eased width", () => {
+  const points = [
+    { x: 0, y: 0 },
+    { x: 40, y: 30 },
+    { x: 100, y: 60 },
+    { x: 150, y: 60 },
+  ];
+
+  it("draws the even change when both rates equal the segment's change", () => {
+    const plain = requestFor(points, 10, 40);
+    const eased = { ...plain, startWidthRate: 30, endWidthRate: 30 };
+    expect(solveNaturalHandles(eased)).to.deep.equal(solveNaturalHandles(plain));
+  });
+
+  it("samples the eased width when the rates differ from the change", () => {
+    const plain = requestFor(points, 10, 40);
+    const eased = { ...plain, startWidthRate: 30, endWidthRate: 0 };
+    expect(solveNaturalHandles(eased).startLength).to.not.equal(
+      solveNaturalHandles(plain).startLength
+    );
+  });
+});
