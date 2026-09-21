@@ -16,6 +16,7 @@ import {
   resolveSnap,
   resolveSnapForPoints,
   roundSnapped,
+  dragSuppressesSnapping,
 } from "@fontra/core/snapping.js";
 import { expect } from "chai";
 
@@ -1109,5 +1110,29 @@ describe("curvature candidates answer to their own switch", () => {
     const projection = found.find((c) => c.kind === KIND.CURVATURE);
     const metric = found.find((c) => c.type === "line");
     expect(crossLines(projection, metric)).to.equal(null);
+  });
+});
+
+describe("drag modes that suppress snapping", () => {
+  const none = {};
+  it("suppresses under Alt and every mode that states its own geometry", () => {
+    expect(dragSuppressesSnapping({ altKey: true }, none)).to.equal(true);
+    for (const mode of [
+      "tangentRibMode",
+      "tensionAwareMode",
+      "powerTensionAwareMode",
+      "independentRibMode",
+      "pointSlideMode",
+    ]) {
+      expect(dragSuppressesSnapping({}, { [mode]: true }), mode).to.equal(true);
+    }
+  });
+
+  it("lets a plain drag snap, and D and S only under their switch", () => {
+    expect(dragSuppressesSnapping({}, none)).to.equal(false);
+    expect(dragSuppressesSnapping({}, { fixedRibMode: true }, false)).to.equal(true);
+    expect(dragSuppressesSnapping({}, { fixedRibCompressMode: true }, true)).to.equal(
+      false
+    );
   });
 });

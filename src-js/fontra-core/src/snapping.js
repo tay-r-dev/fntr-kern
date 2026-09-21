@@ -850,3 +850,25 @@ export function roundSnapped(result, roundFunc) {
   const rounded = roundFunc(along);
   return { x: line.x + rounded * line.dx, y: line.y + rounded * line.dy };
 }
+
+// A modified drag states its own geometry, and a magnet pulling the point
+// somewhere else fights it: Alt equalizes, Z slides along a tangent, X and C
+// hold the drawn shape, A moves one rib end alone and V slides the point. D and
+// S pin one edge of the stroke and carry a switch, because a designer may want
+// a width to land on a metric. Read every frame, so a key pressed mid-drag
+// takes on the next one.
+export function dragSuppressesSnapping(
+  event,
+  modes,
+  snapDuringFixedRib = SNAP_PARAMETERS.snapDuringFixedRib
+) {
+  return !!(
+    event?.altKey ||
+    modes.tangentRibMode ||
+    modes.tensionAwareMode ||
+    modes.powerTensionAwareMode ||
+    modes.independentRibMode ||
+    modes.pointSlideMode ||
+    ((modes.fixedRibMode || modes.fixedRibCompressMode) && !snapDuringFixedRib)
+  );
+}

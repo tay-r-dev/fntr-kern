@@ -28,7 +28,7 @@ import {
   makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
-import { SNAP_PARAMETERS } from "@fontra/core/snapping.js";
+import { dragSuppressesSnapping } from "@fontra/core/snapping.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
@@ -1123,20 +1123,7 @@ export class PointerTool extends BaseTool {
           event.shiftKey && behaviorName !== "generated-handle-turn"
             ? constraintLineForDelta(rawDelta, snapStartPositions[0])
             : null;
-        // A modified drag states its own geometry, and a magnet pulling the
-        // point somewhere else is fighting it. Alt equalizes, X holds the drawn
-        // shape, Z slides along a tangent, and D and S pin one edge of the
-        // stroke while the other follows the cursor. Read every frame, so a key
-        // pressed or released mid-drag takes on the next one - the same rule the
-        // behavior name already follows. D and S carry a switch, because a
-        // designer may want a width to land on a metric.
-        snapSession.suppressed =
-          event.altKey ||
-          this.tensionAwareMode ||
-          this.tangentRibMode ||
-          this.pointSlideMode ||
-          ((this.fixedRibMode || this.fixedRibCompressMode) &&
-            !SNAP_PARAMETERS.snapDuringFixedRib);
+        snapSession.suppressed = dragSuppressesSnapping(event, this);
         const wouldBe = snapStartPositions.map((point) => ({
           x: point.x + rawDelta.x,
           y: point.y + rawDelta.y,
