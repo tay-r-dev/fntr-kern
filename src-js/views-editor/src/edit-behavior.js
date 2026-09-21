@@ -1371,6 +1371,12 @@ const alternateConstrainRules = alternateRules.concat([
 
   [    ANY|NIL,    SHA|OFF|UNS,SMO|UNS,    SHA|OFF|SEL,ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrev"],
 
+  // Alt turns the opposite handle around the on-curve (RotateNextEqualLength),
+  // so Shift snaps the dragged handle around the on-curve too. Snapping it
+  // around the opposite handle left the pair at an arbitrary angle, and off
+  // one line.
+  [    ANY|NIL,    OFF|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainHandle"],
+
   // Two unselected smooth points between two off-curves, one of them selected
   [    ANY|UNS,    SMO|UNS,    SMO|UNS,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrevPrev"],
 
