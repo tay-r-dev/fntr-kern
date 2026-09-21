@@ -4506,6 +4506,61 @@ describe("skeleton insertion points reach the generator", () => {
     expect(Math.abs(insertedLeftPoint(result).y)).to.be.lessThan(0.5);
   });
 
+  it("does not fling a collapsed side's point along the stroke", () => {
+    // Reported on the `b` of skeletron, whose stem this is. The centerline
+    // point sits at y 292.625 and the cut rounds the dead side's point to 293,
+    // so that point stands 0.375 off the centerline, all of it along the stem.
+    // Absolute mode divided the stated distance by that residue and multiplied
+    // the residue's own direction: 146 units up the stem and out past its end.
+    // A distance from the centerline is measured across it, and a side lying on
+    // the centerline stays there.
+    //
+    // Distance alone cannot catch this. The flung point lands exactly the
+    // stated distance away, in the wrong direction, so the test reads both.
+    const stem = normalizeSkeletonData({
+      contours: [
+        {
+          id: 10,
+          defaultWidth: 117,
+          capStyle: "butt",
+          singleSided: "left",
+          points: [
+            { id: 11, x: 164, y: 214 },
+            { id: 12, x: 164, y: 362 },
+          ],
+          insertions: [
+            {
+              id: 13,
+              pointId: 11,
+              t: 0.53125,
+              width: { left: 146, right: 146, mode: "absolute" },
+            },
+          ],
+        },
+      ],
+    });
+    const result = generateFromSkeleton(stem);
+    const center = { x: 164, y: 292.625 };
+    const pointOn = (side) => {
+      const index = result.provenance[0].pointMap.findIndex(
+        (entry) => entry?.insertion && entry.role === "onCurve" && entry.side === side
+      );
+      return result.contours[0].points[index];
+    };
+    const across = (point) => Math.abs(point.x - center.x);
+    const along = (point) => Math.abs(point.y - center.y);
+    const onEdge = [pointOn("left"), pointOn("right")].sort(
+      (a, b) => across(b) - across(a)
+    );
+    expect(across(onEdge[0])).to.be.closeTo(146, 1);
+    expect(along(onEdge[0])).to.be.lessThan(1);
+    expect(across(onEdge[1])).to.be.lessThan(1);
+    expect(
+      along(onEdge[1]),
+      "the dead side's point left the centerline"
+    ).to.be.lessThan(1);
+  });
+
   it("puts the emitted points on the segment the insertion names", () => {
     // A curve then a straight. The bug this guards: the anchor was guessed from
     // whether a segment's pushed run opened with an on-curve, which is true for

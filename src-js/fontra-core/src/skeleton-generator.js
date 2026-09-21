@@ -23,6 +23,7 @@ import {
 } from "./serif-geometry.js";
 import {
   CAP_POINT_FIELDS,
+  COLLAPSED_SIDE_HALF_WIDTH,
   DEFAULT_CORNER_CURVATURE,
   DEFAULT_SKELETON_WIDTH,
   SERIF_HALF_ZEROS,
@@ -33,6 +34,7 @@ import {
   getEffectiveNormal,
   getEffectiveRibHalfWidth,
   getSkeletonCornerDistances,
+  insertionDistanceFromCenterline,
   insertionSideRatio,
   isStraightControlledSmoothPoint,
   meanHalfWidth,
@@ -2587,11 +2589,12 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   // corner one is carried on to the miter and the other is cut back, so the same
   // parameter reaches a different fraction of each and the bar leans.
   const center = skeletonSegmentPointAt(segment, insertion.t);
+  const tangent = skeletonSegmentTangentAt(segment, insertion.t);
   const sideParameter = sideParameterOnNormal(
     sidePoints,
     anchorIndex,
     center,
-    skeletonSegmentTangentAt(segment, insertion.t),
+    tangent,
     isClosed
   );
   const cut = splitSideAtParameter(
@@ -2679,8 +2682,10 @@ function cutOneSide(sidePoints, anchorIndex, insertion, side, segment, isClosed)
   // it, so it is divided by the one the stroke drew here and the geometry below
   // is untouched. The distance is measured, never assumed from the two ribs: the
   // solve fits the offset and lands a unit or two off the width it was asked
-  // for, and a swell told to hold still would drift by exactly that much.
-  const drawnHalfWidth = Math.hypot(points[at].x - center.x, points[at].y - center.y);
+  // for, and a swell told to hold still would drift by exactly that much. It is
+  // measured across the centerline, because the rounded point also sits a
+  // fraction off it along the stroke and that part is grid, not width.
+  const drawnHalfWidth = insertionDistanceFromCenterline(center, tangent, points[at]);
   const ratio = insertionSideRatio(insertion, side, drawnHalfWidth);
   const moved = applyInsertionRatio(points, at, center, ratio);
   const easing = insertion.easing[side];
@@ -3456,7 +3461,7 @@ function generateOffsetPointsForSegment(
   const endLeftHW = endLeftHalfWidth ?? halfWidth;
   const endRightHW = endRightHalfWidth ?? halfWidth;
 
-  const isCollapsedSide = (value) => value < 0.5;
+  const isCollapsedSide = (value) => value < COLLAPSED_SIDE_HALF_WIDTH;
   const collapsedSideInSingleSided = singleSided
     ? singleSidedDirection === "left"
       ? "right"

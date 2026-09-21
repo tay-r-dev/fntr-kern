@@ -79,6 +79,30 @@ export const DEFAULT_INSERTION_RATIO = 1;
 export const INSERTION_WIDTH_MODES = ["relative", "absolute"];
 export const DEFAULT_INSERTION_WIDTH_MODE = "relative";
 
+// A side thinner than this lies on the skeleton exactly. The one copy of the
+// collapsed-side rule (feature model §3.2).
+export const COLLAPSED_SIDE_HALF_WIDTH = 0.5;
+
+// How far a drawn insertion point stands from the centerline: ACROSS it, along
+// the rib. The drawn point is rounded and the centerline point is exact, so the
+// two are also a fraction of a unit apart along the stroke, and that part is
+// grid, not width. Taken as a straight distance it was the whole of a dead
+// side's reading: on the `b` of skeletron 0.375 units along the stem, which an
+// absolute width divided into and multiplied back out along the stem.
+//
+// Zero where the side is collapsed, which is the one answer that states no
+// distance and no direction.
+export function insertionDistanceFromCenterline(center, tangent, point) {
+  const length = Math.hypot(tangent?.x ?? 0, tangent?.y ?? 0);
+  if (!center || !point || !(length > 0)) {
+    return 0;
+  }
+  const across = Math.abs(
+    ((point.x - center.x) * tangent.y - (point.y - center.y) * tangent.x) / length
+  );
+  return across < COLLAPSED_SIDE_HALF_WIDTH ? 0 : across;
+}
+
 // Mirrors MIN_HANDLE_LENGTH in offset-cubic.js: the shortest handle the
 // generator will emit. The on-curve gizmo stops before driving a handle past it,
 // because beyond that point the generator floors the length and the handle
