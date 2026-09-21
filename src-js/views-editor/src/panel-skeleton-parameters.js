@@ -610,6 +610,11 @@ export default class SkeletonParametersPanel {
     this.tiedButton = toggleButton("/tabler-icons/link-plus.svg", "tied", (value) =>
       this._onWidthChange("tied", value)
     );
+    // Detach sits beside it: it frees the selected ribs' generated handles from
+    // the construction, holding each where it stands.
+    this.detachButton = toggleButton("/tabler-icons/unlink.svg", "detached", (value) =>
+      this._onRibChange("detached", value)
+    );
     // Reset is three parts, and the selection sets their reach: a skeleton point
     // resets both of its sides, a rib that side alone, a generated handle that
     // handle alone, which greys the other two.
@@ -992,7 +997,7 @@ export default class SkeletonParametersPanel {
         this.resetSlideButton,
         this.resetAllButton,
       ]),
-      ...iconGroup("group.rib", [this.tiedButton, this.ribOverflow]),
+      ...iconGroup("group.rib", [this.tiedButton, this.detachButton, this.ribOverflow]),
     ]);
   }
 
@@ -2124,6 +2129,7 @@ export default class SkeletonParametersPanel {
     this.resetSlideButton.disabled = handleOnly || !ribs.length;
     this.resetAllButton.disabled = handleOnly || !ribs.length;
     setToggle(this.tiedButton, summary.tied, !summary.tied.canTie);
+    setToggle(this.detachButton, ribSummary.detached, !ribs.length);
     this._refreshRibOverflow(widthPoints, ribs, ribSummary);
     formContents.push({
       type: "single-icon",
