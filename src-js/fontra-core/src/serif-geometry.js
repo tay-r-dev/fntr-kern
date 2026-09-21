@@ -501,28 +501,23 @@ export function buildHalfSerif({ side, wall, params }) {
     MAX_TIP_CUT_ANGLE
   );
 
-  const footU = wall.pointAt(0).u;
-  const tipU = footU + side * wingLength;
-
-  // How thick the tip may get before its top pushes through the stem wall. The
-  // top of the tip stands straight above the wing's end, so the limit is where
-  // the wall crosses that line. A wall that never runs out that far sets no
-  // limit, which is the ordinary straight stem.
+  // The wing is measured from the STROKE: from where the wall stands at the
+  // tip's own height, not from the wall's foot. Reported on the `l` of
+  // skeletron, whose stroke meets a vertical serif at about 71 degrees. Cut
+  // along that vertical, the stroke ends in a long thin sliver whose point is
+  // the wall's foot, and a wing of 0 stood its tip on that point: 59 units out
+  // from the stroke at the tip's height, with every other wing added on top.
+  // Where the wall stands straight up in the frame its foot and its position at
+  // any height are the same, so nothing drawn on an upright stem moves.
   //
-  // Without this the tip goes on thickening past the crossing, its top ends up
-  // on the far side of the wall, and the outline notches where the tip pokes
-  // through. Points collapse, they do not disappear: at the limit the top of the
-  // tip and the wing's inner corner are the same point, and the wing's top
-  // surface has no length rather than no existence.
-  // With no wing the tip stands on the wall's own foot, so the line it stands on
-  // IS the wall and every depth counts as a crossing. That is a wing already
-  // collapsed, not a tip poking through one, and clamping there would erase a
-  // tip that draws perfectly well against the stroke.
-  const wallCrossesTip =
-    wingLength > 0 ? wall.meetRay({ u: tipU, v: 0 }, { u: 0, v: 1 }) : null;
-  const tipLimit = wallCrossesTip === null ? Infinity : wall.pointAt(wallCrossesTip).v;
-  const tipThickness = Math.min(wantedTipThickness, Math.max(tipLimit, 0));
-  const tipReachesWall = tipThickness >= tipLimit;
+  // This is also why the tip needs no limit on its thickness. The top of the tip
+  // stands the wing length outside the wall at its own height, by construction,
+  // so it cannot push through to the far side however thick it grows. The limit
+  // that used to stop it, and the "wing swallowed" case it led to, measured the
+  // wing from the foot; a wall leaning over the wing then met the tip's top.
+  const tipThickness = wantedTipThickness;
+  const tipU =
+    wall.pointAt(wall.parameterAtDepth(tipThickness)).u + side * wingLength;
 
   const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
 
@@ -558,15 +553,8 @@ export function buildHalfSerif({ side, wall, params }) {
       ? hit
       : null;
   };
-  // The tip has reached the wall on its own, so there is no wing left for a
-  // slope to climb: the stem has swallowed it. The corner is the crossing the
-  // tip stopped at, and the wing slope is not emitted at all. Climbing a surface
-  // that is not there would carry the bracket back out into space the stroke
-  // already occupies, and would leave the slope still moving the shape after the
-  // wing it belongs to had gone.
-  const cornerParameter = tipReachesWall
-    ? wallCrossesTip
-    : wingLength > 0
+  const cornerParameter =
+    wingLength > 0
       ? (meetWingSurface() ?? wall.parameterAtDepth(tipThickness + wingSlope))
       : wall.parameterAtDepth(tipThickness + wingSlope);
   const corner = wall.pointAt(cornerParameter);
@@ -597,7 +585,6 @@ export function buildHalfSerif({ side, wall, params }) {
     Math.max(room - reach, 0)
   );
   const depthClamped =
-    wantedTipThickness > tipThickness ||
     wantedReach > reach ||
     wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
@@ -658,22 +645,7 @@ export function buildHalfSerif({ side, wall, params }) {
     junction,
     1 - (low + high) / 2
   );
-  // With the wing swallowed there is no bracket left to step back along: it runs
-  // from the corner up the wall, so both ends of the rounding would land on the
-  // same surface and the scoop would have nothing to cut. The only corner in the
-  // shape is where the TIP'S OWN EDGE meets the wall, so the rounding moves
-  // there and its far end steps down that edge instead.
-  //
-  // The top of the tip comes down with it. Rounding a corner takes material from
-  // both surfaces, not one, and the tip's top surface has no length here — so the
-  // point where the tip's edge ends and the point the rounding lands on are the
-  // same point. Two on-curves on one spot is the ground rule working: points
-  // collapse, they do not disappear, and the count holds.
-  const tipEdge = subUV(tipBottom, tipTop);
-  const tipEase = tipReachesWall ? Math.min(easeDistance, lengthUV(tipEdge)) : 0;
-  const easeOnBracket = tipReachesWall
-    ? alongUV(tipTop, tipEdge, tipEase)
-    : bracket.first[3];
+  const easeOnBracket = bracket.first[3];
 
   // The rounding is one curve from the release across to its landing on the
   // bracket, and each of its handles runs along the surface its own end sits on:
@@ -694,9 +666,7 @@ export function buildHalfSerif({ side, wall, params }) {
   // leaves off the surface it sits on is not tangent to it.
   const wallOut = wall.tangentAt(releaseParameter);
   const flankDirection = { u: -wallOut.u, v: -wallOut.v };
-  const bracketDirection = tipReachesWall
-    ? subUV(tipTop, easeOnBracket)
-    : subUV(bracket.second[1], easeOnBracket);
+  const bracketDirection = subUV(bracket.second[1], easeOnBracket);
   const meeting = lineIntersection(
     release,
     flankDirection,
@@ -720,11 +690,9 @@ export function buildHalfSerif({ side, wall, params }) {
     easeFlankHandle,
     easeOnBracket,
     easeBracketHandle,
-    // The bracket has no length once the wing is swallowed, so its two controls
-    // sit on its own collapsed ends rather than being read off a split of it.
-    control1: tipReachesWall ? easeOnBracket : bracket.first[1],
-    control2: tipReachesWall ? easeOnBracket : bracket.first[2],
-    tipTop: tipReachesWall ? easeOnBracket : tipTop,
+    control1: bracket.first[1],
+    control2: bracket.first[2],
+    tipTop,
     tipBottom,
     depthClamped,
     releaseParameter,

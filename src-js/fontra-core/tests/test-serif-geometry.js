@@ -368,10 +368,13 @@ describe("serif axis tilt", () => {
       }
       previous = current;
     }
-    // The whole movement here is the rotation: the furthest point turns 0.83
-    // units per half degree. The bound is that and nothing more, so a branch
-    // change of even a few units fails rather than hiding inside headroom.
-    expect(worst, `worst step ${worst.toFixed(2)} at tilt ${worstAt}`).to.be.below(1);
+    // The movement is the rotation, 0.81 units per half degree at no tilt, plus
+    // the tip following the wall: the wing is measured from where the wall
+    // stands at the tip's height, and that moves as the frame turns. Measured,
+    // it rises evenly to 1.25 at either end of the range with no spike. The
+    // bound is that and little more, so a branch change of even a few units
+    // fails rather than hiding inside headroom.
+    expect(worst, `worst step ${worst.toFixed(2)} at tilt ${worstAt}`).to.be.below(1.3);
   });
 });
 
@@ -978,10 +981,11 @@ describe("a serif frame the stroke is not square to", () => {
     }
   });
 
-  // The decision of record. The serif's own shape is square to its foot and
-  // reads nothing off the stem — only the wall follows the stroke. So the lean
-  // lands on the bracket, which reaches further sideways on one side than the
-  // other by the wing slope times the lean, and it never reaches the wing.
+  // The serif's own shape is square to its foot at every lean, and the wing is
+  // measured from where the wall stands at the tip's own height. Measured from
+  // the wall's foot instead -- the decision of 2026-08-07 -- a steep lean put
+  // the foot at the point of a long sliver of stroke, and a wing of 0 drew 59
+  // units of wing on the `l` of skeletron.
   it("keeps the wing square to the foot at every lean", () => {
     for (const degrees of [0, ...tilts]) {
       const { frame, inward } = tilted(degrees);
@@ -992,8 +996,16 @@ describe("a serif frame the stroke is not square to", () => {
         const bottom = frame.toGlyph(built.tipBottom);
         const top = frame.toGlyph(built.tipTop);
         expectClose(along(top, bottom), 0, `tip edge leaned at ${degrees}, ${side}`);
+        // Where the wall stands at the tip's own depth, found along the wall.
+        const ribEnd = frame.toGlyph({ u: side * 50, v: 0 });
+        const depthPerUnit = inward.x * frame.depth.x + inward.y * frame.depth.y;
+        const run = params.tipThickness / depthPerUnit;
+        const wallAtTip = {
+          x: ribEnd.x + inward.x * run,
+          y: ribEnd.y + inward.y * run,
+        };
         expectClose(
-          along(bottom, frame.toGlyph({ u: side * 50, v: 0 })),
+          along(top, wallAtTip),
           side * params.wingLength,
           `wing length moved at ${degrees}, ${side}`
         );
@@ -1099,119 +1111,6 @@ describe("half serif on a wall", () => {
   });
 });
 
-describe("a tip that reaches the wall on its own", () => {
-  const params = {
-    wingLength: 48,
-    tipThickness: 100,
-    wingSlope: 25,
-    tipCutAngle: 0,
-    reach: 20,
-    tension: 0.5,
-    concavity: 0.5,
-    easeDistance: 0,
-    easeCurvature: 0,
-  };
-  // A wall that runs outward fast, so by the tip's own thickness it stands past
-  // the tip's outer edge. The stem has swallowed the wing.
-  const outwardWall = () =>
-    makeSerifWall([
-      { u: 30, v: 0 },
-      { u: 60, v: 60 },
-      { u: 90, v: 120 },
-      { u: 110, v: 180 },
-    ]);
-  const tipU = 30 + 48;
-
-  it("puts the corner where the tip's own edge crosses the wall", () => {
-    const half = buildHalfSerif({
-      side: 1,
-      wall: outwardWall(),
-      params,
-    });
-    expect(Math.abs(half.corner.u - tipU)).to.be.lessThan(0.05);
-    expect(half.corner.v).to.be.lessThan(params.tipThickness);
-  });
-
-  it("does not emit the wing slope there", () => {
-    const build = (wingSlope) =>
-      buildHalfSerif({
-        side: 1,
-        wall: outwardWall(),
-        params: { ...params, wingSlope },
-      });
-    // No wing is left for a slope to climb, so the number cannot move anything.
-    for (const wingSlope of [0, 25, 60]) {
-      expect(Math.abs(build(wingSlope).corner.v - build(0).corner.v)).to.be.lessThan(
-        0.05
-      );
-    }
-  });
-
-  it("still climbs the slope while the wing survives", () => {
-    const build = (wingSlope) =>
-      buildHalfSerif({
-        side: 1,
-        wall: wallAt(30),
-        params: { ...params, tipThickness: 40, wingSlope },
-      });
-    expect(build(25).corner.v - build(0).corner.v).to.be.closeTo(25, 0.05);
-  });
-});
-
-describe("a tip that would push past the wall", () => {
-  const params = {
-    wingLength: 48,
-    tipThickness: 100,
-    wingSlope: 25,
-    tipCutAngle: 0,
-    reach: 20,
-    tension: 0.5,
-    concavity: 0.5,
-    easeDistance: 0,
-    easeCurvature: 0,
-  };
-  const outwardWall = () =>
-    makeSerifWall([
-      { u: 30, v: 0 },
-      { u: 60, v: 60 },
-      { u: 90, v: 120 },
-      { u: 110, v: 180 },
-    ]);
-  const build = (overrides) =>
-    buildHalfSerif({
-      side: 1,
-      wall: outwardWall(),
-      params: { ...params, ...overrides },
-    });
-
-  it("stops the top of the tip at the wall", () => {
-    const half = build({});
-    // The top of the tip sits ON the crossing, not past it. Past it the tip
-    // pokes through the stem wall and the outline notches.
-    expect(half.tipTop.v).to.be.lessThan(params.tipThickness);
-    expect(Math.abs(half.tipTop.v - half.corner.v)).to.be.lessThan(0.05);
-    expect(Math.abs(half.tipTop.u - half.corner.u)).to.be.lessThan(0.05);
-  });
-
-  it("holds there however much further the tip is pushed", () => {
-    const reference = build({ tipThickness: 100 });
-    for (const tipThickness of [140, 200, 400]) {
-      const half = build({ tipThickness });
-      expect(Math.abs(half.tipTop.v - reference.tipTop.v)).to.be.lessThan(0.05);
-    }
-  });
-
-  it("says it was clamped", () => {
-    expect(build({}).depthClamped).to.equal(true);
-  });
-
-  it("leaves a tip that stays inside the wall alone", () => {
-    const half = build({ tipThickness: 20, wingSlope: 0 });
-    expect(half.tipTop.v).to.be.closeTo(20, 1e-6);
-    expect(half.depthClamped).to.equal(false);
-  });
-});
-
 describe("a wingless tip against the wall", () => {
   it("keeps its thickness, because a collapsed wing is not a notch", () => {
     const half = buildHalfSerif({
@@ -1229,65 +1128,6 @@ describe("a wingless tip against the wall", () => {
     });
     expect(half.tipTop.v).to.be.closeTo(30, 1e-6);
     expect(half.depthClamped).to.equal(false);
-  });
-});
-
-describe("the rounding when the wing has been swallowed", () => {
-  const outwardWall = () =>
-    makeSerifWall([
-      { u: 30, v: 0 },
-      { u: 60, v: 60 },
-      { u: 90, v: 120 },
-      { u: 110, v: 180 },
-    ]);
-  const tipU = 30 + 48;
-  const build = (overrides = {}) =>
-    buildHalfSerif({
-      side: 1,
-      wall: outwardWall(),
-      params: {
-        wingLength: 48,
-        tipThickness: 100,
-        wingSlope: 25,
-        tipCutAngle: 0,
-        reach: 20,
-        tension: 0.5,
-        concavity: 0.5,
-        easeDistance: 15,
-        easeCurvature: 0.5,
-        ...overrides,
-      },
-    });
-
-  it("puts the rounding's far end on the tip's own edge", () => {
-    const half = build();
-    // Down the tip's edge from the corner, not back along a bracket that has no
-    // length left to step along.
-    expect(Math.abs(half.easeOnBracket.u - tipU)).to.be.lessThan(0.05);
-    expect(half.corner.v - half.easeOnBracket.v).to.be.closeTo(15, 0.05);
-  });
-
-  it("brings the top of the tip down with it", () => {
-    const half = build();
-    expect(Math.abs(half.tipTop.u - half.easeOnBracket.u)).to.be.lessThan(0.05);
-    expect(Math.abs(half.tipTop.v - half.easeOnBracket.v)).to.be.lessThan(0.05);
-  });
-
-  it("leaves its handle on the tip's edge, pointing at the corner", () => {
-    const half = build();
-    expect(Math.abs(half.easeBracketHandle.u - tipU)).to.be.lessThan(0.05);
-    expect(half.easeBracketHandle.v).to.be.greaterThan(half.easeOnBracket.v);
-    expect(half.easeBracketHandle.v).to.be.at.most(half.corner.v + 0.05);
-  });
-
-  it("cannot eat past the bottom of the tip", () => {
-    const half = build({ easeDistance: 10000 });
-    expect(half.easeOnBracket.v).to.be.at.least(-0.05);
-  });
-
-  it("collapses to the corner at ease distance zero", () => {
-    const half = build({ easeDistance: 0 });
-    expect(Math.abs(half.easeOnBracket.v - half.corner.v)).to.be.lessThan(0.05);
   });
 });
 
@@ -1483,5 +1323,72 @@ describe("a wall that leans away from the wing", () => {
       previous = current;
     }
     expect(worst).to.be.lessThan(1);
+  });
+});
+
+// The wing is measured from the stroke, not from the wall's foot. Reported on the
+// `l` of skeletron: a stroke meeting a vertical serif at about 71 degrees is cut
+// along that vertical, which leaves a long thin sliver of stroke whose point is
+// the wall's foot. A wing of 0 stood its tip on that point, 59 units out from
+// the stroke at the tip's own height, and every other wing was added on top of
+// the 59. So the number was exact about a point that means nothing to the eye.
+describe("serif wing on a leaning wall", () => {
+  // A straight wall leaning `lean` units across per unit of depth.
+  const leaningWall = (footU, lean) =>
+    makeSerifWall([
+      { u: footU, v: 0 },
+      { u: footU + lean * 400, v: 400 },
+    ]);
+  const wallAcrossAt = (wall, depth) => wall.pointAt(wall.parameterAtDepth(depth)).u;
+
+  for (const side of [1, -1]) {
+    for (const lean of [3, -3, 0.5, -0.5]) {
+      for (const wingLength of [0, 10, 40]) {
+        it(`stands the tip ${wingLength} out from the stroke (side ${side}, lean ${lean})`, () => {
+          const wall = leaningWall(-side * 90, lean);
+          const half = buildHalfSerif({
+            side,
+            wall,
+            params: { wingLength, tipThickness: 20, wingSlope: 20 },
+          });
+          const out = side * (half.tipTop.u - wallAcrossAt(wall, half.tipTop.v));
+          expectClose(out, wingLength, `tip top stands ${out} out`, 1e-3);
+        });
+      }
+    }
+  }
+
+  it("never pushes a thick tip through a wall leaning over its wing", () => {
+    // What the removed tip limit was for. Measured from the stroke, the tip's
+    // top stands the wing length outside the wall at its own height however
+    // thick it grows, so there is nothing left to stop.
+    for (const tipThickness of [20, 80, 200]) {
+      const wall = leaningWall(-90, 1.5);
+      const half = buildHalfSerif({
+        side: 1,
+        wall,
+        params: { wingLength: 30, tipThickness, wingSlope: 20 },
+      });
+      expectClose(half.tipTop.v - half.tipBottom.v, tipThickness, "tip was clamped");
+      const out = half.tipTop.u - wallAcrossAt(wall, half.tipTop.v);
+      expectClose(
+        out,
+        30,
+        `tip top stands ${out} out at thickness ${tipThickness}`,
+        1e-3
+      );
+    }
+  });
+
+  it("leaves a wall that stands straight up exactly where it was", () => {
+    // The foot and the tip's height are the same distance across there, so
+    // nothing already drawn on an upright stem moves.
+    const half = buildHalfSerif({
+      side: 1,
+      wall: wallAt(0),
+      params: { wingLength: 40, tipThickness: 20, wingSlope: 20 },
+    });
+    expectClose(half.tipTop.u, 40);
+    expectClose(half.tipBottom.u, 40);
   });
 });
