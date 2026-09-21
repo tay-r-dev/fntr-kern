@@ -1,4 +1,5 @@
 import { Bezier } from "bezier-js";
+import { gridKinkAllowance } from "./harmonization.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
@@ -126,6 +127,53 @@ export function generateContoursFromSkeleton(skeletonData) {
   return generateFromSkeleton(skeletonData).contours;
 }
 
+// A smooth flag is a claim about the drawing: the outline runs through the
+// point without a kink. Every construction here set the flag by hand, as a
+// statement of what it meant to build, and several set it where the drawing
+// could not keep it. A serif's release sat on a zero-length handle, stacked on
+// the easing's far end; on a curved stem the same release, flagged smooth
+// against a diagonal chamfer, was a tension point whose handle the editor would
+// have turned onto the chamfer and bent the stem to do it.
+//
+// So the flag is checked once, on the finished outline, where every
+// construction passes through: a direction on BOTH sides -- a handle with
+// length, or the straight to the next on-curve -- and the two lined up to
+// within what the whole-unit grid can bend (harmonize's own allowance). This
+// pass only takes a flag away. It never gives one: a corner that happens to be
+// straight was not built to be smooth, and saying so would be a second guess.
+//
+// Interpolation reads no smooth flag (POINT_TYPE_MASK), so two masters may
+// disagree about one without anything else noticing.
+function settleSmoothFlags(contour) {
+  const points = contour?.points || [];
+  const count = points.length;
+  if (count < 3) {
+    return;
+  }
+  for (let i = 0; i < count; i++) {
+    const point = points[i];
+    if (point.type || !point.smooth) {
+      continue;
+    }
+    const before = points[(i - 1 + count) % count];
+    const after = points[(i + 1) % count];
+    const lengthIn = Math.hypot(point.x - before.x, point.y - before.y);
+    const lengthOut = Math.hypot(after.x - point.x, after.y - point.y);
+    let keep = lengthIn > 1e-6 && lengthOut > 1e-6;
+    if (keep) {
+      const cos =
+        ((point.x - before.x) * (after.x - point.x) +
+          (point.y - before.y) * (after.y - point.y)) /
+        (lengthIn * lengthOut);
+      const kink = Math.acos(Math.min(1, Math.max(-1, cos)));
+      keep = kink <= gridKinkAllowance(before, point, after) + 1e-9;
+    }
+    if (!keep) {
+      points[i] = { ...point, smooth: false };
+    }
+  }
+}
+
 function generateContoursFromGeneratorInput(generatorInput, options = {}) {
   if (!generatorInput?.contours?.length) {
     return { contours: [], provenance: [] };
@@ -148,6 +196,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       removeCollapsedPoints: options.removeCollapsedPoints === true,
     });
     for (const generatedContour of generatedContours) {
+      settleSmoothFlags(generatedContour);
       const generatedContourIndex = contours.length;
       annotateGeneratedContourProvenance(generatedContour, skeletonContour);
       publishConstructionAxes(generatedContour);

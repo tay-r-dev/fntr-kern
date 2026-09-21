@@ -774,7 +774,7 @@ function jointError(stencil, continuity) {
 // swing by atan(sqrt(2) / its own length), and the two handles' swings add. A
 // bend inside this is the price of the document's coordinate space. A bend past
 // it was chosen, and this module does not get to choose it.
-function gridKinkAllowance(P, node, N) {
+export function gridKinkAllowance(P, node, N) {
   const reach = Math.SQRT2;
   return (
     Math.atan(reach / Math.max(distance(P, node), reach)) +

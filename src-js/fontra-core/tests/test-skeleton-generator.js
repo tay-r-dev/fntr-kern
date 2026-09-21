@@ -14,6 +14,7 @@ import {
   getSkeletonRibPosition,
   normalizeSkeletonData,
 } from "@fontra/core/skeleton-model.js";
+import { gridKinkAllowance } from "@fontra/core/harmonization.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { packContour } from "@fontra/core/var-path.js";
 import { Bezier } from "bezier-js";
@@ -38,6 +39,126 @@ describe("skeleton-generator golden master", () => {
   it("outlineContourToPackedPath matches packContour", () => {
     const contour = fixtures[0].expectedContours[0];
     expect(outlineContourToPackedPath(contour)).to.deep.equal(packContour(contour));
+  });
+});
+
+// A smooth flag is a claim about the drawing: the curve runs through the point
+// without a kink. It needs a direction on BOTH sides - a handle with length, or
+// the straight to the next on-curve - and the two must line up to within what
+// the grid can bend. Every construction asserted the flag by hand, and several
+// asserted it where there was nothing to line up: a serif's release sat on a
+// zero-length handle, stacked on the easing's far end, and a release on a curved
+// stem flagged smooth against a diagonal chamfer became a tension point the
+// editor would have rotated the stem handle to satisfy.
+function smoothFlagViolations(contour) {
+  const points = contour.points;
+  const count = points.length;
+  const violations = [];
+  for (let i = 0; i < count; i++) {
+    const point = points[i];
+    if (point.type || !point.smooth) {
+      continue;
+    }
+    const before = points[(i - 1 + count) % count];
+    const after = points[(i + 1) % count];
+    const into = { x: point.x - before.x, y: point.y - before.y };
+    const out = { x: after.x - point.x, y: after.y - point.y };
+    const lengthIn = Math.hypot(into.x, into.y);
+    const lengthOut = Math.hypot(out.x, out.y);
+    if (!(lengthIn > 1e-6) || !(lengthOut > 1e-6)) {
+      violations.push(`${i} has no direction on one side`);
+      continue;
+    }
+    const kink = Math.acos(
+      Math.min(
+        1,
+        Math.max(-1, (into.x * out.x + into.y * out.y) / (lengthIn * lengthOut))
+      )
+    );
+    if (kink > gridKinkAllowance(before, point, after) + 1e-9) {
+      violations.push(`${i} bends ${((kink * 180) / Math.PI).toFixed(1)} degrees`);
+    }
+  }
+  return violations;
+}
+
+// The `l` of skeletron: a serif on a curved approach at the top, whose bracket
+// is a diagonal chamfer, and one on a straight stem at the bottom, whose bracket
+// leaves along the wall.
+const serifedStem = () =>
+  normalizeSkeletonData({
+    contours: [
+      {
+        id: 4,
+        defaultWidth: 80,
+        capStyle: "butt",
+        points: [
+          {
+            id: 8,
+            x: 278,
+            y: 472,
+            capStyle: "serif",
+            serif: {
+              axisMode: "perpendicular",
+              left: { concavity: -1, tipThickness: 20, wingLength: 20, wingSlope: 29 },
+              right: { concavity: -1, tipThickness: 20, wingLength: 20, wingSlope: 29 },
+            },
+          },
+          { id: 9, x: 157, y: 572, type: "cubic" },
+          { id: 10, x: 91, y: 503, type: "cubic" },
+          { id: 7, x: 91, y: 435, smooth: true },
+          { id: 6, x: 91, y: 377 },
+          {
+            id: 5,
+            x: 94,
+            y: 0,
+            capStyle: "serif",
+            serif: {
+              axisMode: "perpendicular",
+              left: {
+                concavity: 1,
+                reach: 31,
+                tension: 0.81,
+                tipThickness: 20,
+                wingLength: 20,
+              },
+              right: {
+                concavity: 1,
+                reach: 31,
+                tension: 0.81,
+                tipThickness: 20,
+                wingLength: 20,
+              },
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+describe("a smooth flag is a claim the drawing can keep", () => {
+  it("holds on every recorded outline", () => {
+    for (const fixture of fixtures) {
+      for (const contour of generateFromSkeleton(fixture.canonical).contours) {
+        expect(smoothFlagViolations(contour), fixture.name).to.deep.equal([]);
+      }
+    }
+  });
+
+  it("holds on a serif, on a straight stem and on a curved one", () => {
+    for (const contour of generateFromSkeleton(serifedStem()).contours) {
+      expect(smoothFlagViolations(contour)).to.deep.equal([]);
+    }
+  });
+
+  it("keeps the flag where the drawing is smooth", () => {
+    // The guard against clearing everything: the stem's own smooth skeleton
+    // point still runs through on both sides.
+    const contour = generateFromSkeleton(serifedStem()).contours[0];
+    const smoothOnStem = contour.points.filter(
+      (point) => !point.type && point.smooth && (point.x === 51 || point.x === 131)
+    );
+    expect(smoothOnStem.length).to.be.greaterThan(0);
   });
 });
 
@@ -658,7 +779,14 @@ describe("skeleton-generator corner rounding input", () => {
 
   // The four points of one rounded corner, in emission order: the two on-curves
   // the arc runs between and the two handles between them.
-  function arcRuns(result) {
+  //
+  // Found by the smooth flag at both ends, which holds wherever the arc has
+  // handles to run along the arms. A chamfer has none: both its ends are
+  // corners, and so they are flagged. Handed the unrounded outline, the arc is
+  // found instead by its two on-curves being ones that outline did not have.
+  function arcRuns(result, plain = null) {
+    const added = plain ? new Set(cornerDiff(plain, result).added.map(roundKey)) : null;
+    const isArcEnd = (point) => (added ? added.has(roundKey(point)) : point.smooth);
     const runs = [];
     for (const contour of result.contours) {
       const points = contour.points;
@@ -668,8 +796,8 @@ describe("skeleton-generator corner rounding input", () => {
           points[i + 1].type &&
           points[i + 2].type &&
           !points[i + 3].type &&
-          points[i].smooth &&
-          points[i + 3].smooth
+          isArcEnd(points[i]) &&
+          isArcEnd(points[i + 3])
         ) {
           runs.push({
             start: points[i],
@@ -931,6 +1059,7 @@ describe("skeleton-generator corner rounding input", () => {
   });
 
   it("draws a straight chamfer at curvature zero", () => {
+    const plain = generateFromSkeleton(makeAnglePointSkeleton());
     const rounded = generateFromSkeleton(
       makeAnglePointSkeleton(
         cornerBlock({
@@ -939,11 +1068,14 @@ describe("skeleton-generator corner rounding input", () => {
         })
       )
     );
-    const runs = arcRuns(rounded);
+    const runs = arcRuns(rounded, plain);
     expect(runs).to.have.length(2);
     for (const run of runs) {
       expect(distance(run.handleIn, run.start)).to.be.at.most(1);
       expect(distance(run.handleOut, run.end)).to.be.at.most(1);
+      // A chamfer meets both arms at an angle, so its ends are corners.
+      expect(run.start.smooth, "chamfer start").to.not.equal(true);
+      expect(run.end.smooth, "chamfer end").to.not.equal(true);
     }
   });
 
@@ -2252,12 +2384,14 @@ describe("skeleton-generator serif field translation", () => {
       serifStem({ serif: { left: ALL_NULL_HALF, right: ALL_NULL_HALF } })
     );
     const terminal = result.contours[0].points.slice(0, 7);
+    // Every point of an all-zero terminal collapses onto one spot, so none of
+    // them has a direction on both sides and none is smooth.
     expect(terminal).to.deep.equal([
-      { x: 40, y: 0, smooth: true },
-      { x: 40, y: 400, smooth: true },
+      { x: 40, y: 0, smooth: false },
+      { x: 40, y: 400, smooth: false },
       { x: 40, y: 400, type: "cubic" },
       { x: 40, y: 400, type: "cubic" },
-      { x: 40, y: 400, smooth: true },
+      { x: 40, y: 400, smooth: false },
       { x: 40, y: 400, type: "cubic" },
       { x: 40, y: 400, type: "cubic" },
     ]);
@@ -4837,7 +4971,9 @@ describe("skeleton-generator: the edge turns with the width", () => {
     };
     // The ordinary turn refits the lengths, so the test is not vacuous.
     const refit = turnedBy(false);
-    expect(Math.abs(refit[0] - plain[0]) + Math.abs(refit[1] - plain[1])).to.be.above(2);
+    expect(Math.abs(refit[0] - plain[0]) + Math.abs(refit[1] - plain[1])).to.be.above(
+      2
+    );
     const held = turnedBy(true);
     // The handles are rounded to the grid.
     expect(held[0]).to.be.closeTo(plain[0], 1);
