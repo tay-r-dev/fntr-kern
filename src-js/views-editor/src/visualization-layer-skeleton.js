@@ -625,6 +625,59 @@ registerVisualizationLayerDefinition({
   },
 });
 
+// The edge a serif is cut into: each wall from the stroke's end up to where the
+// serif lets go, which the serif throws away. Drawn dashed, so the curve the
+// terminal is shaped against stays visible after the cut. The generator
+// publishes the pieces; nothing here reconstructs them (rail R-D).
+registerVisualizationLayerDefinition({
+  identifier: "fontra.skeleton.serif-cut-walls",
+  name: "Skeleton serif: the stroke it cuts off",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 450,
+  screenParameters: {
+    strokeWidth: 1,
+    lineDash: [4, 3],
+  },
+  colors: {
+    strokeColor: "rgba(34, 121, 210, 0.55)",
+  },
+  colorsDarkMode: {
+    strokeColor: "rgba(95, 178, 255, 0.6)",
+  },
+  draw: (context, positionedGlyph, parameters, model) => {
+    const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
+    if (!skeletonData?.generated?.length) {
+      return;
+    }
+    context.lineWidth = parameters.strokeWidth;
+    context.strokeStyle = parameters.strokeColor;
+    context.setLineDash(parameters.lineDash);
+    for (const entry of skeletonData.generated) {
+      for (const provenance of entry.pointMap || []) {
+        for (const piece of Object.values(provenance?.serifCutWalls || {})) {
+          if (piece?.length !== 4) {
+            continue;
+          }
+          const path = new Path2D();
+          path.moveTo(piece[0].x, piece[0].y);
+          path.bezierCurveTo(
+            piece[1].x,
+            piece[1].y,
+            piece[2].x,
+            piece[2].y,
+            piece[3].x,
+            piece[3].y
+          );
+          context.stroke(path);
+        }
+      }
+    }
+    context.setLineDash([]);
+  },
+});
+
 registerVisualizationLayerDefinition({
   identifier: "fontra.skeleton.handles",
   name: "Skeleton handles",

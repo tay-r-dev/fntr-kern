@@ -5107,3 +5107,75 @@ describe("skeleton-generator: a rib slide at a forced rib angle", () => {
     expect(turnAt(makeSeven(29))).to.be.below(2);
   });
 });
+
+// A serif cuts each wall where it lets go of the stroke and throws the rest
+// away. The piece it throws away is published, so the editor can draw the edge
+// the serif is cut into and the designer can see the curve they are shaping.
+describe("the wall a serif cuts off", () => {
+  const serifed = () =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          defaultWidth: 60,
+          capStyle: "butt",
+          points: [
+            {
+              id: 2,
+              x: 0,
+              y: 0,
+              capStyle: "serif",
+              serif: {
+                left: { wingLength: 30, tipThickness: 20, wingSlope: 10, reach: 25 },
+                right: { wingLength: 30, tipThickness: 20, wingSlope: 10, reach: 25 },
+              },
+            },
+            { id: 3, x: 40, y: 150, type: "cubic" },
+            { id: 4, x: 120, y: 250, type: "cubic" },
+            { id: 5, x: 150, y: 400 },
+          ],
+        },
+      ],
+    });
+
+  it("publishes, per side, the piece from the stroke's end to the release", () => {
+    const plainData = serifed();
+    plainData.contours[0].points[0].capStyle = "butt";
+    const plainPoints = generateFromSkeleton(plainData).contours[0].points;
+    const plainEnds = [plainPoints[0], plainPoints[plainPoints.length - 1]];
+    const result = generateFromSkeleton(serifed());
+    const pointMap = result.provenance[0].pointMap;
+    const published = pointMap.find((entry) => entry?.serifCutWalls)?.serifCutWalls;
+    expect(published, "cut walls published").to.be.an("object");
+    const points = result.contours[0].points;
+    for (const side of ["left", "right"]) {
+      const piece = published[side];
+      expect(piece, side).to.have.length(4);
+      // It ends where the drawn wall now ends: on the release, the emitted
+      // on-curve the serif lets go at.
+      const end = piece[piece.length - 1];
+      const nearest = Math.min(
+        ...points
+          .filter((p) => !p.type)
+          .map((p) => Math.hypot(p.x - end.x, p.y - end.y))
+      );
+      expect(nearest, `${side} piece ends on the outline`).to.be.below(1);
+      // And it starts at the stroke's end, as the same stroke draws it with no
+      // serif: that end is what the serif cut away.
+      const start = piece[0];
+      expect(
+        Math.min(...plainEnds.map((p) => Math.hypot(p.x - start.x, p.y - start.y))),
+        `${side} starts at the stroke's end`
+      ).to.be.below(1);
+    }
+  });
+
+  it("publishes nothing where there is no serif", () => {
+    const data = serifed();
+    data.contours[0].points[0].capStyle = "butt";
+    const result = generateFromSkeleton(data);
+    expect(
+      result.provenance[0].pointMap.some((entry) => entry?.serifCutWalls)
+    ).to.equal(false);
+  });
+});

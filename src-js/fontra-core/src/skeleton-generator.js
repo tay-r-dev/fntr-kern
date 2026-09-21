@@ -204,7 +204,11 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       provenance.push({
         skeletonContourId: skeletonContour.id,
         generatedContourIndex,
-        pointMap: generatedContour.points.map((point) => point._provenance || null),
+        pointMap: generatedContour.points.map((point) =>
+          point._serifCutWalls
+            ? { ...(point._provenance || {}), serifCutWalls: point._serifCutWalls }
+            : point._provenance || null
+        ),
       });
       stripPointProvenance(generatedContour);
     }
@@ -219,6 +223,7 @@ function stripPointProvenance(contour) {
     delete point._constructionAnchor;
     delete point._handleNudge;
     delete point._authoredAdjustment;
+    delete point._serifCutWalls;
   }
 }
 
@@ -7611,17 +7616,19 @@ function buildSerifCap({
   // A terminal may only consume its own segment, and the wall's own maximum
   // depth is what states that: the serif clamps its reach and ease against it.
   // An end terminal's side points run the other way, so its segment is reversed.
-  const wallForSide = (sidePoints) => {
+  const wallPoints = {};
+  const wallForSide = (sidePoints, side) => {
     const terminalSegment = getRoundCapTerminalSegment(sidePoints, position);
     if (!terminalSegment) return null;
     const ordered =
       position === "end"
         ? [...terminalSegment.segmentPoints].reverse()
         : terminalSegment.segmentPoints;
+    wallPoints[side] = ordered;
     return makeSerifWall(ordered.map((point) => frame.toFrame(point)));
   };
-  const leftWall = wallForSide(leftSide);
-  const rightWall = wallForSide(rightSide);
+  const leftWall = wallForSide(leftSide, "left");
+  const rightWall = wallForSide(rightSide, "right");
   if (!leftWall || !rightWall) return null;
 
   const terminal = buildSerifTerminal({
@@ -7658,6 +7665,33 @@ function buildSerifCap({
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();
   for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);
+  // The piece of each wall the serif throws away, from the stroke's end up to
+  // where the serif lets go: the edge the terminal is cut into. Published so
+  // the editor can draw it, and the designer can see the curve they are
+  // shaping rather than infer it. Glyph coordinates, a cubic per side.
+  const lerpPoint = (a, b, t) => ({
+    x: a.x + (b.x - a.x) * t,
+    y: a.y + (b.y - a.y) * t,
+  });
+  const cutOff = (side, parameter) => {
+    const points = wallPoints[side];
+    const cubic =
+      points.length === 4
+        ? points
+        : [
+            points[0],
+            lerpPoint(points[0], points[1], 1 / 3),
+            lerpPoint(points[0], points[1], 2 / 3),
+            points[1],
+          ];
+    return splitCubicAt(cubic, parameter).first.map(({ x, y }) => ({ x, y }));
+  };
+  if (capPoints[0]) {
+    capPoints[0]._serifCutWalls = {
+      left: cutOff("left", terminal.halves.left.releaseParameter),
+      right: cutOff("right", terminal.halves.right.releaseParameter),
+    };
+  }
   return {
     leftSide: trimSideForRoundCapEmission(
       leftSplit.sidePoints,
