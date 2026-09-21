@@ -390,6 +390,9 @@ export class CompactScrubField extends UnlitElement {
         { ...this._boundsFieldItem, shiftKey }
       );
       input.value = String(value);
+      applyLive(value);
+    };
+    const applyLive = (value) => {
       if (!this._dragValueStream) {
         this._dragValueStream = new QueueIterator(5, true);
         this.dispatchEvent(
@@ -463,6 +466,22 @@ export class CompactScrubField extends UnlitElement {
         }
       } else if (event.key === "Escape") {
         finishEdit(false);
+      }
+    });
+    // The input's own spin buttons step the value too. Their "input" event
+    // names no inputType, which is how it differs from a typed character.
+    input.addEventListener("input", (event) => {
+      if (event.inputType) {
+        return;
+      }
+      const parsed = parseFloat(input.value);
+      if (Number.isFinite(parsed)) {
+        applyLive(
+          roundScrubValue(
+            clampScrubValue(parsed, this._boundsFieldItem),
+            this._boundsFieldItem
+          )
+        );
       }
     });
     input.addEventListener("blur", () => finishEdit(true), { once: true });
