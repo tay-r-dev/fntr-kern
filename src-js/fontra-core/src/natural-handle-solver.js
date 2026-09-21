@@ -88,7 +88,9 @@ function signedWidthAt(request, parameter) {
 
 function buildOffsetSamples(request) {
   const points = request.skeletonControlPoints;
-  return OFFSET_SAMPLE_PARAMETERS.map((parameter) => {
+  // A caller may ask for more samples than the solve's own five (the smooth
+  // point slide measures near the ends too). The automatic answer never does.
+  return (request.sampleParameters ?? OFFSET_SAMPLE_PARAMETERS).map((parameter) => {
     const { point, derivative } = cubicPointAndDerivative(points, parameter);
     const speed = Math.hypot(derivative.x, derivative.y);
     const normal =
@@ -411,10 +413,13 @@ export function solveNaturalHandles(request) {
   const samples = buildOffsetSamples(request);
   const fit = buildPerpendicularErrorSystem(request, samples, domain);
   const ratio = pullWeightRatio(request);
-  const { tensions } = minimizeInsideRectangle(
-    addReferencePull(fit, reference, ratio),
-    domain
-  );
+  const pulled = addReferencePull(fit, reference, ratio);
+  const { tensions } = minimizeInsideRectangle(pulled, domain);
+  // The pull adds weight * (t - r)^2 per end, and the pulled system leaves out
+  // its constant, weight * r^2, which the minimizer does not need. The value
+  // reported adds it back, so it is the true objective and never below zero.
+  const pullWeight = ratio * fit.influenceScale;
+  const pullConstant = pullWeight * (reference.start ** 2 + reference.end ** 2);
   return {
     startLength: tensions.start * domain.startReach,
     endLength: tensions.end * domain.endReach,
@@ -422,5 +427,14 @@ export function solveNaturalHandles(request) {
     perpendicularRms: Math.sqrt(
       objective(fit, tensions.start, tensions.end) / Math.max(fit.weight, 1)
     ),
+    // The squared perpendicular error the answer leaves, summed over the
+    // samples. The smooth-point slide minimizes it over where the on-curve
+    // sits. It is a quantity to minimize, never a threshold to branch on.
+    perpendicularError: objective(fit, tensions.start, tensions.end),
+    // The minimized objective itself, fit and pull together, over the samples
+    // it was given. As a function of anything the fit depends on affinely, it
+    // is the minimum of a convex quadratic over a box, so it is convex.
+    objectiveValue: objective(pulled, tensions.start, tensions.end) + pullConstant,
+    sampleCount: samples.length,
   };
 }

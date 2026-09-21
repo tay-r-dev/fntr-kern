@@ -4747,30 +4747,31 @@ describe("skeleton-generator: the edge turns with the width", () => {
   const angleOf = (from, to) => Math.atan2(to.y - from.y, to.x - from.x);
   const degrees = (radians) => (radians * 180) / Math.PI;
 
-  it("turns the generated handles off the skeleton where the width changes", () => {
+  it("turns the generated handles at an open end where the width changes", () => {
     const generated = generateFromSkeleton(makeD());
-    const b = at(generated, 14, "onCurve");
-    const out = at(generated, 14, "out");
-    // The skeleton leaves B along -x; the widening edge leaves about 17 degrees off it.
-    const off = Math.abs(degrees(angleOf(b, out)) - 180) % 360;
-    expect(Math.min(off, 360 - off)).to.be.above(10);
+    const a = at(generated, 5, "onCurve");
+    const out = at(generated, 5, "out");
+    const skeleton = degrees(Math.atan2(115 - 125, 209 - 220));
+    let off = degrees(angleOf(a, out)) - skeleton;
+    off = ((off + 540) % 360) - 180;
+    expect(Math.abs(off)).to.be.above(5);
   });
 
-  it("keeps the two generated handles at a smooth point on one line", () => {
+  // A smooth on-curve never turns. Its handles stay on the skeleton's own
+  // direction, and the on-curve slides along that line instead.
+  it("keeps a smooth on-curve's generated handles on the skeleton's direction", () => {
     const generated = generateFromSkeleton(makeD());
     const b = at(generated, 14, "onCurve");
-    const into = at(generated, 14, "in");
-    const out = at(generated, 14, "out");
-    let bend = degrees(angleOf(b, out) - angleOf(into, b));
-    bend = ((bend + 540) % 360) - 180;
-    expect(Math.abs(bend)).to.be.below(2);
+    expect(at(generated, 14, "in").y).to.equal(b.y);
+    expect(at(generated, 14, "out").y).to.equal(b.y);
   });
 
-  it("no longer asks for a 57-unit handle at B", () => {
+  it("slides a smooth on-curve along its handles' line where the width changes", () => {
     const generated = generateFromSkeleton(makeD());
     const b = at(generated, 14, "onCurve");
-    const into = at(generated, 14, "in");
-    expect(Math.hypot(into.x - b.x, into.y - b.y)).to.be.below(35);
+    // The rib end is (172, 66): 41 units below the skeleton point, square to it.
+    expect(b.y).to.equal(66);
+    expect(b.x).to.not.equal(172);
   });
 
   it("leaves a constant-width stroke's handles on the skeleton's direction", () => {
@@ -4778,5 +4779,6 @@ describe("skeleton-generator: the edge turns with the width", () => {
     const b = at(generated, 14, "onCurve");
     const out = at(generated, 14, "out");
     expect(out.y).to.equal(b.y);
+    expect(b.x).to.equal(172);
   });
 });

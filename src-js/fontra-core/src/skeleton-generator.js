@@ -1,5 +1,5 @@
 import { Bezier } from "bezier-js";
-import { buildHandleDomain } from "./natural-handle-solver.js";
+import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
   cornerMiterIsHeld,
@@ -42,7 +42,7 @@ import {
   skeletonSegmentPointAt,
   skeletonSegmentTangentAt,
 } from "./skeleton-model.js";
-import { jointWidthRate } from "./skeleton-width-rate.js";
+import { easedWidth, jointWidthRate } from "./skeleton-width-rate.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
@@ -2444,6 +2444,7 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
     };
   });
   const edgeRates = segmentEdgeRates(segments, sideWidths, isClosed);
+  smoothPointSlides(segments, sideWidths, edgeRates, isClosed);
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
@@ -3984,6 +3985,25 @@ function generateOffsetPointsForSegment(
         x: -endTangentFallback.x,
         y: -endTangentFallback.y,
       };
+      // A smooth on-curve between two curves slides along its handles' line
+      // (smoothPointSlides). Both segments apply the same slide to the same rib
+      // end, so they meet at one point.
+      const startSmoothSlide = edgeRates?.[side]?.start.slide ?? 0;
+      const endSmoothSlide = edgeRates?.[side]?.end.slide ?? 0;
+      if (startSmoothSlide) {
+        fixedStart = {
+          ...fixedStart,
+          x: Math.round(fixedStart.x + skeletonStartDir.x * startSmoothSlide),
+          y: Math.round(fixedStart.y + skeletonStartDir.y * startSmoothSlide),
+        };
+      }
+      if (endSmoothSlide) {
+        fixedEnd = {
+          ...fixedEnd,
+          x: Math.round(fixedEnd.x - skeletonEndDir.x * endSmoothSlide),
+          y: Math.round(fixedEnd.y - skeletonEndDir.y * endSmoothSlide),
+        };
+      }
       // Where the width changes, the edge does not run the skeleton's way, and
       // no handle length can make up a direction. So the generated handles turn
       // to the edge's own direction at each end (skeleton-width-rate.js). A
@@ -4313,14 +4333,17 @@ function segmentEdgeRates(segments, sideWidths, isClosed) {
     const own = { arriving: slope(arriving, side), leaving: slope(leaving, side) };
     const a = measured[arriving];
     const b = measured[leaving];
+    // A smooth on-curve never turns its handles. Between two curves it slides
+    // along them instead (smoothPointSlides).
     if (!a.isCurve || !b.isCurve) {
       const straight = a.isCurve ? own.leaving : own.arriving;
-      return { rate: straight, curvature: 0, turns: true };
+      return { rate: straight, curvature: 0, turns: false, slides: false };
     }
     return {
       rate: jointWidthRate(own.arriving, own.leaving),
       curvature: (a.endCurvature + b.startCurvature) / 2,
-      turns: true,
+      turns: false,
+      slides: true,
     };
   };
   return segments.map((segment, i) => {
@@ -4345,6 +4368,249 @@ function segmentEdgeRates(segments, sideWidths, isClosed) {
     }
     return result;
   });
+}
+
+// How far each smooth on-curve between two curves slides along its own
+// handles' line, per side. Where the width changes, the edge leaves the
+// on-curve off the skeleton's direction, and a smooth point may not turn its
+// handles to follow. So the on-curve slides along them instead.
+//
+// Each of the two curves beside the point is the other's anchor: the slide may
+// make neither curve's fit more than SLIDE_ANCHOR units worse than it is with
+// no slide. Inside that, the slide minimizes the two fits together, plus a
+// small cost on the slide itself, so a fit that barely cares (a constant-width
+// stroke) does not move the point off its rib for nothing.
+//
+// Each fit's squared error is a quadratic in the slide wherever the handle
+// domain is not binding, so three solves per curve give it exactly. The anchor
+// is then an interval, the minimum a vertex, and the answer the vertex clamped
+// to the interval: no search, no threshold, continuous in every input. Each
+// solve holds the far on-curve at its plain rib end on the skeleton's axis.
+const SMOOTH_SLIDE_PROBE = 1;
+// The least the probed error may bend per squared unit of slide. Where the
+// error barely bends, the vertex divides by nearly nothing; this bounds it.
+const SLIDE_MIN_BEND = 0.05;
+const SLIDE_ANCHOR = 2; // units of fit a neighbouring curve may lose
+const SMOOTH_SLIDE_COST = 0.02; // squared fit units per squared unit of slide
+
+// The mean squared distance from the true edge of a skeleton cubic, at the
+// eased width, to a drawn cubic. The edge is sampled at fixed parameters, and
+// each sample is projected onto the drawn curve: the nearest of fixed parameters,
+// then fixed Newton steps. Fixed counts throughout, so the value is continuous.
+const EDGE_SAMPLES = 16;
+const DRAWN_SEEDS = 24;
+function meanSquaredEdgeDistance(skeleton, w0, w1, m0, m1, drawn) {
+  const at = (points, t) => {
+    const u = 1 - t;
+    const b0 = u * u * u;
+    const b1 = 3 * u * u * t;
+    const b2 = 3 * u * t * t;
+    const b3 = t * t * t;
+    return {
+      x: b0 * points[0].x + b1 * points[1].x + b2 * points[2].x + b3 * points[3].x,
+      y: b0 * points[0].y + b1 * points[1].y + b2 * points[2].y + b3 * points[3].y,
+    };
+  };
+  const first = (points, t) => {
+    const u = 1 - t;
+    return {
+      x:
+        3 * u * u * (points[1].x - points[0].x) +
+        6 * u * t * (points[2].x - points[1].x) +
+        3 * t * t * (points[3].x - points[2].x),
+      y:
+        3 * u * u * (points[1].y - points[0].y) +
+        6 * u * t * (points[2].y - points[1].y) +
+        3 * t * t * (points[3].y - points[2].y),
+    };
+  };
+  const second = (points, t) => ({
+    x:
+      6 * (1 - t) * (points[2].x - 2 * points[1].x + points[0].x) +
+      6 * t * (points[3].x - 2 * points[2].x + points[1].x),
+    y:
+      6 * (1 - t) * (points[2].y - 2 * points[1].y + points[0].y) +
+      6 * t * (points[3].y - 2 * points[2].y + points[1].y),
+  });
+  const distanceSquared = (edge) => {
+    let bestT = 0;
+    let best = Infinity;
+    for (let k = 0; k <= DRAWN_SEEDS; k++) {
+      const t = k / DRAWN_SEEDS;
+      const q = at(drawn, t);
+      const d = (q.x - edge.x) ** 2 + (q.y - edge.y) ** 2;
+      if (d < best) {
+        best = d;
+        bestT = t;
+      }
+    }
+    let t = bestT;
+    for (let step = 0; step < 4; step++) {
+      const q = at(drawn, t);
+      const d1 = first(drawn, t);
+      const d2 = second(drawn, t);
+      const r = { x: q.x - edge.x, y: q.y - edge.y };
+      const g = r.x * d1.x + r.y * d1.y;
+      const h = d1.x * d1.x + d1.y * d1.y + r.x * d2.x + r.y * d2.y;
+      if (!(h > 1e-12)) break;
+      t = Math.max(0, Math.min(1, t - g / h));
+    }
+    const q = at(drawn, t);
+    return Math.min(best, (q.x - edge.x) ** 2 + (q.y - edge.y) ** 2);
+  };
+  let sum = 0;
+  for (let k = 0; k <= EDGE_SAMPLES; k++) {
+    const t = k / EDGE_SAMPLES;
+    const p = at(skeleton, t);
+    const d = first(skeleton, t);
+    const speed = Math.hypot(d.x, d.y) || 1;
+    const w = easedWidth(w0, w1, m0, m1, t);
+    sum += distanceSquared({
+      x: p.x + (d.y / speed) * w,
+      y: p.y - (d.x / speed) * w,
+    });
+  }
+  return sum / (EDGE_SAMPLES + 1);
+}
+
+// The quadratic through three probes of f at -h, 0 and h, as {a, b, c}.
+function quadraticThroughProbes(before, here, after, h) {
+  return {
+    a: (after - 2 * here + before) / (2 * h * h),
+    b: (after - before) / (2 * h),
+    c: here,
+  };
+}
+
+// Where a convex quadratic stays at or below a ceiling, as [lo, hi].
+function quadraticSublevel({ a, b, c }, ceiling) {
+  if (a > 1e-12) {
+    const disc = b * b - 4 * a * (c - ceiling);
+    if (disc < 0) return [0, 0];
+    const root = Math.sqrt(disc);
+    return [(-b - root) / (2 * a), (-b + root) / (2 * a)];
+  }
+  if (Math.abs(b) > 1e-12) {
+    const edge = (ceiling - c) / b;
+    return b > 0 ? [-Infinity, edge] : [edge, Infinity];
+  }
+  return [-Infinity, Infinity];
+}
+
+function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
+  const count = segments.length;
+  const unit = (from, to) => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const length = Math.hypot(dx, dy);
+    return length > 1e-9 ? { x: dx / length, y: dy / length } : null;
+  };
+  // One side's mean squared fit error on segment i, its start and end on-curves
+  // shifted along the skeleton's direction of travel by the given amounts.
+  const fitError = (i, side, sign, startShift, endShift, flatAt = null) => {
+    const segment = segments[i];
+    const controls = segment.controlPoints;
+    const p0 = segment.startPoint;
+    const p3 = segment.endPoint;
+    const t0 = unit(p0, controls[0]);
+    const t1 = unit(controls[controls.length - 1], p3);
+    if (!t0 || !t1) return null;
+    const w0 = sign * sideWidths[i].start[side];
+    const w1 = sign * sideWidths[i].end[side];
+    const q0 = {
+      x: p0.x + t0.y * w0 + t0.x * startShift,
+      y: p0.y - t0.x * w0 + t0.y * startShift,
+    };
+    const q3 = {
+      x: p3.x + t1.y * w1 + t1.x * endShift,
+      y: p3.y - t1.x * w1 + t1.y * endShift,
+    };
+    const u1 = { x: -t1.x, y: -t1.y };
+    const rates = edgeRates[i][side];
+    const m0 = flatAt === "start" ? 0 : sign * rates.start.rate * rates.length;
+    const m1 = flatAt === "end" ? 0 : sign * rates.end.rate * rates.length;
+    const result = solveNaturalHandles({
+      skeletonControlPoints: [p0, controls[0], controls[controls.length - 1], p3],
+      startSignedWidth: w0,
+      endSignedWidth: w1,
+      startWidthRate: m0,
+      endWidthRate: m1,
+      startOutlinePoint: q0,
+      endOutlinePoint: q3,
+      startHandleDirection: t0,
+      endHandleDirection: u1,
+      handleDomain: buildHandleDomain(q0, q3, t0, u1),
+    });
+    // Judged by distance to the drawn curve, not by the solve's own error: the
+    // solve measures square to the skeleton at each sample, and a slide runs
+    // along the curve, where that measure cannot see it.
+    const drawn = [
+      q0,
+      { x: q0.x + t0.x * result.startLength, y: q0.y + t0.y * result.startLength },
+      { x: q3.x + u1.x * result.endLength, y: q3.y + u1.y * result.endLength },
+      q3,
+    ];
+    return meanSquaredEdgeDistance(
+      [p0, controls[0], controls[controls.length - 1], p3],
+      w0,
+      w1,
+      m0,
+      m1,
+      drawn
+    );
+  };
+  for (let i = 0; i < count; i++) {
+    if (!isClosed && i === 0) continue;
+    const prev = (i - 1 + count) % count;
+    if (prev === i) continue;
+    const point = segments[i].startPoint;
+    if (!point.smooth || point.ribAngleLock) continue;
+    for (const [side, sign] of [
+      ["left", 1],
+      ["right", -1],
+    ]) {
+      const start = edgeRates[i][side].start;
+      if (!start.slides || sideWidths[i].start[side] < 0.5) continue;
+      const h = SMOOTH_SLIDE_PROBE;
+      // The best place for the on-curve, with the width at this point changing
+      // as it does, or flat. Each curve beside the point anchors the other.
+      const best = (flat) => {
+        const probes = (fit) => [fit(-h), fit(0), fit(h)];
+        const arriving = probes((shift) =>
+          fitError(prev, side, sign, 0, shift, flat ? "end" : null)
+        );
+        const leaving = probes((shift) =>
+          fitError(i, side, sign, shift, 0, flat ? "start" : null)
+        );
+        if ([...arriving, ...leaving].some((value) => value === null)) return null;
+        const qa = quadraticThroughProbes(...arriving, h);
+        const qb = quadraticThroughProbes(...leaving, h);
+        // Each curve's anchor: its RMS may grow by SLIDE_ANCHOR at most.
+        const ceiling = (q) => (Math.sqrt(Math.max(q.c, 0)) + SLIDE_ANCHOR) ** 2;
+        const [loA, hiA] = quadraticSublevel(qa, ceiling(qa));
+        const [loB, hiB] = quadraticSublevel(qb, ceiling(qb));
+        const lo = Math.min(0, Math.max(loA, loB));
+        const hi = Math.max(0, Math.min(hiA, hiB));
+        const curvature =
+          Math.max(qa.a, 0) + Math.max(qb.a, 0) + SMOOTH_SLIDE_COST + SLIDE_MIN_BEND;
+        const vertex = -(qa.b + qb.b) / (2 * curvature);
+        return { place: Math.max(lo, Math.min(hi, vertex)), lo, hi };
+      };
+      // The slide answers the width's change and nothing else: the best place
+      // with it, less the best place without it. At constant width the two are
+      // one number, so a stroke that does not taper never slides, however much
+      // the fit alone would like to. Held inside the changing fit's anchors.
+      const changing = best(false);
+      const flat = best(true);
+      if (!changing || !flat) continue;
+      const slide = Math.max(
+        changing.lo,
+        Math.min(changing.hi, changing.place - flat.place)
+      );
+      start.slide = slide;
+      edgeRates[prev][side].end.slide = slide;
+    }
+  }
 }
 
 // A cubic's signed curvature at one end, in the solver's convention: positive
