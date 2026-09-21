@@ -2814,6 +2814,26 @@ function keepTurn(turn) {
   return Number.isFinite(turn) && turn !== 0 ? { turn } : {};
 }
 
+// The directions a hand-turned handle snaps to: 0, 30, 45, 60 and 90 degrees in
+// every quadrant, within HANDLE_ANGLE_SNAP of each. An angle in radians.
+const HANDLE_ANGLE_MARKS = [0, 30, 45, 60, 90];
+const HANDLE_ANGLE_SNAP = 2;
+export function snapHandleAngle(angle) {
+  const degrees = (angle * 180) / Math.PI;
+  const quadrant = Math.floor(degrees / 90) * 90;
+  let best = null;
+  for (const base of [quadrant - 90, quadrant, quadrant + 90]) {
+    for (const mark of HANDLE_ANGLE_MARKS) {
+      const candidate = base + mark;
+      const distance = Math.abs(candidate - degrees);
+      if (distance <= HANDLE_ANGLE_SNAP && (!best || distance < best.distance)) {
+        best = { candidate, distance };
+      }
+    }
+  }
+  return best ? (best.candidate * Math.PI) / 180 : angle;
+}
+
 // How far a generated handle is turned by hand off the direction the generator
 // gives it, in degrees, counter-clockwise. Written by Alt+Z on a corner or a
 // terminal handle. Added on top of the generator's own turn.

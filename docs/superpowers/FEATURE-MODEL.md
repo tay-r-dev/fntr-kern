@@ -60,7 +60,7 @@ Everything below elaborates that one idea.
 
 **Shift+Z on a generated handle turns it by hand**, at a corner or a terminal only; a smooth
 point's two handles share one line, and turning one would kink it. The turn is half the angle the
-cursor sweeps around the on-curve, so a large movement makes a small change. It is stored in
+cursor sweeps around the on-curve, so a large movement makes a small change. The handle's direction on the page snaps to 0, 30, 45, 60 and 90 degrees in every quadrant, within 2 degrees (`snapHandleAngle`), measured on the axis the generator published rather than the grid-rounded handle. The drag readout shows that direction. It is stored in
 degrees on the handle's own offset entry (`turn`), added on top of the generator's own turn,
 negated by a mirror, and removed by a handle reset. The length stays the fit's. A detached handle
 takes no turn.

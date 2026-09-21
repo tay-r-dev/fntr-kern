@@ -54,6 +54,7 @@ import {
   setSkeletonData,
   setSkeletonHandleDetached,
   setSkeletonHandleTurn,
+  snapHandleAngle,
   setSkeletonHandleOffset,
   setSkeletonPointRibAngleLock,
   setSkeletonPointSideNudge,
@@ -2649,5 +2650,30 @@ describe("a generated handle's turn", () => {
       dy: 0,
     });
     expect(getSkeletonHandleOffset(point, "right", "out").turn).to.equal(-6);
+  });
+});
+
+describe("snapHandleAngle", () => {
+  const rad = (d) => (d * Math.PI) / 180;
+  const deg = (r) => (r * 180) / Math.PI;
+  it("snaps to 0, 30, 45, 60 and 90 degrees in every quadrant, within 2", () => {
+    for (const [given, snapped] of [
+      [1.5, 0],
+      [31.9, 30],
+      [43.2, 45],
+      [61, 60],
+      [88.5, 90],
+      [121, 120],
+      [-134, -135],
+      [178.5, 180],
+    ]) {
+      expect(deg(snapHandleAngle(rad(given)))).to.be.closeTo(snapped, 1e-9);
+    }
+  });
+
+  it("leaves an angle between the marks alone", () => {
+    for (const given of [15, 37.5, 52, 75, -20]) {
+      expect(deg(snapHandleAngle(rad(given)))).to.be.closeTo(given, 1e-9);
+    }
   });
 });

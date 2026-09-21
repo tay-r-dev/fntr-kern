@@ -47,6 +47,7 @@ import {
   setSkeletonData,
   setSkeletonHandleOffset,
   setSkeletonHandleTurn,
+  snapHandleAngle,
   setSkeletonSegmentCurvature,
   transformSkeletonContourMetadata,
   transformSkeletonPointMetadata,
@@ -2124,26 +2125,47 @@ function createEditableGeneratedHandleTurnExecutor(
     address.side,
     address.role
   ).turn;
-  const startAngle = Math.atan2(handle.y - onCurve.y, handle.x - onCurve.x);
+  // The handle's direction as the generator built it, before the grid rounded
+  // its position, so a snapped angle lands on its mark.
+  const axis = generatedHandleConstructionAxis(skeletonData, address);
+  const cursorStart = Math.atan2(handle.y - onCurve.y, handle.x - onCurve.x);
+  const startAngle = axis ? Math.atan2(axis.y, axis.x) : cursorStart;
   // The sweep is unwrapped against the previous frame, so a cursor circling
   // past the far side of the on-curve keeps turning instead of jumping 360.
   let lastSwept = 0;
   return {
     applyDelta(target, delta) {
       const cursor = { x: handle.x + delta.x, y: handle.y + delta.y };
-      let swept = Math.atan2(cursor.y - onCurve.y, cursor.x - onCurve.x) - startAngle;
+      let swept = Math.atan2(cursor.y - onCurve.y, cursor.x - onCurve.x) - cursorStart;
       swept += 2 * Math.PI * Math.round((lastSwept - swept) / (2 * Math.PI));
       lastSwept = swept;
-      const degrees =
-        startTurn + ((swept * 180) / Math.PI) * GENERATED_HANDLE_TURN_SPEED;
+      // The direction the handle would take, snapped to 0, 30, 45, 60 or 90
+      // degrees in any quadrant when it comes near one.
+      const aimed = snapHandleAngle(startAngle + swept * GENERATED_HANDLE_TURN_SPEED);
+      const degrees = startTurn + ((aimed - startAngle) * 180) / Math.PI;
       setSkeletonHandleTurn(
         target.point,
         target.side,
         target.role,
-        Math.round(degrees * 10) / 10
+        Math.round(degrees * 1000) / 1000
       );
     },
   };
+}
+
+// The unit direction a generated handle was constructed along, as the generator
+// published it on the handle's provenance. Null where it published none.
+export function generatedHandleConstructionAxis(skeletonData, address) {
+  const generated = (skeletonData?.generated || []).find(
+    (entry) => entry?.skeletonContourId === address.contour.id
+  );
+  const axis = generated?.pointMap?.find(
+    (provenance) =>
+      provenance?.skeletonPointId === address.point.id &&
+      provenance.side === address.side &&
+      provenance.role === address.role
+  )?.constructionAxis;
+  return axis && Number.isFinite(axis.x) && Number.isFinite(axis.y) ? axis : null;
 }
 
 // A stored handle offset is a request, and the ceiling on handle length can

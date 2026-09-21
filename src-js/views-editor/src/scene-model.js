@@ -59,6 +59,8 @@ import * as vector from "@fontra/core/vector.js";
 import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
 import { getVisibleMarkers } from "./marker-editing.js";
 import {
+  GENERATED_HANDLE_TURN_BEHAVIOR_NAME,
+  generatedHandleConstructionAxis,
   getSkeletonPointAddress,
   makeSkeletonInsertionKey,
   makeSkeletonPointKey,
@@ -1197,6 +1199,10 @@ export class SceneModel {
     if (curvatureReadout) {
       return [curvatureReadout];
     }
+    const turnReadout = this._getGeneratedHandleTurnReadout(positionedGlyph);
+    if (turnReadout) {
+      return [turnReadout];
+    }
     const baseExpandReadout = this._getBaseExpandDragReadout(positionedGlyph);
     if (baseExpandReadout) {
       return [baseExpandReadout];
@@ -1245,6 +1251,55 @@ export class SceneModel {
       y: anchor.y,
       kind: "skeleton",
       label: formatGeneratedCurvature(curvature),
+    };
+  }
+
+  // The direction of a generated handle being turned by hand (Shift+Z), in
+  // degrees, on the handle. Read from the axis the generator published, so it
+  // states the direction built rather than the grid-rounded one.
+  _getGeneratedHandleTurnReadout(positionedGlyph) {
+    if (this.skeletonDragBehaviorName !== GENERATED_HANDLE_TURN_BEHAVIOR_NAME) {
+      return null;
+    }
+    const keys = parseSelection([...this.selection]).editableGeneratedHandle || [];
+    if (keys.length !== 1) {
+      return null;
+    }
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const path = positionedGlyph?.glyph?.path;
+    if (!skeletonData || !path) {
+      return null;
+    }
+    const { contourId, pointId, side, role } = parseEditableGeneratedHandleKey(keys[0]);
+    const axis = generatedHandleConstructionAxis(skeletonData, {
+      contour: { id: Number(contourId) },
+      point: { id: Number(pointId) },
+      side,
+      role,
+    });
+    const address = findGeneratedPathAddress(
+      skeletonData,
+      contourId,
+      pointId,
+      side,
+      role
+    );
+    if (!axis || !address) {
+      return null;
+    }
+    const handle = path.getPoint(
+      path.getAbsolutePointIndex(address.pathContourIndex, address.contourPointIndex)
+    );
+    if (!handle) {
+      return null;
+    }
+    let degrees = (Math.atan2(axis.y, axis.x) * 180) / Math.PI;
+    if (degrees <= -180) degrees += 360;
+    return {
+      x: handle.x,
+      y: handle.y,
+      kind: "skeleton",
+      label: `${degrees.toFixed(1)}°`,
     };
   }
 
