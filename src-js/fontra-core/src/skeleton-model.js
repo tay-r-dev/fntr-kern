@@ -1493,6 +1493,20 @@ export function normalizeSkeletonContour(contour, skeletonData = null, usedIds =
   for (const point of Array.isArray(contour?.points) ? contour.points : []) {
     normalized.points.push(normalizeSkeletonPoint(point, skeletonData, usedIds));
   }
+  // A serif turns itself with its own axis and leaves the stroke alone, so the
+  // rib angle lock has no say at a serif end. The lock cuts the stroke along the
+  // forced angle; forcing it to stand a serif up cut a 30-unit stroke along a
+  // line 90 long on the `l` of skeletron, and every serif number was then read
+  // off that stretched cut. Cleared here, where every reader's data comes from,
+  // rather than guarded at each of the ten places that read the lock.
+  if (!normalized.closed) {
+    const onCurves = normalized.points.filter((point) => !point.type);
+    for (const end of [onCurves[0], onCurves[onCurves.length - 1]]) {
+      if (end && (end.capStyle ?? normalized.capStyle) === "serif") {
+        end.ribAngleLock = null;
+      }
+    }
+  }
   // An insertion whose start point is not on this contour addresses a segment
   // that does not exist. Dropping it is the honest answer: keeping it would put
   // a point on the outline that no reader can place.

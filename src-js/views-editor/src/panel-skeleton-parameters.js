@@ -695,6 +695,54 @@ export default class SkeletonParametersPanel {
         )
       )
     );
+    // Flat's own copy of the two, shown outright under the kind chips. The
+    // model holds one lock per point, so the two copies cannot drift: both read
+    // it and both write it.
+    const forceAngleControl = (onChange) => {
+      const control = html.createDomElement("segmented-control", {
+        options: [
+          ["auto", "free"],
+          ["vertical", "vertical"],
+          ["horizontal", "horizontal"],
+        ].map(([value, labelKey]) => ({
+          value,
+          label: translate(`sidebar.skeleton-parameters.force-angle.${labelKey}`),
+        })),
+      });
+      control.addEventListener("change", (event) =>
+        this._runOwnEdit(() => onChange(event.detail.value))
+      );
+      return control;
+    };
+    this.flatAngleControl = forceAngleControl((value) =>
+      this._onWidthChange("ribanglelock", value)
+    );
+    this.flatFootprintCheck = html.input({ type: "checkbox" });
+    this.flatFootprintCheck.addEventListener("change", () =>
+      this._runOwnEdit(() =>
+        this._onWidthChange(
+          "ribanglelockmode",
+          this.flatFootprintCheck.checked ? "rib" : "stroke"
+        )
+      )
+    );
+    this.flatAngleRow = html.div(
+      { style: "display: flex; gap: 0.75em; align-items: center; flex-wrap: wrap;" },
+      [
+        this.flatAngleControl,
+        html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
+          this.flatFootprintCheck,
+          translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
+        ]),
+      ]
+    );
+    // A serif's own angle. It turns the serif and leaves the stroke alone, so
+    // there is no footprint to keep. Free is the tilt mode, which at a tilt of
+    // 0 is the plain square foot, so a stored tilt survives a trip through
+    // Vertical and back.
+    this.serifAngleControl = forceAngleControl((value) =>
+      this._onSerifChange("axismode", value === "auto" ? "tilt" : value)
+    );
     this.ribLockButtons = Object.fromEntries(
       SKELETON_LOCK_KINDS.map((kind) => [
         kind,
@@ -970,12 +1018,14 @@ export default class SkeletonParametersPanel {
       labeledRow("serif-underside-cup-tension", [this.serifCupFields.cuptension]),
     ]);
 
-    // The serif Angle group: Tilt alone. The axis direction is not offered
-    // here, because the point's rib angle already sets it. Tilt is live only
-    // while the axis is free.
+    // The serif Angle group: the serif's own forced angle, then Tilt. The rib
+    // angle lock does not hold at a serif end -- it cut the stroke along the
+    // forced line -- so this is where a serif is stood up. Tilt is live only
+    // while the angle is free.
     this.serifAxisTiltField = this._makeSerifTiltField();
     this.serifAxisRow = groupBlock([
       groupTitle("serif-group-angle"),
+      labeledRow("force-angle", [this.serifAngleControl]),
       labeledRow("serif-axis-tilt", [this.serifAxisTiltField]),
     ]);
     // All serif groups in one grid, in the order they show.
@@ -2224,6 +2274,21 @@ export default class SkeletonParametersPanel {
         layoutKey: `terminalType-${presetType}`,
       });
     }
+    // Flat has no fields of its own, but it is the terminal the rib angle lock
+    // belongs to, so the lock is shown outright under the kind chips.
+    if (styleValue === "butt") {
+      const lock = summarizeSkeletonRibAngleLockSelection(widthPoints);
+      this.flatAngleControl.value = lock.mixed ? undefined : (lock.value ?? "auto");
+      this.flatAngleControl.disabled = !lock.canEdit || !!this._terminalBound;
+      this.flatFootprintCheck.checked = !lock.mode.mixed && lock.mode.value === "rib";
+      this.flatFootprintCheck.indeterminate = !!lock.mode.mixed;
+      this.flatFootprintCheck.disabled = !lock.mode.canEdit || !!this._terminalBound;
+      formContents.push({
+        type: "single-icon",
+        element: this.flatAngleRow,
+        layoutKey: "flatAngleRow",
+      });
+    }
     // Each kind shows its own fields. Radius maps 20 discrete positions
     // logarithmically onto the [1/128, 1/4] ratio range; tension is edited in
     // percent. Both are converted back in capValuesFromField.
@@ -2568,6 +2633,13 @@ export default class SkeletonParametersPanel {
       ? null
       : (serif.axisMode.value ?? "perpendicular");
     const free = axisMode === "perpendicular" || axisMode === "tilt";
+    this.serifAngleControl.value =
+      axisMode === "vertical" || axisMode === "horizontal"
+        ? axisMode
+        : free
+          ? "auto"
+          : undefined;
+    this.serifAngleControl.disabled = !canEdit;
     // Tilt is always shown and live only in Free. Its range is 40 either way,
     // which is the lab's own and is also where the terminal stops moving by
     // rotation alone: past about 38 degrees the wing runs so far along the stem

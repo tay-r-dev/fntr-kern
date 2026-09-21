@@ -2683,3 +2683,45 @@ describe("snapHandleAngle", () => {
     }
   });
 });
+
+// A serif turns itself with its own axis and leaves the stroke alone, so the rib
+// angle lock -- which cuts the stroke along the forced angle -- has no say at a
+// serif end. Reported on the `l` of skeletron: forcing the rib vertical to stand
+// the serif up cut a 30-unit stroke along a line 90 long.
+describe("the rib angle lock at a serif end", () => {
+  const contourWith = (endCap, contourCap = "butt") =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          capStyle: contourCap,
+          points: [
+            { id: 2, x: 0, y: 0, capStyle: endCap, ribAngleLock: "vertical" },
+            { id: 3, x: 100, y: 50, ribAngleLock: "horizontal" },
+            { id: 4, x: 200, y: 0, ribAngleLock: "vertical" },
+          ],
+        },
+      ],
+    }).contours[0].points;
+
+  it("does not hold at an end that is a serif", () => {
+    expect(contourWith("serif")[0].ribAngleLock).to.equal(null);
+  });
+
+  it("does not hold at an end that is a serif by the contour's own style", () => {
+    const points = contourWith(null, "serif");
+    expect(points[0].ribAngleLock).to.equal(null);
+    expect(points[2].ribAngleLock).to.equal(null);
+  });
+
+  it("holds at every other end, and at a point inside the contour", () => {
+    const points = contourWith("butt");
+    expect(points[0].ribAngleLock).to.equal("vertical");
+    expect(points[1].ribAngleLock).to.equal("horizontal");
+    expect(points[2].ribAngleLock).to.equal("vertical");
+  });
+
+  it("holds inside the contour even when its ends are serifs", () => {
+    expect(contourWith(null, "serif")[1].ribAngleLock).to.equal("horizontal");
+  });
+});

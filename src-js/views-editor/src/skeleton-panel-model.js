@@ -455,6 +455,17 @@ export function skeletonContourEndpointIndices(contour) {
 // Cap style state for the selected points: editable only when EVERY selected
 // point is an endpoint of an open contour (donor parity). The effective style
 // falls back point -> contour -> "butt".
+function isSerifEnd(entry) {
+  const endpoints = entry.contour
+    ? skeletonContourEndpointIndices(entry.contour)
+    : null;
+  return (
+    !!endpoints &&
+    (entry.pointIndex === endpoints.first || entry.pointIndex === endpoints.last) &&
+    (entry.point.capStyle ?? entry.contour.capStyle) === "serif"
+  );
+}
+
 export function summarizeSkeletonCapStyleSelection(selectedPoints) {
   if (!selectedPoints.length) {
     return { canEdit: false, mixed: false, value: null };
@@ -483,6 +494,10 @@ export function summarizeSkeletonCapStyleSelection(selectedPoints) {
  * sits at a plain half-width along it.
  */
 export function summarizeSkeletonRibAngleLockSelection(selectedPoints) {
+  // A serif end turns on its own axis and keeps the stroke's square end, so the
+  // lock has no say there (normalization clears it). Offering it there would be
+  // a control that does nothing.
+  selectedPoints = selectedPoints.filter((entry) => !isSerifEnd(entry));
   if (!selectedPoints.length) {
     return { canEdit: false, mixed: false, value: null, mode: {} };
   }

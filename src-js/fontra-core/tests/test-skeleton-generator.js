@@ -2578,10 +2578,13 @@ describe("skeleton-generator serif on a stroke the axis is not square to", () =>
   // stroke's own offset and belongs to the skeleton and its widths; the serif
   // only replaces what is below the point it lets go at.
   //
-  // A rib angle lock is the case that exposes it: the rib stays flat while the
-  // stem leans, so the serif's frame is no longer square to the stroke, and the
-  // release found straight up that frame lands off the wall — the same way on
-  // both sides, so one side moves in and the other out by as much.
+  // A serif axis that names a direction outright is the case that exposes it:
+  // the foot stays flat while the stem leans, so the serif's frame is no longer
+  // square to the stroke, and the release found straight up that frame lands off
+  // the wall — the same way on both sides, so one side moves in and the other
+  // out by as much. (This used to come from a rib angle lock. The lock does not
+  // hold at a serif end any more, so the stroke keeps its own square end and the
+  // serif turns on its own axis.)
   const halfSerif = {
     wingLength: 40,
     tipThickness: 20,
@@ -2611,12 +2614,11 @@ describe("skeleton-generator serif on a stroke the axis is not square to", () =>
               x: 0,
               y: 0,
               width,
-              ribAngleLock: "horizontal",
               capStyle: serif ? "serif" : null,
               serif: {
                 left: halfSerif,
                 right: halfSerif,
-                axisMode: "perpendicular",
+                axisMode: "horizontal",
                 axisAngle: 0,
                 undersideCup: 0,
               },
