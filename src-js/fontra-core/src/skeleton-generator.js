@@ -2444,7 +2444,10 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
     };
   });
   const edgeRates = segmentEdgeRates(segments, sideWidths, isClosed);
-  smoothPointSlides(segments, sideWidths, edgeRates, isClosed);
+  smoothPointSlides(segments, sideWidths, edgeRates, isClosed, {
+    start: normalizeCapStyle(segments[0].startPoint.capStyle ?? capStyle),
+    end: normalizeCapStyle(segments[segments.length - 1].endPoint.capStyle ?? capStyle),
+  });
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
@@ -4020,11 +4023,15 @@ function generateOffsetPointsForSegment(
       const endSignedRate = rates ? sideSign * rates.end.rate : undefined;
       const startDir =
         rates?.start.turns && !isDetached(segment.startPoint, startHandleDir, "out")
-          ? turnedEdgeDirection(
+          ? partlyTurned(
               skeletonStartDir,
-              sideSign * startHalfWidth,
-              startSignedRate,
-              rates.start.curvature
+              turnedEdgeDirection(
+                skeletonStartDir,
+                sideSign * startHalfWidth,
+                startSignedRate,
+                rates.start.curvature
+              ),
+              rates.start.turnFraction
             )
           : skeletonStartDir;
       const endTravel = turnedEdgeDirection(
@@ -4035,7 +4042,14 @@ function generateOffsetPointsForSegment(
       );
       const endDir =
         rates?.end.turns && !isDetached(segment.endPoint, endHandleDir, "in")
-          ? { x: -endTravel.x, y: -endTravel.y }
+          ? (() => {
+              const travel = partlyTurned(
+                { x: -skeletonEndDir.x, y: -skeletonEndDir.y },
+                endTravel,
+                rates.end.turnFraction
+              );
+              return { x: -travel.x, y: -travel.y };
+            })()
           : skeletonEndDir;
       const startAdjustment =
         startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
@@ -4390,6 +4404,8 @@ const SMOOTH_SLIDE_PROBE = 1;
 // The least the probed error may bend per squared unit of slide. Where the
 // error barely bends, the vertex divides by nearly nothing; this bounds it.
 const SLIDE_MIN_BEND = 0.05;
+const TERMINAL_SLIDE_LIMIT = 2; // units the cap may move
+const TURN_COST = 32; // squared fit units for the whole turn: halves it on the D for 0.4 units of fit
 const SLIDE_ANCHOR = 2; // units of fit a neighbouring curve may lose
 const SMOOTH_SLIDE_COST = 0.02; // squared fit units per squared unit of slide
 
@@ -4473,6 +4489,27 @@ function meanSquaredEdgeDistance(skeleton, w0, w1, m0, m1, drawn) {
   return sum / (EDGE_SAMPLES + 1);
 }
 
+// Read off the generator dialect, where the detached flag is per handle.
+function isHandleDetached(point, side, role) {
+  return point?.[`${side}Handle${role}Detached`] === true;
+}
+
+function rotateVector(v, angle) {
+  if (!angle) return v;
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return { x: v.x * c - v.y * s, y: v.x * s + v.y * c };
+}
+
+// The skeleton's direction turned toward the edge's by a fraction of the way.
+function partlyTurned(base, full, fraction = 1) {
+  const angle = Math.atan2(
+    base.x * full.y - base.y * full.x,
+    base.x * full.x + base.y * full.y
+  );
+  return rotateVector(base, angle * fraction);
+}
+
 // The quadratic through three probes of f at -h, 0 and h, as {a, b, c}.
 function quadraticThroughProbes(before, here, after, h) {
   return {
@@ -4497,7 +4534,7 @@ function quadraticSublevel({ a, b, c }, ceiling) {
   return [-Infinity, Infinity];
 }
 
-function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
+function smoothPointSlides(segments, sideWidths, edgeRates, isClosed, terminalCaps) {
   const count = segments.length;
   const unit = (from, to) => {
     const dx = to.x - from.x;
@@ -4507,7 +4544,16 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
   };
   // One side's mean squared fit error on segment i, its start and end on-curves
   // shifted along the skeleton's direction of travel by the given amounts.
-  const fitError = (i, side, sign, startShift, endShift, flatAt = null) => {
+  const fitError = (
+    i,
+    side,
+    sign,
+    startShift,
+    endShift,
+    flatAt = null,
+    startTurn = 0,
+    endTurn = 0
+  ) => {
     const segment = segments[i];
     const controls = segment.controlPoints;
     const p0 = segment.startPoint;
@@ -4515,6 +4561,8 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
     const t0 = unit(p0, controls[0]);
     const t1 = unit(controls[controls.length - 1], p3);
     if (!t0 || !t1) return null;
+    const axis0 = rotateVector(t0, startTurn);
+    const travel1 = rotateVector(t1, endTurn);
     const w0 = sign * sideWidths[i].start[side];
     const w1 = sign * sideWidths[i].end[side];
     const q0 = {
@@ -4525,7 +4573,7 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
       x: p3.x + t1.y * w1 + t1.x * endShift,
       y: p3.y - t1.x * w1 + t1.y * endShift,
     };
-    const u1 = { x: -t1.x, y: -t1.y };
+    const u1 = { x: -travel1.x, y: -travel1.y };
     const rates = edgeRates[i][side];
     const m0 = flatAt === "start" ? 0 : sign * rates.start.rate * rates.length;
     const m1 = flatAt === "end" ? 0 : sign * rates.end.rate * rates.length;
@@ -4537,16 +4585,19 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
       endWidthRate: m1,
       startOutlinePoint: q0,
       endOutlinePoint: q3,
-      startHandleDirection: t0,
+      startHandleDirection: axis0,
       endHandleDirection: u1,
-      handleDomain: buildHandleDomain(q0, q3, t0, u1),
+      handleDomain: buildHandleDomain(q0, q3, axis0, u1),
     });
     // Judged by distance to the drawn curve, not by the solve's own error: the
     // solve measures square to the skeleton at each sample, and a slide runs
     // along the curve, where that measure cannot see it.
     const drawn = [
       q0,
-      { x: q0.x + t0.x * result.startLength, y: q0.y + t0.y * result.startLength },
+      {
+        x: q0.x + axis0.x * result.startLength,
+        y: q0.y + axis0.y * result.startLength,
+      },
       { x: q3.x + u1.x * result.endLength, y: q3.y + u1.y * result.endLength },
       q3,
     ];
@@ -4571,6 +4622,9 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
     ]) {
       const start = edgeRates[i][side].start;
       if (!start.slides || sideWidths[i].start[side] < 0.5) continue;
+      // A detached handle is placed from its on-curve, so that on-curve holds.
+      if (isHandleDetached(point, side, "In") || isHandleDetached(point, side, "Out"))
+        continue;
       const h = SMOOTH_SLIDE_PROBE;
       // The best place for the on-curve, with the width at this point changing
       // as it does, or flat. Each curve beside the point anchors the other.
@@ -4609,6 +4663,84 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed) {
       );
       start.slide = slide;
       edgeRates[prev][side].end.slide = slide;
+    }
+  }
+
+  // A terminal: the open end of an open contour. Its on-curve slides first,
+  // as far as the cap lets it (TERMINAL_SLIDE_LIMIT, the cap being the anchor
+  // there), and only on caps that close the stroke straight across; the other
+  // caps trim the stroke at that point and are built from where it stands.
+  // Then the handle turns by the part of the full turn that still pays for
+  // itself, the whole turn costing TURN_COST.
+  if (isClosed || !count) return;
+  for (const [i, end, capStyle] of [
+    [0, "start", terminalCaps.start],
+    [count - 1, "end", terminalCaps.end],
+  ]) {
+    const segment = segments[i];
+    const controls = segment.controlPoints;
+    if (!controls.length) continue;
+    const point = end === "start" ? segment.startPoint : segment.endPoint;
+    if (point.ribAngleLock) continue;
+    const canSlide = capStyle === "butt" || capStyle === "square";
+    const travel =
+      end === "start"
+        ? unit(segment.startPoint, controls[0])
+        : unit(controls[controls.length - 1], segment.endPoint);
+    if (!travel) continue;
+    for (const [side, sign] of [
+      ["left", 1],
+      ["right", -1],
+    ]) {
+      const rates = edgeRates[i][side][end];
+      if (!rates.turns || sideWidths[i][end][side] < 0.5) continue;
+      if (isHandleDetached(point, side, end === "start" ? "Out" : "In")) continue;
+      const full = turnedEdgeDirection(
+        travel,
+        sign * sideWidths[i][end][side],
+        sign * rates.rate,
+        rates.curvature
+      );
+      const fullTurn = Math.atan2(
+        travel.x * full.y - travel.y * full.x,
+        travel.x * full.x + travel.y * full.y
+      );
+      const error = (shift, turn, flat = false) =>
+        end === "start"
+          ? fitError(i, side, sign, shift, 0, flat ? "start" : null, turn, 0)
+          : fitError(i, side, sign, 0, shift, flat ? "end" : null, 0, turn);
+      const h = SMOOTH_SLIDE_PROBE;
+      let slide = 0;
+      if (canSlide) {
+        const place = (flat) => {
+          const values = [-h, 0, h].map((shift) => error(shift, 0, flat));
+          if (values.some((value) => value === null)) return null;
+          const q = quadraticThroughProbes(...values, h);
+          return -q.b / (2 * (Math.max(q.a, 0) + SMOOTH_SLIDE_COST + SLIDE_MIN_BEND));
+        };
+        const changing = place(false);
+        const flat = place(true);
+        if (changing !== null && flat !== null) {
+          slide = Math.max(
+            -TERMINAL_SLIDE_LIMIT,
+            Math.min(TERMINAL_SLIDE_LIMIT, changing - flat)
+          );
+        }
+      }
+      let fraction = 1;
+      if (Math.abs(fullTurn) > 1e-9) {
+        const values = [0, 0.5, 1].map((f) => error(slide, f * fullTurn));
+        if (values.every((value) => value !== null)) {
+          // The quadratic in the fraction through 0, 1/2 and 1, centred on 1/2.
+          const q = quadraticThroughProbes(...values, 0.5);
+          const bend = Math.max(q.a, 0) + TURN_COST;
+          // The turn's own cost, TURN_COST * f^2, has slope TURN_COST at 1/2.
+          const vertex = 0.5 - (q.b + TURN_COST) / (2 * bend);
+          fraction = Math.max(0, Math.min(1, vertex));
+        }
+      }
+      rates.slide = slide;
+      rates.turnFraction = fraction;
     }
   }
 }
