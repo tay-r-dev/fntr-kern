@@ -1189,7 +1189,7 @@ nothing.
   true edge they improved on seven of eight sides (9.4 to 2.6 at best). One
   side, into a corner, lost a unit (2.1 to 3.2), because a corner keeps the
   skeleton's axis.
-- **Sweeps on the D, 0.25-unit width steps**: jumps over 5 units went from 23 to
+- **Sweeps on the D, 0.25-unit width steps**: jumps over 5 units went from 21 to
   16. The worst went from 55 to 9 on one sweep and from 50 to 35 on another, and
   rose from 84 to 103 on a third, at the same width as before. Every jump that
   remains sits where the second segment's offset reaches its own radius, and
