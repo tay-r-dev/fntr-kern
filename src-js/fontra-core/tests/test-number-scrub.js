@@ -161,14 +161,14 @@ describe("scrub amount since start", () => {
 });
 
 describe("key step scrub value", () => {
-  it("steps by the field's step, ten times with Shift", () => {
-    expect(keyStepScrubValue(100, 1, { step: 0.1, integer: false })).to.be.closeTo(100.1, 1e-9);
-    expect(keyStepScrubValue(100, -1, { step: 0.1, integer: false, shiftKey: true })).to.be.closeTo(99, 1e-9);
+  it("steps by whole numbers, ten with Shift, whatever the field's step", () => {
+    expect(keyStepScrubValue(100, 1, { step: 0.1, integer: false })).to.equal(101);
+    expect(keyStepScrubValue(100, -1, { step: 0.1, integer: false, shiftKey: true })).to.equal(90);
     expect(keyStepScrubValue(5, 1, { integer: true })).to.equal(6);
   });
 
   it("rounds to the grid and keeps to the bounds", () => {
-    expect(keyStepScrubValue(0.3, 1, { step: 0.1, integer: false })).to.equal(0.4);
+    expect(keyStepScrubValue(0.3, 1, { step: 0.1, integer: false })).to.equal(1.3);
     expect(keyStepScrubValue(1, -1, { integer: true, minValue: 1 })).to.equal(1);
   });
 });

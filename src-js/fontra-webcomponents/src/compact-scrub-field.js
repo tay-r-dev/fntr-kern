@@ -369,7 +369,8 @@ export class CompactScrubField extends UnlitElement {
     if (this._maxValue != null) {
       input.max = this._maxValue;
     }
-    input.step = this._integer ? 1 : this._step || "any";
+    // Whole numbers for the spin buttons, like the arrow keys below.
+    input.step = 1;
 
     this._valueElement.innerHTML = "";
     this._valueElement.appendChild(input);
@@ -469,9 +470,14 @@ export class CompactScrubField extends UnlitElement {
       }
     });
     // The input's own spin buttons step the value too. Their "input" event
-    // names no inputType, which is how it differs from a typed character.
-    input.addEventListener("input", (event) => {
-      if (event.inputType) {
+    // cannot be told from a typed one by the event alone, but a spin button is
+    // held under the pointer and typing never is.
+    let pointerHeld = false;
+    input.addEventListener("pointerdown", () => (pointerHeld = true));
+    input.addEventListener("pointerup", () => (pointerHeld = false));
+    input.addEventListener("pointerleave", () => (pointerHeld = false));
+    input.addEventListener("input", () => {
+      if (!pointerHeld) {
         return;
       }
       const parsed = parseFloat(input.value);

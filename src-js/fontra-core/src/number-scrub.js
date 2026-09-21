@@ -91,11 +91,11 @@ export function isScrubCancelled(value) {
   return value === SCRUB_CANCELLED;
 }
 
-// One arrow-key press while the value is typed. The field's step, ten times with
-// Shift, then rounded and clamped the way a drag is.
+// One arrow press while the value is typed. A whole number, ten with Shift,
+// whatever the field's drag step: a tenth per press is too slow to be useful.
+// Then rounded and clamped the way a drag is.
 export function keyStepScrubValue(value, direction, { shiftKey, ...fieldItem } = {}) {
-  const step = fieldItem.integer === false ? fieldItem.step || 1 : 1;
-  const next = Number(value || 0) + direction * step * (shiftKey ? 10 : 1);
+  const next = Number(value || 0) + direction * (shiftKey ? 10 : 1);
   return roundScrubValue(clampScrubValue(next, fieldItem), fieldItem);
 }
 
