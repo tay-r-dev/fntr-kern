@@ -2805,6 +2805,35 @@ describe("skeleton-generator collapsed serif points", () => {
     ]);
   });
 
+  // The outline is closed, so the last on-curve and the first one are
+  // neighbours like any other pair. Reported on the `l` of skeletron: with the
+  // option on, one release was still drawn twice, the one the contour starts
+  // on, because the stacked pair was split across the end of the list. The
+  // straight-segment pass beside this one already wrapped.
+  it("drops a stacked on-curve across the contour's start", () => {
+    const on = (x, y) => ({ x, y });
+    const off = (x, y) => ({ x, y, type: "cubic" });
+    const points = [
+      on(0, 0),
+      off(50, 80),
+      off(150, 80),
+      on(200, 0),
+      on(200, -100),
+      on(0, -100),
+      off(-30, -50),
+      off(-20, -20),
+      on(0, 0),
+      off(0, 0),
+      off(0, 0),
+    ];
+    const kept = removeCollapsedOutlinePoints(points);
+    const onCurves = kept.filter((point) => !point.type);
+    expect(onCurves).to.have.length(4);
+    // The curve into the stack keeps its shape: its handles now run into the
+    // first point, which stands where the dropped one did.
+    expect(kept.slice(-2)).to.eql([off(-30, -50), off(-20, -20)]);
+  });
+
   it("keeps a handle that leaves the chord", () => {
     const on = (x, y) => ({ x, y });
     const off = (x, y) => ({ x, y, type: "cubic" });

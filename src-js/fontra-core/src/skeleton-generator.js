@@ -637,6 +637,22 @@ function removeCoincidentOnCurves(points, tolerance) {
     }
     kept.push(point);
   }
+  // The outline is closed, so the last on-curve and the first are neighbours
+  // too, exactly as the straight-segment pass above already reads them. A stack
+  // split across the end of the list is dropped the same way: the later point
+  // goes with the handles between the two, and the curve that ran into it runs
+  // into the first point instead, which stands where it stood.
+  const firstOnCurve = kept.findIndex((candidate) => !candidate.type);
+  let lastOnCurve = kept.length - 1;
+  while (lastOnCurve >= 0 && kept[lastOnCurve].type) lastOnCurve--;
+  if (
+    firstOnCurve >= 0 &&
+    lastOnCurve > firstOnCurve &&
+    Math.abs(kept[lastOnCurve].x - kept[firstOnCurve].x) <= tolerance &&
+    Math.abs(kept[lastOnCurve].y - kept[firstOnCurve].y) <= tolerance
+  ) {
+    return kept.slice(firstOnCurve, lastOnCurve);
+  }
   return kept;
 }
 
