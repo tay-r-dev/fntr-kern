@@ -1,3 +1,4 @@
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
 import {
@@ -2130,6 +2131,10 @@ function createEditableGeneratedHandleTurnExecutor(
   const axis = generatedHandleConstructionAxis(skeletonData, address);
   const cursorStart = Math.atan2(handle.y - onCurve.y, handle.x - onCurve.x);
   const startAngle = axis ? Math.atan2(axis.y, axis.x) : cursorStart;
+  // Angle only, or angle and length: read once per drag and written into the
+  // handle, so the drawing does not depend on the setting afterwards.
+  const keepsLength =
+    applicationSettingsController.model.skeletonHandTurnKeepsLength === true;
   // The sweep is unwrapped against the previous frame, so a cursor circling
   // past the far side of the on-curve keeps turning instead of jumping 360.
   let lastSwept = 0;
@@ -2147,7 +2152,8 @@ function createEditableGeneratedHandleTurnExecutor(
         target.point,
         target.side,
         target.role,
-        Math.round(degrees * 1000) / 1000
+        Math.round(degrees * 1000) / 1000,
+        { keepsLength }
       );
     },
   };

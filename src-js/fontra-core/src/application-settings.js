@@ -33,6 +33,11 @@ export const applicationSettingsController = new ObservableController({
   // still and the letter moves.
   skeletonSideModeKeepsForm: false,
   skeletonSideModeKeepsEdits: false,
+  // fork: Shift+Z on a corner or terminal handle turns its angle only; the
+  // generator keeps the handle lengths it fits without the turn. Off, the
+  // turned handles are refit and their lengths change too (app-level, per D9;
+  // each drag writes the choice into the handle it turns).
+  skeletonHandTurnKeepsLength: false,
   // fork: a straight running exactly across the axis being scaled stands still
   // by default, because travel along it is travel the scale never asked for.
   // On, both of its tension points travel, each to what its own curve asks.

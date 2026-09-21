@@ -168,6 +168,17 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsToggle.addEventListener("change", () =>
       this._setDropDeadPoints(this.dropDeadPointsToggle.checked)
     );
+    // Shift+Z's mode: turn the handle's angle only, or angle and length. An
+    // application setting; each drag writes it into the handle it turns.
+    this.handTurnAngleOnlyToggle = html.createDomElement("labeled-toggle", {
+      label: translate("sidebar.skeleton-settings.hand-turn-angle-only"),
+    });
+    this.handTurnAngleOnlyToggle.checked =
+      applicationSettingsController.model.skeletonHandTurnKeepsLength === true;
+    this.handTurnAngleOnlyToggle.addEventListener("change", () => {
+      applicationSettingsController.model.skeletonHandTurnKeepsLength =
+        this.handTurnAngleOnlyToggle.checked;
+    });
     this.dropDeadPointsWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
@@ -309,6 +320,7 @@ export default class SkeletonSettingsPanel extends Panel {
               this.dropDeadPointsToggle,
               this.dropDeadPointsWarning,
               this.contourWidthField,
+              this.handTurnAngleOnlyToggle,
             ]
           ),
           this.widthPresetsSection,

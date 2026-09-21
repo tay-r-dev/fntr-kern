@@ -585,6 +585,7 @@ export const strings = {
   "sidebar.letterspacer.bulk.working": "Spacing...",
   "sidebar.skeleton-parameters": "Skeleton Parameters",
   "sidebar.skeleton-settings": "Skeleton settings",
+  "sidebar.skeleton-settings.hand-turn-angle-only": "Shift+Z turns the angle only",
   "sidebar.markers": "Markers",
   "sidebar.markers.broken": "broken",
   "sidebar.markers.dimensions": "Dimensions",

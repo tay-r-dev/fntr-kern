@@ -62,8 +62,12 @@ Everything below elaborates that one idea.
 point's two handles share one line, and turning one would kink it. The turn is half the angle the
 cursor sweeps around the on-curve, so a large movement makes a small change. The handle's direction on the page snaps to 0, 30, 45, 60 and 90 degrees in every quadrant, within 2 degrees (`snapHandleAngle`), measured on the axis the generator published rather than the grid-rounded handle. The drag readout shows that direction. It is stored in
 degrees on the handle's own offset entry (`turn`), added on top of the generator's own turn,
-negated by a mirror, and removed by a handle reset. The length stays the fit's. A detached handle
-takes no turn.
+negated by a mirror, and removed by a handle reset. A detached handle takes no turn.
+By default the turned handles are refit, so the segment's handle lengths change with the angle.
+With **Shift+Z turns the angle only** on (Skeleton settings; the application setting
+`skeletonHandTurnKeepsLength`), the drag also stores `turnKeepsLength` on the entry. The generator
+then gives the segment's two handles the lengths it fits without that turn, and only the angle
+changes. The flag is stored on the handle, so the drawing does not change when the setting does.
 
 **What each modifier key does to a rib drag.** A plain rib drag changes the width. **Z** instead
 slides the rib end along its tangent, and carries the adjacent generated handles with it, so the
