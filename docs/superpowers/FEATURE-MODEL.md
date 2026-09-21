@@ -431,30 +431,38 @@ Three discontinuities are deliberate. No continuity test may span any of them.
 - The forward-to-behind tangent-intersection event.
 - Grid rounding, at authored placement or at generator emission.
 
-**Where the width changes, the generated handles turn to the edge.** On a tapered stroke the
-true edge does not run the skeleton's way. It runs along `T (1 + w k) + n w'`, where `w'` is how
-fast the width changes along the arc, and no handle _length_ can make up a direction. So each end
-of a generated cubic takes the edge's own direction (`skeleton-width-rate.js`). At constant width
-`w'` is zero and the axis is the skeleton's own, exactly as before.
+**Where the width changes, the edge does not run the skeleton's way.** It runs along
+`T (1 + w k) + n w'`, where `w'` is how fast the width changes along the arc, and no handle
+_length_ can make up a direction. Three answers, by the kind of on-curve.
 
-The turn only stays smooth because of a second rule. **Each on-curve owns one width rate**, and
-the width eases between on-curves at those rates instead of changing evenly. With an even change
-per segment, the rate jumps at every on-curve, so the true edge itself kinks at a tapered smooth
-point and its two segments would ask for two directions. With one rate per point, and one
-curvature, the mean of the two segments', both segments turn by the same angle. The rate is the
-harmonic mean of the change per unit of length on both sides. It is zero where the width peaks,
-bottoms out, or stops changing, so the eased width never overshoots a typed value. Beside a
-straight, the point takes the straight's own change, so a tied straight (zero change) keeps its
-curve's handle on the skeleton's axis.
+- **A smooth on-curve between two curves never turns its handles.** It slides along them instead,
+  and both curves meet at the slid point. Each curve anchors the other: the slide may make neither
+  fit more than 2 units worse. The slide answers the width change alone. It is the best place with
+  the width changing, less the best place with it flat at that point, so a constant-width stroke
+  never slides, however much the fit would like to.
+- **A terminal slides first, then turns.** The on-curve slides at most 2 units, because the cap is
+  its anchor, and only on butt and square caps; the other caps trim the stroke there and are built
+  from where it stands. The handle then turns by the fraction of the edge's full turn that still
+  pays for itself, the whole turn costing `TURN_COST`. On the D that halves the turn, 31 to 16
+  degrees, for 0.4 units of fit.
+- **A corner, a detached handle and a constant width keep the skeleton's axis** and do not slide.
+  The corner join meets its arms along the skeleton's directions. A detached handle is placed from
+  its on-curve, so a width edit must not move either. At constant width there is nothing to follow.
 
-The rule is always on and reads the skeleton and the widths alone, never the fit, so it adds no
-threshold and no event. Three places keep the skeleton's axis. A **corner** does, because the
-corner join meets its arms along the skeleton's directions. A **detached** handle does, because it
-is absolute and a width edit must not move it; detach holds both handles of a rib side, so they
-stay on one line. And a side with **constant width** does, because there the turn is zero.
+The fit is judged by the distance from the true edge to the drawn curve, not by the solve's own
+error: the solve measures square to the skeleton at each sample, and a slide runs along the curve,
+where that measure cannot see it. Three probes give a quadratic whose bend is held above a floor,
+so the answer moves continuously with the skeleton and the widths.
 
-The cost: a width edit now reaches one segment further on each side, through the rate at the
-neighbouring on-curve.
+**Each on-curve owns one width rate**, and the width eases between on-curves at those rates
+instead of changing evenly (`skeleton-width-rate.js`). The rate is the harmonic mean of the change
+per unit of length on both sides. It is zero where the width peaks, bottoms out or stops changing,
+so the eased width never overshoots a typed value. Beside a straight the point takes the
+straight's own change. The cost: a width edit reaches one segment further on each side, through
+the rate at the neighbouring on-curve.
+
+A slid on-curve is off its rib by the slide. The rib bar still states the width at the skeleton
+point, so at a tapered smooth point its end and the outline point are a few units apart.
 
 **One limit here is permanent, and it is not a bug to chase.**
 
@@ -659,9 +667,8 @@ If the code loses any of these, the product regresses.
 - **Pairwise corner-trim limiting.** It stops adjacent rounded corners from eating each other. A
   reimplementation loses it easily.
 - **Point-count stability** across parameter values (§3). This is the interpolation contract.
-- **One width rate per on-curve** (§3.2). Both segments at a smooth on-curve read the same rate
-  and the same curvature, or their generated handles turn by different angles and the joint
-  kinks. The rate reads only the skeleton and the widths.
+- **A smooth on-curve never turns its generated handles** (§3.2). Where the width changes it
+  slides along them. Both segments at the point apply the same slide, or they meet at two places.
 - **Fixed sample identity** (§3.2). The automatic solve always uses the same five source
   parameters. No projection, root finding, iterative refit or error-budget search belongs in this
   path.

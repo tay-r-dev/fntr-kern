@@ -1198,6 +1198,37 @@ nothing.
   projecting its stored offset onto the axis, so a turning axis moved it. A
   detached end keeps the skeleton's axis.
 
+**The turn at a smooth point was withdrawn the same day.** The designer read
+the turned D as a kink. The handles were exactly collinear (bend 0.00 degrees);
+what they saw was the curvature step across B, 58 per cent. A smooth point now
+slides along its handles and never turns them. A terminal slides up to 2 units
+(the cap is its anchor) and then turns only as far as it pays.
+
+- **The slide's measure was wrong three times.** The solver's five samples sit
+  between an eighth and seven eighths, and a slide moves an end: anchored on
+  them, B slid 18 units and B->C reached 22. The solver's own objective
+  measures square to the skeleton, and a slide runs along the curve: B slid 36.
+  The distance to the drawn curve was right, but three probes of it divided by
+  nearly nothing where it barely bent, and the slide switched on and off across
+  a width sweep, 13 units per quarter unit. The answer is the distance, projected
+  onto the cubic, with the probe bend held above a floor.
+- **A slide needs a reason to exist.** At constant width the fit alone prefers
+  a slide of up to 7 units on a tight curve, and a fixture moved 3.2. The slide
+  is now the best place with the width changing less the best place with it
+  flat, which is zero at constant width by construction.
+- **Per-curve deviation cannot judge a slide.** It moves the join, so part of the
+  edge one curve used to draw is drawn by its neighbour. Measured per curve B->C
+  read 14 to 36; measured as one run A->C it read 3.4. Measure the run.
+- **The D, A to C as one run**, on the designer's file at the time: before the
+  turn 8.25, with the turn 5.68, with the slide 3.44. The terminal's turn, by
+  its cost: 4 gives 23 degrees and 4.75, 32 gives 16 degrees and 5.16, 128 gives
+  9 degrees and 7.99. 32 was taken.
+- **A detached handle moved again**, this time with the terminal's slide,
+  because a detached handle is placed from its on-curve. A detached end neither
+  slides nor turns.
+- **Cost**: the D regenerates in 0.67 ms against about 0.1 for an untapered
+  glyph, some 0.3 ms per tapered smooth point per side.
+
 ---
 
 ## Rib and skeleton editing (map F7, skeleton)
