@@ -58,7 +58,7 @@ Everything below elaborates that one idea.
 - **Per-source defaults** — a new point inherits widths and caps from source-level settings, keyed
   by glyph case.
 
-**Alt+Z on a generated handle turns it by hand**, at a corner or a terminal only; a smooth
+**Shift+Z on a generated handle turns it by hand**, at a corner or a terminal only; a smooth
 point's two handles share one line, and turning one would kink it. The turn is half the angle the
 cursor sweeps around the on-curve, so a large movement makes a small change. It is stored in
 degrees on the handle's own offset entry (`turn`), added on top of the generator's own turn,

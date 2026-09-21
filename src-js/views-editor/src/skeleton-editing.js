@@ -2077,7 +2077,7 @@ function createEditableGeneratedHandleExecutorForEditing(
   };
 }
 
-// Alt+Z on a generated handle turns it around its on-curve, at a corner or a
+// Shift+Z on a generated handle turns it around its on-curve, at a corner or a
 // terminal only: a smooth point's two handles share one line, and turning one
 // would kink it. The turn is half the angle the cursor sweeps around the
 // on-curve, so a large movement makes a small, precise change. Stored as a

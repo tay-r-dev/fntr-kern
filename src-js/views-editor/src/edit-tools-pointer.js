@@ -1117,9 +1117,12 @@ export class PointerTool extends BaseTool {
         // Shift states an axis, so it enters the resolver as a held line rather
         // than as a projection afterwards. A magnet cannot overrule it: it only
         // decides where along the axis the point sits.
-        const constraint = event.shiftKey
-          ? constraintLineForDelta(rawDelta, snapStartPositions[0])
-          : null;
+        // Under Shift+Z on a generated handle, Shift names the turn and states
+        // no axis: the turn reads the cursor's angle around the on-curve.
+        const constraint =
+          event.shiftKey && behaviorName !== "generated-handle-turn"
+            ? constraintLineForDelta(rawDelta, snapStartPositions[0])
+            : null;
         // A modified drag states its own geometry, and a magnet pulling the
         // point somewhere else is fighting it. Alt equalizes, X holds the drawn
         // shape, Z slides along a tangent, and D and S pin one edge of the
@@ -1688,11 +1691,11 @@ function hasEditableGeneratedHandleSelection(selection) {
 }
 
 // Generated handles move only under a modifier (donor side-lock model): Z
-// moves the handle, Alt equalizes, and Alt with Z turns it, at a corner or a
-// terminal. The name carries Z so that pressing or releasing it mid-drag
+// moves the handle, Alt equalizes, and Shift with Z turns it, at a corner or
+// a terminal. The name carries Z so that pressing or releasing it mid-drag
 // rebuilds the behavior through the normal path.
 function getGeneratedHandleBehaviorName(event, modifiers = {}) {
-  if (event?.altKey && modifiers.tangentRibMode) {
+  if (event?.shiftKey && modifiers.tangentRibMode) {
     return "generated-handle-turn";
   }
   if (event?.altKey) {
