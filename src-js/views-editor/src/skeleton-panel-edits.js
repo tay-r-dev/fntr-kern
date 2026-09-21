@@ -1784,6 +1784,15 @@ export function computeRibDetachConversions(
         y: Math.round(handlePos.y - base.y),
       };
     }
+    if (detached) {
+      correctDetachedOffsets(
+        scratch,
+        resolved,
+        address.side,
+        offsets,
+        scratchPositions
+      );
+    }
     conversions.push({
       contourId: address.contourId,
       pointId: address.pointId,
@@ -1792,6 +1801,55 @@ export function computeRibDetachConversions(
     });
   }
   return conversions;
+}
+
+// The generator does not place a detached handle from the drawn on-curve. It
+// places it from the construction rib point, then adds the handle's own nudge
+// and any slide below the floor. The on-curve carries a different nudge, so an
+// offset read off the drawn on-curve lands off by the difference. That
+// difference has been fixed one displacement at a time, and each fix missed
+// the next one. So the offset is checked against the generator instead of
+// derived beside it: regenerate with the offsets detached, and move each offset
+// by whatever distance its handle still stands from where it was drawn. The
+// placement is a translation along the handle's axis, so one pass settles it.
+// The limit of three passes covers grid rounding.
+function correctDetachedOffsets(scratch, resolved, side, offsets, targets) {
+  for (let pass = 0; pass < 3; pass++) {
+    const trial = structuredClone(scratch);
+    const point = trial.contours[resolved.contourIndex].points[resolved.pointIndex];
+    for (const [role, offset] of Object.entries(offsets)) {
+      setSkeletonHandleOffset(point, side, role, {
+        ...getSkeletonHandleOffset(point, side, role),
+        x: offset.x,
+        y: offset.y,
+      });
+    }
+    setSkeletonHandleDetached(point, side, true);
+    const generated = generateFromSkeleton(trial);
+    let settled = true;
+    for (const role of Object.keys(offsets)) {
+      const target = targets[role];
+      const landed = findGeneratedOutputPosition(
+        generated,
+        resolved.contour.id,
+        resolved.point.id,
+        side,
+        role
+      );
+      if (!target || !landed) {
+        continue;
+      }
+      const dx = Math.round(target.x - landed.x);
+      const dy = Math.round(target.y - landed.y);
+      if (dx || dy) {
+        offsets[role] = { x: offsets[role].x + dx, y: offsets[role].y + dy };
+        settled = false;
+      }
+    }
+    if (settled) {
+      return;
+    }
+  }
 }
 
 // Detach the handle offsets of the selected rib sides from the skeleton

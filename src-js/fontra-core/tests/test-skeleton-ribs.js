@@ -577,7 +577,7 @@ describe("editable generated on-curve drag modes", () => {
 });
 
 describe("rib detach toggle", () => {
-  const makeCurveLayer = () => {
+  const makeCurveLayer = (pointFour = {}) => {
     const layer = {
       path: new VarPackedPath(),
       components: [],
@@ -593,7 +593,14 @@ describe("rib detach toggle", () => {
             id: 80,
             defaultWidth: 80,
             points: [
-              makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+              makeSkeletonPoint({
+                id: 1,
+                x: 0,
+                y: 0,
+                ...(pointFour.segmentCurvature
+                  ? { segmentCurvature: { left: 0.45, right: null } }
+                  : {}),
+              }),
               makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
               makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
               makeSkeletonPoint({
@@ -602,6 +609,7 @@ describe("rib detach toggle", () => {
                 y: 0,
                 smooth: true,
                 handleOffsets: { leftOut: { x: 6, y: 4, detached: false } },
+                ...pointFour,
               }),
               makeSkeletonPoint({ id: 5, x: 130, y: -40, type: "cubic" }),
               makeSkeletonPoint({ id: 6, x: 170, y: -40, type: "cubic" }),
@@ -685,6 +693,43 @@ describe("rib detach toggle", () => {
       expect(Math.abs(position.y - before[role].y), `${role} y`).to.be.at.most(2);
     }
   });
+
+  // The generator anchors a detached handle on the construction rib point and
+  // adds the handle's own nudge after. The on-curve carries a different nudge,
+  // so an offset measured from the drawn on-curve is off by the difference.
+  for (const [label, pointFour] of [
+    ["an on-curve nudge alone", { nudge: { left: 12, right: 0 } }],
+    ["a handle nudge alone", { handleNudge: { left: 9, right: 0 } }],
+    [
+      "unequal nudges",
+      { nudge: { left: -15, right: 0 }, handleNudge: { left: 6, right: 0 } },
+    ],
+    [
+      "unequal nudges and a pin on both segments",
+      {
+        nudge: { left: 10, right: 0 },
+        handleNudge: { left: -4, right: 0 },
+        segmentCurvature: { left: 0.7, right: null },
+      },
+    ],
+  ]) {
+    it(`detaching moves no handle under ${label}`, () => {
+      const layer = makeCurveLayer(pointFour);
+      const before = { in: positionOf(layer, "in"), out: positionOf(layer, "out") };
+      const conversions = computeRibDetachConversions(
+        layer,
+        getSkeletonData(layer),
+        [{ contourId: 80, pointId: 4, side: "left" }],
+        true
+      );
+      applyConversions(layer, conversions, true);
+      for (const role of ["in", "out"]) {
+        const position = positionOf(layer, role);
+        expect(Math.abs(position.x - before[role].x), `${role} x`).to.be.at.most(1);
+        expect(Math.abs(position.y - before[role].y), `${role} y`).to.be.at.most(1);
+      }
+    });
+  }
 
   it("detaches a handle-locked side too", () => {
     const layer = makeCurveLayer();

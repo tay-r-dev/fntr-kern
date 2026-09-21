@@ -1333,7 +1333,7 @@ release A with the button down; drag a multi-rib selection; and hold A with D.
 
 ## The generated-segment gizmos and the curvature pin (map F7, skeleton)
 
-**State: settled, one defect open.** Six rounds. The designer's control over the
+**State: settled.** Seven rounds. The designer's control over the
 output the offset construction cannot get right on its own.
 
 ### What the pin stores, and why it is a number
@@ -1507,11 +1507,19 @@ restored.
   where it is set** is what makes a key pressed mid-drag take effect on the next
   frame.
 
-**One defect open.** The detach conversion anchors the offset on the emitted
-on-curve, which carries the on-curve nudge, while the generator anchors a
-detached placement on the un-nudged rib point and adds the handle nudge. They
-agree only where the two nudges are equal; on the file it was found on both are
-45, so it is invisible there. Provenance already publishes both vectors.
+**Detaching moved handles, and it came back once for each displacement.** The
+conversion measured the offset from the drawn on-curve. The generator places a
+detached handle from the construction rib point, then adds the handle nudge and
+any slide below the floor. The on-curve carries its own nudge. So the handle
+moved by the difference between the two nudges: 7.3 units with an on-curve nudge
+of 12 alone, 5.2 with a handle nudge of 9 alone, and 12.8 with −15 against 6.
+Earlier fixes removed one term each (the pin, then the slide), and the next term
+brought the fault back. **The conversion now checks its answer against a
+regeneration.** It detaches on a copy, measures where each handle lands, and
+moves the offset by the remaining distance. One pass settles it, and the limit of
+three passes covers grid rounding. A displacement added in the future is covered
+without a change here. Tests cover each nudge alone, both nudges together, and
+nudges with pins on both segments.
 
 ---
 
