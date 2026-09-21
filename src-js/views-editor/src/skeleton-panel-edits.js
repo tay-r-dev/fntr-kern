@@ -27,6 +27,9 @@ import {
   getSkeletonHandleOffset,
   getSkeletonHandleOffsetKey,
   getSkeletonInsertionPosition,
+  getSkeletonInsertionSegment,
+  insertionDistanceFromCenterline,
+  skeletonSegmentTangentAt,
   getSkeletonPointHalfWidth,
   getSkeletonPointPreset,
   getSkeletonPointWidth,
@@ -581,6 +584,11 @@ export async function setSelectedInsertionWidthMode(
         continue;
       }
       const center = getSkeletonInsertionPosition(resolved.contour, resolved.insertion);
+      const segment = getSkeletonInsertionSegment(resolved.contour, resolved.insertion);
+      const tangent = segment
+        ? skeletonSegmentTangentAt(segment, resolved.insertion.t)
+        : null;
+      const converted = {};
       for (const side of ["left", "right"]) {
         const stood = findGeneratedOutputPosition(
           drawn,
@@ -589,17 +597,27 @@ export async function setSelectedInsertionWidthMode(
           side,
           "onCurve"
         );
-        // No drawn point on this side is a collapsed one, and a side lying on
-        // the centerline states no distance in either unit. Leave the number
-        // where it is rather than inventing one.
-        const natural =
-          center && stood ? Math.hypot(stood.x - center.x, stood.y - center.y) : 0;
+        // The generator's own measure, so the toggle converts against the
+        // distance the generator will divide by. A side lying on the
+        // centerline states no distance in either unit: leave its number.
+        const natural = insertionDistanceFromCenterline(center, tangent, stood);
         if (!(natural > 0)) {
           continue;
         }
-        resolved.insertion.width[side] = absolute
+        converted[side] = absolute
           ? Math.round(resolved.insertion.width[side] * natural)
           : resolved.insertion.width[side] / natural;
+      }
+      // A linked pair is one number. Where one side lies on the centerline it
+      // took no conversion, so it takes its partner's rather than keeping a
+      // number in the unit the point just left.
+      const only = converted.left ?? converted.right;
+      for (const side of ["left", "right"]) {
+        if (side in converted) {
+          resolved.insertion.width[side] = converted[side];
+        } else if (resolved.insertion.width.linked !== false && only !== undefined) {
+          resolved.insertion.width[side] = only;
+        }
       }
       resolved.insertion.width.mode = mode;
     }
@@ -614,7 +632,13 @@ export function setInsertionWidthRatio(insertion, side, ratio) {
   if (!Number.isFinite(value)) {
     return;
   }
-  ratio = Math.max(0, value);
+  // A distance is a length in font units and is written as whole ones, whatever
+  // wrote it: the scrub, the multiply, a typed number or the toggle. The bound
+  // belongs in the writer, or each of those has to remember it.
+  ratio =
+    insertion.width.mode === "absolute"
+      ? Math.max(0, Math.round(value))
+      : Math.max(0, value);
   insertion.width[side] = ratio;
   if (insertion.width.linked !== false) {
     insertion.width[side === "left" ? "right" : "left"] = ratio;
