@@ -42,6 +42,7 @@ import {
   skeletonSegmentPointAt,
   skeletonSegmentTangentAt,
 } from "./skeleton-model.js";
+import { jointWidthRate } from "./skeleton-width-rate.js";
 import { shiftTensionsToMean } from "./tunni-calculations.js";
 import { packContour } from "./var-path.js";
 import * as vector from "./vector.js";
@@ -2407,17 +2408,9 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
   const resolveHalfWidth = (point, side) =>
     coupled.get(point)?.[side] ?? getPointHalfWidth(point, defaultWidth, side);
 
-  for (let i = 0; i < segments.length; i++) {
-    const segment = segments[i];
-    // For open skeletons, don't wrap around - first/last segments have no prev/next
-    const prevSegment =
-      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
-    const nextSegment =
-      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
-
-    const isFirstSegment = i === 0;
-    const isLastSegment = i === segments.length - 1;
-
+  // Every segment's widths first: the rate at an on-curve reads the segments
+  // on both sides of it.
+  const sideWidths = segments.map((segment) => {
     // Get per-point widths for start and end of segment. Points whose ribs are
     // locked to a neighbour's take the shared value, so every segment touching
     // such a point places its rib in the same place.
@@ -2445,6 +2438,26 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
         endRightHalfWidth = endTotal;
       }
     }
+    return {
+      start: { left: startLeftHalfWidth, right: startRightHalfWidth },
+      end: { left: endLeftHalfWidth, right: endRightHalfWidth },
+    };
+  });
+  const edgeRates = segmentEdgeRates(segments, sideWidths, isClosed);
+
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    // For open skeletons, don't wrap around - first/last segments have no prev/next
+    const prevSegment =
+      isClosed || i > 0 ? segments[(i - 1 + segments.length) % segments.length] : null;
+    const nextSegment =
+      isClosed || i < segments.length - 1 ? segments[(i + 1) % segments.length] : null;
+
+    const isFirstSegment = i === 0;
+    const isLastSegment = i === segments.length - 1;
+    const { left: startLeftHalfWidth, right: startRightHalfWidth } =
+      sideWidths[i].start;
+    const { left: endLeftHalfWidth, right: endRightHalfWidth } = sideWidths[i].end;
 
     const offsetPoints = generateOffsetPointsForSegment(
       segment,
@@ -2465,7 +2478,8 @@ export function solveSkeletonContourSides(skeletonContour, options = {}) {
       },
       singleSided,
       singleSidedDirection,
-      authoredKeys
+      authoredKeys,
+      edgeRates[i]
     );
 
     const leftRunStart = leftSide.length;
@@ -3425,7 +3439,8 @@ function generateOffsetPointsForSegment(
   debugContext = null,
   singleSided = false,
   singleSidedDirection = "left",
-  authoredKeys = null
+  authoredKeys = null,
+  edgeRates = null
 ) {
   // Use provided half-widths or fall back to width/2
   const halfWidth = width / 2;
@@ -3964,11 +3979,44 @@ function generateOffsetPointsForSegment(
       const endTangentFallback = getSegmentTangent(segment, "end");
       const startHandleDir = getSkeletonHandleDirection(segment, "start", "out");
       const endHandleDir = getSkeletonHandleDirection(segment, "end", "in");
-      const startDir = startHandleDir ?? startTangentFallback;
-      const endDir = endHandleDir ?? {
+      const skeletonStartDir = startHandleDir ?? startTangentFallback;
+      const skeletonEndDir = endHandleDir ?? {
         x: -endTangentFallback.x,
         y: -endTangentFallback.y,
       };
+      // Where the width changes, the edge does not run the skeleton's way, and
+      // no handle length can make up a direction. So the generated handles turn
+      // to the edge's own direction at each end (skeleton-width-rate.js). A
+      // smooth on-curve hands both of its segments one rate and one curvature,
+      // so their handles turn together and the joint stays smooth.
+      // A detached handle is absolute, placed along the skeleton's own axis, so
+      // a width edit cannot move it. Detach holds both handles of a rib side, so
+      // the two stay on one line.
+      const isDetached = (point, dir, role) =>
+        !!dir &&
+        getGeneratedHandleAdjustment(point, dir, side, role)?.detached === true;
+      const rates = edgeRates?.[side];
+      const startSignedRate = rates ? sideSign * rates.start.rate : undefined;
+      const endSignedRate = rates ? sideSign * rates.end.rate : undefined;
+      const startDir =
+        rates?.start.turns && !isDetached(segment.startPoint, startHandleDir, "out")
+          ? turnedEdgeDirection(
+              skeletonStartDir,
+              sideSign * startHalfWidth,
+              startSignedRate,
+              rates.start.curvature
+            )
+          : skeletonStartDir;
+      const endTravel = turnedEdgeDirection(
+        { x: -skeletonEndDir.x, y: -skeletonEndDir.y },
+        sideSign * endHalfWidth,
+        endSignedRate ?? 0,
+        rates?.end.curvature ?? 0
+      );
+      const endDir =
+        rates?.end.turns && !isDetached(segment.endPoint, endHandleDir, "in")
+          ? { x: -endTravel.x, y: -endTravel.y }
+          : skeletonEndDir;
       const startAdjustment =
         startHandleDir && !authoredKeys?.has(`${segment.startPoint?.id}/${side}/out`)
           ? getGeneratedHandleAdjustment(
@@ -4033,6 +4081,9 @@ function generateOffsetPointsForSegment(
         p3: segment.endPoint,
         d0: sideSign * startHalfWidth,
         d3: sideSign * endHalfWidth,
+        // Per unit of t, as the solver reads them.
+        startWidthRate: rates ? startSignedRate * rates.length : undefined,
+        endWidthRate: rates ? endSignedRate * rates.length : undefined,
         q0: fixedStart,
         q3: fixedEnd,
         u0: startDir,
@@ -4220,6 +4271,110 @@ function generateOffsetPointsForSegment(
  * @param {number} defaultWidth - Contour default width
  * @returns {Map} skeleton point -> {left, right}
  */
+// The width rate each segment end passes its on-curve at, per side, and the
+// curvature the edge's direction is read against there. Rates are per unit of
+// arc length. Read from the skeleton and the resolved widths alone.
+//
+// - A smooth on-curve between two curves owns one rate, from the change on both
+//   sides, and one curvature, the mean of the two. Both segments turn their
+//   generated handles by the same angle there, so the joint stays smooth.
+// - A smooth on-curve beside a straight takes the straight's own change, which
+//   is the direction the straight's edge runs.
+// - An open end takes its own segment's change, and still turns.
+// - A corner takes each segment's own change and does not turn: its two arms
+//   meet by the corner join, which reads the skeleton's own directions.
+//
+// Where a segment's two rates equal its own change, its width is the even
+// change the generator always used.
+function segmentEdgeRates(segments, sideWidths, isClosed) {
+  const count = segments.length;
+  const measured = segments.map((segment) => {
+    const isCurve = segment.controlPoints.length > 0;
+    const points = [segment.startPoint, ...segment.controlPoints, segment.endPoint];
+    const length = isCurve
+      ? createBezierFromPoints(points).length()
+      : Math.hypot(
+          segment.endPoint.x - segment.startPoint.x,
+          segment.endPoint.y - segment.startPoint.y
+        );
+    return {
+      isCurve,
+      length,
+      startCurvature: isCurve ? cubicEndCurvature(points, 0) : 0,
+      endCurvature: isCurve ? cubicEndCurvature(points, 1) : 0,
+    };
+  });
+  const slope = (i, side) => {
+    const widths = sideWidths[i];
+    const length = measured[i].length;
+    return length > 0 ? (widths.end[side] - widths.start[side]) / length : 0;
+  };
+  const joint = (arriving, leaving, side) => {
+    const own = { arriving: slope(arriving, side), leaving: slope(leaving, side) };
+    const a = measured[arriving];
+    const b = measured[leaving];
+    if (!a.isCurve || !b.isCurve) {
+      const straight = a.isCurve ? own.leaving : own.arriving;
+      return { rate: straight, curvature: 0, turns: true };
+    }
+    return {
+      rate: jointWidthRate(own.arriving, own.leaving),
+      curvature: (a.endCurvature + b.startCurvature) / 2,
+      turns: true,
+    };
+  };
+  return segments.map((segment, i) => {
+    const prev = isClosed || i > 0 ? (i - 1 + count) % count : null;
+    const next = isClosed || i < count - 1 ? (i + 1) % count : null;
+    const result = {};
+    for (const side of ["left", "right"]) {
+      const ownSlope = slope(i, side);
+      const start =
+        prev === null
+          ? { rate: ownSlope, curvature: measured[i].startCurvature, turns: true }
+          : segment.startPoint.smooth && count > 1
+            ? joint(prev, i, side)
+            : { rate: ownSlope, curvature: 0, turns: false };
+      const end =
+        next === null
+          ? { rate: ownSlope, curvature: measured[i].endCurvature, turns: true }
+          : segment.endPoint.smooth && count > 1
+            ? joint(i, next, side)
+            : { rate: ownSlope, curvature: 0, turns: false };
+      result[side] = { length: measured[i].length, start, end };
+    }
+    return result;
+  });
+}
+
+// A cubic's signed curvature at one end, in the solver's convention: positive
+// where the curve turns toward the side a positive signed width offsets away
+// from, so 1 + w k is the edge's speed against the skeleton's.
+function cubicEndCurvature(points, t) {
+  const [p0, p1, p2, p3] = points;
+  const first = t === 0 ? vector.subVectors(p1, p0) : vector.subVectors(p3, p2);
+  const second =
+    t === 0
+      ? { x: p2.x - 2 * p1.x + p0.x, y: p2.y - 2 * p1.y + p0.y }
+      : { x: p3.x - 2 * p2.x + p1.x, y: p3.y - 2 * p2.y + p1.y };
+  const d = { x: 3 * first.x, y: 3 * first.y };
+  const dd = { x: 6 * second.x, y: 6 * second.y };
+  const speed = Math.hypot(d.x, d.y);
+  return speed > 0 ? (d.x * dd.y - d.y * dd.x) / speed ** 3 : 0;
+}
+
+// The direction the edge leaves (or, reversed, arrives at) an on-curve: the
+// skeleton's own direction, turned by the rate the width changes at there.
+// `travel` is the skeleton's direction of travel at that end.
+function turnedEdgeDirection(travel, signedWidth, signedRate, curvature) {
+  const along = Math.max(1 + signedWidth * curvature, 0);
+  const normal = { x: travel.y, y: -travel.x };
+  return vector.normalizeVector({
+    x: travel.x * along + normal.x * signedRate,
+    y: travel.y * along + normal.y * signedRate,
+  });
+}
+
 function coupledHalfWidths(
   segments,
   isClosed,

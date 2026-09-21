@@ -10,6 +10,7 @@ import {
 import {
   SERIF_HALF_FIELDS,
   calculateGeneratedCurvatureEdits,
+  findGeneratedOutputPosition,
   getSkeletonRibPosition,
   normalizeSkeletonData,
 } from "@fontra/core/skeleton-model.js";
@@ -412,8 +413,36 @@ describe("skeleton-generator outline boundary invariants", () => {
     }
   });
 
-  it("keeps emitted cubic handles on the skeleton-owned axes", () => {
-    const skeleton = boundaryCubicSkeleton();
+  // Where the width changes the axes turn to the edge (skeleton-width-rate.js),
+  // and every handle then lies on the axis its provenance publishes.
+  it("keeps emitted cubic handles on the axes it publishes", () => {
+    const result = generateFromSkeleton(boundaryCubicSkeleton());
+    let compared = 0;
+    for (const [contourIndex, provenance] of result.provenance.entries()) {
+      const points = result.contours[contourIndex].points;
+      provenance.pointMap.forEach((entry, index) => {
+        if (!entry?.constructionAxis || !entry.side) return;
+        const anchor = generatedPointFor(
+          result,
+          entry.skeletonPointId,
+          entry.side,
+          "onCurve"
+        );
+        const handle = points[index];
+        const axis = entry.constructionAxis;
+        const vector = { x: handle.x - anchor.x, y: handle.y - anchor.y };
+        const key = `${entry.skeletonPointId}/${entry.side}/${entry.role}`;
+        expect(Math.abs(vector.x * axis.y - vector.y * axis.x), key).to.be.at.most(
+          Math.SQRT1_2 + 1e-9
+        );
+        compared++;
+      });
+    }
+    expect(compared).to.be.at.least(4);
+  });
+
+  it("keeps a constant-width stroke's handles on the skeleton's own axes", () => {
+    const skeleton = boundaryCubicSkeleton({ startWidth: 40, endWidth: 40 });
     const result = generateFromSkeleton(skeleton);
     const points = skeleton.contours[0].points;
     const expected = [
@@ -4678,5 +4707,76 @@ describe("square cap on a straight single-sided stroke", () => {
     expect(corner).to.not.equal(undefined);
     const cross = (corner[0] - 144) * (500 - 0) - (corner[1] - 0) * (217 - 144);
     expect(Math.abs(cross) / Math.hypot(217 - 144, 500)).to.be.lessThan(1);
+  });
+});
+
+describe("skeleton-generator: the edge turns with the width", () => {
+  // The D of skeletron-test: an open single-sided contour whose width grows from
+  // 11 to 41 to 80 over two short curves, then runs straight.
+  const onCurve = (id, x, y, half, smooth) => ({
+    id,
+    x,
+    y,
+    smooth,
+    width: { left: half, right: half, linked: true },
+  });
+  const handle = (id, x, y) => ({ id, x, y, type: "cubic" });
+  const makeD = (halves = [5.5, 20.5, 40, 40]) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: "right",
+          points: [
+            onCurve(5, 220, 125, halves[0], false),
+            handle(12, 209, 115),
+            handle(13, 187, 107),
+            onCurve(14, 172, 107, halves[1], true),
+            handle(15, 154, 107),
+            handle(16, 148, 119),
+            onCurve(3, 148, 150, halves[2], true),
+            onCurve(2, 148, 474, halves[3], false),
+          ],
+        },
+      ],
+    });
+  const at = (generated, pointId, role) =>
+    findGeneratedOutputPosition(generated, 1, pointId, "right", role);
+  const angleOf = (from, to) => Math.atan2(to.y - from.y, to.x - from.x);
+  const degrees = (radians) => (radians * 180) / Math.PI;
+
+  it("turns the generated handles off the skeleton where the width changes", () => {
+    const generated = generateFromSkeleton(makeD());
+    const b = at(generated, 14, "onCurve");
+    const out = at(generated, 14, "out");
+    // The skeleton leaves B along -x; the widening edge leaves about 17 degrees off it.
+    const off = Math.abs(degrees(angleOf(b, out)) - 180) % 360;
+    expect(Math.min(off, 360 - off)).to.be.above(10);
+  });
+
+  it("keeps the two generated handles at a smooth point on one line", () => {
+    const generated = generateFromSkeleton(makeD());
+    const b = at(generated, 14, "onCurve");
+    const into = at(generated, 14, "in");
+    const out = at(generated, 14, "out");
+    let bend = degrees(angleOf(b, out) - angleOf(into, b));
+    bend = ((bend + 540) % 360) - 180;
+    expect(Math.abs(bend)).to.be.below(2);
+  });
+
+  it("no longer asks for a 57-unit handle at B", () => {
+    const generated = generateFromSkeleton(makeD());
+    const b = at(generated, 14, "onCurve");
+    const into = at(generated, 14, "in");
+    expect(Math.hypot(into.x - b.x, into.y - b.y)).to.be.below(35);
+  });
+
+  it("leaves a constant-width stroke's handles on the skeleton's direction", () => {
+    const generated = generateFromSkeleton(makeD([40, 40, 40, 40]));
+    const b = at(generated, 14, "onCurve");
+    const out = at(generated, 14, "out");
+    expect(out.y).to.equal(b.y);
   });
 });

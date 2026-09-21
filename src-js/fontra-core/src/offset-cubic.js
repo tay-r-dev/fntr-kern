@@ -235,6 +235,8 @@ export function offsetCubicSide(request) {
     skeletonControlPoints: [request.p0, request.p1, request.p2, request.p3],
     startSignedWidth: request.d0,
     endSignedWidth: request.d3,
+    startWidthRate: request.startWidthRate,
+    endWidthRate: request.endWidthRate,
     startOutlinePoint: request.q0,
     endOutlinePoint: request.q3,
     startHandleDirection: request.u0,
