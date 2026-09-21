@@ -191,11 +191,25 @@ function applyPinnedTension(handles, pinnedTension, domain) {
 // the same way an attached one does: through emission, not through a negative
 // constructed length.
 function applyDetachedHandles(handles, slides, request, domain) {
-  const place = (adjustment, anchor, direction, floorTension, reach, length) => {
+  const place = (
+    adjustment,
+    anchor,
+    direction,
+    floorTension,
+    reach,
+    length,
+    detachedAnchor = anchor
+  ) => {
     if (!adjustment?.detached) {
       return { length, slide: null };
     }
-    const requested = placedLength(anchor, direction, adjustment);
+    // Placed from its own anchor, the rib end before any slide, and restated
+    // as a length from the construction's end, which the slide may have moved
+    // along the same line.
+    const requested =
+      placedLength(detachedAnchor, direction, adjustment) +
+      (detachedAnchor.x - anchor.x) * direction.x +
+      (detachedAnchor.y - anchor.y) * direction.y;
     return {
       length: Math.max(requested, 0),
       slide: slideBelowFloor(requested, anchor, direction, floorTension, reach),
@@ -207,7 +221,8 @@ function applyDetachedHandles(handles, slides, request, domain) {
     request.u0,
     domain.handFloorStartTension,
     domain.startReach,
-    handles.startLength
+    handles.startLength,
+    request.startDetachedAnchor
   );
   const end = place(
     request.endAdjustment,
@@ -215,7 +230,8 @@ function applyDetachedHandles(handles, slides, request, domain) {
     request.u1,
     domain.handFloorEndTension,
     domain.endReach,
-    handles.endLength
+    handles.endLength,
+    request.endDetachedAnchor
   );
   return {
     lengths: { startLength: start.length, endLength: end.length },

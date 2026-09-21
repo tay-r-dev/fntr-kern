@@ -4048,7 +4048,12 @@ function getGeneratedRibPoint(outline, contour, point, side, pointIndex) {
   if (!skeletonData || !path) {
     return null;
   }
-  if (!cornerRibPlacement(contour.points || [], contour.closed, pointIndex)) {
+  // A smooth point reads the outline too: where the width changes, its drawn
+  // on-curve slides along its handles, and the rib's end goes with it.
+  if (
+    !point.smooth &&
+    !cornerRibPlacement(contour.points || [], contour.closed, pointIndex)
+  ) {
     return null;
   }
   const address = findGeneratedPathAddress(

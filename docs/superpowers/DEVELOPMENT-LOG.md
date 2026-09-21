@@ -1224,8 +1224,16 @@ slides along its handles and never turns them. A terminal slides up to 2 units
   its cost: 4 gives 23 degrees and 4.75, 32 gives 16 degrees and 5.16, 128 gives
   9 degrees and 7.99. 32 was taken.
 - **A detached handle moved again**, this time with the terminal's slide,
-  because a detached handle is placed from its on-curve. A detached end neither
-  slides nor turns.
+  because a detached handle is placed from its on-curve. Holding the on-curve
+  still for a detached end made detaching snap the slid point back to its rib.
+  The on-curve slides regardless now, and a detached handle is placed from the
+  rib end before the slide.
+- **The terminal's turn is capped at 10 degrees**, on the designer's call. On a
+  width sweep of the D the cap puts the terminal's tangent crossing on top of B
+  at one width, where it flips from ahead to behind: B's arriving handle goes
+  from 0 to 82 units in a quarter unit. That is the documented
+  forward-to-behind event, moved to a width the uncapped turn avoided.
+- **The slide anchor went from 2 to 4 units** of fit, on the designer's call.
 - **Cost**: the D regenerates in 0.67 ms against about 0.1 for an untapered
   glyph, some 0.3 ms per tapered smooth point per side.
 

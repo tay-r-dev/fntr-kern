@@ -3991,6 +3991,10 @@ function generateOffsetPointsForSegment(
       // A smooth on-curve between two curves slides along its handles' line
       // (smoothPointSlides). Both segments apply the same slide to the same rib
       // end, so they meet at one point.
+      // A detached handle is placed from the rib end as it stands before the
+      // slide, so a width edit that moves the slide cannot move the handle.
+      const ribStart = fixedStart;
+      const ribEnd = fixedEnd;
       const startSmoothSlide = edgeRates?.[side]?.start.slide ?? 0;
       const endSmoothSlide = edgeRates?.[side]?.end.slide ?? 0;
       if (startSmoothSlide) {
@@ -4120,6 +4124,8 @@ function generateOffsetPointsForSegment(
         endWidthRate: rates ? endSignedRate * rates.length : undefined,
         q0: fixedStart,
         q3: fixedEnd,
+        startDetachedAnchor: ribStart,
+        endDetachedAnchor: ribEnd,
         u0: startDir,
         u1: endDir,
         // The pin lives on the skeleton segment's start point, so it reads the
@@ -4405,8 +4411,9 @@ const SMOOTH_SLIDE_PROBE = 1;
 // error barely bends, the vertex divides by nearly nothing; this bounds it.
 const SLIDE_MIN_BEND = 0.05;
 const TERMINAL_SLIDE_LIMIT = 2; // units the cap may move
+const TERMINAL_MAX_TURN = (10 * Math.PI) / 180;
 const TURN_COST = 32; // squared fit units for the whole turn: halves it on the D for 0.4 units of fit
-const SLIDE_ANCHOR = 2; // units of fit a neighbouring curve may lose
+const SLIDE_ANCHOR = 4; // units of fit a neighbouring curve may lose
 const SMOOTH_SLIDE_COST = 0.02; // squared fit units per squared unit of slide
 
 // The mean squared distance from the true edge of a skeleton cubic, at the
@@ -4487,11 +4494,6 @@ function meanSquaredEdgeDistance(skeleton, w0, w1, m0, m1, drawn) {
     });
   }
   return sum / (EDGE_SAMPLES + 1);
-}
-
-// Read off the generator dialect, where the detached flag is per handle.
-function isHandleDetached(point, side, role) {
-  return point?.[`${side}Handle${role}Detached`] === true;
 }
 
 function rotateVector(v, angle) {
@@ -4622,9 +4624,6 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed, terminalCa
     ]) {
       const start = edgeRates[i][side].start;
       if (!start.slides || sideWidths[i].start[side] < 0.5) continue;
-      // A detached handle is placed from its on-curve, so that on-curve holds.
-      if (isHandleDetached(point, side, "In") || isHandleDetached(point, side, "Out"))
-        continue;
       const h = SMOOTH_SLIDE_PROBE;
       // The best place for the on-curve, with the width at this point changing
       // as it does, or flat. Each curve beside the point anchors the other.
@@ -4694,7 +4693,6 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed, terminalCa
     ]) {
       const rates = edgeRates[i][side][end];
       if (!rates.turns || sideWidths[i][end][side] < 0.5) continue;
-      if (isHandleDetached(point, side, end === "start" ? "Out" : "In")) continue;
       const full = turnedEdgeDirection(
         travel,
         sign * sideWidths[i][end][side],
@@ -4727,7 +4725,9 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed, terminalCa
           );
         }
       }
-      let fraction = 1;
+      // The turn is never more than TERMINAL_MAX_TURN, whatever the fit wants.
+      const most = Math.min(1, TERMINAL_MAX_TURN / Math.max(Math.abs(fullTurn), 1e-9));
+      let fraction = most;
       if (Math.abs(fullTurn) > 1e-9) {
         const values = [0, 0.5, 1].map((f) => error(slide, f * fullTurn));
         if (values.every((value) => value !== null)) {
@@ -4736,7 +4736,7 @@ function smoothPointSlides(segments, sideWidths, edgeRates, isClosed, terminalCa
           const bend = Math.max(q.a, 0) + TURN_COST;
           // The turn's own cost, TURN_COST * f^2, has slope TURN_COST at 1/2.
           const vertex = 0.5 - (q.b + TURN_COST) / (2 * bend);
-          fraction = Math.max(0, Math.min(1, vertex));
+          fraction = Math.max(0, Math.min(most, vertex));
         }
       }
       rates.slide = slide;

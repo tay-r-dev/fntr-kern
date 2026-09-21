@@ -1488,3 +1488,104 @@ describe("the insertion point rib drag", () => {
     expect(result.ratio).to.be.closeTo(1.5, 1e-6);
   });
 });
+
+describe("a slid smooth point", () => {
+  // The D of skeletron-test: the width grows 11, 41, 80, so the smooth point B
+  // (id 14) slides along its handles on the right side.
+  const makeDLayer = () => {
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    const onCurve = (id, x, y, half, smooth) =>
+      makeSkeletonPoint({ id, x, y, smooth, width: { left: half, right: half } });
+    const handle = (id, x, y) => makeSkeletonPoint({ id, x, y, type: "cubic" });
+    setSkeletonData(
+      layer,
+      normalizeSkeletonData({
+        contours: [
+          makeSkeletonContour({
+            id: 1,
+            defaultWidth: 80,
+            singleSided: "right",
+            points: [
+              onCurve(5, 220, 125, 5.5, false),
+              handle(12, 209, 115),
+              handle(13, 187, 107),
+              onCurve(14, 172, 107, 20.5, true),
+              handle(15, 154, 107),
+              handle(16, 148, 119),
+              onCurve(3, 148, 150, 40, true),
+              onCurve(2, 148, 474, 40, false),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    return layer;
+  };
+  const drawn = (layer, role) => {
+    const address = findGeneratedPathAddress(
+      getSkeletonData(layer),
+      1,
+      14,
+      "right",
+      role
+    );
+    return layer.path.getPoint(
+      layer.path.getAbsolutePointIndex(
+        address.pathContourIndex,
+        address.contourPointIndex
+      )
+    );
+  };
+
+  it("slides on this stroke, so the rest of these tests mean something", () => {
+    expect(drawn(makeDLayer(), "onCurve").x).to.not.equal(172);
+  });
+
+  it("puts the rib's end on the slid outline point", () => {
+    const layer = makeDLayer();
+    const skeleton = getSkeletonData(layer);
+    const contour = skeleton.contours[0];
+    const point = contour.points[3];
+    const ends = getSkeletonRibEndpoints(contour, point, {
+      skeletonData: skeleton,
+      path: layer.path,
+    });
+    const onCurve = drawn(layer, "onCurve");
+    expect(ends.right.x).to.equal(onCurve.x);
+    expect(ends.right.y).to.equal(onCurve.y);
+  });
+
+  it("detaching its rib moves nothing", () => {
+    const layer = makeDLayer();
+    const before = Object.fromEntries(
+      ["in", "onCurve", "out"].map((role) => [role, drawn(layer, role)])
+    );
+    const conversions = computeRibDetachConversions(
+      layer,
+      getSkeletonData(layer),
+      [{ contourId: 1, pointId: 14, side: "right" }],
+      true
+    );
+    editSkeleton(layer, (working) => {
+      const point = working.contours[0].points[3];
+      for (const conversion of conversions) {
+        for (const [role, offset] of Object.entries(conversion.offsets)) {
+          setSkeletonHandleOffset(point, "right", role, offset);
+        }
+        setSkeletonHandleDetached(point, "right", true);
+      }
+    });
+    for (const role of ["in", "onCurve", "out"]) {
+      const after = drawn(layer, role);
+      expect(Math.abs(after.x - before[role].x), `${role} x`).to.be.at.most(1);
+      expect(Math.abs(after.y - before[role].y), `${role} y`).to.be.at.most(1);
+    }
+  });
+});
