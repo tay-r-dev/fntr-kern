@@ -5419,9 +5419,10 @@ describe("simplify and harmonize serif easings", () => {
       }
       previous = points;
     }
-    // A quarter unit of drag; the merged curve's handles move a few units per
-    // step where they follow it, never the tens a jump makes.
-    expect(worst).to.be.below(4);
+    // A quarter unit of drag. The merged curve's handle follows it by one to two
+    // units per step and lands on whole units, so its rounded position moves in
+    // steps of one to four, scattered and never growing. A jump is tens.
+    expect(worst).to.be.below(5);
   });
 
   it("keeps every point on the curve the easing leaves", () => {
