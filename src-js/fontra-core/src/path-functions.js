@@ -669,7 +669,7 @@ function determineDominantCurveType(points) {
   return { curveType, onlyOffCurvePoints: numOffCurvePoints === points.length };
 }
 
-function computeHandlesFromFragment(curveType, contour) {
+export function computeHandlesFromFragment(curveType, contour) {
   const betweenOffCurvePoints = simpleTangentDeletion(contour.points);
   if (betweenOffCurvePoints) {
     // Don't refit the curve, this is more intuitive in most cases

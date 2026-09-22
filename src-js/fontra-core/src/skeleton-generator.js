@@ -1,6 +1,6 @@
 import { Bezier } from "bezier-js";
-import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
+import { computeHandlesFromFragment } from "./path-functions.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
@@ -3512,118 +3512,28 @@ function mergeOneSerifEasing(points, key) {
   const reach0 = (toEnd.x * d1.y - toEnd.y * d1.x) / denominator;
   const reach1 = (toEnd.x * d0.y - toEnd.y * d0.x) / denominator;
   if (!(reach0 > 0 && reach1 > 0)) return null;
-  // Least squares on two numbers: the handle lengths, with the directions
-  // fixed. The run is sampled at fixed fractions of its length, and each
-  // sample's error is measured square to the run there, so it is affine in the
-  // two lengths and their squared sum is one quadratic, minimized exactly
-  // inside the box where both handles stay short of where the end directions
-  // meet. The offset solver's own construction (natural-handle-solver.js): no
-  // search, so no jump, and no handle past that meeting, so no second bend.
-  const sampleCount = 15;
-  const lengthTable = [];
-  let runLength = 0;
-  for (const [index, cubic] of alive.entries()) {
-    let previous = cubicPointAt(cubic, 0);
-    lengthTable.push({ index, t: 0, length: runLength });
-    for (let i = 1; i <= 64; i++) {
-      const point = cubicPointAt(cubic, i / 64);
-      runLength += Math.hypot(point.x - previous.x, point.y - previous.y);
-      lengthTable.push({ index, t: i / 64, length: runLength });
-      previous = point;
-    }
-  }
-  if (!(runLength > 0)) return null;
-  let aa = 0;
-  let ab = 0;
-  let bb = 0;
-  let ac = 0;
-  let bc = 0;
-  for (let k = 1; k <= sampleCount; k++) {
-    const fraction = k / (sampleCount + 1);
-    // Between two rows of the table, not at the nearer one, so a sample slides
-    // smoothly as the run changes rather than stepping from row to row.
-    const wantedLength = fraction * runLength;
-    const after = Math.max(
-      lengthTable.findIndex((row) => row.length >= wantedLength),
-      1
+  // The curve the editor draws when the easing point is deleted from the
+  // outline by hand: the same function, on the same run.
+  const fragment = [alive[0][0]];
+  for (const cubic of alive) {
+    fragment.push(
+      { ...cubic[1], type: "cubic" },
+      { ...cubic[2], type: "cubic" },
+      { x: cubic[3].x, y: cubic[3].y }
     );
-    const upper = lengthTable[after];
-    const lower =
-      lengthTable[after - 1].index === upper.index
-        ? lengthTable[after - 1]
-        : { index: upper.index, t: 0, length: lengthTable[after - 1].length };
-    const span = upper.length - lower.length;
-    const t =
-      lower.t +
-      (span > 0 ? ((wantedLength - lower.length) / span) * (upper.t - lower.t) : 0);
-    const cubic = alive[upper.index];
-    const sample = cubicPointAt(cubic, t);
-    const ahead = cubicPointAt(cubic, Math.min(t + 1e-4, 1));
-    const behind = cubicPointAt(cubic, Math.max(t - 1e-4, 0));
-    const along = unit({ x: ahead.x - behind.x, y: ahead.y - behind.y });
-    const normal = { x: -along.y, y: along.x };
-    const m = 1 - fraction;
-    const b0 = m * m * m;
-    const b1 = 3 * m * m * fraction;
-    const b2 = 3 * m * fraction * fraction;
-    const b3 = fraction * fraction * fraction;
-    const offset = {
-      x: (b0 + b1) * p0.x + (b2 + b3) * p3.x - sample.x,
-      y: (b0 + b1) * p0.y + (b2 + b3) * p3.y - sample.y,
-    };
-    const ka = b1 * (normal.x * d0.x + normal.y * d0.y);
-    const kb = b2 * (normal.x * d1.x + normal.y * d1.y);
-    const k0 = normal.x * offset.x + normal.y * offset.y;
-    aa += ka * ka;
-    ab += ka * kb;
-    bb += kb * kb;
-    ac += ka * k0;
-    bc += kb * k0;
   }
-  const objective = (a, b) =>
-    aa * a * a + 2 * ab * a * b + bb * b * b + 2 * ac * a + 2 * bc * b;
-  const clampTo = (value, top) => Math.min(Math.max(value, 0), top);
-  const candidates = [];
-  const determinant = aa * bb - ab * ab;
-  if (Math.abs(determinant) > 1e-12) {
-    candidates.push([
-      clampTo((ab * bc - bb * ac) / determinant, reach0),
-      clampTo((ab * ac - aa * bc) / determinant, reach1),
-    ]);
-  }
-  // The box's four edges, each the exact minimum along it, and its corners.
-  for (const a of [0, reach0]) {
-    candidates.push([a, bb > 0 ? clampTo(-(ab * a + bc) / bb, reach1) : 0]);
-  }
-  for (const b of [0, reach1]) {
-    candidates.push([aa > 0 ? clampTo(-(ab * b + ac) / aa, reach0) : 0, b]);
-  }
-  let best = candidates[0];
-  for (const candidate of candidates) {
-    if (objective(...candidate) < objective(...best)) best = candidate;
-  }
+  const [handleOne, handleTwo] = computeHandlesFromFragment("cubic", {
+    points: fragment,
+    isClosed: false,
+  });
   const seed = [
     p0,
-    { x: p0.x + d0.x * best[0], y: p0.y + d0.y * best[0] },
-    { x: p3.x + d1.x * best[1], y: p3.y + d1.y * best[1] },
+    { x: handleOne.x, y: handleOne.y },
+    { x: handleTwo.x, y: handleTwo.y },
     p3,
   ];
 
-  // Match the bend to the stroke's curve arriving at the wall point, moving
-  // only the merged curve's two handles. The solver is continuous and holds
-  // both handles short of where the end directions meet, so the curve still
-  // bends one way.
-  let merged = seed;
-  const arriving = [
-    at(wallIndex - 3 * step),
-    at(wallIndex - 2 * step),
-    at(wallIndex - step),
-  ];
-  if (!arriving[0].type && arriving[1].type && arriving[2].type) {
-    const stencil = [...arriving.map(({ x, y }) => ({ x, y })), ...seed];
-    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 1] });
-    merged = applyHandleScales(stencil, solved.scales).slice(3);
-  }
+  const merged = seed;
 
   const handles = [merged[1], merged[2]].map(({ x, y }) => ({
     x: Math.round(x),

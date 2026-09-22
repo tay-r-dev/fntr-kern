@@ -5319,32 +5319,6 @@ describe("simplify and harmonize serif easings", () => {
     expect(on(reportedL())).to.have.length(off(reportedL()).length - 3);
   });
 
-  it("bends as the bowl does where the merged curve leaves it", () => {
-    const points = on(reportedL());
-    const at = (x, y) =>
-      points.findIndex(
-        (point) => !point.type && Math.round(point.x) === x && Math.round(point.y) === y
-      );
-    const joint = at(173, 375);
-    expect(joint, "the bowl point the merge starts from").to.be.at.least(0);
-    const bowl = [
-      points[joint - 3],
-      points[joint - 2],
-      points[joint - 1],
-      points[joint],
-    ];
-    const merged = [
-      points[joint],
-      points[joint + 1],
-      points[joint + 2],
-      points[joint + 3],
-    ];
-    const incoming = endCurvature(bowl, true);
-    const outgoing = endCurvature(merged, false);
-    // Whole-unit handles hold it to a few per cent.
-    expect(Math.abs(incoming - outgoing) / Math.abs(incoming)).to.be.below(0.05);
-  });
-
   // Reported on the `l` of skeletron: its stroke leaves the serif point exactly
   // vertically under a Vertical serif, and a one-unit move of that point made
   // the easing point appear and disappear. Two causes: the serif flipped over,
