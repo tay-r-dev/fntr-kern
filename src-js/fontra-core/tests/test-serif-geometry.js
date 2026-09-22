@@ -1501,39 +1501,79 @@ describe("a serif's forced angle", () => {
   }
 });
 
-// A forced axis almost along its stroke faces the stroke's body. Reported on the
-// `l` of skeletron: a Vertical serif on a stroke leaving its point exactly
-// vertically flipped over when the point moved a quarter unit, because which
-// way the serif faced was read off the stroke's lean, and the lean was zero.
-// On a single-sided stroke the body's side says it instead.
+// A serif grows against its stroke, toward the on-curve next to the terminal.
+// Reported on the `l` of skeletron: a Vertical serif whose stroke left its point
+// vertically turned right over when the point moved a quarter unit. Which way
+// the serif faced was read off the stroke's lean at the terminal, and where the
+// axis lies along the stroke that lean is zero, so its sign was a rounding. The
+// foot's own direction was read the same way, so the two went over together and
+// the terminal came back turned rather than mirrored.
 describe("a forced axis almost along its stroke", () => {
-  const frameAt = (degrees, bodySide) => {
+  // A start terminal: the stroke leaves upward, leaning by `degrees`, and bends
+  // to one side over its own length, as the reported terminals both do. The
+  // bend is what the next on-curve carries and the terminal's own tangent does
+  // not, so the sweep runs the lean through vertical with the bend held.
+  const frameAt = (degrees, bend = 60) => {
     const radians = (degrees * Math.PI) / 180;
-    // A start terminal: the stroke leaves upward, leaning by `degrees`.
     const travel = { x: Math.sin(radians), y: Math.cos(radians) };
     return computeSerifFrame({
       endpoint: { x: 0, y: 0 },
       tangent: { x: -travel.x, y: -travel.y },
       normal: { x: travel.y, y: -travel.x },
       axisMode: "vertical",
-      bodySide,
+      continuation: {
+        x: travel.x * 200 + travel.y * bend,
+        y: travel.y * 200 - travel.x * bend,
+      },
     });
   };
 
-  for (const bodySide of [1, -1]) {
-    it(`faces the same way through vertical, body on side ${bodySide}`, () => {
-      const reference = frameAt(0, bodySide);
-      for (const degrees of [-10, -3, -0.1, 0.1, 3, 10]) {
-        const frame = frameAt(degrees, bodySide);
-        expectClose(frame.depth.x, reference.depth.x, `depth x at ${degrees}`, 1e-9);
-        expectClose(frame.axis.y, reference.axis.y, `axis y at ${degrees}`, 1e-9);
-      }
-    });
-  }
+  it("holds its whole frame through vertical", () => {
+    const reference = frameAt(0);
+    for (const degrees of [-10, -3, -0.1, 0.1, 3, 10]) {
+      const frame = frameAt(degrees);
+      expectClose(frame.depth.x, reference.depth.x, `depth x at ${degrees}`, 1e-9);
+      expectClose(frame.depth.y, reference.depth.y, `depth y at ${degrees}`, 1e-9);
+      expectClose(frame.axis.x, reference.axis.x, `axis x at ${degrees}`, 1e-9);
+      expectClose(frame.axis.y, reference.axis.y, `axis y at ${degrees}`, 1e-9);
+    }
+  });
 
-  it("points its depth into the body", () => {
-    // Left of the stroke is +x here, so a body on the left is +x.
-    expect(frameAt(0, 1).depth.x).to.be.above(0);
-    expect(frameAt(0, -1).depth.x).to.be.below(0);
+  it("grows toward the next on-curve, at every lean and either bend", () => {
+    for (const bend of [60, -60]) {
+      for (const degrees of [-40, -16, -10, -0.1, 0, 0.1, 10, 16, 40]) {
+        const radians = (degrees * Math.PI) / 180;
+        const travel = { x: Math.sin(radians), y: Math.cos(radians) };
+        const next = {
+          x: travel.x * 200 + travel.y * bend,
+          y: travel.y * 200 - travel.x * bend,
+        };
+        const { depth } = frameAt(degrees, bend);
+        expect(
+          depth.x * next.x + depth.y * next.y,
+          `depth toward the next on-curve at ${degrees}, bend ${bend}`
+        ).to.be.above(0);
+      }
+    }
+  });
+
+  it("keeps positive u on the contour's left", () => {
+    // The same stroke walked the other way: left swaps with the heading, so the
+    // foot must swap with it rather than hold a direction in the glyph.
+    const up = frameAt(0);
+    const radians = Math.PI;
+    const travel = { x: Math.sin(radians), y: Math.cos(radians) };
+    const down = computeSerifFrame({
+      endpoint: { x: 0, y: 0 },
+      tangent: { x: -travel.x, y: -travel.y },
+      normal: { x: travel.y, y: -travel.x },
+      axisMode: "vertical",
+      continuation: {
+        x: travel.x * 200 + travel.y * 60,
+        y: travel.y * 200 - travel.x * 60,
+      },
+    });
+    expectClose(up.axis.x, -down.axis.x, "axis x swaps with the heading");
+    expectClose(up.axis.y, -down.axis.y, "axis y swaps with the heading");
   });
 });

@@ -76,12 +76,22 @@ function orientToLeft(axis, normal) {
 }
 
 // Depth is perpendicular to the axis, not to the tangent, so the frame stays
-// orthonormal in every mode. It points back into the stroke.
-function depthForAxis(axis, outward) {
+// orthonormal in every mode. It points back into the stroke: a serif grows
+// against the stroke's direction, toward the on-curve next to the terminal.
+//
+// That on-curve is what says which way, and not the terminal's own tangent.
+// Where the axis lies along the stroke, depth runs ACROSS it, and the tangent's
+// own component along depth is zero there -- so the sign came off a rounding,
+// and the whole frame turned 180 degrees the moment the stroke crossed the
+// axis. Reported on the `l` of skeletron, whose serif went over as its handle
+// passed vertical. The next on-curve is a length of stroke away and says the
+// same thing at every axis, so there is nothing left to vanish.
+function depthForAxis(axis, outward, continuation) {
   const depth = { x: -axis.y, y: axis.x };
-  return depth.x * outward.x + depth.y * outward.y > 0
-    ? { x: -depth.x, y: -depth.y }
-    : depth;
+  const into = continuation
+    ? depth.x * continuation.x + depth.y * continuation.y
+    : -(depth.x * outward.x + depth.y * outward.y);
+  return into < 0 ? { x: -depth.x, y: -depth.y } : depth;
 }
 
 export function computeSerifFrame({
@@ -91,9 +101,9 @@ export function computeSerifFrame({
   axisMode,
   axisAngle,
   axisTilt,
-  // Which side of the stroke its body is on: 1 the contour's left, -1 its
-  // right, 0 both. Only a single-sided stroke has an answer.
-  bodySide = 0,
+  // From the terminal toward where the stroke goes: the on-curve next to it.
+  // Depth is oriented by this, and the axis follows depth.
+  continuation = null,
 }) {
   const outward = vector.normalizeVector(tangent);
   let axis = vector.normalizeVector(
@@ -109,7 +119,7 @@ export function computeSerifFrame({
   axis = orientToLeft(axis, normal);
   if (axisMode === "tilt" && axisTilt) {
     const radians = (axisTilt * Math.PI) / 180;
-    const depth = depthForAxis(axis, outward);
+    const depth = depthForAxis(axis, outward, continuation);
     const cos = Math.cos(radians);
     const sin = Math.sin(radians);
     axis = {
@@ -133,28 +143,17 @@ export function computeSerifFrame({
     axis = orientToLeft(separateFromTangent(axis, outward), normal);
   }
 
-  let depth = depthForAxis(axis, outward);
+  const depth = depthForAxis(axis, outward, continuation);
 
-  // A forced axis almost along its stroke. Which way the serif faces is then
-  // read off the stroke's lean, and near parallel the lean is noise: reported
-  // on the `l` of skeletron, a Vertical serif on a stroke leaving its point
-  // exactly vertically flipped over when the point moved a quarter unit. On a
-  // single-sided stroke the body's side answers instead -- depth points into
-  // the body, and the axis keeps the handedness every ordinary frame has.
-  // Inside the band the free axis used to be held out of, and nowhere else.
-  const forced = axisMode !== "perpendicular" && axisMode !== "tilt";
-  const alongStroke =
-    Math.abs(axis.x * outward.y - axis.y * outward.x) <
-    Math.sin((MIN_AXIS_TANGENT_SEPARATION_DEG * Math.PI) / 180);
-  if (forced && bodySide && alongStroke) {
-    const body = { x: normal.x * bodySide, y: normal.y * bodySide };
-    depth = { x: -axis.y, y: axis.x };
-    if (depth.x * body.x + depth.y * body.y < 0) {
-      depth = { x: -depth.x, y: -depth.y };
-    }
-    const handedness = Math.sign(-normal.x * outward.y + normal.y * outward.x) || 1;
-    axis = { x: depth.y * handedness, y: -depth.x * handedness };
-  }
+  // The axis follows depth, through the cross of the normal with the tangent.
+  // That cross is plus or minus one whatever the axis does, while the axis's
+  // own component along the normal -- which used to orient it -- vanishes with
+  // the same stroke that makes depth's own test vanish, so the two went over
+  // together and the terminal came back turned rather than mirrored. Positive u
+  // still points at the contour's left, so a half stored as "left" is still the
+  // half on the left.
+  const handedness = Math.sign(-normal.x * outward.y + normal.y * outward.x) || 1;
+  axis = { x: depth.y * handedness, y: -depth.x * handedness };
 
   const origin = { x: endpoint.x, y: endpoint.y };
 

@@ -3076,6 +3076,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         position: "start",
         endpoint: firstOnCurvePoint,
         tangent: { x: -startTangent.x, y: -startTangent.y },
+        // Where the stroke goes from this terminal: its segment's far end.
+        continuation: vector.subVectors(segments[0].endPoint, firstOnCurvePoint),
         normal: getEffectiveNormal(
           firstOnCurvePoint,
           vector.rotateVector90CW(startTangent)
@@ -3276,6 +3278,10 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         position: "end",
         endpoint: lastOnCurvePoint,
         tangent: endTangent,
+        continuation: vector.subVectors(
+          segments[segments.length - 1].startPoint,
+          lastOnCurvePoint
+        ),
         normal: getEffectiveNormal(
           lastOnCurvePoint,
           vector.rotateVector90CW(endTangent)
@@ -7763,6 +7769,7 @@ function buildSerifCap({
   position,
   endpoint,
   tangent,
+  continuation = null,
   normal,
   leftSide,
   rightSide,
@@ -7782,14 +7789,7 @@ function buildSerifCap({
     axisMode: pointSerif?.axisMode ?? "perpendicular",
     axisAngle: pointSerif?.axisAngle ?? 0,
     axisTilt: pointSerif?.axisTilt ?? 0,
-    bodySide:
-      leftHalfWidth < COLLAPSED_SIDE_HALF_WIDTH &&
-      rightHalfWidth >= COLLAPSED_SIDE_HALF_WIDTH
-        ? -1
-        : rightHalfWidth < COLLAPSED_SIDE_HALF_WIDTH &&
-            leftHalfWidth >= COLLAPSED_SIDE_HALF_WIDTH
-          ? 1
-          : 0,
+    continuation,
   });
   const unitsContext = {
     unitsMode: serifUnitsMode,
