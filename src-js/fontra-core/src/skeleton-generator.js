@@ -1,4 +1,5 @@
 import { Bezier } from "bezier-js";
+import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
 import { computeHandlesFromFragment } from "./path-functions.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
@@ -48,7 +49,6 @@ import {
 } from "./skeleton-model.js";
 import { easedWidth, jointWidthRate } from "./skeleton-width-rate.js";
 import {
-  balanceSegment,
   computeTunniHandleLengths,
   shiftTensionsToMean,
 } from "./tunni-calculations.js";
@@ -3534,10 +3534,20 @@ function mergeOneSerifEasing(points, key) {
     p3,
   ];
 
-  // The fit tends to run one handle out to where the end directions meet.
-  // Harmonize's own Balance then brings both to one shared tension, the
-  // balanced curve closest to the fitted one.
-  const merged = balanceSegment(seed);
+  // Harmonized to the segment that follows it on the stroke, so the smooth
+  // point where they meet is G2: Harmonize's own nearest answer, moving only
+  // this segment's two handles and holding the stroke's still.
+  let merged = seed;
+  const following = [
+    at(wallIndex - 3 * step),
+    at(wallIndex - 2 * step),
+    at(wallIndex - step),
+  ];
+  if (!following[0].type && following[1].type && following[2].type) {
+    const stencil = [...following.map(({ x, y }) => ({ x, y })), ...seed];
+    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 1] });
+    merged = applyHandleScales(stencil, solved.scales).slice(3);
+  }
 
   const handles = [merged[1], merged[2]].map(({ x, y }) => ({
     x: Math.round(x),
