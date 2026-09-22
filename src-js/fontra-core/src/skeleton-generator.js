@@ -1,7 +1,6 @@
 import { Bezier } from "bezier-js";
 import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
-import { fitCubicToSpan } from "./path-simplification.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
@@ -3488,34 +3487,74 @@ function mergeOneSerifEasing(points, key) {
   const startTangent = direction(first[0], [first[1], first[2], first[3]]);
   const endBack = direction(last[3], [last[2], last[1], last[0]]);
   if (!startTangent || !endBack) return null;
-  const fit = fitCubicToSpan(
-    alive.map((cubic) => ({ points: cubic })),
-    startTangent,
-    { x: -endBack.x, y: -endBack.y }
-  );
-  if (!fit) return null;
+  // The starting curve. Each handle runs along its end's own direction at one
+  // shared tension, so the hump sits in the middle; the tension is the one at
+  // which the curve bulges as far from its chord as the run it replaces does.
+  // Bulge grows steadily with tension, so a fixed number of halvings finds it
+  // and nothing here can jump. Simplify's fit was used first and it did jump,
+  // 25 units in a quarter-unit drag on the `l` of skeletron: its pattern
+  // search is not continuous in its input.
+  //
+  // Both handles aim at the point where the two end directions meet. Where
+  // they meet ahead of both ends the curve cannot bend both ways; where they
+  // do not, the run hooks back on itself and one curve cannot hold it.
+  const p0 = first[0];
+  const p3 = last[3];
+  const unit = (v) => {
+    const l = Math.hypot(v.x, v.y);
+    return { x: v.x / l, y: v.y / l };
+  };
+  const d0 = unit(startTangent);
+  const d1 = unit(endBack);
+  const denominator = d0.x * d1.y - d0.y * d1.x;
+  if (Math.abs(denominator) < 1e-9) return null;
+  const toEnd = { x: p3.x - p0.x, y: p3.y - p0.y };
+  const reach0 = (toEnd.x * d1.y - toEnd.y * d1.x) / denominator;
+  const reach1 = (toEnd.x * d0.y - toEnd.y * d0.x) / denominator;
+  if (!(reach0 > 0 && reach1 > 0)) return null;
+  const chordLength = Math.hypot(toEnd.x, toEnd.y);
+  const fromChord = (point) =>
+    Math.abs((point.x - p0.x) * toEnd.y - (point.y - p0.y) * toEnd.x) / chordLength;
+  const bulgeOf = (cubicList) => {
+    let most = 0;
+    for (const cubic of cubicList) {
+      for (let i = 1; i < 32; i++) {
+        most = Math.max(most, fromChord(cubicPointAt(cubic, i / 32)));
+      }
+    }
+    return most;
+  };
+  const curveAt = (tension) => [
+    p0,
+    { x: p0.x + d0.x * reach0 * tension, y: p0.y + d0.y * reach0 * tension },
+    { x: p3.x + d1.x * reach1 * tension, y: p3.y + d1.y * reach1 * tension },
+    p3,
+  ];
+  const wanted = bulgeOf(alive);
+  let low = 0;
+  let high = 1;
+  for (let trip = 0; trip < 32; trip++) {
+    const middle = (low + high) / 2;
+    if (bulgeOf([curveAt(middle)]) < wanted) low = middle;
+    else high = middle;
+  }
+  const seed = curveAt((low + high) / 2);
 
   // Match the bend to the stroke's curve arriving at the wall point, moving
-  // only the merged curve's two handles.
-  let merged = fit;
+  // only the merged curve's two handles. The solver is continuous and holds
+  // both handles short of where the end directions meet, so the curve still
+  // bends one way.
+  let merged = seed;
   const arriving = [
     at(wallIndex - 3 * step),
     at(wallIndex - 2 * step),
     at(wallIndex - step),
   ];
   if (!arriving[0].type && arriving[1].type && arriving[2].type) {
-    const stencil = [...arriving.map(({ x, y }) => ({ x, y })), ...fit];
+    const stencil = [...arriving.map(({ x, y }) => ({ x, y })), ...seed];
     const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 1] });
-    // Taken only where the bend actually matches. A partial answer has run a
-    // handle into its ceiling without matching; with both there, both handles
-    // sit where the end directions cross and the curve reads as a corner. The
-    // plain fit is the better curve then.
-    if (solved.status === "solved") {
-      merged = applyHandleScales(stencil, solved.scales).slice(3);
-    }
+    merged = applyHandleScales(stencil, solved.scales).slice(3);
   }
-  // One bend, one way.
-  if (bendsBothWays(merged)) return null;
 
   const handles = [merged[1], merged[2]].map(({ x, y }) => ({
     x: Math.round(x),
@@ -3534,36 +3573,6 @@ function mergeOneSerifEasing(points, key) {
     if (step === -1 && i === index(tipIndex)) output.push(handles[1], handles[0]);
   });
   return output;
-}
-
-function bendsBothWays(cubic) {
-  const signs = new Set();
-  for (let i = 0; i <= 16; i++) {
-    const t = i / 16;
-    const m = 1 - t;
-    const d1 = {
-      x:
-        3 * m * m * (cubic[1].x - cubic[0].x) +
-        6 * m * t * (cubic[2].x - cubic[1].x) +
-        3 * t * t * (cubic[3].x - cubic[2].x),
-      y:
-        3 * m * m * (cubic[1].y - cubic[0].y) +
-        6 * m * t * (cubic[2].y - cubic[1].y) +
-        3 * t * t * (cubic[3].y - cubic[2].y),
-    };
-    const d2 = {
-      x:
-        6 * m * (cubic[2].x - 2 * cubic[1].x + cubic[0].x) +
-        6 * t * (cubic[3].x - 2 * cubic[2].x + cubic[1].x),
-      y:
-        6 * m * (cubic[2].y - 2 * cubic[1].y + cubic[0].y) +
-        6 * t * (cubic[3].y - 2 * cubic[2].y + cubic[1].y),
-    };
-    const turn = d1.x * d2.y - d1.y * d2.x;
-    if (Math.abs(turn) > 1e-6 * Math.pow(Math.hypot(d1.x, d1.y), 3))
-      signs.add(Math.sign(turn));
-  }
-  return signs.size > 1;
 }
 
 /**
@@ -7780,6 +7789,14 @@ function buildSerifCap({
     axisMode: pointSerif?.axisMode ?? "perpendicular",
     axisAngle: pointSerif?.axisAngle ?? 0,
     axisTilt: pointSerif?.axisTilt ?? 0,
+    bodySide:
+      leftHalfWidth < COLLAPSED_SIDE_HALF_WIDTH &&
+      rightHalfWidth >= COLLAPSED_SIDE_HALF_WIDTH
+        ? -1
+        : rightHalfWidth < COLLAPSED_SIDE_HALF_WIDTH &&
+            leftHalfWidth >= COLLAPSED_SIDE_HALF_WIDTH
+          ? 1
+          : 0,
   });
   const unitsContext = {
     unitsMode: serifUnitsMode,

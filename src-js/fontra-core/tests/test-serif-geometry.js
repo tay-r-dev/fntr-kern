@@ -1500,3 +1500,40 @@ describe("a serif's forced angle", () => {
     });
   }
 });
+
+// A forced axis almost along its stroke faces the stroke's body. Reported on the
+// `l` of skeletron: a Vertical serif on a stroke leaving its point exactly
+// vertically flipped over when the point moved a quarter unit, because which
+// way the serif faced was read off the stroke's lean, and the lean was zero.
+// On a single-sided stroke the body's side says it instead.
+describe("a forced axis almost along its stroke", () => {
+  const frameAt = (degrees, bodySide) => {
+    const radians = (degrees * Math.PI) / 180;
+    // A start terminal: the stroke leaves upward, leaning by `degrees`.
+    const travel = { x: Math.sin(radians), y: Math.cos(radians) };
+    return computeSerifFrame({
+      endpoint: { x: 0, y: 0 },
+      tangent: { x: -travel.x, y: -travel.y },
+      normal: { x: travel.y, y: -travel.x },
+      axisMode: "vertical",
+      bodySide,
+    });
+  };
+
+  for (const bodySide of [1, -1]) {
+    it(`faces the same way through vertical, body on side ${bodySide}`, () => {
+      const reference = frameAt(0, bodySide);
+      for (const degrees of [-10, -3, -0.1, 0.1, 3, 10]) {
+        const frame = frameAt(degrees, bodySide);
+        expectClose(frame.depth.x, reference.depth.x, `depth x at ${degrees}`, 1e-9);
+        expectClose(frame.axis.y, reference.axis.y, `axis y at ${degrees}`, 1e-9);
+      }
+    });
+  }
+
+  it("points its depth into the body", () => {
+    // Left of the stroke is +x here, so a body on the left is +x.
+    expect(frameAt(0, 1).depth.x).to.be.above(0);
+    expect(frameAt(0, -1).depth.x).to.be.below(0);
+  });
+});

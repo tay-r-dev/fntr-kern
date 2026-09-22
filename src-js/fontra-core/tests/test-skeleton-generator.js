@@ -5345,6 +5345,85 @@ describe("simplify and harmonize serif easings", () => {
     expect(Math.abs(incoming - outgoing) / Math.abs(incoming)).to.be.below(0.05);
   });
 
+  // Reported on the `l` of skeletron: its stroke leaves the serif point exactly
+  // vertically under a Vertical serif, and a one-unit move of that point made
+  // the easing point appear and disappear. Two causes: the serif flipped over,
+  // because which way it faced was read off a lean of zero, and the merged
+  // curve's fit jumped 25 units in a quarter-unit move. A sweep, not an
+  // assertion.
+  it("holds still under a small drag of a point whose stroke leaves vertically", () => {
+    const at = (dx) =>
+      normalizeSkeletonData({
+        contours: [
+          {
+            id: 42,
+            defaultWidth: 80,
+            singleSided: "right",
+            capStyle: "butt",
+            points: [
+              {
+                id: 43,
+                x: 253 + dx,
+                y: 307,
+                width: { left: 12.5, right: 12.5 },
+                capStyle: "serif",
+                serif: {
+                  axisMode: "vertical",
+                  left: {
+                    concavity: 1,
+                    easeCurvature: 0.57,
+                    easeDistance: 14,
+                    tension: 1,
+                    tipThickness: 26,
+                    wingLength: 27,
+                  },
+                  right: {
+                    concavity: 1,
+                    easeCurvature: 0.4,
+                    easeDistance: 50,
+                    tension: 1,
+                    tipThickness: 21,
+                    wingLength: 16,
+                    wingSlope: 6,
+                  },
+                },
+              },
+              { id: 44, x: 253, y: 391, type: "cubic" },
+              { id: 45, x: 195, y: 403, type: "cubic" },
+              { id: 46, x: 148, y: 403, smooth: true, width: { left: 14, right: 14 } },
+              { id: 47, x: 80, y: 403, type: "cubic" },
+              { id: 48, x: 43, y: 336, type: "cubic" },
+              { id: 49, x: 43, y: 242, smooth: true, width: { left: 15, right: 15 } },
+              { id: 76, x: 43, y: 144, type: "cubic" },
+              { id: 77, x: 87, y: 80, type: "cubic" },
+              { id: 53, x: 148, y: 80, smooth: true, width: { left: 14, right: 14 } },
+              { id: 57, x: 206, y: 80, type: "cubic" },
+              { id: 58, x: 253, y: 126, type: "cubic" },
+              { id: 56, x: 253, y: 179, width: { left: 15, right: 15 } },
+            ],
+          },
+        ],
+      });
+    let previous = null;
+    let worst = 0;
+    for (let k = -16; k <= 16; k++) {
+      const points = on(at(k / 4));
+      if (previous) {
+        expect(points, `count at ${k / 4}`).to.have.length(previous.length);
+        for (let i = 0; i < points.length; i++) {
+          worst = Math.max(
+            worst,
+            Math.hypot(points[i].x - previous[i].x, points[i].y - previous[i].y)
+          );
+        }
+      }
+      previous = points;
+    }
+    // A quarter unit of drag; the merged curve's handles move a few units per
+    // step where they follow it, never the tens a jump makes.
+    expect(worst).to.be.below(4);
+  });
+
   it("keeps every point on the curve the easing leaves", () => {
     // Nothing but the merged span changes: the points either side are where
     // they were.

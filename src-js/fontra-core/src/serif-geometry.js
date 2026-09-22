@@ -91,6 +91,9 @@ export function computeSerifFrame({
   axisMode,
   axisAngle,
   axisTilt,
+  // Which side of the stroke its body is on: 1 the contour's left, -1 its
+  // right, 0 both. Only a single-sided stroke has an answer.
+  bodySide = 0,
 }) {
   const outward = vector.normalizeVector(tangent);
   let axis = vector.normalizeVector(
@@ -130,7 +133,28 @@ export function computeSerifFrame({
     axis = orientToLeft(separateFromTangent(axis, outward), normal);
   }
 
-  const depth = depthForAxis(axis, outward);
+  let depth = depthForAxis(axis, outward);
+
+  // A forced axis almost along its stroke. Which way the serif faces is then
+  // read off the stroke's lean, and near parallel the lean is noise: reported
+  // on the `l` of skeletron, a Vertical serif on a stroke leaving its point
+  // exactly vertically flipped over when the point moved a quarter unit. On a
+  // single-sided stroke the body's side answers instead -- depth points into
+  // the body, and the axis keeps the handedness every ordinary frame has.
+  // Inside the band the free axis used to be held out of, and nowhere else.
+  const forced = axisMode !== "perpendicular" && axisMode !== "tilt";
+  const alongStroke =
+    Math.abs(axis.x * outward.y - axis.y * outward.x) <
+    Math.sin((MIN_AXIS_TANGENT_SEPARATION_DEG * Math.PI) / 180);
+  if (forced && bodySide && alongStroke) {
+    const body = { x: normal.x * bodySide, y: normal.y * bodySide };
+    depth = { x: -axis.y, y: axis.x };
+    if (depth.x * body.x + depth.y * body.y < 0) {
+      depth = { x: -depth.x, y: -depth.y };
+    }
+    const handedness = Math.sign(-normal.x * outward.y + normal.y * outward.x) || 1;
+    axis = { x: depth.y * handedness, y: -depth.x * handedness };
+  }
 
   const origin = { x: endpoint.x, y: endpoint.y };
 
@@ -567,11 +591,7 @@ export function buildHalfSerif({ side, wall, params }) {
   // smooth, which stays smooth.
   const wantedEase = Math.max(params.easeDistance ?? 0, 0);
   const bracketChord = lengthUV(subUV(tipTop, junction));
-  const easeDistance = Math.min(
-    wantedEase,
-    bracketChord,
-    Math.max(room - reach, 0)
-  );
+  const easeDistance = Math.min(wantedEase, bracketChord, Math.max(room - reach, 0));
   const depthClamped = wantedReach > reach || wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
 
