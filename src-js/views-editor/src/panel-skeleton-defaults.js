@@ -182,6 +182,21 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
+    // Simplify and harmonize serif easings: its own toggle, beside Delete
+    // collapsing points and independent of it, with the same warning, because
+    // it too removes points.
+    this.simplifyEasingToggle = html.createDomElement("labeled-toggle", {
+      label: translate("sidebar.skeleton-parameters.simplify-easing"),
+    });
+    this.simplifyEasingToggle.addEventListener("change", () =>
+      this._setMasterOutlineOption(
+        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING,
+        this.simplifyEasingToggle.checked
+      )
+    );
+    this.simplifyEasingWarning = html.div({ style: "opacity: 0.7;" }, [
+      translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
+    ]);
     // Ticket 78: the default width of the selected contours, under Delete
     // collapsing points. It is per contour, so it reads and writes the contours
     // the selection touches, and greys with none.
@@ -319,6 +334,8 @@ export default class SkeletonSettingsPanel extends Panel {
             [
               this.dropDeadPointsToggle,
               this.dropDeadPointsWarning,
+              this.simplifyEasingToggle,
+              this.simplifyEasingWarning,
               this.contourWidthField,
               this.handTurnAngleOnlyToggle,
             ]
@@ -432,11 +449,24 @@ export default class SkeletonSettingsPanel extends Panel {
   // written into the master's glyphs. It applies to every outline the
   // generator writes, not to the points that happen to be selected.
   async _setDropDeadPoints(on) {
+    await this._setMasterOutlineOption(
+      SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
+      on
+    );
+  }
+
+  // Both master outline options go through here: store the setting, show or
+  // hide its warning, and regenerate the open glyph so it takes effect.
+  async _setMasterOutlineOption(key, on) {
     await this._persistSourceDefaults(
-      { [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: on === true },
+      { [key]: on === true },
       translate("sidebar.skeleton-parameters.undo.set-defaults")
     );
-    this.dropDeadPointsWarning.hidden = on !== true;
+    const warning =
+      key === SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING
+        ? this.simplifyEasingWarning
+        : this.dropDeadPointsWarning;
+    warning.hidden = on !== true;
     // The outline is stored, not recomputed on every draw, so the open glyph
     // keeps the old one until something edits it. A mutation that changes
     // nothing is enough to make it regenerate.
@@ -1378,6 +1408,10 @@ export default class SkeletonSettingsPanel extends Panel {
     this.dropDeadPointsToggle.checked = dropDeadPoints;
     this.dropDeadPointsToggle.disabled = !!this.fontController.readOnly;
     this.dropDeadPointsWarning.hidden = !dropDeadPoints;
+    const simplifyEasing = this._sourceDefault(K.SERIF_SIMPLIFY_EASING) === true;
+    this.simplifyEasingToggle.checked = simplifyEasing;
+    this.simplifyEasingToggle.disabled = !!this.fontController.readOnly;
+    this.simplifyEasingWarning.hidden = !simplifyEasing;
 
     this._refreshContourWidthField();
     this._renderWidthPresetRows();

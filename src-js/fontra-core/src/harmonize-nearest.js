@@ -169,6 +169,10 @@ export function solveNearestHandleScales(stencil, options = {}) {
     // four-handle answer against the same solve restricted to the two handles
     // the other constructions move. Production never sets it.
     outerHandlesHold = false,
+    // Which of the four handles may move, as 1 or 0 in stencil order. A serif
+    // easing merged into the stroke's last curve moves only its own two: the
+    // curve it meets belongs to the stroke and stays put.
+    dials: requestedDials = null,
   } = options;
 
   const handles = handlesOf(stencil);
@@ -183,7 +187,7 @@ export function solveNearestHandleScales(stencil, options = {}) {
     };
   }
 
-  const dials = outerHandlesHold ? [0, 1, 1, 0] : [1, 1, 1, 1];
+  const dials = requestedDials ?? (outerHandlesHold ? [0, 1, 1, 0] : [1, 1, 1, 1]);
   const ceilings = ceilingScales(stencil, handles, maxHandleTension);
   const floors = handles.map((h, k) =>
     Math.min(minHandleLength / h.length, ceilings[k])

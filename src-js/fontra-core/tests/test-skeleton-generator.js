@@ -5179,3 +5179,197 @@ describe("the wall a serif cuts off", () => {
     ).to.equal(false);
   });
 });
+
+// Simplify and harmonize serif easings, a per-master option. Reported on the
+// `l` of skeletron: with the easing at its limit its far end sits on the tip's
+// top, so the stroke's last curve, the easing's point on the wall and the
+// rounding read as one bend drawn as two. The designer merged them by hand into
+// one curve with one hump, and it read better. The option does that.
+describe("simplify and harmonize serif easings", () => {
+  // A stem curving into a serif at its start, easing pushed past the bracket.
+  const stem = ({ easeDistance = 200, easeCurvature = 0.8, curved = true } = {}) =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          defaultWidth: 40,
+          capStyle: "butt",
+          points: [
+            {
+              id: 2,
+              x: 0,
+              y: 0,
+              capStyle: "serif",
+              serif: {
+                axisMode: "vertical",
+                left: { wingLength: 20, tipThickness: 20, easeDistance, easeCurvature },
+                right: {
+                  wingLength: 20,
+                  tipThickness: 20,
+                  easeDistance,
+                  easeCurvature,
+                },
+              },
+            },
+            ...(curved
+              ? [
+                  { id: 3, x: 60, y: 60, type: "cubic" },
+                  { id: 4, x: 160, y: 120, type: "cubic" },
+                ]
+              : []),
+            { id: 5, x: 260, y: curved ? 120 : 0 },
+            ...(curved
+              ? [
+                  { id: 7, x: 330, y: 120, type: "cubic" },
+                  { id: 8, x: 420, y: 160, type: "cubic" },
+                ]
+              : []),
+            { id: 6, x: 460, y: curved ? 220 : 0 },
+          ],
+        },
+      ],
+    });
+  const onCurves = (points) => points.filter((point) => !point.type).length;
+  const on = (data) =>
+    generateFromSkeleton(data, { simplifyEasing: true, removeCollapsedPoints: true })
+      .contours[0].points;
+  const off = (data) =>
+    generateFromSkeleton(data, { removeCollapsedPoints: true }).contours[0].points;
+
+  // On this stem one side's run bends one way from the stroke to the tip and
+  // merges. On the other the rounding hooks back up to a tip above the stroke,
+  // 35 degrees one way and then 125 the other: one curve cannot draw that
+  // without bending both ways, so that side keeps its points.
+  it("merges the side whose run bends one way, and only that side", () => {
+    expect(onCurves(on(stem()))).to.equal(onCurves(off(stem())) - 1);
+  });
+
+  // The `l` of skeletron as reported: a bowl curving into a vertical serif.
+  const reportedL = () =>
+    normalizeSkeletonData({
+      contours: [
+        {
+          id: 42,
+          defaultWidth: 80,
+          singleSided: "right",
+          capStyle: "butt",
+          points: [
+            {
+              id: 43,
+              x: 286,
+              y: 297,
+              width: { left: 12.5, right: 12.5 },
+              capStyle: "serif",
+              serif: {
+                axisMode: "vertical",
+                left: {
+                  concavity: 1,
+                  easeCurvature: 0.57,
+                  easeDistance: 165,
+                  tension: 1,
+                  tipThickness: 26,
+                  wingLength: 27,
+                },
+                right: {
+                  concavity: 1,
+                  easeCurvature: 0.81,
+                  easeDistance: 42,
+                  tension: 1,
+                  tipThickness: 21,
+                  wingLength: 16,
+                  wingSlope: 6,
+                },
+              },
+            },
+            { id: 44, x: 277, y: 389, type: "cubic" },
+            { id: 45, x: 211, y: 403, type: "cubic" },
+            {
+              id: 46,
+              x: 168,
+              y: 403,
+              smooth: true,
+              width: { left: 14, right: 14 },
+              nudge: { left: 0, right: -5 },
+            },
+            { id: 47, x: 85, y: 403, type: "cubic" },
+            { id: 48, x: 43, y: 336, type: "cubic" },
+            { id: 49, x: 43, y: 242, smooth: true, width: { left: 15, right: 15 } },
+            { id: 76, x: 43, y: 148, type: "cubic" },
+            { id: 77, x: 84, y: 80, type: "cubic" },
+            { id: 53, x: 165, y: 80, smooth: true, width: { left: 14, right: 14 } },
+            { id: 57, x: 226, y: 80, type: "cubic" },
+            { id: 58, x: 277, y: 121, type: "cubic" },
+            { id: 56, x: 291, y: 179, width: { left: 15, right: 15 } },
+          ],
+        },
+      ],
+    });
+  const endCurvature = ([a, b, c, d], atEnd) => {
+    const [p, q, r] = atEnd ? [d, c, b] : [a, b, c];
+    const first = { x: 3 * (q.x - p.x), y: 3 * (q.y - p.y) };
+    const second = { x: 6 * (r.x - 2 * q.x + p.x), y: 6 * (r.y - 2 * q.y + p.y) };
+    const k =
+      (first.x * second.y - first.y * second.x) / Math.hypot(first.x, first.y) ** 3;
+    return atEnd ? -k : k;
+  };
+
+  it("merges on the reported l exactly as the designer did by hand", () => {
+    // Three points fewer: the easing's point on the wall with its two handles,
+    // the end the culling already drops being gone either way.
+    expect(on(reportedL())).to.have.length(off(reportedL()).length - 3);
+  });
+
+  it("bends as the bowl does where the merged curve leaves it", () => {
+    const points = on(reportedL());
+    const at = (x, y) =>
+      points.findIndex(
+        (point) => !point.type && Math.round(point.x) === x && Math.round(point.y) === y
+      );
+    const joint = at(173, 375);
+    expect(joint, "the bowl point the merge starts from").to.be.at.least(0);
+    const bowl = [
+      points[joint - 3],
+      points[joint - 2],
+      points[joint - 1],
+      points[joint],
+    ];
+    const merged = [
+      points[joint],
+      points[joint + 1],
+      points[joint + 2],
+      points[joint + 3],
+    ];
+    const incoming = endCurvature(bowl, true);
+    const outgoing = endCurvature(merged, false);
+    // Whole-unit handles hold it to a few per cent.
+    expect(Math.abs(incoming - outgoing) / Math.abs(incoming)).to.be.below(0.05);
+  });
+
+  it("keeps every point on the curve the easing leaves", () => {
+    // Nothing but the merged span changes: the points either side are where
+    // they were.
+    const before = off(stem()).filter((point) => !point.type);
+    const after = on(stem()).filter((point) => !point.type);
+    const key = (point) => `${Math.round(point.x)},${Math.round(point.y)}`;
+    const kept = new Set(before.map(key));
+    for (const point of after) {
+      expect(kept.has(key(point)), `${key(point)} is new`).to.equal(true);
+    }
+  });
+
+  it("leaves the easing alone below its limit", () => {
+    const data = stem({ easeDistance: 5 });
+    expect(onCurves(on(data))).to.equal(onCurves(off(data)));
+  });
+
+  it("leaves a straight stem alone", () => {
+    const data = stem({ curved: false });
+    expect(onCurves(on(data))).to.equal(onCurves(off(data)));
+  });
+
+  it("does nothing unless the master asks", () => {
+    expect(off(stem())).to.deep.equal(
+      generateFromSkeleton(stem(), { removeCollapsedPoints: true }).contours[0].points
+    );
+  });
+});

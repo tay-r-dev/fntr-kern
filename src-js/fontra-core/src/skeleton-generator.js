@@ -1,5 +1,7 @@
 import { Bezier } from "bezier-js";
+import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
+import { fitCubicToSpan } from "./path-simplification.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
@@ -197,6 +199,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       skeletonContourId: skeletonContour.id,
       serifUnitsMode: options.serifUnitsMode ?? "absolute",
       removeCollapsedPoints: options.removeCollapsedPoints === true,
+      simplifyEasing: options.simplifyEasing === true,
     });
     for (const generatedContour of generatedContours) {
       settleSmoothFlags(generatedContour);
@@ -227,6 +230,7 @@ function stripPointProvenance(contour) {
     delete point._handleNudge;
     delete point._authoredAdjustment;
     delete point._serifCutWalls;
+    delete point._easeMerge;
   }
 }
 
@@ -3083,6 +3087,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         pointSerif: firstOnCurvePoint.serif,
         ownerPoint: firstOnCurvePoint,
         serifUnitsMode: options.serifUnitsMode,
+        simplifyEasing: options.simplifyEasing,
       });
       if (serifCap) {
         roundedLeftSide = serifCap.leftSide;
@@ -3282,6 +3287,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         pointSerif: lastOnCurvePoint.serif,
         ownerPoint: lastOnCurvePoint,
         serifUnitsMode: options.serifUnitsMode,
+        simplifyEasing: options.simplifyEasing,
       });
       if (serifCap) {
         roundedLeftSide = serifCap.leftSide;
@@ -3337,7 +3343,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
     // const alignedOutlinePoints = alignHandleDirections(outlinePoints, segments, null);
 
     const colinearPoints = enforceSmoothColinearity(
-      stripCornerRoundMetadata(outlinePoints),
+      stripCornerRoundMetadata(
+        options.simplifyEasing ? mergeSerifEasings(outlinePoints) : outlinePoints
+      ),
       true,
       {
         includeLinearNeighborCases: true,
@@ -3356,6 +3364,206 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
 
     return [contour];
   }
+}
+
+// "Simplify and harmonize", a per-master option, for serif easings only.
+//
+// With the easing at its limit its far end sits on the tip's top, so the stroke
+// arrives at the tip through two curves: the wall's last piece, and the
+// rounding. They meet at the easing's point on the wall in one direction, so
+// they are one bend drawn as two. Reported on the `l` of skeletron, where the
+// designer merged them by hand and the result read better. This does that:
+//
+//   1. fits one curve to the pieces from the stroke's previous point to the
+//      tip's top, keeping the direction at both ends (Simplify's own fit);
+//   2. moves only that curve's two handles until its bend where it leaves the
+//      stroke matches the curve arriving there (harmonize's nearest answer,
+//      holding the stroke's curve still).
+//
+// Not merged: a wall piece that is a straight line, which must stay straight;
+// a run the fit cannot hold as one curve; and a result that bends both ways.
+// The merge removes points, so the master forfeits interpolation against one
+// without it, the same trade as removing collapsed points.
+function mergeSerifEasings(points) {
+  let result = points;
+  const keys = new Set(
+    points
+      .filter((point) => point._easeMerge?.role === "release")
+      .map((point) => point._easeMerge.key)
+  );
+  for (const key of keys) {
+    result = mergeOneSerifEasing(result, key) ?? result;
+  }
+  return result;
+}
+
+function mergeOneSerifEasing(points, key) {
+  const count = points.length;
+  const index = (i) => ((i % count) + count) % count;
+  const at = (i) => points[index(i)];
+  const marked = (point, role) =>
+    point._easeMerge?.key === key && point._easeMerge.role === role;
+  const releaseIndex = points.findIndex((point) => marked(point, "release"));
+  if (releaseIndex < 0) return null;
+  const nextOnCurve = (from, step) => {
+    for (let k = 1; k < count; k++) {
+      if (!at(from + step * k).type) return from + step * k;
+    }
+    return null;
+  };
+  // Toward the cap is the way the easing's far end lies.
+  const forward = nextOnCurve(releaseIndex, 1);
+  const step = forward !== null && marked(at(forward), "ease") ? 1 : -1;
+  let tipIndex = null;
+  for (let k = 1; k < count; k++) {
+    if (marked(at(releaseIndex + step * k), "tip")) {
+      tipIndex = releaseIndex + step * k;
+      break;
+    }
+  }
+  const wallIndex = nextOnCurve(releaseIndex, -step);
+  if (tipIndex === null || wallIndex === null) return null;
+
+  // The span from the stroke's previous point to the tip's top, as pieces.
+  const span = [];
+  for (let i = wallIndex; ; i += step) {
+    span.push(at(i));
+    if (index(i) === index(tipIndex)) break;
+  }
+  const pieces = [];
+  let current = [span[0]];
+  for (const point of span.slice(1)) {
+    current.push(point);
+    if (!point.type) {
+      pieces.push(current);
+      current = [point];
+    }
+  }
+  const asCubic = (piece) =>
+    piece.length === 4
+      ? piece.map(({ x, y }) => ({ x, y }))
+      : piece.length === 2
+        ? [0, 1 / 3, 2 / 3, 1].map((t) => ({
+            x: piece[0].x + (piece[1].x - piece[0].x) * t,
+            y: piece[0].y + (piece[1].y - piece[0].y) * t,
+          }))
+        : null;
+  const cubics = pieces.map(asCubic);
+  if (cubics.some((cubic) => !cubic)) return null;
+  const length = (cubic) =>
+    Math.hypot(cubic[3].x - cubic[0].x, cubic[3].y - cubic[0].y);
+  // A piece whose points all sit within half a unit of its start draws nothing:
+  // the slope left between the easing's end and the tip's top, at the limit.
+  // The collapsed-point rule's own tolerance, not exact equality, because the
+  // easing lands on the tip's top to within floating-point dust.
+  const alive = cubics.filter((cubic) =>
+    cubic.some(
+      (point) =>
+        Math.hypot(point.x - cubic[0].x, point.y - cubic[0].y) >
+        COLLAPSED_SIDE_HALF_WIDTH
+    )
+  );
+  const wall = cubics[0];
+  // The wall piece has to be a curve: a straight stem edge stays straight.
+  const offChord = (point) => {
+    const chord = length(wall);
+    if (chord < 1e-6) return 0;
+    return Math.abs(
+      ((point.x - wall[0].x) * (wall[3].y - wall[0].y) -
+        (point.y - wall[0].y) * (wall[3].x - wall[0].x)) /
+        chord
+    );
+  };
+  if (Math.max(offChord(wall[1]), offChord(wall[2])) <= 0.5) return null;
+
+  const direction = (from, candidates) => {
+    for (const to of candidates) {
+      const d = { x: to.x - from.x, y: to.y - from.y };
+      if (Math.hypot(d.x, d.y) > 1e-9) return d;
+    }
+    return null;
+  };
+  const first = alive[0];
+  const last = alive.at(-1);
+  const startTangent = direction(first[0], [first[1], first[2], first[3]]);
+  const endBack = direction(last[3], [last[2], last[1], last[0]]);
+  if (!startTangent || !endBack) return null;
+  const fit = fitCubicToSpan(
+    alive.map((cubic) => ({ points: cubic })),
+    startTangent,
+    { x: -endBack.x, y: -endBack.y }
+  );
+  if (!fit) return null;
+
+  // Match the bend to the stroke's curve arriving at the wall point, moving
+  // only the merged curve's two handles.
+  let merged = fit;
+  const arriving = [
+    at(wallIndex - 3 * step),
+    at(wallIndex - 2 * step),
+    at(wallIndex - step),
+  ];
+  if (!arriving[0].type && arriving[1].type && arriving[2].type) {
+    const stencil = [...arriving.map(({ x, y }) => ({ x, y })), ...fit];
+    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 1] });
+    // Taken only where the bend actually matches. A partial answer has run a
+    // handle into its ceiling without matching; with both there, both handles
+    // sit where the end directions cross and the curve reads as a corner. The
+    // plain fit is the better curve then.
+    if (solved.status === "solved") {
+      merged = applyHandleScales(stencil, solved.scales).slice(3);
+    }
+  }
+  // One bend, one way.
+  if (bendsBothWays(merged)) return null;
+
+  const handles = [merged[1], merged[2]].map(({ x, y }) => ({
+    x: Math.round(x),
+    y: Math.round(y),
+    type: "cubic",
+  }));
+  const interior = new Set();
+  for (let i = wallIndex + step; index(i) !== index(tipIndex); i += step) {
+    interior.add(index(i));
+  }
+  const output = [];
+  points.forEach((point, i) => {
+    if (interior.has(i)) return;
+    output.push(point);
+    if (step === 1 && i === index(wallIndex)) output.push(...handles);
+    if (step === -1 && i === index(tipIndex)) output.push(handles[1], handles[0]);
+  });
+  return output;
+}
+
+function bendsBothWays(cubic) {
+  const signs = new Set();
+  for (let i = 0; i <= 16; i++) {
+    const t = i / 16;
+    const m = 1 - t;
+    const d1 = {
+      x:
+        3 * m * m * (cubic[1].x - cubic[0].x) +
+        6 * m * t * (cubic[2].x - cubic[1].x) +
+        3 * t * t * (cubic[3].x - cubic[2].x),
+      y:
+        3 * m * m * (cubic[1].y - cubic[0].y) +
+        6 * m * t * (cubic[2].y - cubic[1].y) +
+        3 * t * t * (cubic[3].y - cubic[2].y),
+    };
+    const d2 = {
+      x:
+        6 * m * (cubic[2].x - 2 * cubic[1].x + cubic[0].x) +
+        6 * t * (cubic[3].x - 2 * cubic[2].x + cubic[1].x),
+      y:
+        6 * m * (cubic[2].y - 2 * cubic[1].y + cubic[0].y) +
+        6 * t * (cubic[3].y - 2 * cubic[2].y + cubic[1].y),
+    };
+    const turn = d1.x * d2.y - d1.y * d2.x;
+    if (Math.abs(turn) > 1e-6 * Math.pow(Math.hypot(d1.x, d1.y), 3))
+      signs.add(Math.sign(turn));
+  }
+  return signs.size > 1;
 }
 
 /**
@@ -7561,6 +7769,7 @@ function buildSerifCap({
   pointSerif,
   ownerPoint,
   serifUnitsMode,
+  simplifyEasing = false,
 }) {
   const outward = vector.normalizeVector(tangent);
   if (!isUsableDirection(outward)) return null;
@@ -7643,6 +7852,38 @@ function buildSerifCap({
   const capPoints =
     position === "end" ? terminal.points : [...terminal.points].reverse();
   for (const point of capPoints) withRoundCapProvenance(point, ownerPoint);
+  const emittedLeft = trimSideForRoundCapEmission(
+    leftSplit.sidePoints,
+    position,
+    leftSplit.referenceEndpointIndex
+  );
+  const emittedRight = trimSideForRoundCapEmission(
+    rightSplit.sidePoints,
+    position,
+    rightSplit.referenceEndpointIndex
+  );
+  // Where the master asks for it, each half whose easing sits at its limit is
+  // marked for mergeSerifEasings: the release on the wall, and the easing's far
+  // end and the tip's top, which stand on one spot. The merge runs on the
+  // assembled outline, where both sides and the cap are in their final order.
+  if (simplifyEasing) {
+    const releaseOf = (emitted) => {
+      const onCurves = emitted.filter((point) => !point.type);
+      return position === "end" ? onCurves.at(-1) : onCurves[0];
+    };
+    for (const [side, emitted, easeEndIndex, tipIndex] of [
+      ["left", emittedLeft, 2, 5],
+      ["right", emittedRight, 16, 13],
+    ]) {
+      if (!terminal.halves[side].easeAtLimit) continue;
+      const key = `${ownerPoint?._sourcePointId ?? "serif"}/${position}/${side}`;
+      const release = releaseOf(emitted);
+      if (!release) continue;
+      release._easeMerge = { key, role: "release" };
+      terminal.points[easeEndIndex]._easeMerge = { key, role: "ease" };
+      terminal.points[tipIndex]._easeMerge = { key, role: "tip" };
+    }
+  }
   // The piece of each wall the serif throws away, from the stroke's end up to
   // where the serif lets go: the edge the terminal is cut into. Published so
   // the editor can draw it, and the designer can see the curve they are
@@ -7671,16 +7912,8 @@ function buildSerifCap({
     };
   }
   return {
-    leftSide: trimSideForRoundCapEmission(
-      leftSplit.sidePoints,
-      position,
-      leftSplit.referenceEndpointIndex
-    ),
-    rightSide: trimSideForRoundCapEmission(
-      rightSplit.sidePoints,
-      position,
-      rightSplit.referenceEndpointIndex
-    ),
+    leftSide: emittedLeft,
+    rightSide: emittedRight,
     capPoints,
     depthClamped:
       terminal.halves.left.depthClamped || terminal.halves.right.depthClamped,

@@ -566,9 +566,10 @@ export function buildHalfSerif({ side, wall, params }) {
   // for exactly that. On a straight wall it rounds a joint that is already
   // smooth, which stays smooth.
   const wantedEase = Math.max(params.easeDistance ?? 0, 0);
+  const bracketChord = lengthUV(subUV(tipTop, junction));
   const easeDistance = Math.min(
     wantedEase,
-    lengthUV(subUV(tipTop, junction)),
+    bracketChord,
     Math.max(room - reach, 0)
   );
   const depthClamped = wantedReach > reach || wantedEase > easeDistance;
@@ -679,6 +680,11 @@ export function buildHalfSerif({ side, wall, params }) {
     tipBottom,
     depthClamped,
     releaseParameter,
+    // The easing has eaten the whole bracket: its far end is the top of the
+    // tip, and a real rounding lies between the wall and it. What a master's
+    // "simplify and harmonize" option merges into the stroke's last curve.
+    easeAtLimit:
+      easeDistance > 0 && easeCurvature > 0 && easeDistance >= bracketChord - 1e-9,
   };
 }
 

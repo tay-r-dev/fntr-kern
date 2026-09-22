@@ -656,6 +656,7 @@ export const strings = {
   "sidebar.skeleton-parameters.default-caps": "Default caps",
   "sidebar.skeleton-parameters.serif-presets.edit": "Edit shape",
   "sidebar.skeleton-parameters.drop-dead-points": "Delete collapsing points",
+  "sidebar.skeleton-parameters.simplify-easing": "Simplify and harmonize serif easings",
   "sidebar.skeleton-parameters.drop-dead-points.warning":
     "Glyphs in this master stop interpolating with other masters.",
   "sidebar.skeleton-parameters.cap-style.flat": "Flat",

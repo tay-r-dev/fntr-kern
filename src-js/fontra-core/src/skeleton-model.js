@@ -295,6 +295,7 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   CUSTOM_CAP_DROP: "customCapDrop",
   SERIF_UNITS_MODE: "serifUnitsMode",
   SERIF_REMOVE_COLLAPSED: "serifRemoveCollapsedPoints",
+  SERIF_SIMPLIFY_EASING: "serifSimplifyEasing",
   CUSTOM_SERIFS: "customSerifs",
 });
 
@@ -309,6 +310,7 @@ export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_UNITS_MODE]: "absolute",
   [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED]: false,
+  [SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING]: false,
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
 });
 
@@ -394,6 +396,10 @@ const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   [
     SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED,
     ["serifDefaults", "removeCollapsedPoints"],
+  ],
+  [
+    SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING,
+    ["serifDefaults", "simplifyEasing"],
   ],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS, ["serifProfiles"]],
 ]);

@@ -242,6 +242,12 @@ export class EditorController extends ViewController {
             location,
             SKELETON_SOURCE_DEFAULT_KEYS.SERIF_REMOVE_COLLAPSED
           ) === true,
+        simplifyEasing:
+          resolveEffectiveSourceSkeletonDefault(
+            this.fontController,
+            location,
+            SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING
+          ) === true,
       };
     });
 
