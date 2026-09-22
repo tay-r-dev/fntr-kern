@@ -48,6 +48,7 @@ import {
 } from "./skeleton-model.js";
 import { easedWidth, jointWidthRate } from "./skeleton-width-rate.js";
 import {
+  balanceSegment,
   computeTunniHandleLengths,
   shiftTensionsToMean,
 } from "./tunni-calculations.js";
@@ -3533,7 +3534,10 @@ function mergeOneSerifEasing(points, key) {
     p3,
   ];
 
-  const merged = seed;
+  // The fit tends to run one handle out to where the end directions meet.
+  // Harmonize's own Balance then brings both to one shared tension, the
+  // balanced curve closest to the fitted one.
+  const merged = balanceSegment(seed);
 
   const handles = [merged[1], merged[2]].map(({ x, y }) => ({
     x: Math.round(x),
