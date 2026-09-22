@@ -4,7 +4,8 @@
 **Scope:** `serif-geometry.js`, the serif parts of `skeleton-generator.js`, the serif writers
 and presets in `skeleton-model.js`, and the serif panel code.
 
-This review looks for complexity only. It does not look for bugs. Nothing here is applied yet.
+This review looks for complexity only. It does not look for bugs. Behavior faults and places
+where the code disagrees with the docs are in `serif-semantic-review.md` in this folder. Nothing here is applied yet.
 Line numbers are from the commit above and will drift. The function names are the stable anchors.
 
 **Result:** about 96 lines can go. The review found no structural problem. Most items are two
