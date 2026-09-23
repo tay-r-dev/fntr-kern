@@ -5,6 +5,7 @@ import {
   makeSlideCandidate,
   projectPointToSegment,
   roundSlideCandidate,
+  slideInsertions,
   slideIntervalsCompatible,
   slidePointOnContour,
   splitSegmentAt,
@@ -621,5 +622,26 @@ describe("roundSlideCandidate", () => {
     const rounded = roundSlideCandidate(contour, slid);
     expect(rounded.points[0]).to.deep.equal(contour.points[0]);
     expect(rounded.points[7]).to.deep.equal(contour.points[7]);
+  });
+});
+
+describe("slideInsertions at an open endpoint", () => {
+  it("keeps the insertions on the one segment, clamping the passed ones to the new end", () => {
+    const contour = {
+      points: [
+        { ...onCurve(0, 0), id: 1 },
+        { ...onCurve(100, 0), id: 2 },
+        { ...onCurve(100, 100), id: 3 },
+      ],
+      isClosed: false,
+    };
+    const candidate = slidePointOnContour(contour, 0, { x: 40, y: 0 });
+    const moved = slideInsertions(contour, candidate, candidate.side, candidate.t, [
+      { pointId: 1, t: 0.2 },
+      { pointId: 1, t: 0.7 },
+    ]);
+    expect(moved[0]).to.deep.include({ pointId: 1, t: 0 });
+    expect(moved[1].pointId).to.equal(1);
+    expect(moved[1].t).to.be.closeTo(0.5, 1e-9);
   });
 });

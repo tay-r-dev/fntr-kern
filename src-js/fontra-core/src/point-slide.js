@@ -309,7 +309,9 @@ export function slideInsertions(contour, candidate, side, t, insertions) {
   const newFar = side === "previous" ? after.next : after.previous;
   const idAt = (index) => contour.points[index].id;
   const traveledId = idAt(traveled.startIndex);
-  const farId = idAt(oldFar.startIndex);
+  // An open endpoint has no far segment. What the point slid past is beyond
+  // the new end, so an insertion there is held at that end.
+  const farId = oldFar ? idAt(oldFar.startIndex) : null;
   return insertions.map((insertion) => {
     let segment;
     if (insertion.pointId === traveledId) {
@@ -319,8 +321,11 @@ export function slideInsertions(contour, candidate, side, t, insertions) {
       if (side === "next" && insertion.t >= t) {
         return { ...insertion, t: t < 1 ? (insertion.t - t) / (1 - t) : 0 };
       }
+      if (!oldFar) {
+        return { ...insertion, t: side === "previous" ? 1 : 0 };
+      }
       segment = traveled;
-    } else if (insertion.pointId === farId) {
+    } else if (farId !== null && insertion.pointId === farId) {
       segment = oldFar;
     } else {
       return insertion;
