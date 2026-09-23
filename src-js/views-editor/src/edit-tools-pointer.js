@@ -28,7 +28,7 @@ import {
   makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
-import { dragSuppressesSnapping } from "@fontra/core/snapping.js";
+import { dragSnapPolicy } from "@fontra/core/snapping.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   assert,
@@ -82,6 +82,7 @@ import {
 } from "./skeleton-editing.js";
 import {
   SnappingSession,
+  draggedPointsAreCorners,
   constraintLineForDelta,
   draggedSnapPositions,
   selectedPointIndices,
@@ -1078,6 +1079,10 @@ export class PointerTool extends BaseTool {
       const snapSession = new SnappingSession(sceneController, {
         excludePointIndices: selectedPointIndices(sceneController),
       });
+      const cornersOnly = draggedPointsAreCorners(
+        sceneController,
+        layerInfo[0].layerGlyph
+      );
 
       this.sceneController.scrollAdjustBehavior = "pin-glyph-origin";
       let editChange;
@@ -1129,7 +1134,9 @@ export class PointerTool extends BaseTool {
           event.shiftKey && behaviorName !== "generated-handle-turn"
             ? constraintLineForDelta(rawDelta, snapStartPositions[0])
             : null;
-        snapSession.suppressed = dragSuppressesSnapping(event, this);
+        const snapPolicy = dragSnapPolicy(event, this, { cornersOnly });
+        snapSession.suppressed = snapPolicy.suppressed;
+        snapSession.only = snapPolicy.only;
         const wouldBe = snapStartPositions.map((point) => ({
           x: point.x + rawDelta.x,
           y: point.y + rawDelta.y,

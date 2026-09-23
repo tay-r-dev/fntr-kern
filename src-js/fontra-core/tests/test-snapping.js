@@ -16,6 +16,7 @@ import {
   resolveSnap,
   resolveSnapForPoints,
   roundSnapped,
+  dragSnapPolicy,
   dragSuppressesSnapping,
 } from "@fontra/core/snapping.js";
 import { expect } from "chai";
@@ -1134,5 +1135,40 @@ describe("drag modes that suppress snapping", () => {
     expect(dragSuppressesSnapping({}, { fixedRibCompressMode: true }, true)).to.equal(
       false
     );
+  });
+});
+
+describe("the snap policy of a modified drag", () => {
+  afterEach(() => resetSnapParameters());
+
+  it("lets an Alt drag of corner points snap to guides alone", () => {
+    expect(dragSnapPolicy({ altKey: true }, {}, { cornersOnly: true })).to.deep.equal({
+      suppressed: false,
+      only: "guides",
+    });
+    expect(
+      dragSnapPolicy({ altKey: true }, {}, { cornersOnly: false }).suppressed
+    ).to.equal(true);
+  });
+
+  it("gives each modifier its own switch", () => {
+    SNAP_PARAMETERS.snapDuringAlt = 1;
+    expect(dragSnapPolicy({ altKey: true }, {})).to.deep.equal({
+      suppressed: false,
+      only: undefined,
+    });
+    SNAP_PARAMETERS.snapDuringPointSlide = 1;
+    expect(dragSnapPolicy({}, { pointSlideMode: true }).suppressed).to.equal(false);
+    expect(dragSnapPolicy({}, { tangentRibMode: true }).suppressed).to.equal(true);
+  });
+
+  it("offers only guides when asked for guides", () => {
+    const found = collectCandidates(
+      { metrics: [{ value: 10 }], guides: [{ x: 0, y: 20, angle: 0 }] },
+      { x: 0, y: 0 },
+      { pixelUnit: 1, only: "guides" }
+    );
+    expect(found).to.have.length(1);
+    expect(found[0].y).to.equal(20);
   });
 });

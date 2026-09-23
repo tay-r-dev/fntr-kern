@@ -254,6 +254,17 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   // the drag is also the one place a designer might want the width to land on a
   // metric.
   snapDuringFixedRib: 0,
+  // The other modified drags, each with its own switch, all off: each states
+  // its own geometry, and a magnet pulling the point elsewhere fights it.
+  snapDuringAlt: 0,
+  snapDuringTangentRib: 0,
+  snapDuringTensionAware: 0,
+  snapDuringPowerTensionAware: 0,
+  snapDuringIndependentRib: 0,
+  snapDuringPointSlide: 0,
+  // An Alt drag of corner points only still snaps to guides. A corner has no
+  // tangent for Alt to hold, and a guide is where a designer puts a corner.
+  altCornersSnapToGuides: 1,
   // Per-kind reach, as a multiple of reachPixels. This is what lets reach and
   // precedence move apart: a kind can grab from further away without also winning
   // ties it should lose, which raising its weight would do.
@@ -709,6 +720,9 @@ function nearestPerSide(sources, cursor, axis) {
 // everything else out of the way, which is the point of holding it; otherwise
 // each switchable kind answers to its own switch.
 function candidateFilter(only) {
+  if (only === "guides") {
+    return (candidate) => candidate.guide === true;
+  }
   if (only) {
     const kind = only === "curvature" ? KIND.CURVATURE : KIND.DIAGONAL;
     return (candidate) => candidate.kind === kind;
@@ -743,16 +757,17 @@ export function collectCandidates(scene, cursor, { pixelUnit, only }) {
   }
 
   for (const guide of scene.guides || []) {
-    candidates.push(
-      makeLineCandidate({
+    candidates.push({
+      ...makeLineCandidate({
         x: guide.x,
         y: guide.y,
         angle: guide.angle,
         kind: isOrthogonal(guide.angle) ? KIND.ORTHOGONAL : KIND.DIAGONAL,
         source: { x: guide.x, y: guide.y },
         permanent: true,
-      })
-    );
+      }),
+      guide: true,
+    });
   }
 
   // Rays are chosen per kind, not across all points at once: the nearest point
@@ -862,13 +877,39 @@ export function dragSuppressesSnapping(
   modes,
   snapDuringFixedRib = SNAP_PARAMETERS.snapDuringFixedRib
 ) {
-  return !!(
-    event?.altKey ||
-    modes.tangentRibMode ||
-    modes.tensionAwareMode ||
-    modes.powerTensionAwareMode ||
-    modes.independentRibMode ||
-    modes.pointSlideMode ||
-    ((modes.fixedRibMode || modes.fixedRibCompressMode) && !snapDuringFixedRib)
-  );
+  return dragSnapPolicy(event, modes, { snapDuringFixedRib }).suppressed;
+}
+
+// Which modifier each switch answers to. Alt is read off the event, the rest off
+// the tool's modes.
+const MODIFIER_SNAP_SWITCHES = [
+  ["tangentRibMode", "snapDuringTangentRib"],
+  ["tensionAwareMode", "snapDuringTensionAware"],
+  ["powerTensionAwareMode", "snapDuringPowerTensionAware"],
+  ["independentRibMode", "snapDuringIndependentRib"],
+  ["pointSlideMode", "snapDuringPointSlide"],
+  ["fixedRibMode", "snapDuringFixedRib"],
+  ["fixedRibCompressMode", "snapDuringFixedRib"],
+];
+
+// What a modified drag may snap to: `suppressed`, or `only` a narrower set.
+// `cornersOnly` says every dragged point is a corner, which lets an Alt drag
+// keep the guides.
+export function dragSnapPolicy(
+  event,
+  modes,
+  { cornersOnly = false, snapDuringFixedRib = SNAP_PARAMETERS.snapDuringFixedRib } = {}
+) {
+  const switches = { ...SNAP_PARAMETERS, snapDuringFixedRib };
+  for (const [mode, key] of MODIFIER_SNAP_SWITCHES) {
+    if (modes?.[mode] && !switches[key]) {
+      return { suppressed: true, only: undefined };
+    }
+  }
+  if (event?.altKey && !switches.snapDuringAlt) {
+    return cornersOnly && switches.altCornersSnapToGuides
+      ? { suppressed: false, only: "guides" }
+      : { suppressed: true, only: undefined };
+  }
+  return { suppressed: false, only: undefined };
 }

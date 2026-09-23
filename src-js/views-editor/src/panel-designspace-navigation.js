@@ -197,10 +197,62 @@ const LIST_HEADER_ANIMATION_STYLE = `
 }
 `;
 
+// One row per control: label, input, readout. Every input carries the id the
+// snapping debug setup looks it up by.
+function snappingDebugRows(controls) {
+  return controls.flatMap((control) => [
+    html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [control.label]),
+    control.type === "toggle"
+      ? html.input({
+          id: `snapping-debug-${control.path.replace(".", "-")}`,
+          type: "checkbox",
+          style: "justify-self: start;",
+        })
+      : html.input({
+          id: `snapping-debug-${control.path.replace(".", "-")}`,
+          type: "range",
+          min: control.min,
+          max: control.max,
+          step: control.step,
+        }),
+    html.span(
+      {
+        id: `snapping-debug-${control.path.replace(".", "-")}-value`,
+        style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
+      },
+      [""]
+    ),
+  ]);
+}
+
+// Snapping under each modifier, one switch each (snapping.js, dragSnapPolicy).
+const MOD_SNAP_CONTROLS = [
+  { path: "snapDuringAlt", label: "Alt", type: "toggle" },
+  {
+    path: "altCornersSnapToGuides",
+    label: "Alt: corners snap to guides",
+    type: "toggle",
+  },
+  {
+    path: "snapDuringFixedRib",
+    label: "Snap during a fixed-rib drag (D / S)",
+    type: "toggle",
+  },
+  { path: "snapDuringTangentRib", label: "Z (tangent rib)", type: "toggle" },
+  { path: "snapDuringTensionAware", label: "X (tension-aware)", type: "toggle" },
+  {
+    path: "snapDuringPowerTensionAware",
+    label: "C (power tension-aware)",
+    type: "toggle",
+  },
+  { path: "snapDuringIndependentRib", label: "A (independent rib)", type: "toggle" },
+  { path: "snapDuringPointSlide", label: "V (point slide)", type: "toggle" },
+];
+
 // The snapping numbers, as one table. Each row states its own range, so the panel
 // is generated rather than written out, and adding a parameter is one line here.
 // Labels are literal: this is a tuning aid, not shipped chrome.
-const SNAPPING_DEBUG_CONTROLS = [
+const SNAPPING_TUNING_CONTROLS = [
   { path: "reachPixels", label: "Reach (px)", min: 1, max: 60, step: 1 },
   { path: "noSnapPull", label: "Release floor", min: 0, max: 1, step: 0.01 },
   { path: "holdBonus", label: "Hold bonus", min: 1, max: 3, step: 0.05 },
@@ -266,11 +318,6 @@ const SNAPPING_DEBUG_CONTROLS = [
     min: 0.25,
     max: 4,
     step: 0.25,
-  },
-  {
-    path: "snapDuringFixedRib",
-    label: "Snap during a fixed-rib drag (D / S)",
-    type: "toggle",
   },
   // A kind is a direction, so the table below is a direction table. What a line
   // came from does not enter it: a metric, a guide and a point's own ray all run
@@ -376,6 +423,8 @@ const SNAPPING_DEBUG_CONTROLS = [
     step: 0.05,
   },
 ];
+
+const SNAPPING_DEBUG_CONTROLS = [...SNAPPING_TUNING_CONTROLS, ...MOD_SNAP_CONTROLS];
 
 function readSnapParameter(path) {
   if (path.startsWith("reaches.")) {
@@ -1084,6 +1133,24 @@ export default class DesignspaceNavigationPanel extends Panel {
         ]),
       },
       {
+        // Which modified drags snap. Each modifier states its own geometry, so
+        // all are off by default; these switches are for trying the other way.
+        id: "modifier-snapping-debug-accordion-item",
+        label: "Modifier snapping (debug)",
+        open: false,
+        content: html.div(
+          {
+            style: `
+              display: grid;
+              grid-template-columns: auto 1fr auto;
+              gap: 0.35em 0.5em;
+              align-items: center;
+            `,
+          },
+          snappingDebugRows(MOD_SNAP_CONTROLS)
+        ),
+      },
+      {
         id: "snapping-debug-accordion-item",
         label: "Snapping (debug)",
         open: false,
@@ -1097,31 +1164,7 @@ export default class DesignspaceNavigationPanel extends Panel {
                 align-items: center;
               `,
             },
-            SNAPPING_DEBUG_CONTROLS.flatMap((control) => [
-              html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
-                control.label,
-              ]),
-              control.type === "toggle"
-                ? html.input({
-                    id: `snapping-debug-${control.path.replace(".", "-")}`,
-                    type: "checkbox",
-                    style: "justify-self: start;",
-                  })
-                : html.input({
-                    id: `snapping-debug-${control.path.replace(".", "-")}`,
-                    type: "range",
-                    min: control.min,
-                    max: control.max,
-                    step: control.step,
-                  }),
-              html.span(
-                {
-                  id: `snapping-debug-${control.path.replace(".", "-")}-value`,
-                  style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
-                },
-                [""]
-              ),
-            ])
+            snappingDebugRows(SNAPPING_TUNING_CONTROLS)
           ),
           html.div({ style: "padding-top: 0.6em;" }, [
             html.button({ id: "snapping-debug-reset" }, ["Reset to defaults"]),

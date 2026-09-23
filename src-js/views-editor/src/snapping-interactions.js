@@ -249,6 +249,25 @@ export function draggedSnapPositions(sceneController, layerGlyph) {
   return positions;
 }
 
+// Whether the drag moves corner points and nothing else, on the path and on
+// the skeleton alike. A handle or a smooth point in the selection says no.
+export function draggedPointsAreCorners(sceneController, layerGlyph) {
+  const selection = parseSelection(sceneController.selection);
+  const points = [];
+  const path = layerGlyph?.path;
+  for (const index of selection.point || []) {
+    points.push(path?.getPoint(index));
+  }
+  const skeletonData = getSkeletonData(layerGlyph);
+  for (const key of selection.skeletonPoint || []) {
+    const [contourId, pointId] = key.split("/").map(Number);
+    points.push(getSkeletonPointAddress(skeletonData, contourId, pointId)?.point);
+  }
+  return (
+    points.length > 0 && points.every((point) => point && !point.type && !point.smooth)
+  );
+}
+
 // A source the designer cannot see is a source they cannot account for. A point
 // off the left edge emits a horizontal ray that crosses the whole canvas, and
 // being pulled by geometry that is not on screen reads as the canvas moving on
@@ -511,6 +530,9 @@ export class SnappingSession {
     // fixed-rib drag, a tangent-only rib move, an equalize, a tension-aware
     // edit - has nothing to gain from a magnet moving the point somewhere else.
     this.suppressed = false;
+    // A narrower set the drag itself asks for, as a modified drag does. It
+    // gives way to a held snap key, which the designer pressed on purpose.
+    this.only = undefined;
     this._lastCursor = null;
     this._lastTime = 0;
     this._epoch = sceneController.sceneModel.snapSceneEpoch || 0;
@@ -538,7 +560,7 @@ export class SnappingSession {
     if (sceneModel.snapCurvatureOnly) {
       return "curvature";
     }
-    return sceneModel.snapDiagonalOnly ? "diagonal" : undefined;
+    return sceneModel.snapDiagonalOnly ? "diagonal" : this.only;
   }
 
   // Pointer speed in screen pixels per second. The resolver takes it in pixels so
