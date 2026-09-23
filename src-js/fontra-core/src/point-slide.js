@@ -455,14 +455,12 @@ export function slideIntervalsCompatible(adjacentA, adjacentB) {
  * @param {number} pointIndex - array index of the on-curve point
  * @param {Object} pointer - {x, y}
  * @returns {Object|null} the candidate, plus {side, t}, or null where the
- *   slide is refused: the point is an open contour's endpoint, is off-curve,
- *   or has no interval to slide on
+ *   slide is refused: the point is off-curve, or has no segment to slide on.
+ *   An open contour's endpoint slides along its one segment.
  */
 export function slidePointOnContour(contour, pointIndex, pointer, options = {}) {
   const adjacent = getAdjacentSegments(contour, pointIndex);
-  // An open endpoint has one segment and nothing bounding its far side: there
-  // is no interval to slide within, so the gesture is refused outright.
-  if (!adjacent.previous || !adjacent.next) {
+  if (!adjacent.previous && !adjacent.next) {
     return null;
   }
   const destination = chooseSlideInterval(

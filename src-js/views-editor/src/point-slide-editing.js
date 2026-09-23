@@ -20,9 +20,9 @@ export const POINT_SLIDE_BEHAVIOR_NAME = "point-slide";
 
 /**
  * Point slide engages on V-hold with exactly one on-curve point selected: a
- * drawn point or a skeleton centerline point. The point needs two bounding
- * on-curves to slide between, so an open contour's endpoint does not engage,
- * and neither does a point on a generated contour (its skeleton owns it).
+ * drawn point or a skeleton centerline point. An open contour's endpoint
+ * slides along its one segment. A point on a generated contour does not
+ * engage (its skeleton owns it).
  * When the slide is not possible the behavior name is null and the drag falls
  * through to the plain move.
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
@@ -49,7 +49,8 @@ export function getPointSlideBehaviorName(
 
 /**
  * Resolve the selection to a slide target: a single on-curve point with a
- * segment on both sides, either on a drawn contour or on a skeleton
+ * segment on at least one side (an open endpoint slides along its one
+ * segment), either on a drawn contour or on a skeleton
  * centerline. A skeleton selection is addressed through the edit layer's
  * skeleton data and resolved into this layer by structural ordinal.
  */
@@ -78,7 +79,7 @@ function findPathSlideTarget(layerGlyph, pointIndex, isGeneratedContour) {
   if (isGeneratedContour?.(contourIndex)) return null;
   const contour = path.getUnpackedContour(contourIndex);
   const adjacent = getAdjacentSegments(contour, contourPointIndex);
-  if (!adjacent.previous || !adjacent.next) return null;
+  if (!adjacent.previous && !adjacent.next) return null;
   return { contourIndex, contourPointIndex, contour, adjacent };
 }
 
@@ -99,7 +100,7 @@ function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
     isClosed: address.contour.closed === true,
   };
   const adjacent = getAdjacentSegments(contour, address.pointIndex);
-  if (!adjacent.previous || !adjacent.next) return null;
+  if (!adjacent.previous && !adjacent.next) return null;
   return {
     skeleton: true,
     contourIndex: address.contourIndex,

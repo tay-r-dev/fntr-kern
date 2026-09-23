@@ -94,7 +94,7 @@ describe("point slide on a skeleton centerline", () => {
       layer
     );
     expect(name).to.equal(POINT_SLIDE_BEHAVIOR_NAME);
-    // An open centerline's endpoint has nothing to slide between.
+    // An open centerline's endpoint slides along its one segment.
     expect(
       getPointSlideBehaviorName(
         { pointSlideMode: true },
@@ -102,7 +102,7 @@ describe("point slide on a skeleton centerline", () => {
         new Set([makeSkeletonPointKey(40, 1)]),
         layer
       )
-    ).to.equal(null);
+    ).to.equal(POINT_SLIDE_BEHAVIOR_NAME);
   });
 
   it("slides the point along the centerline and regenerates the outline", () => {

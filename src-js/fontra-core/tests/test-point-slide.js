@@ -290,10 +290,19 @@ describe("point-slide geometry", () => {
     expect(point.y).to.be.closeTo(0, 1e-9);
   });
 
-  it("refuses an open contour's endpoint", () => {
-    const contour = bowedContour();
-    expect(slidePointOnContour(contour, 0, { x: 0, y: 50 })).to.equal(null);
-    expect(slidePointOnContour(contour, 8, { x: 200, y: 50 })).to.equal(null);
+  it("slides an open contour's endpoint along its one segment", () => {
+    const contour = {
+      points: [onCurve(0, 0), onCurve(100, 0), onCurve(100, 100)],
+      isClosed: false,
+    };
+    const candidate = slidePointOnContour(contour, 0, { x: 40, y: 5 });
+    expect(candidate.side).to.equal("next");
+    expect(candidate.points).to.have.length(3);
+    expect(candidate.points[0].x).to.be.closeTo(40, 1e-9);
+    expect(candidate.points[0].y).to.be.closeTo(0, 1e-9);
+    const last = slidePointOnContour(contour, 2, { x: 95, y: 30 });
+    expect(last.side).to.equal("previous");
+    expect(last.points[2].y).to.be.closeTo(30, 1e-9);
   });
 
   it("slides the dragged point itself along a straight, count unchanged", () => {
@@ -560,8 +569,7 @@ describe("point-slide geometry", () => {
 });
 
 describe("roundSlideCandidate", () => {
-  const cross = (o, a, b) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
   // A closed S-ish contour whose every on-curve is smooth.
   const contour = {
     points: [
