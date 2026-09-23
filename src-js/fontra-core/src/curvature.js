@@ -203,8 +203,8 @@ export function curvatureToColor(
 export function calculateSegmentBudget(
   numCurves,
   zoomFactor,
-  baseSegments = 400,
-  minSegmentsPerCurve = 5
+  baseSegments = 600,
+  minSegmentsPerCurve = 8
 ) {
   const zoomAdjustedBudget = Math.ceil(baseSegments * Math.sqrt(zoomFactor));
 
@@ -370,7 +370,7 @@ export function computeSpeedPunkSamples(path, params = {}) {
   const heightCeilingRatio = params.heightCeilingRatio ?? 2;
   const illustrationPosition = params.illustrationPosition ?? "outsideOfCurve";
   const colorStops = params.colorStops ?? ["#8b939c", "#f29400", "#e3004f"];
-  const baseSegmentBudget = params.baseSegmentBudget ?? 400;
+  const baseSegmentBudget = params.baseSegmentBudget ?? 600;
   const minSegmentsPerCurve = params.minSegmentsPerCurve ?? 5;
   const zoomFactor = params.zoomFactor ?? 1;
   const adaptToCurveLength = params.adaptStepsToCurveLength ?? false;

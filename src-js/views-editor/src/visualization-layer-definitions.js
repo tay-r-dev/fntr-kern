@@ -1976,7 +1976,7 @@ registerVisualizationLayerDefinition({
   screenParameters: {
     colorStops: ["#8b939c", "#f29400", "#e3004f"],
     illustrationPosition: "outsideOfCurve",
-    baseSegmentBudget: 400,
+    baseSegmentBudget: 600,
     minSegmentsPerCurve: 5,
     adaptStepsToCurveLength: false,
   },
