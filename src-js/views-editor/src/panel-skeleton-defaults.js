@@ -656,7 +656,8 @@ export default class SkeletonSettingsPanel extends Panel {
   // A table header's filters (§6.5): Current, then a Master and a Case
   // dropdown, each single-choice with All first. `state` holds the picked
   // master id and case, null for All. Current sets both to the edited glyph's
-  // master and case. `refresh` redraws the dropdowns from `state`.
+  // master and case. While any filter is set the button reads Reset, and a
+  // press clears them all. `refresh` redraws the dropdowns from `state`.
   _makePresetFilterBar(state, onChange, { withType = false } = {}) {
     const ALL = "*";
     const dropdown = (field) => {
@@ -673,13 +674,22 @@ export default class SkeletonSettingsPanel extends Panel {
     const glyphCase = dropdown("case");
     // Ticket 72: the terminal table adds a Type dropdown.
     const type = withType ? dropdown("type") : null;
+    const isFiltered = () => !!(state.master || state.case || state.type);
     const current = html.button(
       {
         onclick: () => {
-          state.master = this._getEffectiveSource().sourceId ?? null;
-          state.case = getSkeletonGlyphCase(
-            this.sceneController.sceneSettings?.selectedGlyphName
-          );
+          if (isFiltered()) {
+            state.master = null;
+            state.case = null;
+            if (withType) {
+              state.type = null;
+            }
+          } else {
+            state.master = this._getEffectiveSource().sourceId ?? null;
+            state.case = getSkeletonGlyphCase(
+              this.sceneController.sceneSettings?.selectedGlyphName
+            );
+          }
           onChange();
         },
       },
@@ -687,6 +697,11 @@ export default class SkeletonSettingsPanel extends Panel {
     );
     const option = (value, label, picked) => ({ value, label, checked: picked });
     const refresh = () => {
+      current.textContent = translate(
+        isFiltered()
+          ? "sidebar.skeleton-settings.filter.reset"
+          : "sidebar.skeleton-settings.filter.current"
+      );
       const sources = Object.entries(this.fontController.sources || {});
       master.items = [
         option(ALL, translate("sidebar.skeleton-settings.filter.all"), !state.master),

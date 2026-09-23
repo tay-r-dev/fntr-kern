@@ -647,6 +647,7 @@ export const strings = {
   "sidebar.skeleton-parameters.cap-ball-ease-curvature": "Ease curvature",
   "sidebar.skeleton-settings.preset-from-selection": "Preset from selection",
   "sidebar.skeleton-settings.filter.current": "Current",
+  "sidebar.skeleton-settings.filter.reset": "Reset",
   "sidebar.skeleton-settings.filter.master": "Master",
   "sidebar.skeleton-settings.filter.case": "Case",
   "sidebar.skeleton-settings.filter.all": "All",

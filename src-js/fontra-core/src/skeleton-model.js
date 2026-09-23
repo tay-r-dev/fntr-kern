@@ -431,12 +431,8 @@ export function normalizeSkeletonSourceDefaults(rawDefaults) {
     : legacyWidthPresetsFromRawDefaults(defaults);
   delete defaults.widthDefaults;
   delete defaults.widthProfiles;
-  // The built-in serifs are ordinary entries of the master's own list, seeded
-  // once where the source has never stored one. After that the list is
-  // authoritative, the same rule as the width presets.
-  if (!Array.isArray(defaults.serifProfiles)) {
-    defaults.serifProfiles = builtinSerifPresetList();
-  }
+  // Default is an ordinary entry of every master's own serif list.
+  defaults.serifProfiles = withDefaultSerifPresets(defaults.serifProfiles);
   const capDefaults = ensureSkeletonDefaultsObject(defaults, "capDefaults");
   ensureSkeletonDefaultsObject(capDefaults, "square");
   ensureSkeletonDefaultsObject(capDefaults, "round");
@@ -3268,73 +3264,37 @@ function normalizeSerifPreset(preset) {
   return normalized;
 }
 
-// Ported from the serif lab, whose numbers are drawn at stem width 150 and are
-// already one wing. Lengths divide by 7.5 onto this project's 20-unit scale.
-// The tip cut is an angle and the two bracket numbers are ratios, so all three
-// carry across untouched. The lab predates contour easing, so that pair is 0.
-//
-// Egyptian is the shape a terminal gets when it becomes a serif. It is the
-// plain slab: three 20s and nothing else.
+// The one shipped serif, and the shape a terminal gets when it becomes a
+// serif: the plain slab, three 20s and nothing else.
 export const SERIF_PRESETS = Object.freeze(
-  [
-    { name: "Egyptian", wingLength: 20, tipThickness: 20, wingSlope: 20 },
-    {
-      name: "Clarendon",
-      wingLength: 18,
-      tipThickness: 10,
-      wingSlope: 1,
-      reach: 19,
-      tension: 0.9,
-      concavity: 0.85,
-    },
-    {
-      name: "Didone",
-      wingLength: 19,
-      tipThickness: 3,
-      reach: 13,
-      tension: 0.7,
-      concavity: 0.8,
-    },
-    {
-      name: "Old style",
-      wingLength: 15,
-      tipThickness: 5,
-      wingSlope: 7,
-      tipCutAngle: 22,
-      undersideCup: 3,
-      reach: 20,
-      tension: 0.62,
-      concavity: 0.66,
-    },
-    {
-      name: "Wedge",
-      wingLength: 13,
-      tipThickness: 2,
-      wingSlope: 13,
-      reach: 5,
-      tension: 0.05,
-      concavity: -0.18,
-    },
-  ].map((preset) =>
+  [{ name: "Default", wingLength: 20, tipThickness: 20, wingSlope: 20 }].map((preset) =>
     Object.freeze({ name: preset.name, ...normalizeSerifPreset(preset) })
   )
 );
 
 export const DEFAULT_SERIF_PRESET = SERIF_PRESETS[0];
 
-// The built-ins as stored entries, once per case.
-export function builtinSerifPresetList() {
-  return ["uppercase", "lowercase"].flatMap((glyphCase) =>
-    SERIF_PRESETS.map((preset) => ({
-      ...cloneSkeletonDefaultValue(preset),
-      case: glyphCase,
-    }))
-  );
+// Default as stored entries, once per case.
+export function defaultSerifPresetList() {
+  return ["uppercase", "lowercase"].map((glyphCase) => ({
+    ...cloneSkeletonDefaultValue(DEFAULT_SERIF_PRESET),
+    case: glyphCase,
+  }));
 }
 
-// The shipped values of a built-in serif, by name, or null for any other name.
-export function getBuiltinSerifPreset(name) {
-  return SERIF_PRESETS.find((preset) => preset.name === name) ?? null;
+// Every master's list holds Default for each case. A case missing it gets it
+// at the front; one the master has changed stays as the master has it.
+function withDefaultSerifPresets(list) {
+  const stored = Array.isArray(list) ? list : [];
+  const missing = defaultSerifPresetList().filter(
+    (entry) =>
+      !stored.some(
+        (preset) =>
+          preset?.name === DEFAULT_SERIF_PRESET.name &&
+          (preset?.case ?? "uppercase") === entry.case
+      )
+  );
+  return [...missing, ...stored];
 }
 
 // The whole terminal off a drawn point. A side the checks have switched off is

@@ -95,9 +95,14 @@ describe("skeleton preset binding", () => {
       })
     ).to.equal(false);
     expect(
-      isSkeletonPointPresetStale(point, "terminal", SERIF_PRESETS[1], {
-        defaultWidth: 40,
-      })
+      isSkeletonPointPresetStale(
+        point,
+        "terminal",
+        { name: "Other", wingLength: 5 },
+        {
+          defaultWidth: 40,
+        }
+      )
     ).to.equal(true);
     const square = normalizeSkeletonPoint({ x: 0, y: 0 });
     applyTerminalPreset(square, "square", { capAngle: 10, capDistance: 5 });

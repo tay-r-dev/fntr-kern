@@ -7,8 +7,7 @@ import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator.js";
 import {
   SERIF_HALF_FIELDS,
-  SERIF_PRESETS,
-  getBuiltinSerifPreset,
+  DEFAULT_SERIF_PRESET,
   DEFAULT_CORNER_CURVATURE,
   DEFAULT_INSERTION_RATIO,
   SKELETON_LOCK_KINDS,
@@ -827,7 +826,7 @@ export default class SkeletonParametersPanel {
     // Ticket 50: the terminal kind, five across, writing the cap style. Picking
     // a kind changes which section the panel shows, so the rebuild waits for
     // the edit's own echo, as the serif sides row does. Picking Serif applies
-    // Egyptian, through the same style writer the select used.
+    // Default, through the same style writer the select used.
     this.terminalKindControl = html.createDomElement("segmented-control", {
       options: [
         ["butt", "flat"],
@@ -1569,17 +1568,16 @@ export default class SkeletonParametersPanel {
 
   // Refresh: every selected bound point takes its own preset's values again.
   // Reset to default, from the dropdown's right-click. A width goes back to its
-  // contour's default width; a terminal to its kind's defaults, Egyptian for a
-  // serif. Bonds of that kind lift.
+  // contour's default width; a terminal to its kind's defaults, and a serif to
+  // the master's Default preset. Bonds of that kind lift.
   async _resetToDefaults(kind) {
     const points = this._widthPoints();
     if (!points.length) {
       return;
     }
     const type = this._terminalPresetType;
-    if (kind === "terminal" && (await this._resetBuiltinTerminalPreset(type))) {
-      return;
-    }
+    const serifDefault =
+      this._presetByName("terminal", DEFAULT_SERIF_PRESET.name) ?? DEFAULT_SERIF_PRESET;
     await this._runOwnEdit(() =>
       resetPanelPointPresets(
         this.sceneController,
@@ -1595,31 +1593,11 @@ export default class SkeletonParametersPanel {
             : applyTerminalPreset(
                 point,
                 type,
-                type === "serif" ? SERIF_PRESETS[0] : TERMINAL_FIELD_FALLBACKS
+                type === "serif" ? serifDefault : TERMINAL_FIELD_FALLBACKS
               ),
         this._undo("reset-preset")
       )
     );
-  }
-
-  // Where the dropdown shows a built-in serif, the reset puts that preset back
-  // to its shipped values, for this case, and applies it to the selection.
-  // Returns false where the dropdown shows anything else.
-  async _resetBuiltinTerminalPreset(type) {
-    const index = this.terminalPresetControl.lastPicked;
-    const list = type === "serif" ? this._terminalPresetList(type) : [];
-    const shipped = getBuiltinSerifPreset(list[index]?.name);
-    if (!shipped) {
-      return false;
-    }
-    list[index] = normalizeTerminalPreset(type, { ...shipped, case: list[index].case });
-    await this._persistSourceDefaultValues({
-      [getTerminalPresetSourceKey(type)]: list,
-    });
-    await this._applyTerminalPreset(type, list[index]);
-    this._forceRebuild = true;
-    await this.update();
-    return true;
   }
 
   // The arrows: the selection goes back to its preset. Where the selection has

@@ -7,7 +7,7 @@ import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   applySkeletonWidthPreset,
   applyTerminalPreset,
-  builtinSerifPresetList,
+  defaultSerifPresetList,
   hasSkeletonSerifShape,
   getSkeletonBaseWidthForCase,
   getSkeletonGlyphCase,
@@ -204,7 +204,7 @@ describe("skeleton width presets", () => {
 describe("skeleton source defaults for serifs", () => {
   it("reads the serif seed fallbacks from an empty source", () => {
     const source = makeSource();
-    for (const [key, expected] of [["CUSTOM_SERIFS", builtinSerifPresetList()]]) {
+    for (const [key, expected] of [["CUSTOM_SERIFS", defaultSerifPresetList()]]) {
       expect(
         getSourceSkeletonDefaultsValue(
           source,
@@ -229,7 +229,10 @@ describe("skeleton source defaults for serifs", () => {
         SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
         []
       )
-    ).to.deep.equal([{ name: "Slab foot", wingLength: 30 }]);
+    ).to.deep.equal([
+      ...defaultSerifPresetList(),
+      { name: "Slab foot", wingLength: 30 },
+    ]);
   });
 
   it("defaults to absolute units with collapsed-point removal off", () => {
@@ -401,30 +404,42 @@ describe("terminal presets", () => {
   });
 });
 
-describe("built-in serif presets", () => {
-  it("seeds a source with no serif list with the built-ins, for both cases", () => {
-    const list = getSourceSkeletonDefaultsValue(
-      {},
-      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
-      null
-    );
-    for (const glyphCase of ["uppercase", "lowercase"]) {
-      const names = list
-        .filter((preset) => preset.case === glyphCase)
-        .map((preset) => preset.name);
-      expect(names).to.deep.equal(SERIF_PRESETS.map((preset) => preset.name));
+describe("the Default serif preset", () => {
+  const serifList = (source) =>
+    getSourceSkeletonDefaultsValue(source, SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS);
+
+  it("is in every master's list, once per case, whatever the master stored", () => {
+    const own = { name: "Mine", case: "uppercase", wingLength: 5 };
+    for (const stored of [undefined, [], [own]]) {
+      const source = {};
+      if (stored) {
+        setSourceSkeletonDefaultsValues(source, {
+          [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: stored,
+        });
+      }
+      const list = serifList(source);
+      for (const glyphCase of ["uppercase", "lowercase"]) {
+        const named = list.filter(
+          (preset) => preset.case === glyphCase && preset.name === "Default"
+        );
+        expect(named).to.have.length(1);
+        expect(normalizeTerminalPreset("serif", named[0]).left.wingLength).to.equal(20);
+      }
+      expect(list.some((preset) => preset.name === "Mine")).to.equal(!!stored?.length);
     }
-    expect(normalizeTerminalPreset("serif", list[1]).left.wingLength).to.equal(18);
   });
 
-  it("keeps a stored serif list as it is, even an empty one", () => {
+  it("keeps a Default the master has changed", () => {
     const source = {};
     setSourceSkeletonDefaultsValues(source, {
-      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [
+        { name: "Default", case: "uppercase", wingLength: 7 },
+      ],
     });
-    expect(
-      getSourceSkeletonDefaultsValue(source, SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS)
-    ).to.deep.equal([]);
+    const upper = serifList(source).find(
+      (preset) => preset.case === "uppercase" && preset.name === "Default"
+    );
+    expect(upper.wingLength).to.equal(7);
   });
 });
 
@@ -432,7 +447,7 @@ describe("hasSkeletonSerifShape", () => {
   it("is false for a point that never held a serif, and true once it did", () => {
     const point = { x: 0, y: 0, capStyle: "butt" };
     expect(hasSkeletonSerifShape(point)).to.equal(false);
-    applyTerminalPreset(point, "serif", SERIF_PRESETS[1]);
+    applyTerminalPreset(point, "serif", SERIF_PRESETS[0]);
     point.capStyle = "round";
     expect(hasSkeletonSerifShape(point)).to.equal(true);
   });

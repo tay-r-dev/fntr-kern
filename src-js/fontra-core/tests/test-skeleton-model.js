@@ -1375,7 +1375,7 @@ describe("skeleton-model serif schema", () => {
   });
 
   it("starts a new serif on the default preset", () => {
-    expect(DEFAULT_SERIF_PRESET.name).to.equal("Egyptian");
+    expect(DEFAULT_SERIF_PRESET.name).to.equal("Default");
     for (const side of ["left", "right"]) {
       expect(DEFAULT_SERIF_PRESET[side]).to.include({
         wingLength: 20,
