@@ -459,8 +459,14 @@ export class PointerTool extends BaseTool {
           positionedGlyph
         )
       : null;
+    // Only the generated gizmos own a double-click, their reset. Every other
+    // gizmo lets it through, so a double-click on it selects the segment below.
+    const passesDoubleClick =
+      gizmo?.kind !== "generated" &&
+      (initialEvent.detail >= 2 || initialEvent.myTapCount == 2);
     if (
       gizmo &&
+      !passesDoubleClick &&
       (isTunniOnCurveType(gizmo.type) || this.tunniGizmoReveal.isArmed(gizmo.key)) &&
       !(
         gizmo.kind === "skeleton" &&
