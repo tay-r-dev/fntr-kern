@@ -111,6 +111,16 @@ export function tunniGizmoKey(kind, type, id) {
   return `${kind}:${type}:${id}`;
 }
 
+// Every segment id starts with its contour, so a gizmo key names its contour.
+export function tunniGizmoContourKey(key) {
+  const [kind, , id] = key.split(":");
+  return `${kind}:${id.split("/")[0]}`;
+}
+
+function isOnCurveGizmoKey(key) {
+  return key.split(":")[1] === "on-curve";
+}
+
 // The ordinary path's cubic segments that carry gizmos: every one outside the
 // generated contours, which have their own.
 export function* iterBasicTunniSegments(path, skeletonData) {
@@ -287,7 +297,10 @@ export class TunniGizmoReveal {
   constructor(requestUpdate) {
     this._requestUpdate = requestUpdate;
     this._armedKey = null;
-    this._armedSlow = false;
+    this._armedContour = null;
+    this._pendingContour = null;
+    this._contourTimer = null;
+    this._contourHoveredThisPass = false;
     this._hotKey = null;
     this._pendingKey = null;
     this._timer = null;
@@ -299,17 +312,63 @@ export class TunniGizmoReveal {
 
   beginHoverPass() {
     this._hoveredThisPass = false;
+    this._contourHoveredThisPass = false;
   }
 
   endHoverPass() {
     if (!this._hoveredThisPass) {
       this.hover(null);
     }
+    if (!this._contourHoveredThisPass) {
+      this.hoverContour(null);
+    }
   }
 
-  // `hot`: the cursor is within the key's click catch. `slow`: the gizmo is
-  // an on-curve one, which shows and leaves on the on-curve timings.
-  hover(key, { hot = false, slow = false } = {}) {
+  // The on-curve gizmos reveal a contour at a time: the cursor on any segment
+  // of a contour shows every on-curve gizmo on it, on the on-curve timings.
+  hoverContour(contourKey) {
+    this._contourHoveredThisPass = true;
+    if (contourKey === this._armedContour) {
+      this._cancelPendingContour();
+      return;
+    }
+    if (contourKey && contourKey === this._pendingContour) {
+      return;
+    }
+    this._cancelPendingContour();
+    if (this._armedContour) {
+      this._tweenTo("contour", this._armedContour, 0, true);
+      this._armedContour = null;
+    }
+    if (contourKey) {
+      this._pendingContour = contourKey;
+      this._contourTimer = setTimeout(() => {
+        this._pendingContour = null;
+        this._contourTimer = null;
+        this._armedContour = contourKey;
+        this._tweenTo("contour", contourKey, 1, true);
+      }, TUNNI_GIZMO_TUNING.onCurveRevealDelay);
+    }
+  }
+
+  isContourArmed(contourKey) {
+    return !!contourKey && contourKey === this._armedContour;
+  }
+
+  _cancelPendingContour() {
+    clearTimeout(this._contourTimer);
+    this._contourTimer = null;
+    this._pendingContour = null;
+  }
+
+  // `hot`: the cursor is within the key's click catch. An on-curve gizmo is
+  // shown by its contour, so here it only takes the hover emphasis.
+  hover(key, { hot = false } = {}) {
+    if (key && isOnCurveGizmoKey(key)) {
+      this.hover(null);
+      this._setHot(hot && this.isArmed(key) ? key : null);
+      return;
+    }
     this._hoveredThisPass = true;
     this._lastHot = hot;
     if (key === this._armedKey) {
@@ -320,33 +379,34 @@ export class TunniGizmoReveal {
       // as long as the cursor stayed away from every gizmo.
       this._cancelPending();
       if (this._armedKey) {
-        this._tweenTo("alpha", this._armedKey, 0, this._armedSlow);
+        this._tweenTo("alpha", this._armedKey, 0);
         this._armedKey = null;
       }
       if (key) {
         this._pendingKey = key;
-        this._timer = setTimeout(
-          () => {
-            this._pendingKey = null;
-            this._timer = null;
-            this._armedKey = key;
-            this._armedSlow = slow;
-            this._tweenTo("alpha", key, 1, slow);
-            this._setHot(this._lastHot ? key : null);
-          },
-          slow ? TUNNI_GIZMO_TUNING.onCurveRevealDelay : TUNNI_GIZMO_TUNING.revealDelay
-        );
+        this._timer = setTimeout(() => {
+          this._pendingKey = null;
+          this._timer = null;
+          this._armedKey = key;
+          this._tweenTo("alpha", key, 1);
+          this._setHot(this._lastHot ? key : null);
+        }, TUNNI_GIZMO_TUNING.revealDelay);
       }
     }
     this._setHot(hot && key === this._armedKey ? key : null);
   }
 
   isArmed(key) {
+    if (key && isOnCurveGizmoKey(key)) {
+      return this.isContourArmed(tunniGizmoContourKey(key));
+    }
     return !!key && key === this._armedKey;
   }
 
   alpha(key, now = performance.now()) {
-    return this._value("alpha", key, now);
+    return isOnCurveGizmoKey(key)
+      ? this._value("contour", tunniGizmoContourKey(key), now)
+      : this._value("alpha", key, now);
   }
 
   // 0 to 1: how far the hover emphasis has grown in.

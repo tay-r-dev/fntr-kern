@@ -106,6 +106,7 @@ import {
 import {
   findTunniGizmo,
   isTunniOnCurveType,
+  tunniGizmoContourKey,
   TUNNI_GIZMO_TUNING,
   TunniGizmoReveal,
 } from "./tunni-gizmos.js";
@@ -205,6 +206,31 @@ export class PointerTool extends BaseTool {
     );
   }
 
+  // The contour whose on-curve gizmos the cursor reveals: the one whose
+  // segment it is on, or the shown one while it rests on one of its gizmos.
+  _hoveredTunniContour(point, size, gizmo) {
+    if (gizmo && isTunniOnCurveType(gizmo.type)) {
+      const contourKey = tunniGizmoContourKey(gizmo.key);
+      if (this.tunniGizmoReveal.isContourArmed(contourKey)) {
+        return contourKey;
+      }
+    }
+    const pathHit = this.sceneModel.pathHitAtPoint(point, size);
+    if (Number.isInteger(pathHit?.contourIndex)) {
+      const kind = this.sceneModel.isGeneratedPathContour(pathHit.contourIndex)
+        ? "generated"
+        : "basic";
+      return `${kind}:${pathHit.contourIndex}`;
+    }
+    for (const key of this.sceneModel.skeletonSegmentSelectionAtPoint(point, size)) {
+      const parsed = parseSkeletonPointKey(key);
+      if (parsed) {
+        return `skeleton:${parsed.contourId}`;
+      }
+    }
+    return null;
+  }
+
   handleHover(event) {
     if (this.measureInteraction.handleHover(event)) {
       return;
@@ -264,10 +290,8 @@ export class PointerTool extends BaseTool {
         )
       : null;
     const hot = !!gizmo && gizmo.distance <= TUNNI_GIZMO_TUNING.clickRadius * pixel;
-    this.tunniGizmoReveal.hover(gizmo?.key ?? null, {
-      hot,
-      slow: !!gizmo && isTunniOnCurveType(gizmo.type),
-    });
+    this.tunniGizmoReveal.hover(gizmo?.key ?? null, { hot });
+    this.tunniGizmoReveal.hoverContour(this._hoveredTunniContour(point, size, gizmo));
     if (hot && this.tunniGizmoReveal.isArmed(gizmo.key)) {
       // Crosshair moves on-curve points, pointer reshapes between them.
       this.canvasController.canvas.style.cursor = isTunniOnCurveType(gizmo.type)
