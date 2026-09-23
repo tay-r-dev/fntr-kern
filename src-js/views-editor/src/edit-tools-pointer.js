@@ -209,11 +209,15 @@ export class PointerTool extends BaseTool {
   // The contour whose on-curve gizmos the cursor reveals: the one whose
   // segment it is on, or the shown one while it rests on one of its gizmos.
   _hoveredTunniContour(point, size, gizmo) {
-    if (gizmo && isTunniOnCurveType(gizmo.type)) {
-      const contourKey = tunniGizmoContourKey(gizmo.key);
-      if (this.tunniGizmoReveal.isContourArmed(contourKey)) {
-        return contourKey;
-      }
+    // On a shown gizmo, or on the hint ring of a hidden one.
+    if (
+      gizmo &&
+      isTunniOnCurveType(gizmo.type) &&
+      (this.tunniGizmoReveal.isContourArmed(tunniGizmoContourKey(gizmo.key)) ||
+        gizmo.distance <=
+          TUNNI_GIZMO_TUNING.clickRadius * this.sceneController.onePixelUnit)
+    ) {
+      return tunniGizmoContourKey(gizmo.key);
     }
     const pathHit = this.sceneModel.pathHitAtPoint(point, size);
     if (Number.isInteger(pathHit?.contourIndex)) {

@@ -2321,6 +2321,8 @@ export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 // the gizmo at the same opacity. `parameters.pixel` is one screen pixel in glyph
 // units.
 const TUNNI_HOVER_GROWTH = 0.45;
+const TUNNI_HINT_ALPHA = 0.35;
+const TUNNI_HINT_GAP = 2;
 const TUNNI_HOVER_OUTLINE_WIDTH = 2.5;
 const TUNNI_HOVER_OUTLINE_ALPHA = 0.4;
 
@@ -2330,10 +2332,29 @@ export function drawRevealedTunniGizmo(
   key,
   point,
   parameters,
-  { shape = "circle", before = null } = {}
+  { shape = "circle", before = null, hint = false } = {}
 ) {
   const reveal = model.tunniGizmoReveal;
   const alpha = reveal?.alpha(key) ?? 0;
+  // An on-curve gizmo leaves a faint ring where it sits while it is hidden, so
+  // the place to hover for it can be found. The ring gives way as it shows.
+  if (hint && alpha < 1) {
+    const pixel = parameters.pixel ?? 1;
+    context.save();
+    context.globalAlpha = TUNNI_HINT_ALPHA * (1 - alpha);
+    context.strokeStyle = parameters.gizmoColor;
+    context.lineWidth = pixel;
+    context.beginPath();
+    context.arc(
+      point.x,
+      point.y,
+      parameters.gizmoSize / 2 + TUNNI_HINT_GAP * pixel,
+      0,
+      2 * Math.PI
+    );
+    context.stroke();
+    context.restore();
+  }
   if (!(alpha > 0)) {
     return;
   }
@@ -2430,7 +2451,7 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("basic", "on-curve", id),
         tunniPoint,
         parameters,
-        { shape: "diamond" }
+        { shape: "diamond", hint: true }
       );
     }
   },
