@@ -1141,10 +1141,10 @@ describe("drag modes that suppress snapping", () => {
 describe("the snap policy of a modified drag", () => {
   afterEach(() => resetSnapParameters());
 
-  it("lets an Alt drag of corner points snap to guides alone", () => {
+  it("lets an Alt drag of corner points snap", () => {
     expect(dragSnapPolicy({ altKey: true }, {}, { cornersOnly: true })).to.deep.equal({
       suppressed: false,
-      only: "guides",
+      only: undefined,
     });
     expect(
       dragSnapPolicy({ altKey: true }, {}, { cornersOnly: false }).suppressed

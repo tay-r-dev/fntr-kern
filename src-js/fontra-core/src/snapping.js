@@ -262,9 +262,9 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   snapDuringPowerTensionAware: 0,
   snapDuringIndependentRib: 0,
   snapDuringPointSlide: 0,
-  // An Alt drag of corner points only still snaps to guides. A corner has no
-  // tangent for Alt to hold, and a guide is where a designer puts a corner.
-  altCornersSnapToGuides: 1,
+  // An Alt drag of corner points only still snaps, as a plain drag does. A
+  // corner has no tangent for Alt to hold.
+  altCornersSnap: 1,
   // Per-kind reach, as a multiple of reachPixels. This is what lets reach and
   // precedence move apart: a kind can grab from further away without also winning
   // ties it should lose, which raising its weight would do.
@@ -894,7 +894,7 @@ const MODIFIER_SNAP_SWITCHES = [
 
 // What a modified drag may snap to: `suppressed`, or `only` a narrower set.
 // `cornersOnly` says every dragged point is a corner, which lets an Alt drag
-// keep the guides.
+// snap.
 export function dragSnapPolicy(
   event,
   modes,
@@ -907,8 +907,8 @@ export function dragSnapPolicy(
     }
   }
   if (event?.altKey && !switches.snapDuringAlt) {
-    return cornersOnly && switches.altCornersSnapToGuides
-      ? { suppressed: false, only: "guides" }
+    return cornersOnly && switches.altCornersSnap
+      ? { suppressed: false, only: undefined }
       : { suppressed: true, only: undefined };
   }
   return { suppressed: false, only: undefined };

@@ -229,8 +229,8 @@ function snappingDebugRows(controls) {
 const MOD_SNAP_CONTROLS = [
   { path: "snapDuringAlt", label: "Alt", type: "toggle" },
   {
-    path: "altCornersSnapToGuides",
-    label: "Alt: corners snap to guides",
+    path: "altCornersSnap",
+    label: "Alt: corners snap",
     type: "toggle",
   },
   {
