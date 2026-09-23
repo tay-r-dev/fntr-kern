@@ -8,8 +8,8 @@ import {
   getSkeletonContour,
   getSkeletonHandleOffset,
   getSkeletonInsertion,
+  getEffectiveRibHalfWidth,
   getSkeletonPointHalfWidth,
-  getSkeletonPointWidth,
   getSkeletonRibAddress,
   getSkeletonRibSidesForPoint,
   getSkeletonRibTieGroup,
@@ -296,26 +296,25 @@ function pointDefaultWidth(entry) {
   return entry.contour?.defaultWidth;
 }
 
+// The widths the panel shows are the ones the outline draws: a tied rib shows
+// its group's shared value, not the number it happens to store.
+function effectiveHalfWidths(entry) {
+  return {
+    left: getEffectiveRibHalfWidth(entry.contour, entry.point, "left"),
+    right: getEffectiveRibHalfWidth(entry.contour, entry.point, "right"),
+  };
+}
+
 export function summarizeSkeletonPointWidths(selectedPoints) {
-  const left = reduceValues(
-    selectedPoints.map((entry) =>
-      getSkeletonPointHalfWidth(entry.point, pointDefaultWidth(entry), "left")
-    )
-  );
-  const right = reduceValues(
-    selectedPoints.map((entry) =>
-      getSkeletonPointHalfWidth(entry.point, pointDefaultWidth(entry), "right")
-    )
-  );
-  const total = reduceValues(
-    selectedPoints.map((entry) =>
-      getSkeletonPointWidth(entry.point, pointDefaultWidth(entry))
-    )
-  );
+  const halves = selectedPoints.map(effectiveHalfWidths);
+  const left = reduceValues(halves.map((half) => half.left));
+  const right = reduceValues(halves.map((half) => half.right));
+  const total = reduceValues(halves.map((half) => half.left + half.right));
   const distribution = reduceValues(
-    selectedPoints.map((entry) =>
-      pointDistribution(entry.point, pointDefaultWidth(entry))
-    )
+    halves.map((half) => {
+      const sum = half.left + half.right;
+      return sum > 0 ? ((half.left - half.right) / sum) * 100 : 0;
+    })
   );
   const linked = reduceValues(
     selectedPoints.map((entry) => entry.point?.width?.linked !== false)

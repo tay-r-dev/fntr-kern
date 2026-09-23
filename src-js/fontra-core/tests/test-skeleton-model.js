@@ -2315,6 +2315,24 @@ describe("the tied flag belongs to the group, not to one rib", () => {
     expect(getTiedRibGroup(data, data.points[0])).to.have.length(2);
   });
 
+  it("tying from one rib gives every member that rib's widths", () => {
+    const data = contour(false, false);
+    setSkeletonRibTiedAcrossGroup(data, data.points[1], true);
+    for (const point of [data.points[0], data.points[1]]) {
+      expect(point.width.left).to.equal(50);
+      expect(point.width.right).to.equal(30);
+    }
+  });
+
+  it("untying keeps the widths the tied ribs showed", () => {
+    const data = contour();
+    setSkeletonRibTiedAcrossGroup(data, data.points[0], false);
+    for (const point of [data.points[0], data.points[1]]) {
+      expect(point.width.left).to.equal(30);
+      expect(point.width.right).to.equal(30);
+    }
+  });
+
   it("leaves a rib outside the group alone", () => {
     const data = contour();
     setSkeletonRibTiedAcrossGroup(data, data.points[0], false);

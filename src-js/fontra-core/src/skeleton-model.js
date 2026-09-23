@@ -4123,8 +4123,33 @@ export function getSkeletonRibTieGroup(contour, point) {
 // a checkbox that disagrees with itself. One write, every member.
 export function setSkeletonRibTiedAcrossGroup(contour, point, tied) {
   const group = getSkeletonRibTieGroup(contour, point) || [point];
+  const defaultWidth = contour?.defaultWidth;
+  // The widths every member keeps, per side, read before the flag changes. A
+  // tie takes the widths of the rib it was engaged on; an untie keeps what the
+  // tied ribs showed. Either way no rib jumps when the flag changes.
+  const widths = new Map(
+    group.map((member) => [
+      member,
+      Object.fromEntries(
+        ["left", "right"].map((side) => [
+          side,
+          tied
+            ? getSkeletonPointHalfWidth(point, defaultWidth, side)
+            : getEffectiveRibHalfWidth(contour, member, side),
+        ])
+      ),
+    ])
+  );
   for (const member of group) {
     setSkeletonPointWidthTied(member, tied);
+    if (group.length < 2) {
+      continue;
+    }
+    for (const side of ["left", "right"]) {
+      setSkeletonPointSideWidth(member, defaultWidth, side, widths.get(member)[side], {
+        linked: false,
+      });
+    }
   }
 }
 
