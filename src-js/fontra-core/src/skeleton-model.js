@@ -431,6 +431,12 @@ export function normalizeSkeletonSourceDefaults(rawDefaults) {
     : legacyWidthPresetsFromRawDefaults(defaults);
   delete defaults.widthDefaults;
   delete defaults.widthProfiles;
+  // The built-in serifs are ordinary entries of the master's own list, seeded
+  // once where the source has never stored one. After that the list is
+  // authoritative, the same rule as the width presets.
+  if (!Array.isArray(defaults.serifProfiles)) {
+    defaults.serifProfiles = builtinSerifPresetList();
+  }
   const capDefaults = ensureSkeletonDefaultsObject(defaults, "capDefaults");
   ensureSkeletonDefaultsObject(capDefaults, "square");
   ensureSkeletonDefaultsObject(capDefaults, "round");
@@ -3307,6 +3313,21 @@ export const SERIF_PRESETS = Object.freeze(
 
 export const DEFAULT_SERIF_PRESET = SERIF_PRESETS[0];
 
+// The built-ins as stored entries, once per case.
+export function builtinSerifPresetList() {
+  return ["uppercase", "lowercase"].flatMap((glyphCase) =>
+    SERIF_PRESETS.map((preset) => ({
+      ...cloneSkeletonDefaultValue(preset),
+      case: glyphCase,
+    }))
+  );
+}
+
+// The shipped values of a built-in serif, by name, or null for any other name.
+export function getBuiltinSerifPreset(name) {
+  return SERIF_PRESETS.find((preset) => preset.name === name) ?? null;
+}
+
 // The whole terminal off a drawn point. A side the checks have switched off is
 // captured as zeroes, because zeroes are what it draws.
 export function captureSerifPreset(point) {
@@ -3323,6 +3344,15 @@ export function captureSerifPreset(point) {
     undersideCupTension: serif.undersideCupTension,
     undersideCupBalance: serif.undersideCupBalance,
   });
+}
+
+// Whether the point carries a serif shape of its own, whatever its cap style
+// is now. Normalization gives every on-curve an empty serif block, so the test
+// is against that empty shape, not against the block being present.
+export function hasSkeletonSerifShape(point) {
+  return (
+    JSON.stringify(captureSerifPreset(point)) !== JSON.stringify(captureSerifPreset({}))
+  );
 }
 
 // The partial the serif writer takes: every number and link the preset holds.

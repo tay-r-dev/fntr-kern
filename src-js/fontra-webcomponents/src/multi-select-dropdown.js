@@ -67,6 +67,7 @@ export class MultiSelectDropdown extends UnlitElement {
       text-overflow: ellipsis;
       white-space: nowrap;
       text-align: left;
+      opacity: var(--multi-select-dropdown-label-opacity, 1);
     }
 
     .triangle {

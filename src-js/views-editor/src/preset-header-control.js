@@ -190,6 +190,12 @@ export class PresetHeaderControl {
       showPicked && picked
         ? (picked.name ?? picked.label)
         : translate("sidebar.skeleton-parameters.width-preset");
+    // A picked preset the selection no longer matches reads faded: it was
+    // changed on the canvas and not written back with Update.
+    this.dropdown.style.setProperty(
+      "--multi-select-dropdown-label-opacity",
+      showPicked && picked && bond?.stale ? "0.6" : "1"
+    );
     this.addButton.disabled = !canCapture;
     this._resetDisabled = !bond?.resetEnabled;
     if (this.lockButton) {

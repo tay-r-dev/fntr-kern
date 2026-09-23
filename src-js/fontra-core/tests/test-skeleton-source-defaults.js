@@ -7,6 +7,8 @@ import {
   SKELETON_SOURCE_DEFAULT_KEYS,
   applySkeletonWidthPreset,
   applyTerminalPreset,
+  builtinSerifPresetList,
+  hasSkeletonSerifShape,
   getSkeletonBaseWidthForCase,
   getSkeletonGlyphCase,
   getSourceSkeletonDefaultsValue,
@@ -202,7 +204,7 @@ describe("skeleton width presets", () => {
 describe("skeleton source defaults for serifs", () => {
   it("reads the serif seed fallbacks from an empty source", () => {
     const source = makeSource();
-    for (const [key, expected] of [["CUSTOM_SERIFS", []]]) {
+    for (const [key, expected] of [["CUSTOM_SERIFS", builtinSerifPresetList()]]) {
       expect(
         getSourceSkeletonDefaultsValue(
           source,
@@ -396,5 +398,42 @@ describe("terminal presets", () => {
         []
       )
     ).to.deep.equal(presets);
+  });
+});
+
+describe("built-in serif presets", () => {
+  it("seeds a source with no serif list with the built-ins, for both cases", () => {
+    const list = getSourceSkeletonDefaultsValue(
+      {},
+      SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS,
+      null
+    );
+    for (const glyphCase of ["uppercase", "lowercase"]) {
+      const names = list
+        .filter((preset) => preset.case === glyphCase)
+        .map((preset) => preset.name);
+      expect(names).to.deep.equal(SERIF_PRESETS.map((preset) => preset.name));
+    }
+    expect(normalizeTerminalPreset("serif", list[1]).left.wingLength).to.equal(18);
+  });
+
+  it("keeps a stored serif list as it is, even an empty one", () => {
+    const source = {};
+    setSourceSkeletonDefaultsValues(source, {
+      [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS]: [],
+    });
+    expect(
+      getSourceSkeletonDefaultsValue(source, SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_SERIFS)
+    ).to.deep.equal([]);
+  });
+});
+
+describe("hasSkeletonSerifShape", () => {
+  it("is false for a point that never held a serif, and true once it did", () => {
+    const point = { x: 0, y: 0, capStyle: "butt" };
+    expect(hasSkeletonSerifShape(point)).to.equal(false);
+    applyTerminalPreset(point, "serif", SERIF_PRESETS[1]);
+    point.capStyle = "round";
+    expect(hasSkeletonSerifShape(point)).to.equal(true);
   });
 });

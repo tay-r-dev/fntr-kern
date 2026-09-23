@@ -15,6 +15,7 @@ import {
 } from "@fontra/core/skeleton-generator.js";
 import {
   DEFAULT_SERIF_PRESET,
+  hasSkeletonSerifShape,
   applySerifPreset,
   applySkeletonWidthPreset,
   applyTerminalPreset,
@@ -1181,15 +1182,11 @@ export async function setPanelCapStyle(
       if (Object.keys(seeded).length) {
         setSkeletonCapParameters(point, seeded);
       }
-      // Picking serif applies the default preset. No condition: the style
-      // select only fires on a change, so this is exactly "became a serif",
-      // and picking it is a request for the default shape.
-      if (capStyle === "serif") {
+      // Picking serif applies the default preset, but only to a point that
+      // never held a serif shape. A terminal switched away and back keeps the
+      // serif it had, and every other kind keeps its canvas edits too.
+      if (capStyle === "serif" && !hasSkeletonSerifShape(point)) {
         setSkeletonSerifParameters(point, applySerifPreset(DEFAULT_SERIF_PRESET));
-      }
-      if (capStyle === "round") {
-        resetSkeletonEditableRib(point, "left");
-        resetSkeletonEditableRib(point, "right");
       }
     },
     undoLabel

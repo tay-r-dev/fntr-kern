@@ -8,6 +8,7 @@ import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator
 import {
   SERIF_HALF_FIELDS,
   SERIF_PRESETS,
+  getBuiltinSerifPreset,
   DEFAULT_CORNER_CURVATURE,
   DEFAULT_INSERTION_RATIO,
   SKELETON_LOCK_KINDS,
@@ -1473,13 +1474,9 @@ export default class SkeletonParametersPanel {
       return null;
     }
     return (
-      (type === "serif"
-        ? SERIF_PRESETS.find((preset) => preset.name === name)
-        : null) ??
       this._terminalPresetList(type).find(
         (preset) => preset.case === glyphCase && preset.name === name
-      ) ??
-      null
+      ) ?? null
     );
   }
 
@@ -1580,6 +1577,9 @@ export default class SkeletonParametersPanel {
       return;
     }
     const type = this._terminalPresetType;
+    if (kind === "terminal" && (await this._resetBuiltinTerminalPreset(type))) {
+      return;
+    }
     await this._runOwnEdit(() =>
       resetPanelPointPresets(
         this.sceneController,
@@ -1600,6 +1600,26 @@ export default class SkeletonParametersPanel {
         this._undo("reset-preset")
       )
     );
+  }
+
+  // Where the dropdown shows a built-in serif, the reset puts that preset back
+  // to its shipped values, for this case, and applies it to the selection.
+  // Returns false where the dropdown shows anything else.
+  async _resetBuiltinTerminalPreset(type) {
+    const index = this.terminalPresetControl.lastPicked;
+    const list = type === "serif" ? this._terminalPresetList(type) : [];
+    const shipped = getBuiltinSerifPreset(list[index]?.name);
+    if (!shipped) {
+      return false;
+    }
+    list[index] = normalizeTerminalPreset(type, { ...shipped, case: list[index].case });
+    await this._persistSourceDefaultValues({
+      [getTerminalPresetSourceKey(type)]: list,
+    });
+    await this._applyTerminalPreset(type, list[index]);
+    this._forceRebuild = true;
+    await this.update();
+    return true;
   }
 
   // The arrows: the selection goes back to its preset. Where the selection has
@@ -1749,21 +1769,12 @@ export default class SkeletonParametersPanel {
       : [];
   }
 
-  // The dropdown's entries for one kind: for a serif, the five built-ins first
-  // (they cannot be updated in place), then the master's own for the glyph's
-  // case, each carrying its index in the stored list.
+  // The dropdown's entries for one kind: the master's own for the glyph's case,
+  // each carrying its index in the stored list. The built-in serifs are seeded
+  // into that list, so they are ordinary entries.
   _terminalPresetItems(type) {
     const glyphCase = getSkeletonGlyphCase(this.getSelectedGlyphName());
-    const builtins =
-      type === "serif"
-        ? SERIF_PRESETS.map((preset, index) => ({
-            value: `builtin:${index}`,
-            label: preset.name,
-            name: preset.name,
-          }))
-        : [];
     return [
-      ...builtins,
       ...this._terminalPresetList(type)
         .map((preset, index) => ({ preset, index }))
         .filter(({ preset }) => preset?.case === glyphCase)
@@ -1776,10 +1787,6 @@ export default class SkeletonParametersPanel {
   }
 
   _terminalPresetByValue(type, value) {
-    if (typeof value === "string") {
-      const index = Number(value.slice("builtin:".length));
-      return type === "serif" ? (SERIF_PRESETS[index] ?? null) : null;
-    }
     return this._terminalPresetList(type)[value] ?? null;
   }
 
@@ -1826,11 +1833,9 @@ export default class SkeletonParametersPanel {
       return;
     }
     // A serif shows which preset is picked. Update is live only when the
-    // picked preset is one of the master's own (a built-in cannot be updated in
-    // place) and the selection no longer matches it, and it takes two presses.
+    // selection no longer matches it, and it takes two presses.
     const picked = this.terminalPresetControl.lastPicked;
-    const preset =
-      typeof picked === "number" ? this._terminalPresetByValue(type, picked) : null;
+    const preset = picked != null ? this._terminalPresetByValue(type, picked) : null;
     this.terminalPresetControl.refresh({
       items: this._terminalPresetItems(type),
       canCapture: captured !== null,
