@@ -216,3 +216,22 @@ function tensionOf(points, nearSide) {
     ? Math.hypot(handle.x - onCurve.x, handle.y - onCurve.y) / reach
     : Infinity;
 }
+
+describe("a handle that arrives past its ceiling", () => {
+  // M^1 point 10 of skeletron-test: the far outer handle already reaches past
+  // its segment's tangent crossing, and the near inner handle is 11 units long.
+  const stencil = [
+    { x: 124, y: 115 },
+    { x: 92, y: 263 },
+    { x: 169, y: 320 },
+    { x: 312, y: 258 },
+    { x: 322, y: 254 },
+    { x: 514, y: 174 },
+    { x: 690, y: 299 },
+  ];
+
+  it("is not pulled back onto the crossing, which would flatten its side", () => {
+    const result = solveNearestHandleScales(stencil);
+    expect(result.status).to.equal("solved");
+  });
+});

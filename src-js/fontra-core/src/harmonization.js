@@ -142,6 +142,10 @@ function isCubicOffCurve(point) {
 //
 const REALIGN_TOLERANCE = 1e-9;
 
+// A handle this close to its Tunni point presses the curve into the corner of
+// its own control polygon. A square-up turn may not put one there.
+const REALIGN_PARKED_TENSION = 0.99;
+
 // A handle drawn dead horizontal or dead vertical off its joint marks an
 // extreme of the curve. It is the one part of the joint that is certainly
 // deliberate, so it is what the rest is squared up against.
@@ -244,10 +248,91 @@ export function realignSmoothJointsInPlace(path, candidates, touched) {
     }
 
     // Neither handle is more deliberate than the other, so both stay where
-    // they are and the joint comes to them.
+    // they are and the joint comes to them -- unless that carries a far handle
+    // across the new tangent. Where the far handle sits a few units off it, the
+    // joint then becomes an inflection that no handle lengths can match
+    // (measured on `skeletron-test` M^1 point 10). There one handle turns onto
+    // the other's line instead, the shorter first, since its direction is the
+    // one the grid expresses least well, and only a turn that keeps both bends.
+    const beyondPrevious = path.getPoint(
+      neighborIndex(path, contourIndex, contourPointIndex, -2)
+    );
+    const beyondNext = path.getPoint(
+      neighborIndex(path, contourIndex, contourPointIndex, 2)
+    );
+    const bends = (joint, before, after) => [
+      Math.sign(
+        crossProduct(subVectors(joint, before), subVectors(beyondPrevious, before))
+      ),
+      Math.sign(crossProduct(subVectors(after, joint), subVectors(beyondNext, after))),
+    ];
+    const sameBends = (a, b) => a[0] === b[0] && a[1] === b[1];
+    const arrived = bends(node, previous, next);
+
+    // Every option also moves a segment's Tunni point, so it can push a handle
+    // toward it without touching it: at quotesingle joint 19, 0.948 to 0.996.
+    // No option may park a handle on its Tunni point that did not arrive there.
+    const startOnCurve = path.getPoint(
+      neighborIndex(path, contourIndex, contourPointIndex, -3)
+    );
+    const endOnCurve = path.getPoint(
+      neighborIndex(path, contourIndex, contourPointIndex, 3)
+    );
+    const tensions = (joint, before, after) =>
+      startOnCurve && endOnCurve
+        ? [
+            handleTension([startOnCurve, beyondPrevious, before, joint], "start"),
+            handleTension([startOnCurve, beyondPrevious, before, joint], "end"),
+            handleTension([joint, after, beyondNext, endOnCurve], "start"),
+            handleTension([joint, after, beyondNext, endOnCurve], "end"),
+          ]
+        : [];
+    const arrivedTensions = tensions(node, previous, next);
+    const admissible = ({ joint, before, after }) =>
+      sameBends(bends(joint, before, after), arrived) &&
+      tensions(joint, before, after).every(
+        (tension, k) =>
+          tension < REALIGN_PARKED_TENSION || tension <= arrivedTensions[k] + 1e-9
+      );
+
+    // The joint coming to the handles first, then a turn of the shorter
+    // handle, then of the longer. Where none is admissible the joint is left
+    // bent: a crease the constructions must work around is better than a joint
+    // turned into an inflection or a handle pressed into its corner.
+    const turns = [
+      { index: previousIndex, turned: turnedOntoLine(node, next, previous) },
+      { index: nextIndex, turned: turnedOntoLine(node, previous, next) },
+    ]
+      .filter(({ turned }) => turned)
+      .sort(
+        (a, b) =>
+          distance(node, path.getPoint(a.index)) -
+          distance(node, path.getPoint(b.index))
+      );
     const foot = footOnLine(node, previous, next);
-    if (foot) {
-      writePoint(path, touched, pointIndex, foot);
+    const options = [
+      ...(foot
+        ? [
+            {
+              index: pointIndex,
+              position: foot,
+              joint: foot,
+              before: previous,
+              after: next,
+            },
+          ]
+        : []),
+      ...turns.map(({ index, turned }) => ({
+        index,
+        position: turned,
+        joint: node,
+        before: index === previousIndex ? turned : previous,
+        after: index === previousIndex ? next : turned,
+      })),
+    ];
+    const kept = options.find(admissible);
+    if (kept) {
+      writePoint(path, touched, kept.index, kept.position);
     }
   }
 }
@@ -617,19 +702,9 @@ function jointTensionCeiling(path, ctx, comfortableTension, maxHandleTension) {
   // moves. Reading the outer two as well lets a joint inherit the fullness of
   // whatever it happens to sit next to, and on a small shape where one corner
   // is drawn tight that spreads the squareness right around the contour.
-  //
-  // The exception is an outer handle standing ON the hard limit, which is where
-  // the over-tension repair leaves one that arrived past it. The inner handle
-  // has to answer the curvature that outer handle states, so a ceiling below it
-  // leaves the joint unanswerable.
   const arrived = [];
   for (const { nearSide, indices } of jointSegments(path, ctx)) {
-    const points = segmentPositions(path, indices);
-    arrived.push(handleTension(points, nearSide));
-    const outer = handleTension(points, nearSide === "start" ? "end" : "start");
-    if (outer >= maxHandleTension) {
-      arrived.push(outer);
-    }
+    arrived.push(handleTension(segmentPositions(path, indices), nearSide));
   }
   return Math.min(maxHandleTension, Math.max(comfortableTension, ...arrived));
 }
@@ -638,12 +713,12 @@ function jointTensionCeiling(path, ctx, comfortableTension, maxHandleTension) {
 // The worst tension either of the joint's own handles would reach after a
 // step, computed without touching the path.
 //
-function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
+function tensionAfterStep(path, ctx, segments, fixup, handleBias, ceiling, farArrived) {
   const nodeDelta = mulVectorScalar(fixup, -(1 - handleBias));
   const handleDelta = mulVectorScalar(fixup, handleBias);
 
   let worst = 0;
-  for (const { nearSide, indices } of segments) {
+  for (const [segmentIndex, { nearSide, indices }] of segments.entries()) {
     const points = segmentPositions(path, indices).map((point, i) => {
       const index = indices[i];
       if (index === ctx.pointIndex) {
@@ -658,10 +733,18 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias) {
     // the segment's Tunni point, and that point moves when either handle does -
     // so a step here inflates the far handle's tension without touching it, and
     // a ceiling that read only the near end never saw it.
+    //
+    // A far handle the designer drew past the ceiling is left there: the step
+    // may not push it further, and where it arrived is its limit -- read once,
+    // before the sweep, or each pass keeps what the last one gave it. Read against
+    // the plain ceiling, it refused every step, a step of nothing included --
+    // measured on `skeletron-test` M^1 points 3 and 10.
+    const farSide = nearSide === "start" ? "end" : "start";
+    const farAllowance = Math.max(ceiling, farArrived[segmentIndex]) / ceiling;
     worst = Math.max(
       worst,
       handleTension(points, nearSide),
-      handleTension(points, nearSide === "start" ? "end" : "start")
+      handleTension(points, farSide) / farAllowance
     );
   }
   return worst;
@@ -1800,6 +1883,12 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
       // A handle may never end up shorter than this, however many passes it takes
       // and however many times the command is run.
       state.floors = cuspFloors(path, ctx, state.segments, cuspSafetyMargin);
+      state.farArrived = state.segments.map(({ nearSide, indices }) =>
+        handleTension(
+          segmentPositions(path, indices),
+          nearSide === "start" ? "end" : "start"
+        )
+      );
       return state;
     });
 
@@ -1928,11 +2017,17 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
         // bias splits the motion, so one handle grows and the other shrinks by
         // exactly |fixup|. Scale the whole step back if that would take the
         // shrinking one past its floor.
+        //
+        // Only the handle that shrinks. One that arrived under its floor and is
+        // growing is still under it after the step, and reading that as a floor
+        // breach scaled every step to nothing -- measured on `skeletron-test`
+        // M^1 points 3 and 10, whose short handles are 7 and 11 units against
+        // floors of 22 and 28.
         let scale = 1;
         for (const name of ["P", "N"]) {
           const length = distance(ctx.node, ctx[name]);
           const shrunk = distance(ctx.node, addVectors(ctx[name], solution.fixup));
-          if (shrunk < state.floors[name]) {
+          if (shrunk < length && shrunk < state.floors[name]) {
             scale = Math.min(scale, (length - state.floors[name]) / fixupLength);
           }
         }
@@ -1951,7 +2046,9 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
             ctx,
             state.segments,
             mulVectorScalar(solution.fixup, scale),
-            handleBias
+            handleBias,
+            state.tensionCeiling,
+            state.farArrived
           ) > state.tensionCeiling
         ) {
           let low = 0;
@@ -1963,7 +2060,9 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
               ctx,
               state.segments,
               mulVectorScalar(solution.fixup, mid),
-              handleBias
+              handleBias,
+              state.tensionCeiling,
+              state.farArrived
             );
             if (tension > state.tensionCeiling) {
               high = mid;
@@ -2287,11 +2386,64 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
     : [];
   let repaired = null;
   if (reached.length) {
+    // The finish may not crease a joint the construction left smooth: a joint
+    // bent past what the grid excuses is a broken smooth point, whatever the
+    // balance bought. Nor may it turn a side's bend over, which makes the joint
+    // an inflection; the score reads two near-flat sides as a small step and
+    // would keep it. Such a joint keeps the construction's answer. Measured:
+    // balancing a joint whose own handle arrived past its Tunni point bent it
+    // 3.3 degrees (the creasing fixture), and balancing the 11-unit handle of
+    // `skeletron-test` M^1 point 10 turned its far side over.
+    const unfinished = working.copy();
+    const creasedAt = (candidate) =>
+      new Set(
+        reached.filter((index) => {
+          const ctx = getJointContext(candidate, index);
+          return (
+            !ctx.reason &&
+            jointKink(ctx.P, ctx.node, ctx.N) >
+              gridKinkAllowance(ctx.P, ctx.node, ctx.N)
+          );
+        })
+      );
+    const bendsAt = (candidate, index) => {
+      const ctx = getJointContext(candidate, index);
+      if (ctx.reason) {
+        return "";
+      }
+      const side = (from, to, beyond) =>
+        Math.sign(crossProduct(subVectors(to, from), subVectors(beyond, to)));
+      return `${side(ctx.P, ctx.node, ctx.PP)}/${side(ctx.node, ctx.N, ctx.NN)}`;
+    };
+    const creasedBefore = creasedAt(working);
+    const bendsBefore = new Map(
+      reached.map((index) => [index, bendsAt(working, index)])
+    );
     balancePathInPlace(working, reached);
     repaired = harmonizeNearestInPlace(working, reached, {
       ...rest,
       continuity,
     });
+    const creasedNow = creasedAt(working);
+    const creasedByFinish = reached.filter(
+      (index) =>
+        (creasedNow.has(index) && !creasedBefore.has(index)) ||
+        bendsAt(working, index) !== bendsBefore.get(index)
+    );
+    if (creasedByFinish.length) {
+      // Balancing moves whole segments, so the joints it creased are put back
+      // with every point of their stencils.
+      for (const index of creasedByFinish) {
+        const ctx = getJointContext(unfinished, index);
+        for (const pointIndex of [index, ...Object.values(ctx.indices ?? {})]) {
+          const [x, y] = unfinished.getPointPosition(pointIndex);
+          working.setPointPosition(pointIndex, x, y);
+        }
+      }
+      repaired = repaired.filter(
+        (state) => !creasedByFinish.includes(state.pointIndex)
+      );
+    }
   }
 
   // The gate. A press that does not beat the drawing it was handed leaves it
@@ -2329,6 +2481,27 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   writeBack(path, working);
 
   if (!repaired) {
+    // A construction measures the joint after the square-up, so a joint the
+    // square-up settled reads `already-harmonic` there. The press still moved
+    // it, and the verdict describes the drawing that was kept.
+    for (const state of report) {
+      if (state.status !== "skipped" || state.reason !== "already-harmonic") {
+        continue;
+      }
+      const ctx = getJointContext(path, state.pointIndex);
+      const stencil = ctx.reason
+        ? [state.pointIndex]
+        : [state.pointIndex, ...Object.values(ctx.indices)];
+      if (
+        stencil.some((index) => {
+          const [x, y] = path.getPointPosition(index);
+          return startedPress[index * 2] !== x || startedPress[index * 2 + 1] !== y;
+        })
+      ) {
+        state.status = "harmonized";
+        state.reason = undefined;
+      }
+    }
     return report;
   }
 

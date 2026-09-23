@@ -155,8 +155,14 @@ function ceilingScales(stencil, handles, maxHandleTension) {
     reach(outgoing, "start"),
     reach(outgoing, "end"),
   ];
+  // A handle the designer already drew past its crossing may not grow, and is
+  // not pulled back either: the crossing lies on the far end's tangent, so a
+  // handle clamped onto it flattens its side to zero curvature and the solve
+  // stalls there. Measured on `skeletron-test` M^1, points 3 and 10.
   return reaches.map((r, k) =>
-    Number.isFinite(r) ? (maxHandleTension * r) / handles[k].length : Infinity
+    Number.isFinite(r)
+      ? Math.max((maxHandleTension * r) / handles[k].length, 1)
+      : Infinity
   );
 }
 

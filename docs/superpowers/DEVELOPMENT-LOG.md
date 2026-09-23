@@ -186,6 +186,36 @@ do to the curve either side. G3 has one construction and greys the slider out. S
 centerlines as well as ordinary paths. Feature model section 10 holds the rules;
 this is what measured them.
 
+### A short handle beside an over-tension one (2026-09-23)
+
+Reported on `skeletron-test` M^1, points 3 and 10: one skipped, one
+harmonized with its curvature turned over, in every mode. Each joint has a
+short inner handle (7 and 11 units) and an outer handle drawn past its Tunni
+point (tension 1.19 and 1.02). Four faults, one behind the other.
+
+- **Clamping an over-tension handle onto its Tunni point flattens its side.**
+  That point lies on the far end's tangent, so the curvature there is exactly
+  zero and nothing can match it. The nearest solver clamped on its first step;
+  the joint construction refused every step, a step of nothing included. Such a
+  handle may not grow, and is left where the designer drew it.
+- **The cusp floor read a growing handle as a breach.** 7 and 11 units against
+  floors of 22 and 28, so every step scaled to nothing. It binds only a handle
+  that shrinks.
+- **Squaring up can turn a joint into an inflection.** At point 10 the far
+  handle sits 3 units off the tangent; moving the joint 0.28 units onto its
+  handles carried it across. The square-up now keeps both bends and parks no
+  handle on its Tunni point; failing that it turns a handle, the shorter first,
+  and failing that it leaves the joint bent.
+- **The finish can do both.** Balancing an 11-unit handle against a 216-unit
+  one turned point 10 over (step 0.87 to 1.83), and the score kept it, because
+  two near-flat sides read as a small absolute step. A joint the finish creases
+  or turns over keeps the construction's answer.
+
+After, every mode with and without equalize matches both joints exactly. The
+constructions move the two inner handles by 11 and 17 units; the nearest answer
+moves an outer handle by 1 to 4.5 units, which is what nearest means. Suite
+2830 to 2839.
+
 ### The finishing pass (2026-09-01, second pass)
 
 Asked for by the designer, after reading `N^1.json` point 12: the constructions

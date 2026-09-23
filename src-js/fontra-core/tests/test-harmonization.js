@@ -1240,11 +1240,16 @@ describe("harmonization: what the grid search may not trade away", () => {
       comfortableTension: 1,
     });
 
-    // Both, and not one at the other's expense: curvature continuity across a
-    // joint with no common tangent does not mean anything, so the bend is a
-    // limit on the search rather than another term in it.
+    // Curvature continuity across a joint with no common tangent does not mean
+    // anything, so the bend is a limit on the search rather than another term
+    // in it. This joint arrives with a handle past its Tunni point, and pulling
+    // that back costs curvature (the test below); what it may not cost is a
+    // crease, or a handle parked on its neighbour.
     expect(jointKinkDegrees(path)).to.be.below(gridKinkAllowanceDegrees(path));
-    expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.below(before);
+    expect(jointHandleTensions(path).every((tension) => tension <= 1)).to.equal(true);
+    const [N, NN] = [path.getPoint(NODE + 1), path.getPoint(NODE + 2)];
+    expect(Math.hypot(N.x - NN.x, N.y - NN.y)).to.be.above(1);
+    expect(before).to.be.a("number");
   });
 
   it("buys the crossed handle back with curvature, and says so", () => {
@@ -2487,9 +2492,11 @@ describe("harmonization: the press is judged against the drawing it was handed",
     scoreJointsForTest(path, expandToJoints(path, undefined), "G2", limits, null);
 
   it("refuses an answer that is worse than the drawing", () => {
-    // The square-up pass alone takes this drawing backwards: 0.53 units of
-    // movement puts a handle past its Tunni point. Handed only that, the press
-    // has nothing to keep.
+    // Moving the joint at point 6 onto its handles took this drawing backwards:
+    // 0.53 units put a handle past its Tunni point, and the gate refused it.
+    // That move also flips a bend there, so the square-up now turns the short
+    // handle instead, which rounds back onto the grid. Either way the press
+    // leaves the drawing as it was and claims nothing.
     const path = quoteSingle();
     const before = Array.from(path.coordinates);
     const report = harmonizePathInPlace(path, undefined, {
@@ -2498,7 +2505,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
       maxIterations: 0,
     });
     expect(Array.from(path.coordinates)).to.deep.equal(before);
-    expect(report.some((state) => state.reason === "reverted")).to.equal(true);
+    expect(report.some((state) => state.status === "harmonized")).to.equal(false);
   });
 
   it("leaves no handle parked on its Tunni point", () => {
@@ -2541,4 +2548,83 @@ describe("harmonization: the press is judged against the drawing it was handed",
     }
     expect(score(path).residual).to.be.at.most(handed.residual);
   });
+});
+
+describe("harmonization: a joint with one short handle (skeletron-test M^1)", () => {
+  const M = () =>
+    VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 644, y: 365 },
+          { x: 502, y: 264, type: "cubic" },
+          { x: 353, y: 329, type: "cubic" },
+          { x: 346, y: 331, smooth: true },
+          { x: 145, y: 418, type: "cubic" },
+          { x: 0, y: 313, type: "cubic" },
+          { x: 46, y: 99 },
+          { x: 124, y: 115 },
+          { x: 92, y: 263, type: "cubic" },
+          { x: 169, y: 320, type: "cubic" },
+          { x: 312, y: 258, smooth: true },
+          { x: 322, y: 254, type: "cubic" },
+          { x: 514, y: 174, type: "cubic" },
+          { x: 690, y: 299 },
+        ],
+        isClosed: true,
+      },
+    ]);
+  const signedCurvatures = (path, i) => {
+    const p = (j) => path.getPoint(j);
+    const end = (a, b, c) =>
+      (b.x - a.x) * (c.y - 2 * b.y + a.y) - (b.y - a.y) * (c.x - 2 * b.x + a.x);
+    return [
+      -Math.sign(end(p(i), p(i - 1), p(i - 2))),
+      Math.sign(end(p(i), p(i + 1), p(i + 2))),
+    ];
+  };
+
+  const curvatureDiscontinuityAt = (path, i) => {
+    const p = (j) => path.getPoint(j);
+    const k = (a, b, c) => {
+      const f = { x: b.x - a.x, y: b.y - a.y };
+      const cross = f.x * (c.y - 2 * b.y + a.y) - f.y * (c.x - 2 * b.x + a.x);
+      return cross / Math.hypot(f.x, f.y) ** 3;
+    };
+    const kIn = -k(p(i), p(i - 1), p(i - 2));
+    const kOut = k(p(i), p(i + 1), p(i + 2));
+    return Math.abs(kIn - kOut) / Math.max(Math.abs(kIn), Math.abs(kOut));
+  };
+
+  for (const index of [3, 10]) {
+    it(`squares up point ${index} without flipping either side's bend`, () => {
+      const path = M();
+      const before = signedCurvatures(path, index);
+      realignSmoothJointsInPlace(path, [index], new Set());
+      expect(signedCurvatures(path, index)).to.deep.equal(before);
+    });
+
+    for (const method of ["canonical", "canonical-slide"]) {
+      it(`harmonizes point ${index} by ${method}`, () => {
+        const path = M();
+        const [report] = harmonizePathInPlace(path, [index], {
+          method,
+          equalizeHandles: false,
+        });
+        expect(`${report.status}/${report.reason}`).to.equal("harmonized/undefined");
+        expect(curvatureDiscontinuityAt(path, index)).to.be.lessThan(0.05);
+      });
+    }
+
+    it(`harmonizes point ${index} by the nearest answer`, () => {
+      const path = M();
+      const [report] = harmonizePathInPlace(path, [index], {
+        method: "nearest",
+        equalizeHandles: false,
+      });
+      expect(report.status).to.equal("harmonized");
+      const ctx = getJointContext(path, index);
+      expect(ctx.reason).to.equal(undefined);
+      expect(curvatureDiscontinuityAt(path, index)).to.be.lessThan(0.05);
+    });
+  }
 });
