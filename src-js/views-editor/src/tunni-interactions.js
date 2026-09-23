@@ -37,6 +37,7 @@ import {
   snapToGrid,
 } from "@fontra/core/tunni-calculations.js";
 import { assert } from "@fontra/core/utils.ts";
+import { makeAxisLock } from "./tension-aware-editing.js";
 import {
   distance,
   dotVector,
@@ -94,6 +95,9 @@ export async function handleTunniDrag({
     return;
   }
   const harmonicLead = latchHarmonicLead(originalPoints);
+  // Alt on the on-curve gizmo holds the drag to one axis, latched for the whole
+  // gesture, the same lock the X drag uses.
+  const lockDeltaToAxis = makeAxisLock();
   const [onIndex1, controlIndex1, controlIndex2, onIndex2] = segment.parentPointIndices;
   const startPoint = sceneController.localPoint(initialEvent);
 
@@ -127,10 +131,10 @@ export async function handleTunniDrag({
 
       let writes = null;
       if (isOnCurve) {
+        const moved = event.altKey ? lockDeltaToAxis(delta) : delta;
         const endpoints = calculateSkeletonOnCurveFromTunni(
-          { x: originalTunniPoint.x + delta.x, y: originalTunniPoint.y + delta.y },
-          tunniSegment,
-          !event.altKey
+          { x: originalTunniPoint.x + moved.x, y: originalTunniPoint.y + moved.y },
+          tunniSegment
         );
         writes = endpoints && [
           [onIndex1, endpoints[0]],
@@ -205,6 +209,7 @@ export async function handleSkeletonTunniDrag({
   // Decided on the layer under the pointer and applied on every edited layer,
   // so the same handle leads in every master.
   const harmonicLead = latchHarmonicLead(segmentToTunniPoints(originalSegment));
+  const lockDeltaToAxis = makeAxisLock();
 
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const layerInfo = Object.entries(
@@ -240,9 +245,10 @@ export async function handleSkeletonTunniDrag({
         x: currentGlyphPoint.x - startGlyphPoint.x,
         y: currentGlyphPoint.y - startGlyphPoint.y,
       };
+      const moved = isTrueTunni && event.altKey ? lockDeltaToAxis(delta) : delta;
       const nextTrueTunniPoint = {
-        x: originalTunniPoint.x + delta.x,
-        y: originalTunniPoint.y + delta.y,
+        x: originalTunniPoint.x + moved.x,
+        y: originalTunniPoint.y + moved.y,
       };
       const round = sceneController.sceneSettings?.gridSnapEnabled
         ? Math.round
@@ -262,8 +268,7 @@ export async function handleSkeletonTunniDrag({
           if (isTrueTunni) {
             const endpoints = calculateSkeletonOnCurveFromTunni(
               nextTrueTunniPoint,
-              target.originalSegment,
-              !event.altKey
+              target.originalSegment
             );
             if (!endpoints) {
               return;
