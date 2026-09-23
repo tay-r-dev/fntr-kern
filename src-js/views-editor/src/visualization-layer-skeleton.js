@@ -896,7 +896,7 @@ registerVisualizationLayerDefinition({
           ),
           point,
           parameters,
-          { shape: "diamond", alwaysVisible: true }
+          { shape: "diamond" }
         );
       }
     });
@@ -1079,7 +1079,7 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("generated", "on-curve", generatedTunniSegmentId(segment)),
         gizmoPoint,
         parameters,
-        { shape: "diamond", alwaysVisible: true }
+        { shape: "diamond" }
       );
     }
   },

@@ -71,8 +71,8 @@ export function isTunniControlLive(settingsModel, kind, control) {
   return control === "curvature" ? main : main && on(keys[control]);
 }
 
-// On-curve gizmos show at all times; only the curvature gizmo waits for the
-// cursor.
+// The on-curve gizmos. They wait for the cursor as the curvature gizmo does,
+// on their own, longer timings.
 export function isTunniOnCurveType(type) {
   return type === "on-curve" || type === "true-tunni" || type === "generated-on-curve";
 }
@@ -258,6 +258,9 @@ export const TUNNI_GIZMO_TUNING_DEFAULTS = {
   revealDelay: 200,
   fadeDuration: 180,
   hoverDuration: 140,
+  onCurveRevealDelay: 450,
+  onCurveHideDelay: 600,
+  onCurveFadeDuration: 400,
 };
 export const TUNNI_GIZMO_TUNING = { ...TUNNI_GIZMO_TUNING_DEFAULTS };
 
@@ -284,6 +287,7 @@ export class TunniGizmoReveal {
   constructor(requestUpdate) {
     this._requestUpdate = requestUpdate;
     this._armedKey = null;
+    this._armedSlow = false;
     this._hotKey = null;
     this._pendingKey = null;
     this._timer = null;
@@ -303,9 +307,9 @@ export class TunniGizmoReveal {
     }
   }
 
-  // `hot`: the cursor is within the key's click catch. `instant`: the gizmo is
-  // always shown, so it arms at once instead of after the delay.
-  hover(key, { hot = false, instant = false } = {}) {
+  // `hot`: the cursor is within the key's click catch. `slow`: the gizmo is
+  // an on-curve one, which shows and leaves on the on-curve timings.
+  hover(key, { hot = false, slow = false } = {}) {
     this._hoveredThisPass = true;
     this._lastHot = hot;
     if (key === this._armedKey) {
@@ -316,20 +320,22 @@ export class TunniGizmoReveal {
       // as long as the cursor stayed away from every gizmo.
       this._cancelPending();
       if (this._armedKey) {
-        this._tweenTo("alpha", this._armedKey, 0);
+        this._tweenTo("alpha", this._armedKey, 0, this._armedSlow);
         this._armedKey = null;
       }
-      if (key && instant) {
-        this._armedKey = key;
-      } else if (key) {
+      if (key) {
         this._pendingKey = key;
-        this._timer = setTimeout(() => {
-          this._pendingKey = null;
-          this._timer = null;
-          this._armedKey = key;
-          this._tweenTo("alpha", key, 1);
-          this._setHot(this._lastHot ? key : null);
-        }, TUNNI_GIZMO_TUNING.revealDelay);
+        this._timer = setTimeout(
+          () => {
+            this._pendingKey = null;
+            this._timer = null;
+            this._armedKey = key;
+            this._armedSlow = slow;
+            this._tweenTo("alpha", key, 1, slow);
+            this._setHot(this._lastHot ? key : null);
+          },
+          slow ? TUNNI_GIZMO_TUNING.onCurveRevealDelay : TUNNI_GIZMO_TUNING.revealDelay
+        );
       }
     }
     this._setHot(hot && key === this._armedKey ? key : null);
@@ -361,11 +367,13 @@ export class TunniGizmoReveal {
     }
   }
 
-  _duration(channel) {
+  _duration(channel, slow = false) {
     return Math.max(
       channel === "hot"
         ? TUNNI_GIZMO_TUNING.hoverDuration
-        : TUNNI_GIZMO_TUNING.fadeDuration,
+        : slow
+          ? TUNNI_GIZMO_TUNING.onCurveFadeDuration
+          : TUNNI_GIZMO_TUNING.fadeDuration,
       1
     );
   }
@@ -375,7 +383,11 @@ export class TunniGizmoReveal {
     if (!tween) {
       return 0;
     }
-    const progress = Math.min((now - tween.start) / this._duration(channel), 1);
+    // A tween that starts later, an on-curve gizmo lingering, holds its value.
+    const progress = Math.min(
+      Math.max((now - tween.start) / this._duration(channel, tween.slow), 0),
+      1
+    );
     const rising = tween.to > tween.from;
     return tween.from + (tween.to - tween.from) * ease(progress, rising);
   }
@@ -386,13 +398,16 @@ export class TunniGizmoReveal {
     this._pendingKey = null;
   }
 
-  _tweenTo(channel, key, to) {
+  // An on-curve gizmo (`slow`) lingers before it fades out.
+  _tweenTo(channel, key, to, slow = false) {
     const now = performance.now();
+    const linger = slow && to === 0 ? TUNNI_GIZMO_TUNING.onCurveHideDelay : 0;
     this._tweens.set(`${channel}:${key}`, {
       channel,
+      slow,
       from: this._value(channel, key, now),
       to,
-      start: now,
+      start: now + linger,
     });
     this._animate();
   }
@@ -406,7 +421,7 @@ export class TunniGizmoReveal {
       const now = performance.now();
       let moving = false;
       for (const [id, tween] of this._tweens) {
-        if (now - tween.start < this._duration(tween.channel)) {
+        if (now - tween.start < this._duration(tween.channel, tween.slow)) {
           moving = true;
         } else if (tween.to === 0) {
           this._tweens.delete(id);

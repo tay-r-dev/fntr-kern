@@ -101,6 +101,30 @@ const TUNNI_DEBUG_CONTROLS = [
   },
   { key: "fadeDuration", label: "Fade", min: 0, max: 1000, step: 10, unit: "ms" },
   { key: "hoverDuration", label: "Hover", min: 0, max: 1000, step: 10, unit: "ms" },
+  {
+    key: "onCurveRevealDelay",
+    label: "On-curve reveal delay",
+    min: 0,
+    max: 2000,
+    step: 10,
+    unit: "ms",
+  },
+  {
+    key: "onCurveHideDelay",
+    label: "On-curve hide delay",
+    min: 0,
+    max: 3000,
+    step: 10,
+    unit: "ms",
+  },
+  {
+    key: "onCurveFadeDuration",
+    label: "On-curve fade",
+    min: 0,
+    max: 2000,
+    step: 10,
+    unit: "ms",
+  },
 ];
 
 // Bug fix: no accordion item's open/closed state survived a reload -- every

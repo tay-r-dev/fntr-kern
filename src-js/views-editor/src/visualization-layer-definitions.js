@@ -2316,9 +2316,8 @@ export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 
 // Draw one gizmo at its reveal's current opacity, as a filled circle or diamond.
 // Nothing is drawn while the gizmo is fully hidden. The gizmo a click would take
-// grows and gains a soft outline, both eased in and out by the reveal. An
-// on-curve gizmo passes `alwaysVisible` and draws at full strength whatever the
-// reveal says; only its hover emphasis follows the cursor. `before` draws under
+// grows and gains a soft outline, both eased in and out by the reveal. The
+// on-curve gizmos reveal the same way, on their own timings. `before` draws under
 // the gizmo at the same opacity. `parameters.pixel` is one screen pixel in glyph
 // units.
 const TUNNI_HOVER_GROWTH = 0.45;
@@ -2331,10 +2330,10 @@ export function drawRevealedTunniGizmo(
   key,
   point,
   parameters,
-  { shape = "circle", alwaysVisible = false, before = null } = {}
+  { shape = "circle", before = null } = {}
 ) {
   const reveal = model.tunniGizmoReveal;
-  const alpha = alwaysVisible ? 1 : (reveal?.alpha(key) ?? 0);
+  const alpha = reveal?.alpha(key) ?? 0;
   if (!(alpha > 0)) {
     return;
   }
@@ -2431,7 +2430,7 @@ registerVisualizationLayerDefinition({
         tunniGizmoKey("basic", "on-curve", id),
         tunniPoint,
         parameters,
-        { shape: "diamond", alwaysVisible: true }
+        { shape: "diamond" }
       );
     }
   },

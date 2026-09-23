@@ -265,7 +265,7 @@ export class PointerTool extends BaseTool {
     const hot = !!gizmo && gizmo.distance <= TUNNI_GIZMO_TUNING.clickRadius * pixel;
     this.tunniGizmoReveal.hover(gizmo?.key ?? null, {
       hot,
-      instant: !!gizmo && isTunniOnCurveType(gizmo.type),
+      slow: !!gizmo && isTunniOnCurveType(gizmo.type),
     });
     if (hot && this.tunniGizmoReveal.isArmed(gizmo.key)) {
       // Crosshair moves on-curve points, pointer reshapes between them.
@@ -467,7 +467,7 @@ export class PointerTool extends BaseTool {
     if (
       gizmo &&
       !passesDoubleClick &&
-      (isTunniOnCurveType(gizmo.type) || this.tunniGizmoReveal.isArmed(gizmo.key)) &&
+      this.tunniGizmoReveal.isArmed(gizmo.key) &&
       !(
         gizmo.kind === "skeleton" &&
         this.sceneModel.skeletonPointAtPoint(
