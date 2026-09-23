@@ -2350,7 +2350,7 @@ describe("the tied flag belongs to the group, not to one rib", () => {
 // Inserting a point into an existing stroke: the point has to take the width the stroke
 // already has where it lands, measured out to the drawn edges.
 describe("skeleton-model - the width where a point lands", () => {
-  function straightStroke(halfLeft, halfRight) {
+  function straightStroke(halfLeft, halfRight, singleSided = null) {
     // A horizontal centerline from (0,0) to (200,0), with its two edges drawn as one
     // closed rectangle, registered as this contour's generated outline. Travelling east,
     // the generator's left side is the one below the centerline.
@@ -2359,6 +2359,7 @@ describe("skeleton-model - the width where a point lands", () => {
         {
           id: 1,
           closed: false,
+          singleSided,
           points: [
             { id: 2, x: 0, y: 0, width: { left: halfLeft, right: halfRight } },
             { id: 3, x: 200, y: 0, width: { left: halfLeft, right: halfRight } },
@@ -2391,6 +2392,20 @@ describe("skeleton-model - the width where a point lands", () => {
     );
     expect(measured.left).to.be.closeTo(40, 0.001);
     expect(measured.right).to.be.closeTo(25, 0.001);
+  });
+
+  it("measures a single-sided stroke past the grid-rounded edge on the centerline", () => {
+    // The collapsed edge is rounded to the grid, so it stands a fraction of a unit
+    // off the centerline, in front of the ray.
+    const { skeletonData, path } = straightStroke(40, -0.4, "left");
+    const measured = measureGeneratedHalfWidths(
+      skeletonData,
+      1,
+      path,
+      { x: 100, y: 0 },
+      { x: 1, y: 0 }
+    );
+    expect(measured.left + measured.right).to.be.closeTo(40, 0.001);
   });
 
   it("answers nothing where a ray meets no edge", () => {

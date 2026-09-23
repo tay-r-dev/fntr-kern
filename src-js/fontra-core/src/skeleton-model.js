@@ -2606,10 +2606,13 @@ export function measureGeneratedHalfWidths(
   // single-sided stroke divided it.
   const drawnSide = getSkeletonContour(skeletonData, contourId)?.singleSided;
   if (drawnSide === "left" || drawnSide === "right") {
+    // The edge on the centerline is rounded to the grid, so it can stand up to
+    // half a unit in front of the ray. Anything within one unit is that edge.
     const measured = firstEdgeDistance(
       hitTester,
       position,
-      drawnSide === "left" ? normal : mulVectorScalar(normal, -1)
+      drawnSide === "left" ? normal : mulVectorScalar(normal, -1),
+      SINGLE_SIDED_CENTERLINE_EDGE
     );
     return measured === null ? null : { left: measured / 2, right: measured / 2 };
   }
@@ -2642,12 +2645,18 @@ function generatedOutlineSubPath(skeletonData, contourId, path) {
 // The nearest crossing in front of the origin. Anything at or behind it is the edge on
 // the other side, or the centerline's own place in a single-sided stroke.
 const EDGE_DISTANCE_EPSILON = 1e-6;
+const SINGLE_SIDED_CENTERLINE_EDGE = 1;
 
-function firstEdgeDistance(hitTester, origin, direction) {
+function firstEdgeDistance(
+  hitTester,
+  origin,
+  direction,
+  minimum = EDGE_DISTANCE_EPSILON
+) {
   let nearest = null;
   for (const crossing of hitTester.rayIntersections(origin, direction)) {
     const along = dotVector(subVectors(crossing, origin), direction);
-    if (along > EDGE_DISTANCE_EPSILON && (nearest === null || along < nearest)) {
+    if (along > minimum && (nearest === null || along < nearest)) {
       nearest = along;
     }
   }
