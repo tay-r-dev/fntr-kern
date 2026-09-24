@@ -418,9 +418,47 @@ export function makeSerifWall(points) {
     return null;
   };
 
+  // Past the rib end there is no wall: the stroke stops there. A wing whose
+  // surface reaches further out -- a negative slope, or a rib end a forced axis
+  // stands inside the foot line -- meets the stem's edge CONTINUED, straight
+  // along the wall's own direction at the rib end. Only the wing's corner is
+  // read here. The release, the reach and the easing stay on the real wall, so
+  // nothing that works inside the stroke moves, and the wall is never bent onto
+  // this line.
+  const start = pointAt(0);
+  const back = (() => {
+    const t = tangentAt(0);
+    return { u: -t.u, v: -t.v };
+  })();
+  const extensionAtDepth = (depth) => {
+    if (!(back.v < -1e-9) || !(depth < start.v)) {
+      return start;
+    }
+    const r = (depth - start.v) / back.v;
+    return { u: start.u + back.u * r, v: start.v + back.v * r };
+  };
+  // Where a segment from `origin` along `direction`, no longer than the
+  // direction itself, crosses the continued edge. Null if it does not.
+  const meetExtension = (origin, direction) => {
+    const denominator = direction.u * back.v - direction.v * back.u;
+    if (Math.abs(denominator) < 1e-12) {
+      return null;
+    }
+    const du = start.u - origin.u;
+    const dv = start.v - origin.v;
+    const s = (du * back.v - dv * back.u) / denominator;
+    const r = (du * direction.v - dv * direction.u) / denominator;
+    if (s < 0 || s > 1 + 1e-9 || r < 0) {
+      return null;
+    }
+    return { u: origin.u + direction.u * s, v: origin.v + direction.v * s };
+  };
+
   return {
     pointAt,
     tangentAt,
+    extensionAtDepth,
+    meetExtension,
     parameterAtDepth,
     parameterAtDistance,
     lengthAt,
@@ -559,11 +597,16 @@ export function buildHalfSerif({ side, wall, params }) {
       ? hit
       : null;
   };
-  const cornerParameter =
-    wingLength > 0
-      ? (meetWingSurface() ?? wall.parameterAtDepth(tipThickness + wingSlope))
-      : wall.parameterAtDepth(tipThickness + wingSlope);
-  const corner = wall.pointAt(cornerParameter);
+  const onWall = wingLength > 0 ? meetWingSurface() : null;
+  const cornerParameter = onWall ?? wall.parameterAtDepth(tipThickness + wingSlope);
+  // Nothing on the wall, and the corner wanted past the rib end: it goes onto
+  // the stem's edge continued. Both answers meet the wall at the rib end
+  // itself, so the corner does not step as it crosses it.
+  const corner =
+    onWall === null && cornerParameter === 0
+      ? ((wingLength > 0 ? wall.meetExtension(tipTop, cornerRay) : null) ??
+        wall.extensionAtDepth(tipThickness + wingSlope))
+      : wall.pointAt(cornerParameter);
 
   // Reach and ease distance are LENGTHS ALONG THE WALL above the corner. They
   // are lengths in the panel, so they are lengths here. Advancing by depth

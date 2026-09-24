@@ -935,6 +935,17 @@ units long and ends above the wall's own foot, so it never gets there.
 - This is one of the three steps recorded under the tilt as belonging to the
   construction rather than to the tilt. The other two are open.
 
+### A negative slope stopped on the rib end (2026-09-24)
+
+Reported on the `f` of skeletron: a negative wing slope went to the rib and
+ignored the drawing. The axis is vertical and the stroke leans, so the rib ends
+stand 20 units outside and 20 inside the foot line, and the wall has nothing
+past its rib end. At a height of −101, the right corner sat on the rib end at
+slopes 0, −10 and −30 alike, and the left one stopped there at −30. After, the
+corner lands on the stem's edge continued: right 0, −8.5 and −23.2 in depth,
+left 0, −10 and −30. **The fault predates the negative height**, which only made
+the region past the rib end easy to reach.
+
 ### Gaps, and what is left alone
 
 - **The golden fixtures moved for none of the geometry changes above.** They

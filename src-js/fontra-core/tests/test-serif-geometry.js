@@ -1277,6 +1277,78 @@ const curvedWallSample = () =>
     { u: -60, v: 300 },
   ]);
 
+describe("a wing corner past the rib end", () => {
+  // The rib end stands 20 inside the foot line, as a forced axis on a leaning
+  // stroke puts it. The wall has nothing below that, so the corner goes onto
+  // the stem's edge continued straight past the rib end.
+  const params = { wingLength: 60, tipThickness: 0, tipCutAngle: 0, reach: 0 };
+  const upright = makeSerifWall([
+    { u: 50, v: 20 },
+    { u: 50, v: 1000 },
+  ]);
+
+  it("meets the stem's edge continued, at a flat wing", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: upright,
+      params: { ...params, wingSlope: 0 },
+    });
+    expectClose(half.corner.u, 50);
+    expectClose(half.corner.v, 0);
+  });
+
+  it("follows a negative slope down the continued edge", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: upright,
+      params: { ...params, wingSlope: -10 },
+    });
+    expectClose(half.corner.u, 50);
+    expectClose(half.corner.v, -10);
+  });
+
+  it("continues a leaning edge along its own direction", () => {
+    const leaning = makeSerifWall([
+      { u: 50, v: 20 },
+      { u: 70, v: 1020 },
+    ]);
+    const half = buildHalfSerif({
+      side: 1,
+      wall: leaning,
+      params: { ...params, wingSlope: -30 },
+    });
+    // On the continued edge: 50 less a fiftieth of the depth travelled back.
+    expectClose(half.corner.u, 50 - (half.corner.v - 20) / -50);
+    expect(half.corner.v).to.be.below(0);
+  });
+
+  it("does not step where the corner crosses the rib end", () => {
+    let previous = null;
+    for (let step = -160; step <= 160; step++) {
+      const wingSlope = step / 4;
+      const { corner } = buildHalfSerif({
+        side: 1,
+        wall: upright,
+        params: { ...params, wingSlope },
+      });
+      if (previous) {
+        expect(Math.hypot(corner.u - previous.u, corner.v - previous.v)).to.be.below(1);
+      }
+      previous = corner;
+    }
+  });
+
+  it("moves no release and no junction", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: upright,
+      params: { ...params, wingSlope: -10 },
+    });
+    expect(half.releaseParameter).to.equal(0);
+    expectClose(half.junction.v, 20);
+  });
+});
+
 describe("serif wall", () => {
   it("finds a point at a requested depth on a straight wall", () => {
     const wall = straightWallSample();

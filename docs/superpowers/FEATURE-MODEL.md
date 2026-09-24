@@ -1158,6 +1158,15 @@ curving wall carries the point further than the number says — by the number ov
 lean — so the rounding was lopsided at exactly the leans a designer notices. Tip thickness stays a
 depth, because the thickness of a tip is measured square to its foot.
 
+**Past the rib end the corner meets the stem's edge continued.** The wall starts
+at the rib end, and a negative slope, or a rib end that a forced axis puts inside
+the foot line, can ask for a corner further out than that. The corner then lands
+on the straight line that continues the wall along its own direction at the rib
+end. Only the corner reads that line. The release, the reach and the easing stay
+on the real wall, and the wall is never bent onto the line, so this is not the
+flank line closed in §9. The two answers meet at the rib end, so the corner does
+not step as it crosses it.
+
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
 the wall rather than being handed one beside it.
 
