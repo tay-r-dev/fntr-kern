@@ -973,7 +973,9 @@ describe("the curvature gizmo at a bulb terminal", () => {
   it("gives the neck a segment of its own once easing is on", () => {
     const necks = neckSegments({ capBallEasing: 0.5 });
     expect(necks).to.have.length(1);
-    for (const entry of necks[0].provenance) {
+    // The neck's two handles and its ball end belong to the cap. Its stem end is
+    // the stem's own on-curve, which keeps its own owner.
+    for (const entry of necks[0].provenance.slice(0, 3)) {
       expect(entry.skeletonPointId).to.equal(4);
     }
     expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
@@ -1049,9 +1051,10 @@ describe("the curvature gizmo at a bulb terminal", () => {
     const trimmed = buildGeneratedTunniSegments(skeletonData, layer.path).filter(
       (segment) => segment.provenance.some((entry) => entry?.constructionSegment)
     );
-    // One per side: the outer edge under the ball, and the inner edge above the
-    // incision, which had no gizmo at all before.
-    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(2);
+    // The inner edge above the incision, which had no gizmo at all before. The
+    // outer edge's last curve runs into the ball's first apex with its handles
+    // solved, so a pin there would do nothing and it offers none.
+    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(1);
     for (const segment of trimmed) {
       // Each measures its own untrimmed curve, which is the one its pin governs.
       const carrier = segment.provenance.find((entry) => entry.constructionSegment);

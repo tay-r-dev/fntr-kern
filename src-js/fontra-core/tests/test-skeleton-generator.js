@@ -1573,12 +1573,19 @@ describe("skeleton-generator drop caps", () => {
     expect(neckFarEndX({ capBallEasing: 1 })).to.be.closeTo(240, 0.5);
   });
 
-  it("capBallEasing moves the neck's far end continuously across its range", () => {
-    let previous = neckFarEndX({ capBallEasing: 0 });
+  // The neck lands on the stem's own on-curve at every easing. A landing where
+  // the easing put it was a point on the stem that answered to nothing, and at
+  // easing 1 it sat on top of that on-curve.
+  it("capBallEasing lands the neck on the stem's own on-curve", () => {
+    // The ball spans x 340 to 440 on this stroke, and the stem's last on-curve
+    // is at 240. Nothing stands on the inner edge between them.
     for (let easing = 0.05; easing <= 1.0001; easing += 0.05) {
-      const current = neckFarEndX({ capBallEasing: easing });
-      expect(current, `easing ${easing.toFixed(2)}`).to.be.at.most(previous + 0.5);
-      previous = current;
+      const points = generateFromSkeleton(horizontalDrop({ capBallEasing: easing }))
+        .contours[0].points;
+      const landings = points.filter(
+        (p) => !p.type && Math.abs(p.y - 160) <= 2 && p.x > 241 && p.x < 340
+      );
+      expect(landings, `easing ${easing.toFixed(2)}`).to.have.length(0);
     }
   });
 
@@ -1690,44 +1697,112 @@ describe("skeleton-generator drop caps", () => {
     expect(new Set(counts).size, counts.join(",")).to.equal(1);
   });
 
-  it("keeps the ease-in point off the ball's first point", () => {
-    // Two on-curves on the outer edge: the ease-in cut and the ball's top. They
-    // are a real distance apart at every size, so neither collapses onto the
-    // other and the point count does not change under them.
-    for (const capFields of [
-      {},
-      { capBallRatio: 0.8 },
-      { capBallRatio: 2 },
-      { capBallShape: 0.5 },
-      { capBallEasing: 0.5 },
-    ]) {
-      const label = JSON.stringify(capFields);
-      // The tangency and the ball's first point. A third may sit on top of the
-      // first where the ball is small enough that an extreme is held at the
-      // meeting, which is a collapsed point rather than a new one.
-      const onOuter = ballOnCurves(capFields).filter((p) => Math.abs(p.y - 80) <= 1);
-      expect(onOuter.length, label).to.be.at.least(2);
-      const spread =
-        Math.max(...onOuter.map((p) => p.x)) - Math.min(...onOuter.map((p) => p.x));
-      expect(spread, label).to.be.greaterThan(5);
+  // The handover: the one point where the wall gives way to the ball. There is
+  // no tangency point; the ball's first apex takes its place.
+  function jointSteps(points) {
+    const count = points.length;
+    const at = (index) => points[(index + count) % count];
+    const startCurvature = (p) => {
+      const t = { x: p[1].x - p[0].x, y: p[1].y - p[0].y };
+      const s = { x: p[2].x - 2 * p[1].x + p[0].x, y: p[2].y - 2 * p[1].y + p[0].y };
+      return ((2 / 3) * (t.x * s.y - t.y * s.x)) / Math.hypot(t.x, t.y) ** 3;
+    };
+    const endCurvature = (p) => -startCurvature([...p].reverse());
+    return (index) => {
+      const one = endCurvature([
+        at(index - 3),
+        at(index - 2),
+        at(index - 1),
+        at(index),
+      ]);
+      const other = startCurvature([
+        at(index),
+        at(index + 1),
+        at(index + 2),
+        at(index + 3),
+      ]);
+      return Math.abs(one - other) / Math.max(Math.abs(one), Math.abs(other));
+    };
+  }
+
+  // Reported on the `h` of skeletron: the ball meets the wall past its own
+  // rightmost extreme, so that extreme was held at the meeting, which is no
+  // extreme at all. The handover drew skewed handles, and the wall redrawn into
+  // it left its stroke. The handover is the wall's own extreme there: the wall
+  // is kept up to it, and one curve runs on to the ball's second apex.
+  it("puts the handover on the wall's own extreme past the meeting", () => {
+    const skeleton = {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: "right",
+          points: [
+            {
+              id: 2,
+              x: 330,
+              y: 220,
+              type: null,
+              smooth: false,
+              capStyle: "drop",
+              capBallRatio: 1.6,
+              capBallEasing: 1,
+              capBallShape: 0.16,
+              capBallSide: "left",
+              width: { left: 18, right: 18, linked: true },
+            },
+            { id: 3, x: 380, y: 327, type: "cubic" },
+            { id: 4, x: 326, y: 348, type: "cubic" },
+            {
+              id: 5,
+              x: 258,
+              y: 348,
+              type: null,
+              smooth: true,
+              width: { left: 13, right: 8, linked: false },
+              nudge: { left: 0, right: -2 },
+            },
+            { id: 6, x: 190, y: 348, type: "cubic" },
+            { id: 7, x: 153, y: 298, type: "cubic" },
+            {
+              id: 8,
+              x: 153,
+              y: 208,
+              type: null,
+              smooth: false,
+              width: { left: 22, right: 22, linked: true },
+            },
+          ],
+        },
+      ],
+      generated: [],
+    };
+    const points = removeCollapsedOutlinePoints(
+      generateFromSkeleton(skeleton).contours[0].points
+    );
+    const onCurves = points.map((p, i) => i).filter((i) => !points[i].type);
+    const handover = onCurves.reduce((best, i) =>
+      points[i].x > points[best].x ? i : best
+    );
+    // Orthogonal: both of its handles run straight up and down.
+    const count = points.length;
+    for (const step of [-1, 1]) {
+      const handle = points[(handover + step + count) % count];
+      expect(handle.type).to.equal("cubic");
+      expect(Math.abs(handle.x - points[handover].x)).to.be.below(0.01);
     }
+    const step = jointSteps(points);
+    expect(step(handover), "handover").to.be.below(0.02);
+    expect(step(handover - 3), "second apex").to.be.below(0.02);
   });
 
-  it("slides the ease-in point back as the ball grows", () => {
-    const easeInX = (capFields) =>
-      Math.min(
-        ...ballOnCurves(capFields)
-          .filter((p) => Math.abs(p.y - 80) <= 1)
-          .map((p) => p.x)
-      );
-    expect(easeInX({ capBallRatio: 2 })).to.be.lessThan(easeInX({ capBallRatio: 0.8 }));
-  });
-
-  // Reported on the `h` of skeletron: a ball much tighter than the wall it sits
-  // on has no balanced ease-in anywhere along the wall's last curve, and the
-  // ease-in fell back to circular handles, 39 and 44 per cent out at its two
-  // ends. The wall's whole last curve is the ease-in there.
-  it("eases into the ball harmoniously where no balanced setback exists", () => {
+  // Reported on an earlier `h` of skeletron: a ball much tighter than its wall
+  // left a short ease-in with circular handles, 39 and 44 per cent out at its
+  // two ends. The wall's whole last curve runs into the ball's first apex.
+  it("eases the wall into the ball's first apex with both joints matched", () => {
     const skeleton = {
       version: 1,
       nextId: 10,
