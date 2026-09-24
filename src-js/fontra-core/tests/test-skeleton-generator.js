@@ -1802,7 +1802,7 @@ describe("skeleton-generator drop caps", () => {
   // Reported on an earlier `h` of skeletron: a ball much tighter than its wall
   // left a short ease-in with circular handles, 39 and 44 per cent out at its
   // two ends. The wall's whole last curve runs into the ball's first apex.
-  it("eases the wall into the ball's first apex with both joints matched", () => {
+  it("slides the ball's first point so both of the ball's joints match", () => {
     const skeleton = {
       version: 1,
       nextId: 10,
@@ -1878,7 +1878,9 @@ describe("skeleton-generator drop caps", () => {
     );
     expect(at(ballStart + 1).type).to.equal("cubic");
     expect(step(ballStart), "ball joint").to.be.below(0.02);
-    expect(step(ballStart + 3), "wall joint").to.be.below(0.02);
+    // The wall is the skeleton's own curve, copied, so the joint where it
+    // starts is the skeleton's and not the ball's to match.
+    expect(step(ballStart - 3), "second apex").to.be.below(0.02);
   });
 
   it("capBallShape 0 leaves the round ball unchanged", () => {

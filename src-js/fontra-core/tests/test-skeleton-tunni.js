@@ -1051,10 +1051,9 @@ describe("the curvature gizmo at a bulb terminal", () => {
     const trimmed = buildGeneratedTunniSegments(skeletonData, layer.path).filter(
       (segment) => segment.provenance.some((entry) => entry?.constructionSegment)
     );
-    // The inner edge above the incision, which had no gizmo at all before. The
-    // outer edge's last curve runs into the ball's first apex with its handles
-    // solved, so a pin there would do nothing and it offers none.
-    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(1);
+    // The inner edge above the incision, which had no gizmo at all before, and
+    // the outer edge, which is the skeleton's own curve cut at the ball.
+    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(2);
     for (const segment of trimmed) {
       // Each measures its own untrimmed curve, which is the one its pin governs.
       const carrier = segment.provenance.find((entry) => entry.constructionSegment);
