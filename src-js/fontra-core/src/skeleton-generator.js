@@ -7797,68 +7797,68 @@ function buildDropCap({
   let capForwardToInner;
   if (mode === "soft") {
     // Concave neck: the arc ends at the backed-off ball attachment (smooth);
-    // one cubic eases from there into the stem — tangent to the ball at the ball
-    // end (continuing the sweep) and along the stroke edge at the stem end.
-    //
-    // It lands on the stem's own on-curve, the mirror of the handover on the
-    // outer side. Landing where the easing put it added a point on the stem that
-    // answered to nothing, and at easing 1 it sat on top of that on-curve. The
-    // easing still says how far the neck hugs the stem: its stem-side handle
-    // reaches at least as far as the landing used to stand.
-    const landingRun = getTerminalSegmentLength(trimmedInnerSide, position);
-    trimmedInnerSide = withoutTerminalSegment(trimmedInnerSide, position);
-    const stemPoint =
-      position === "start"
-        ? getFirstOnCurvePoint(trimmedInnerSide)
-        : getLastOnCurvePoint(trimmedInnerSide);
-    const stemSegment = easedCross.fromEnd
-      ? easedCross.segmentPoints
-      : [...easedCross.segmentPoints].reverse();
-    const stemAlong = [stemSegment[1], stemSegment[stemSegment.length - 1]]
-      .map((point) => vector.subVectors(point, stemSegment[0]))
-      .find(isUsableDirection);
+    // one cubic eases from there into the pulled-back inner trim — tangent to
+    // the ball at the ball end (continuing the sweep) and along the stroke edge
+    // at the inner end.
+    const innerTrim = easedCross.crossing;
     const ballAttach = ball.at(thetaArcEnd);
     const sweepTangent = ball.tangentAt(thetaArcEnd);
     const innerTangent = orientDirectionToward(
-      stemAlong ? vector.normalizeVector(stemAlong) : ex,
-      vector.subVectors(ballAttach, stemPoint)
+      easedCross.crossingTangent ?? ex,
+      vector.subVectors(ballAttach, innerTrim)
     );
-    const chord = vector.distance(ballAttach, stemPoint);
-    const tunniLengths = computeTunniHandleLengths(
+    const chord = vector.distance(ballAttach, innerTrim);
+    const neckLengths = computeTunniHandleLengths(
       ballAttach,
       sweepTangent,
-      stemPoint,
+      innerTrim,
       innerTangent,
       easeCurvature
     );
-    const neckLengths = {
-      startLen: tunniLengths.startLen,
-      endLen: Math.max(
-        Number.isFinite(tunniLengths.endLen) ? tunniLengths.endLen : 0,
-        landingRun
-      ),
-    };
     const clampNeckLen = (value) =>
       Math.min(
         Math.max(Number.isFinite(value) ? value : NECK_HANDLE_FRACTION * chord, 0),
         chord
       );
+    // The inner trim is not emitted. The stem piece up to it and the neck after
+    // it are drawn as ONE curve from the stem's own on-curve into the ball. A
+    // landing on the stem was a point that answered to nothing; at full easing
+    // it sat on top of that on-curve.
+    const stemPiece = getSideSegmentsFromTerminal(trimmedInnerSide, position)[0];
+    trimmedInnerSide = withoutTerminalSegment(trimmedInnerSide, position);
+    const stemPoints = stemPiece
+      ? position === "end"
+        ? stemPiece.segmentPoints
+        : [...stemPiece.segmentPoints].reverse()
+      : [innerTrim, innerTrim];
+    const stemPoint = stemPoints[0];
+    const stemOut = [stemPoints[1], stemPoints[stemPoints.length - 1]]
+      .map((point) => vector.subVectors(point, stemPoint))
+      .find(isUsableDirection);
+    const stemDirection = stemOut ? vector.normalizeVector(stemOut) : innerTangent;
+    // The landing moves back to the stem's on-curve and the neck's stem-side
+    // handle grows by the run it moved, so the neck keeps its own shape and
+    // hugs the stem where the stem piece used to run. Within 2.6 units of the
+    // old stem piece and neck on the `h` of skeletron, exact at full easing. A
+    // least-squares fit to the pair strayed 17 units and cut into the black.
+    const fitted = {
+      a: vector.distance(stemPoint, innerTrim) + clampNeckLen(neckLengths.endLen),
+      b: clampNeckLen(neckLengths.startLen),
+    };
     capForwardToInner = [
       ...arc,
       withNeckProvenance(
-        dropCapHandle({
-          x: ballAttach.x + sweepTangent.x * clampNeckLen(neckLengths.startLen),
-          y: ballAttach.y + sweepTangent.y * clampNeckLen(neckLengths.startLen),
-        }),
+        dropCapHandle(
+          vector.addVectors(ballAttach, vector.mulVectorScalar(sweepTangent, fitted.b))
+        ),
         endpoint,
         innerSideName,
         "out"
       ),
       withNeckProvenance(
-        dropCapHandle({
-          x: stemPoint.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
-          y: stemPoint.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
-        }),
+        dropCapHandle(
+          vector.addVectors(stemPoint, vector.mulVectorScalar(stemDirection, fitted.a))
+        ),
         endpoint,
         innerSideName,
         "in"
