@@ -836,19 +836,17 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.g3.tooltip":
     "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
-  "sidebar.selection-transformation.harmonize.method": "Movement",
-  "sidebar.selection-transformation.harmonize.method.tooltip":
-    "Every position removes the curvature step at the joint. They differ in what they do to the curve either side of it. Position 1 keeps the curvature you drew and changes the four handle lengths as little as it can. Position 2 throws that curvature away and computes a new one from the two outer handles, which the drawing then has to reach. Position 3 does the same and also lets the joint slide along its own tangent. G3 has one construction and greys this out.",
   "sidebar.selection-transformation.harmonize.equalize": "Equalize handles",
   "sidebar.selection-transformation.harmonize.equalize.tooltip":
     "Finish with one pass that equalizes each segment's two handles and then repairs the joint. Every position solves the joint and says nothing about how a segment's two handles compare, so it can leave the curvature right and the handles lopsided. Off under G3, where the repair would throw the rate away.",
-  "sidebar.selection-transformation.harmonize.method.1": "Preserve curvature",
-  "sidebar.selection-transformation.harmonize.method.2": "Recompute curvature",
-  "sidebar.selection-transformation.harmonize.method.3": "Recompute, move the on-curve",
-  "sidebar.selection-transformation.harmonize.method.1.short": "Preserve",
-  "sidebar.selection-transformation.harmonize.method.2.short": "Recompute",
-  "sidebar.selection-transformation.harmonize.method.3.short": "Move on-curve",
+  "sidebar.selection-transformation.harmonize.move-on-curve": "Move on-curve",
+  "sidebar.selection-transformation.harmonize.move-on-curve.tooltip":
+    "Slide the on-curve first, with the handles held, to where the two curvatures are equal. Where a handle would get too short the slide stops there, and the construction does the rest. Greyed out under G3.",
+  "sidebar.selection-transformation.harmonize.options": "Options",
   "sidebar.selection-transformation.harmonize.other-sources": "Other sources",
+  "sidebar.selection-transformation.harmonize.preserve-curvature": "Preserve curvature",
+  "sidebar.selection-transformation.harmonize.preserve-curvature.tooltip":
+    "On: change the four handle lengths as little as possible to make the two curvatures equal. Off: compute one new curvature from the two outer handles and move the two inner handles to reach it. Greyed out under G3.",
   "sidebar.selection-transformation.harmonize.reason.already-harmonic":
     "already harmonic",
   "sidebar.selection-transformation.harmonize.reason.below-grid":

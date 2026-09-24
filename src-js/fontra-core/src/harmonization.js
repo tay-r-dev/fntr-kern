@@ -24,7 +24,6 @@
 //
 
 import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
-import { cubicVelocityAt } from "./offset-contour.js";
 import { calculateTunniPoint, equalizeTensions } from "./tunni-calculations.js";
 import { POINT_TYPE_OFF_CURVE_CUBIC } from "./var-path.js";
 import {
@@ -43,21 +42,23 @@ export const HARMONIZE_DEFAULTS = {
   // "G2" matches curvature across the joint. "G3" also matches its rate of
   // change, which is what removes the crease from the curvature comb.
   continuity: "G2",
-  // Which construction runs. The designer names it, so one press draws one
-  // answer.
+  // Two ticks name the G2 construction. Under G3 there is one construction and
+  // neither is read.
   //
-  //   nearest          the smallest change to the four handle lengths that
-  //                    makes the two curvatures equal
-  //   canonical        the two inner handle lengths, moved to one particular
-  //                    ratio, with the joint held still
-  //   canonical-slide  the same, and the joint may slide along its tangent
+  //   preserveCurvature  on: the nearest answer, the smallest change to the
+  //                      four handle lengths that makes the two curvatures
+  //                      equal. Off: the joint construction, which computes one
+  //                      new curvature from the two outer handles and moves the
+  //                      two inner handles to reach it.
+  //   moveOnCurve        slide the on-curve first, with the handles held, to
+  //                      where the two curvatures are equal. The construction
+  //                      then does whatever the slide could not.
   //
-  // Until 2026-09-01 the press drew several of these at once and ranked them,
+  // Until 2026-09-01 the press drew several answers at once and ranked them,
   // and the rank on bending energy is what spent 85 units of movement on a
-  // joint that arrived 4.177% out. A tick box on the panel was therefore not a
-  // switch: it added an answer to a field which then decided whether to keep
-  // it. See the design document.
-  method: "canonical",
+  // joint that arrived 4.177% out. See the design document.
+  preserveCurvature: false,
+  moveOnCurve: false,
   // Finish with one balance and one repair. Every construction here solves the
   // joint and says nothing about how a segment's two handles compare, so it can
   // leave a segment lopsided: right curvature, and a handle configuration a
@@ -750,16 +751,6 @@ function tensionAfterStep(path, ctx, segments, fixup, handleBias, ceiling, farAr
   return worst;
 }
 
-// How many places the repair slide samples before it refines, and how many
-// times it halves afterwards. Both are fixed: the slide is a search, and a
-// search that decides its own trip count cannot be continuous in its input.
-const G3_SLIDE_SAMPLES = 64;
-
-// Two slide positions this close in error are the same answer, and the tie goes
-// to whichever moves the joint less. Without a tolerance, floating-point dust
-// decides, and a joint already standing at the best place walks off it.
-const GRID_TIE_UNITS = 1e-9;
-
 //
 // The joint's two cubic segments, as point quadruples in contour order. Null
 // where an open contour runs out before one of them.
@@ -1039,97 +1030,6 @@ function isBetter(candidate, incumbent) {
 }
 
 //
-// Signed curvature at parameter `t` of a cubic. The end values agree with
-// `curvatureAt`; this one can be asked about the middle.
-//
-function curvatureAtParameter([p0, p1, p2, p3], t) {
-  const u = 1 - t;
-  const first = cubicVelocityAt([p0, p1, p2, p3], t);
-  const second = {
-    x: 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
-    y: 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
-  };
-  const speed = vectorLength(first);
-  return speed ? crossProduct(first, second) / speed ** 3 : 0;
-}
-
-// How many places the comb is read at when judging a segment's shape. Fixed,
-// like every other trip count here.
-const COMB_SAMPLES = 20;
-
-// A comb that slackens in the middle of a segment and tightens again at both
-// ends. It is the defect a designer names first and it is invisible to every
-// measurement above, all of which are taken AT the joint: a joint can be
-// exactly G3 and sit at the top of a spike with a hollow behind it.
-//
-// Measured on `n` node 13: every position on the tangent from -30 to +20 units
-// leaves the incoming segment notched, and the slide was stopping at +21
-// because it ranked candidates on how well whole units hold the condition at
-// the point. Five units further on the notch is gone.
-//
-function combHasNotch(points) {
-  let lowest = Infinity;
-  let lowestAt = 0;
-  const samples = [];
-  for (let i = 0; i <= COMB_SAMPLES; i++) {
-    const value = Math.abs(curvatureAtParameter(points, i / COMB_SAMPLES));
-    samples.push(value);
-    if (value < lowest) {
-      lowest = value;
-      lowestAt = i;
-    }
-  }
-  if (lowestAt < 2 || lowestAt > COMB_SAMPLES - 2) {
-    return false;
-  }
-  // Below BOTH ends, and by enough that a flat comb does not register as one.
-  return lowest < 0.99 * Math.min(samples[0], samples[COMB_SAMPLES]);
-}
-
-//
-// The bending energy of one cubic: the integral of squared curvature along it.
-//
-// This is the classical measure of a fair curve, and it is the only thing in
-// this module that reads the curve BETWEEN its on-curve points. Everything else
-// is taken at the joint, which is why a joint could be exactly G2 while the
-// segment behind it carried a lump six times its own curvature and every
-// measurement here reported success.
-//
-// Integrated against arc length, not parameter, for the same reason the G3
-// solve matches the arc-length rate: the parameter runs at different speeds
-// through different parts of a segment and the eye does not.
-//
-function bendingEnergyOf(points) {
-  let total = 0;
-  let previous = null;
-  for (let i = 0; i <= COMB_SAMPLES; i++) {
-    const t = i / COMB_SAMPLES;
-    const curvature = curvatureAtParameter(points, t);
-    const speed = vectorLength(cubicVelocityAt(points, t));
-    const value = curvature * curvature * speed;
-    if (previous !== null) {
-      total += (previous + value) / 2 / COMB_SAMPLES;
-    }
-    previous = value;
-  }
-  return Number.isFinite(total) ? total : Infinity;
-}
-
-//
-// How unfair the curve either side of a joint is, made dimensionless by the
-// joint's own size the same way the other terms are. Energy carries 1/length,
-// so one factor of length does it.
-//
-function jointUnfairness(stencil, length) {
-  if (!length || !Number.isFinite(length)) {
-    return 0;
-  }
-  return (
-    (bendingEnergyOf(stencil.incoming) + bendingEnergyOf(stencil.outgoing)) * length
-  );
-}
-
-//
 // One G3 attempt, with the joint at `nodePosition`. Returns the two inner
 // handle positions, or null where the construction has no answer or the answer
 // is outside the same two limits the G2 path obeys: the cusp floor on the
@@ -1163,236 +1063,11 @@ function g3Attempt(stencil, nodePosition, limits) {
 }
 
 //
-// Where the joint goes under G2 when it is allowed to move.
-//
-// There is a free parameter here and the module has never used it. The harmonic
-// ratio depends only on the two outer handles' offsets from the tangent, and
-// sliding the joint along that tangent changes neither -- so EVERY position on
-// it is exactly as G2 as every other. The construction has nothing to say about
-// which, the old score had nothing to say about which, and so the joint stayed
-// where it was and the command reported that there was nothing to do. On the
-// reported glyph a designer used exactly this freedom by hand, slid the joint
-// 22 units, and got a visibly better curve without changing how G2 the joint
-// was at all.
-//
-// What separates the positions is the shape of the curve either side, which
-// `scoreJoints` now measures. So this walks the tangent, builds the answer at
-// each whole unit, and asks the same question the caller will ask at the end.
-//
-// The construction at a given position: the harmonic target is a fixed point on
-// the tangent, so placing the joint at `here` and moving both handles by
-// `here - target` satisfies G2 there exactly. The two outer on-curve points do
-// not move, so each position gives a genuinely different pair of segments.
-//
-function g2BestSlide(path, ctx, state, options) {
-  const target = calculateHarmonicTarget(ctx);
-  if (!target) {
-    return null;
-  }
-  const axis = normalizeVector(subVectors(ctx.N, ctx.P));
-  if (!vectorLength(axis)) {
-    return null;
-  }
-  const segments = jointSegments(path, ctx);
-  if (segments.length < 2) {
-    return null;
-  }
-  const [A] = segmentPositions(path, segments[0].indices);
-  const C = segmentPositions(path, segments[1].indices)[3];
-
-  const along = (point) => dotVector(subVectors(point, ctx.node), axis);
-  const room = { "1": Math.max(0, along(C)), "-1": Math.max(0, -along(A)) };
-  const reach = Math.max(room[1], room["-1"]);
-  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
-  const place = options.roundCoordinates
-    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
-    : (point) => point;
-
-  let best = null;
-  const consider = (slide) => {
-    const here = addVectors(ctx.node, mulVectorScalar(axis, slide));
-    const shift = subVectors(here, target.target);
-    const P = addVectors(ctx.P, shift);
-    const N = addVectors(ctx.N, shift);
-    if (distance(here, P) < state.floors.P || distance(here, N) < state.floors.N) {
-      return;
-    }
-    const node = place(here);
-    const stencil = {
-      incoming: [A, ctx.PP, place(P), node],
-      outgoing: [node, place(N), ctx.NN, C],
-    };
-    if (
-      handleTension(stencil.incoming, "end") > options.maxHandleTension ||
-      handleTension(stencil.outgoing, "start") > options.maxHandleTension
-    ) {
-      return;
-    }
-    const length =
-      (distance(stencil.incoming[0], stencil.incoming[3]) +
-        distance(stencil.outgoing[0], stencil.outgoing[3])) /
-      2;
-    const error = jointError(stencil, "G2") + jointUnfairness(stencil, length);
-    const travel = Math.abs(slide);
-    if (
-      !best ||
-      error < best.error - GRID_TIE_UNITS ||
-      (error < best.error + GRID_TIE_UNITS && travel < best.travel)
-    ) {
-      best = { error, travel, node: here, P, N };
-    }
-  };
-
-  consider(along(target.target));
-  for (let sample = 0; sample <= G3_SLIDE_SAMPLES; sample++) {
-    const slide = sample * step;
-    for (const direction of [1, -1]) {
-      if (slide <= room[direction]) {
-        consider(direction * slide);
-      }
-    }
-  }
-  return best;
-}
-
-//
 // The answer with the joint held where it is, in the shape the caller consumes.
 //
 function g3HeldSolve(stencil, limits) {
   const targets = g3Attempt(stencil, stencil.incoming[3], limits);
-  return targets ? { node: null, targets } : null;
-}
-
-//
-// Where the joint goes when it is allowed to move.
-//
-// The G3 construction is exact at EVERY admissible position on the tangent, so
-// in exact arithmetic there is nothing to choose between them and the joint
-// would never have a reason to move. What separates them is the grid: the
-// command's answer lands on whole units, and how much of the exact answer
-// survives that depends on where the joint sits. Measured on the outer arch of
-// `n`, held at its drawn position the best whole-unit joint available is a 15.6%
-// rate step; two units along the tangent it is 1.2%, and five units 0.51%.
-//
-// So each candidate is judged as it will be EMITTED, on the grid, which is the
-// same rule the offset construction arrived at for its own candidates. The
-// bracket search in `snapToGrid` polishes the winner afterwards; this stage only
-// has to pick the position.
-//
-// Sampling is at whole units along the tangent, because that is the resolution
-// the answer is stored at, with a fixed cap so a long range cannot buy itself
-// more search. A search that picks its own trip count cannot be continuous in
-// its input.
-//
-function g3BestSlide(stencil, limits, continuity, snapToWholeUnits) {
-  const node = stencil.incoming[3];
-  const span = subVectors(stencil.outgoing[1], stencil.incoming[2]);
-  if (!vectorLength(span)) {
-    return null;
-  }
-  const axis = normalizeVector(span);
-  // The joint may travel as far as the on-curve point at the far end of either
-  // of its two segments, measured along the tangent. Past that it has left the
-  // segment it belongs to. The two directions have their own room.
-  const along = (point) => dotVector(subVectors(point, node), axis);
-  const room = {
-    "1": Math.max(0, along(stencil.outgoing[3])),
-    "-1": Math.max(0, -along(stencil.incoming[0])),
-  };
-  const reach = Math.max(room[1], room["-1"]);
-  const step = Math.max(1, reach / G3_SLIDE_SAMPLES);
-  const at = (slide) => addVectors(node, mulVectorScalar(axis, slide));
-
-  // As it will be emitted. Where the caller is not rounding, that is the exact
-  // answer, which is exactly G3 at every admissible position — so nothing
-  // separates them, the tie-break takes over and the joint stays where it is.
-  const place = snapToWholeUnits
-    ? (point) => ({ x: Math.round(point.x), y: Math.round(point.y) })
-    : (point) => point;
-  const [A, PP] = stencil.incoming;
-  const [, , NN, C] = stencil.outgoing;
-
-  // The same question the caller asks at the end, and not a smaller one. Judged
-  // on the joint alone, this search walked a node 221 units down its tangent on
-  // one of 2000 random joints -- taking the incoming chord from 238 units to 46
-  // -- because the joint it left there was fractionally more exact. The curve
-  // it left behind carried 450,000 times the bending energy it started with.
-  const errorAsEmitted = (nodePosition, targets) => {
-    const placed = place(nodePosition);
-    const stencil = {
-      incoming: [A, PP, place(targets.P), placed],
-      outgoing: [placed, place(targets.N), NN, C],
-    };
-    const length =
-      (distance(stencil.incoming[0], stencil.incoming[3]) +
-        distance(stencil.outgoing[0], stencil.outgoing[3])) /
-      2;
-    // Same split as `scoreJoints`: under G3 the rate leads and the curve breaks
-    // ties, so the two are returned separately rather than added.
-    const error = jointError(stencil, continuity);
-    const unfairness = jointUnfairness(stencil, length);
-    return continuity === "G3"
-      ? { error, unfairness }
-      : { error: error + unfairness, unfairness: 0 };
-  };
-
-  let best = null;
-  const consider = (slide) => {
-    const nodePosition = at(slide);
-    const targets = g3Attempt(stencil, nodePosition, limits);
-    if (!targets) {
-      return;
-    }
-    const { error, unfairness } = errorAsEmitted(nodePosition, targets);
-    const travel = Math.abs(slide);
-
-    // The shape of the comb across both segments, ranked ahead of how exactly
-    // the grid holds the condition at the joint. A notch is a defect the eye
-    // reads immediately; a fraction of a per cent at the point is not visible
-    // at all. Ranked and not added, for the same reason the score above ranks:
-    // they are different kinds of wrong.
-    const placed = place(nodePosition);
-    const notched =
-      (combHasNotch([A, PP, place(targets.P), placed]) ? 1 : 0) +
-      (combHasNotch([placed, place(targets.N), NN, C]) ? 1 : 0);
-
-    // Least notched, then least error, and where two positions are equally good
-    // the one that moves the joint least -- so a joint already standing at the
-    // best place stays.
-    const ranked = [notched, error, unfairness, travel];
-    const better =
-      !best ||
-      (() => {
-        for (let i = 0; i < ranked.length; i++) {
-          const tolerance = i === 3 ? 0 : GRID_TIE_UNITS;
-          if (ranked[i] < best.ranked[i] - tolerance) {
-            return true;
-          }
-          if (ranked[i] > best.ranked[i] + tolerance) {
-            return false;
-          }
-        }
-        return false;
-      })();
-    if (better) {
-      best = { ranked, travel, node: nodePosition, targets };
-    }
-  };
-
-  consider(0);
-  for (let sample = 1; sample <= G3_SLIDE_SAMPLES; sample++) {
-    const slide = sample * step;
-    for (const direction of [1, -1]) {
-      if (slide <= room[direction]) {
-        consider(direction * slide);
-      }
-    }
-  }
-
-  if (!best) {
-    return null;
-  }
-  return { node: best.travel ? best.node : null, targets: best.targets };
+  return targets ? { targets } : null;
 }
 
 //
@@ -1748,7 +1423,6 @@ export function harmonizeNearestInPlace(path, pointIndices, options = {}) {
 function harmonizeByJointInPlace(path, pointIndices, options = {}) {
   const {
     continuity,
-    slideOnCurve,
     handleBias: rawHandleBias,
     cuspSafetyMargin,
     toleranceUnits,
@@ -1937,29 +1611,18 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
           };
           let outcome = null;
           if (stencil) {
-            // The slide is opt-in, and when it is on it is the whole search:
-            // every admissible position on the tangent including the one the
-            // joint already holds. It is not a fallback for when holding the
-            // joint still fails, because holding it still almost never fails —
-            // so as a fallback the option did nothing on any healthy joint.
-            outcome = slideOnCurve
-              ? g3BestSlide(stencil, limits, continuity, roundCoordinates)
-              : g3HeldSolve(stencil, limits);
+            outcome = g3HeldSolve(stencil, limits);
           }
           if (outcome) {
             const movement = Math.max(
               distance(outcome.targets.P, ctx.P),
-              distance(outcome.targets.N, ctx.N),
-              outcome.node ? distance(outcome.node, ctx.node) : 0
+              distance(outcome.targets.N, ctx.N)
             );
             if (movement < toleranceUnits) {
               state.quiet = true;
               continue;
             }
             state.quiet = false;
-            if (outcome.node) {
-              writePoint(path, touched, state.pointIndex, outcome.node);
-            }
             writePoint(path, touched, ctx.indices.P, outcome.targets.P);
             writePoint(path, touched, ctx.indices.N, outcome.targets.N);
             state.construction = "g3";
@@ -1970,34 +1633,6 @@ function harmonizeByJointInPlace(path, pointIndices, options = {}) {
           // No admissible answer here. G2 is the rung below, and it starts from
           // the geometry as it stands rather than from anything G3 attempted.
           state.mode = "g2";
-        }
-
-        // Opt-in, and when it is on it is the whole search -- the same rule the
-        // G3 slide arrived at. Under G2 the bias has nothing left to decide,
-        // because the search chooses where the joint goes outright.
-        if (slideOnCurve) {
-          const slid = g2BestSlide(path, ctx, state, {
-            roundCoordinates,
-            maxHandleTension: state.tensionCeiling,
-          });
-          if (slid) {
-            const movement = Math.max(
-              distance(slid.node, ctx.node),
-              distance(slid.P, ctx.P),
-              distance(slid.N, ctx.N)
-            );
-            if (movement < toleranceUnits) {
-              state.quiet = true;
-              continue;
-            }
-            state.quiet = false;
-            writePoint(path, touched, state.pointIndex, slid.node);
-            writePoint(path, touched, ctx.indices.P, slid.P);
-            writePoint(path, touched, ctx.indices.N, slid.N);
-            state.iterations += 1;
-            anyMoved = true;
-            continue;
-          }
         }
 
         const solution = calculateHarmonicTarget(ctx);
@@ -2271,8 +1906,53 @@ const STRUCTURAL_SKIPS = new Set([
 // arrived 4.177 per cent out: once every answer cleared the joint bound the
 // ranks tied, and the flattest answer won. See the design document.
 //
+// The on-curve slide: each joint's on-curve moves along the line between its
+// two handles, with every handle held, to where the two curvatures are equal.
+//
+// That place is the harmonic point, and it always lies between the two
+// handles. Only the on-curve moves, so the comb reads the same on both sides
+// of the joint without any handle changing length. A joint's end curvature
+// reads only its own three nearest points, so one joint's slide does not
+// disturb another and one pass is the whole of it.
+//
+// The slide stops where the handle it shortens reaches its cusp floor. Where
+// the harmonic point lies past that -- a side that leaves the joint nearly flat
+// asks for a handle a few units long -- the construction does the rest.
+//
+function slideOnCurvesInPlace(path, candidates, options) {
+  const { cuspSafetyMargin, roundCoordinates } = options;
+  for (const pointIndex of candidates) {
+    const ctx = getJointContext(path, pointIndex);
+    if (ctx.reason) {
+      continue;
+    }
+    const solution = calculateHarmonicTarget(ctx);
+    if (!solution) {
+      continue;
+    }
+    const floors = cuspFloors(path, ctx, jointSegments(path, ctx), cuspSafetyMargin);
+    const toward = solution.target;
+    const wanted = distance(ctx.node, toward);
+    if (!wanted) {
+      continue;
+    }
+    // The handle the joint moves toward is the one that shortens.
+    const shortened = distance(toward, ctx.P) < distance(ctx.node, ctx.P) ? "P" : "N";
+    const room = Math.max(0, distance(ctx.node, ctx[shortened]) - floors[shortened]);
+    const travel = Math.min(wanted, room);
+    let node = interpolateVectors(ctx.node, toward, travel / wanted);
+    if (roundCoordinates) {
+      node = { x: Math.round(node.x), y: Math.round(node.y) };
+    }
+    if (node.x !== ctx.node.x || node.y !== ctx.node.y) {
+      path.setPointPosition(pointIndex, node.x, node.y);
+    }
+  }
+}
+
+//
 export function harmonizePathInPlace(path, pointIndices, options = {}) {
-  const { continuity, method, equalizeHandles, ...rest } = {
+  const { continuity, preserveCurvature, moveOnCurve, equalizeHandles, ...rest } = {
     ...HARMONIZE_DEFAULTS,
     ...options,
   };
@@ -2286,7 +1966,9 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // tension of 11.34, and moving the on-curve under G3 moves the drawing 1013
   // units on `_external/problem-glyphs/I^1.json` against 201 under G2. Both
   // measured 2026-09-01.
-  const construction = continuity === "G3" ? "canonical" : method;
+  const construction =
+    continuity === "G2" && preserveCurvature ? "nearest" : "canonical";
+  const slides = continuity === "G2" && moveOnCurve;
 
   // The drawing exactly as the press was handed it. The verdict is read against
   // this at the end, so a joint can only be called harmonized if something
@@ -2327,6 +2009,12 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   // joint of `N^1.json` and `I^1.json` it moved 0 of 88 points.
   realignSmoothJointsInPlace(working, candidates, new Set());
 
+  // The slide goes first and always runs when its tick is on. Where it reaches
+  // the equal-curvature point the construction after it has nothing left to do.
+  if (slides) {
+    slideOnCurvesInPlace(working, candidates, rest);
+  }
+
   // Position 2 is three steps rather than one, so the whole of it runs on a copy
   // and only what ended up somewhere else is written back. Each step moves the
   // same handles again, and every one of those writes would be a recorded
@@ -2361,10 +2049,8 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
       : harmonizeByJointInPlace(working, candidates, {
           ...rest,
           continuity,
-          slideOnCurve: construction === "canonical-slide",
-          // The handles are what move at both positions. Position 3 adds the
-          // slide; it does not take the handles away. The design's own table
-          // reads "the two inner handle lengths, and the joint".
+          // The construction moves the handles. The slide, where it runs, has
+          // already moved the joint.
           handleBias: 1,
         });
 

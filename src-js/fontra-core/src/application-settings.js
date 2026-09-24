@@ -23,9 +23,9 @@ export const applicationSettingsController = new ObservableController({
   // fork: harmonize panel settings (app-level, per D9 — not written to project files)
   harmonizeG3: false,
   harmonizeOtherSources: true,
-  // 1 nearest, 2 canonical, 3 canonical with the joint free. See the design
-  // document: one control names one construction.
-  harmonizeMethod: 2,
+  // The two G2 ticks. See `HARMONIZE_DEFAULTS` in harmonization.js.
+  harmonizePreserveCurvature: false,
+  harmonizeMoveOnCurve: false,
   // Finish with one balance and one repair. See the design document.
   harmonizeEqualize: true,
   // fork: what a side-mode change does to the drawing (app-level, per D9 — not

@@ -26,6 +26,14 @@ import { expect } from "chai";
 // The three words the handle-length construction uses when it drew nothing at
 // all. The joint constructions use the same three for a step they scaled back
 // at a limit, which is a real answer partly applied.
+// The G2 constructions by name, as the two ticks that select them.
+const TICKS = {
+  "nearest": { preserveCurvature: true },
+  "canonical": {},
+  "canonical-slide": { moveOnCurve: true },
+  "nearest-slide": { preserveCurvature: true, moveOnCurve: true },
+};
+
 const REFUSAL_REASONS_IN_TEST = new Set(["clamped", "tension-limited", "degenerate"]);
 
 // --- fixtures ---------------------------------------------------------------
@@ -342,7 +350,7 @@ describe("harmonization: measureG2Discontinuity", () => {
 
   it("drops to zero once the joint has been harmonized", () => {
     const { path } = harmonizePath(asymmetricPath(), [NODE], {
-      method: "canonical-slide",
+      moveOnCurve: true,
     });
     expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.closeTo(0, 1e-9);
   });
@@ -525,7 +533,7 @@ describe("harmonization: expandToJoints", () => {
 describe("harmonization: harmonizePath", () => {
   it("lets the joint slide as well as the handles, at canonical-slide", () => {
     const result = harmonizePath(asymmetricPath(), [NODE], {
-      method: "canonical-slide",
+      moveOnCurve: true,
     });
 
     expect(result.report).to.have.lengthOf(1);
@@ -826,7 +834,7 @@ describe("harmonization: harmonizePath", () => {
 
   it("rounds every point it moved, at canonical-slide", () => {
     const result = harmonizePath(asymmetricPath(), [NODE], {
-      method: "canonical-slide",
+      moveOnCurve: true,
       roundCoordinates: true,
     });
     const [x, y] = result.path.getPointPosition(NODE);
@@ -865,7 +873,10 @@ describe("harmonization: harmonizePath", () => {
     // repair is the nearest answer, which moves all four handle lengths.
     for (const method of ["canonical-slide"]) {
       const path = asymmetricPath();
-      const result = harmonizePath(path, [NODE], { equalizeHandles: false, method });
+      const result = harmonizePath(path, [NODE], {
+        equalizeHandles: false,
+        ...TICKS[method],
+      });
       expect(result.path.getPointPosition(1), `method ${method}`).to.deep.equal([
         0, 20,
       ]);
@@ -1039,7 +1050,7 @@ describe("harmonization: the G3 cascade", () => {
     // when moving makes the curve fairer. That is the point -- so what is
     // pinned here is that it moves for a reason and not far.
     const path = reportedG3Path();
-    harmonizePathInPlace(path, [NODE], { ...G3, method: "canonical-slide" });
+    harmonizePathInPlace(path, [NODE], { ...G3, moveOnCurve: true });
     expect(distance(nodePos(path), nodePos(squaredUp(reportedG3Path())))).to.be.below(
       5
     );
@@ -1054,7 +1065,7 @@ describe("harmonization: the G3 cascade", () => {
   it("leaves the two outer handles alone", () => {
     const path = reportedG3Path();
     const before = [1, 5].map((i) => path.getPointPosition(i));
-    harmonizePathInPlace(path, [NODE], { ...G3, method: "canonical-slide" });
+    harmonizePathInPlace(path, [NODE], { ...G3, moveOnCurve: true });
     expect([1, 5].map((i) => path.getPointPosition(i))).to.deep.equal(before);
   });
 
@@ -2279,17 +2290,17 @@ describe("the score", () => {
 
 describe("harmonizePathInPlace, one construction per press", () => {
   it("presses to a fixed point", () => {
-    for (const method of ["nearest", "canonical", "canonical-slide"]) {
+    for (const method of ["nearest", "canonical", "canonical-slide", "nearest-slide"]) {
       const path = asymmetricPath();
       harmonizePathInPlace(path, [NODE], {
         equalizeHandles: false,
-        method,
+        ...TICKS[method],
         roundCoordinates: true,
       });
       const after = [...path.coordinates];
       harmonizePathInPlace(path, [NODE], {
         equalizeHandles: false,
-        method,
+        ...TICKS[method],
         roundCoordinates: true,
       });
       expect([...path.coordinates], method).to.deep.equal(after);
@@ -2298,14 +2309,14 @@ describe("harmonizePathInPlace, one construction per press", () => {
 
   it("runs the nearest construction when it is asked for", () => {
     const path = asymmetricPath();
-    const report = harmonizePathInPlace(path, [NODE], { method: "nearest" });
+    const report = harmonizePathInPlace(path, [NODE], { preserveCurvature: true });
     expect(report[0].construction).to.equal("nearest");
   });
 
   it("forces the canonical construction under G3", () => {
     const path = asymmetricPath();
     const report = harmonizePathInPlace(path, [NODE], {
-      method: "nearest",
+      preserveCurvature: true,
       continuity: "G3",
     });
     expect(report[0].construction).to.not.equal("nearest");
@@ -2313,7 +2324,7 @@ describe("harmonizePathInPlace, one construction per press", () => {
 
   it("balances and repairs after the construction, at position 2", () => {
     const path = asymmetricPath();
-    harmonizePathInPlace(path, [NODE], { method: "canonical" });
+    harmonizePathInPlace(path, [NODE], { preserveCurvature: false });
 
     // the joint is matched
     expect(measureG2Discontinuity(getJointContext(path, NODE))).to.be.below(1e-6);
@@ -2381,13 +2392,13 @@ describe("harmonizePathInPlace, one construction per press", () => {
     const path = asymmetricPath();
     for (let press = 0; press < 6; press++) {
       harmonizePathInPlace(path, [NODE], {
-        method: "canonical",
+        preserveCurvature: false,
         roundCoordinates: true,
       });
     }
     const settled = [...path.coordinates];
     harmonizePathInPlace(path, [NODE], {
-      method: "canonical",
+      preserveCurvature: false,
       roundCoordinates: true,
     });
     expect([...path.coordinates]).to.deep.equal(settled);
@@ -2395,7 +2406,7 @@ describe("harmonizePathInPlace, one construction per press", () => {
 
   it("realigns without being asked", () => {
     const path = bentJointFixture();
-    harmonizePathInPlace(path, [NODE], { method: "canonical" });
+    harmonizePathInPlace(path, [NODE], { preserveCurvature: false });
     const ctx = getJointContext(path, NODE);
     // the joint and its two handles are back on one line
     const cross =
@@ -2500,7 +2511,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
     const path = quoteSingle();
     const before = Array.from(path.coordinates);
     const report = harmonizePathInPlace(path, undefined, {
-      method: "canonical",
+      preserveCurvature: false,
       equalizeHandles: false,
       maxIterations: 0,
     });
@@ -2509,7 +2520,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
   });
 
   it("leaves no handle parked on its Tunni point", () => {
-    for (const method of ["nearest", "canonical", "canonical-slide"]) {
+    for (const method of ["nearest", "canonical", "canonical-slide", "nearest-slide"]) {
       for (const equalizeHandles of [false, true]) {
         const path = quoteSingle();
         // A handle on its segment's Tunni point presses the curve into the
@@ -2519,7 +2530,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
         const full = (tensions) =>
           tensions.filter((tension) => tension >= 0.995).length;
         const arrived = full(segmentTensionsOf(path));
-        harmonizePathInPlace(path, undefined, { method, equalizeHandles });
+        harmonizePathInPlace(path, undefined, { ...TICKS[method], equalizeHandles });
         expect(full(segmentTensionsOf(path))).to.be.at.most(arrived);
       }
     }
@@ -2529,7 +2540,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
     const path = quoteSingle();
     const handed = score(path);
     harmonizePathInPlace(path, undefined, {
-      method: "nearest",
+      preserveCurvature: true,
       equalizeHandles: false,
     });
     expect(score(path).residual).to.be.lessThan(handed.residual);
@@ -2542,7 +2553,7 @@ describe("harmonization: the press is judged against the drawing it was handed",
     const handed = score(path);
     for (let press = 0; press < 3; press++) {
       harmonizePathInPlace(path, undefined, {
-        method: "canonical",
+        preserveCurvature: false,
         equalizeHandles: true,
       });
     }
@@ -2607,7 +2618,7 @@ describe("harmonization: a joint with one short handle (skeletron-test M^1)", ()
       it(`harmonizes point ${index} by ${method}`, () => {
         const path = M();
         const [report] = harmonizePathInPlace(path, [index], {
-          method,
+          ...TICKS[method],
           equalizeHandles: false,
         });
         expect(`${report.status}/${report.reason}`).to.equal("harmonized/undefined");
@@ -2618,7 +2629,7 @@ describe("harmonization: a joint with one short handle (skeletron-test M^1)", ()
     it(`harmonizes point ${index} by the nearest answer`, () => {
       const path = M();
       const [report] = harmonizePathInPlace(path, [index], {
-        method: "nearest",
+        preserveCurvature: true,
         equalizeHandles: false,
       });
       expect(report.status).to.equal("harmonized");

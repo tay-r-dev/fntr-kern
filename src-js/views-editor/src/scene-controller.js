@@ -2667,18 +2667,15 @@ export class SceneController {
   async doHarmonize(options = {}) {
     const {
       useG3 = applicationSettingsController.model.harmonizeG3,
-      method = applicationSettingsController.model.harmonizeMethod,
+      preserveCurvature = applicationSettingsController.model
+        .harmonizePreserveCurvature,
+      moveOnCurve = applicationSettingsController.model.harmonizeMoveOnCurve,
       equalizeHandles = applicationSettingsController.model.harmonizeEqualize,
       applyToOtherSources = applicationSettingsController.model.harmonizeOtherSources,
     } = options;
 
-    // One control names one construction. G3 has one, so the position is not
-    // read under it.
+    // G3 has one construction, so the two ticks are not read under it.
     const continuity = useG3 ? "G3" : "G2";
-    const construction =
-      { 1: "nearest", 2: "canonical", 3: "canonical-slide" }[
-        Math.round(Number(method))
-      ] ?? "canonical";
 
     const reports = new Map();
 
@@ -2696,7 +2693,8 @@ export class SceneController {
           .filter((address) => address),
         {
           continuity,
-          method: construction,
+          preserveCurvature,
+          moveOnCurve,
           equalizeHandles,
         },
         translate("action.harmonize")
@@ -2773,7 +2771,8 @@ export class SceneController {
         const working = path.copy();
         const report = harmonizePathInPlace(working, pointIndices, {
           continuity,
-          method: construction,
+          preserveCurvature,
+          moveOnCurve,
           equalizeHandles,
           roundCoordinates: true,
         });

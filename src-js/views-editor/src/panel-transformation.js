@@ -966,7 +966,7 @@ export default class TransformationPanel {
     formContents.push({ type: "divider" });
 
     // The Harmonize header carries everything: the G3 toggle, Run, and an
-    // overflow holding the movement (preserve, recompute, move on-curve) and
+    // overflow holding the two G2 ticks (preserve curvature, move on-curve) and
     // the two options. One press draws one answer, so each pick is written to
     // the settings at once and there is no mid-gesture state to read back.
     this.harmonizeG3Toggle = html.createDomElement("labeled-toggle", {
@@ -977,21 +977,9 @@ export default class TransformationPanel {
       applicationSettingsController.model.harmonizeG3 = this.harmonizeG3Toggle.checked;
       this._refreshHarmonizeOverflow();
     });
-    // The overflow is a card, as the Rib one: Movement as a segmented control,
-    // then the two options as checks.
+    // The overflow is a card, as the Rib one: the two G2 ticks, then the two
+    // options, all as checks.
     const settings = applicationSettingsController.model;
-    this.harmonizeMethodControl = html.createDomElement("segmented-control", {
-      options: [1, 2, 3].map((method) => ({
-        value: method,
-        label: translate(
-          `sidebar.selection-transformation.harmonize.method.${method}.short`
-        ),
-      })),
-    });
-    this.harmonizeMethodControl.addEventListener(
-      "change",
-      (event) => (settings.harmonizeMethod = event.detail.value)
-    );
     this.harmonizeChecks = {};
     const optionCheck = (key, labelKey) => {
       const check = html.input({ type: "checkbox" });
@@ -1003,7 +991,7 @@ export default class TransformationPanel {
       ]);
     };
     this.harmonizeOverflow = html.createDomElement("overflow-popover", {
-      "data-tooltip": translate("sidebar.selection-transformation.harmonize.method"),
+      "data-tooltip": translate("sidebar.selection-transformation.harmonize.options"),
       "data-tooltipposition": "left",
     });
     this.harmonizeOverflow.content = html.div(
@@ -1011,12 +999,8 @@ export default class TransformationPanel {
         style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
       },
       [
-        html.div({ style: "display: flex; flex-direction: column; gap: 0.25em;" }, [
-          html.span({}, [
-            translate("sidebar.selection-transformation.harmonize.method"),
-          ]),
-          this.harmonizeMethodControl,
-        ]),
+        optionCheck("harmonizePreserveCurvature", "preserve-curvature"),
+        optionCheck("harmonizeMoveOnCurve", "move-on-curve"),
         optionCheck("harmonizeEqualize", "equalize"),
         optionCheck("harmonizeOtherSources", "other-sources"),
       ]
@@ -1088,9 +1072,10 @@ export default class TransformationPanel {
     const settings = applicationSettingsController.model;
     const options = {
       useG3: !!settings.harmonizeG3,
-      // The overflow writes a pick to the setting the moment it is made, so
-      // the stored method is the one the list shows.
-      method: settings.harmonizeMethod,
+      // The overflow writes a tick to the setting the moment it is made, so
+      // the stored ticks are the ones the card shows.
+      preserveCurvature: !!settings.harmonizePreserveCurvature,
+      moveOnCurve: !!settings.harmonizeMoveOnCurve,
       equalizeHandles: !!settings.harmonizeEqualize,
       applyToOtherSources: settings.harmonizeOtherSources,
     };
@@ -1101,14 +1086,15 @@ export default class TransformationPanel {
     );
   }
 
-  // The card's state from the settings. G3 has one construction, so the
-  // movement greys while it is on.
+  // The card's state from the settings. G3 has one construction, so the two
+  // G2 ticks grey while it is on.
   _refreshHarmonizeOverflow() {
     const settings = applicationSettingsController.model;
-    this.harmonizeMethodControl.value = settings.harmonizeMethod;
-    this.harmonizeMethodControl.disabled = !!settings.harmonizeG3;
     for (const [key, check] of Object.entries(this.harmonizeChecks)) {
       check.checked = !!settings[key];
+    }
+    for (const key of ["harmonizePreserveCurvature", "harmonizeMoveOnCurve"]) {
+      this.harmonizeChecks[key].disabled = !!settings.harmonizeG3;
     }
   }
 
@@ -2128,15 +2114,15 @@ function summarizeHarmonizeReport(report) {
 // Hover detail: the bias that actually ran, plus one line per candidate point.
 // The summary says what happened; this says which point and why.
 function detailHarmonizeReport(reports, options) {
-  // The head line names what was asked for. It used to name four tick boxes
-  // that no longer exist, so it read "move the on-curve: off" whatever the
-  // slider said.
-  const position = options.useG3 ? 2 : Math.round(Number(options.method));
+  // The head line names what was asked for. Under G3 the two ticks are not
+  // read, so it does not name them.
+  const onOff = (value) => (value ? "on" : "off");
   const lines = [
-    `${options.useG3 ? "G3" : "G2"}` +
-      `, position ${options.useG3 ? "-" : position}: ` +
-      translate(`sidebar.selection-transformation.harmonize.method.${position}`) +
-      `, other sources: ${options.applyToOtherSources ? "on" : "off"}`,
+    (options.useG3
+      ? "G3"
+      : `G2, preserve curvature: ${onOff(options.preserveCurvature)}` +
+        `, move on-curve: ${onOff(options.moveOnCurve)}`) +
+      `, other sources: ${onOff(options.applyToOtherSources)}`,
   ];
   for (const [layerName, report] of reports) {
     lines.push(`${layerName}:`);
