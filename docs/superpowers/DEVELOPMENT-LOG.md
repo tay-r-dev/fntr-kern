@@ -786,6 +786,15 @@ which are the two ends of the cup curve itself — one line and no single-sided
 branch, because a collapsed half puts its tip on its own wall. The alternative
 offered was the middle of the two stem walls; the designer chose the foot.
 
+**The midpoint of the tips travelled with the height** (2026-09-24). Each tip is
+measured from the stem at its own height, so on the curving `f` of skeletron
+both tips slid along the stroke and the centre went 307, 326, 336, 349 in y over
+heights 0, 60, 92, 150, against a skeleton end at 305. The centre is anchored at
+the rib ends plus half the wing difference now, which is the middle of the
+stem walls the designer had turned down, corrected by the wings, so a collapsed
+half still centres the drawn foot. After: 305 at every height from −100 to 150.
+No golden fixture moved, because every fixture stem stands straight up.
+
 Contact height over a stem leaning to 30 degrees, old rule / new rule, in the
 perpendicular axis mode. Under a flat foot every row is identical at every tilt,
 and that is arithmetic rather than luck: an axis with no rise cannot carry the

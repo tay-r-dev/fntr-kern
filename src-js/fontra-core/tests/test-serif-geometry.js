@@ -783,6 +783,53 @@ describe("serif terminal assembly", () => {
     expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
+  describe("foot centre on a leaning stroke", () => {
+    // Both walls lean the same way, as a curving stroke does near its end, so
+    // the tips travel sideways as the height grows.
+    const leaningTerminal = (height, balance = 0, rightWing = 60) => {
+      const frame = computeSerifFrame({
+        endpoint: { x: 0, y: 0 },
+        tangent: { x: 0, y: -1 },
+        normal: { x: 1, y: 0 },
+        axisMode: "perpendicular",
+      });
+      return buildSerifTerminal({
+        frame,
+        leftWall: makeSerifWall([
+          { u: 50, v: 0 },
+          { u: 150, v: 1000 },
+        ]),
+        rightWall: makeSerifWall([
+          { u: -50, v: 0 },
+          { u: 50, v: 1000 },
+        ]),
+        left: { ...half, tipThickness: height },
+        right: { ...half, tipThickness: height, wingLength: rightWing },
+        undersideCup: 0,
+        undersideCupBalance: balance,
+      });
+    };
+    const centreOf = (terminal) => terminal.points.filter((p) => !p.type)[3];
+
+    it("stays where the stroke meets the foot line, whatever the height", () => {
+      for (const height of [0, 30, 90, 150]) {
+        expectClose(centreOf(leaningTerminal(height)).x, 0, `height ${height}`);
+      }
+    });
+
+    it("sits between the wings where they differ", () => {
+      expectClose(centreOf(leaningTerminal(90, 0, 20)).x, 20);
+    });
+
+    it("still lands on a tip at either end of the balance", () => {
+      const terminal = leaningTerminal(90, 1);
+      const onCurve = terminal.points.filter((p) => !p.type);
+      expectClose(onCurve[3].x, onCurve[2].x);
+      const other = leaningTerminal(90, -1).points.filter((p) => !p.type);
+      expectClose(other[3].x, other[4].x);
+    });
+  });
+
   describe("negative height", () => {
     const onCurves = (overrides) =>
       terminal(overrides).points.filter((point) => !point.type);

@@ -843,22 +843,37 @@ export function buildSerifTerminal({
       params: right,
     }),
   };
-  // The balance slides the centre along the axis, as a fraction of the half-span
-  // between the two tips. A fraction rather than a distance: the foot it divides
+  // The balance slides the centre along the axis, as a fraction of the way from
+  // its anchor to the tip it slides toward. A fraction rather than a distance: the foot it divides
   // is what sets the scale, so one number reads the same on a narrow serif and a
   // wide one, the units mode never touches it, and a preset carries it between
   // masters unchanged. At either extreme the centre lands on a tip and one half
   // of the sweep collapses to nothing, which is a legal shape here - points
   // collapse, they do not disappear.
-  const midpoint = (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2;
-  const halfSpan = (halves.left.tipBottom.u - halves.right.tipBottom.u) / 2;
+  //
+  // The centre is anchored where the stroke meets the foot line: halfway
+  // between the two rib ends, shifted by half the difference between the two
+  // wings. It is NOT the midpoint of the tips. Each tip stands a wing length
+  // out from the stem at its own height, so on a curving stroke both tips slide
+  // along the curve as the height grows, and their midpoint went with them --
+  // 41 units over heights 0 to 150 on the `f` of skeletron. Where the stem
+  // stands straight up the two are the same point, so no upright foot moves.
+  // A collapsed half has no wing, so the anchor still lands in the middle of
+  // the foot that is drawn.
+  const anchor =
+    (leftWall.pointAt(0).u +
+      (left?.wingLength ?? 0) +
+      rightWall.pointAt(0).u -
+      (right?.wingLength ?? 0)) /
+    2;
   const balance = Math.min(Math.max(undersideCupBalance ?? 0, -1), 1);
+  const toward = balance >= 0 ? halves.left.tipBottom.u : halves.right.tipBottom.u;
   // The cup is measured from the foot, which a negative height carries outward.
   // Two halves of different heights have tips at two depths, so the centre
   // starts between them and the sweep stays one curve.
   const footDepth = (halves.left.tipBottom.v + halves.right.tipBottom.v) / 2;
   const centre = {
-    u: midpoint + halfSpan * balance,
+    u: anchor + (toward - anchor) * Math.abs(balance),
     v: footDepth + Math.max(undersideCup ?? 0, 0),
   };
 

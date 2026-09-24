@@ -1271,15 +1271,21 @@ degenerate value" covers this directly, because this is the interpolation contra
 ### The underside is one curve
 
 One cup value drives a single curve across the whole terminal, tip to tip. It is not one curve per
-half. The foot centre sits **midway between the two tips** — the middle of the foot the serif
-actually draws, and the two ends of this very curve.
+half. The foot centre sits **where the stroke meets the foot line**: halfway between the two rib
+ends, shifted by half the difference between the two wing lengths. Where the stem stands straight
+up, that is the midpoint of the two tips, which are the two ends of this very curve.
+
+It is not taken from the tips themselves. Each tip stands a wing length out from the stem at its
+own height, so on a curving stroke both tips slide along the curve as the height grows, and a
+centre read off them went too: 41 units over heights 0 to 150 on the `f` of skeletron
+(2026-09-24). The anchor does not read the height, so the foot centre stays put.
 
 It used to sit on the skeleton, which reads correctly only while the two halves match. Single-sided
 mode collapses one half to zeros, so the whole terminal stands on one side of the skeleton and the
 cup's lowest point lands on the foot's own edge instead of its middle.
 
-**The balance slides that centre along the foot.** It is a fraction of the half-span between the
-two tips, not a distance: the foot it divides is what sets the scale, so one number reads the same
+**The balance slides that centre along the foot.** It is a fraction of the way from the anchor to
+the tip it slides toward, not a distance: the foot it divides is what sets the scale, so one number reads the same
 on a narrow serif and a wide one, the units mode never touches it, and a preset carries it between
 masters unchanged. Zero is the midpoint, so a terminal drawn before the control existed does not
 move. At either extreme the centre lands on a tip and one half of the sweep collapses to nothing,
