@@ -104,6 +104,8 @@ const DROP_CAP_WALL_MAX_TURN = (3 * Math.PI) / 4;
 // handle would go negative, so the nearest answer jumped with it.
 // How near the ball's first apex the wall must pass, as a share of the ball's
 // radius, to be cut there and kept.
+// How far, at most, the wall may turn off the apex's axis where it is cut.
+const DROP_CAP_WALL_APEX_TURN = (15 * Math.PI) / 180;
 const DROP_CAP_WALL_APEX_REACH = 0.15;
 const HARMONIOUS_SCAN_STEPS = 64;
 const HARMONIOUS_MIN_HANDLE = 0.1;
@@ -6925,22 +6927,35 @@ function emitDropCapHandover({
   // with no extreme showing is cut instead where it passes the ball's first
   // apex, if it passes close to it, and the cut point stands in for the apex.
   const passingApex = () => {
-    const { t } = createBezierFromPoints(skeletonPoints).project(
-      ball.at(thetaFirstExtreme)
-    );
     // Only on the wall as it shows: past the meeting the skeleton runs on
-    // inside the ball, and a cut there is a point nobody drew.
+    // inside the ball, and a cut there is a point nobody drew. An apex just
+    // past the meeting is cut at the meeting, if that is still near it.
     const meeting = createBezierFromPoints(skeletonPoints).project(
       wallPoints[wallPoints.length - 1]
     ).t;
-    if (!(t > 1e-6 && t <= meeting + 1e-6)) {
+    const t = Math.min(
+      createBezierFromPoints(skeletonPoints).project(ball.at(thetaFirstExtreme)).t,
+      meeting
+    );
+    if (!(t > 1e-6)) {
       return null;
     }
-    const at = createBezierFromPoints(skeletonPoints).get(t);
-    return vector.distance(at, ball.at(thetaFirstExtreme)) <=
+    const bezier = createBezierFromPoints(skeletonPoints);
+    const at = bezier.get(t);
+    if (
+      vector.distance(at, ball.at(thetaFirstExtreme)) >
       DROP_CAP_WALL_APEX_REACH * ball.b
-      ? t
-      : null;
+    ) {
+      return null;
+    }
+    // And only where the wall runs along the apex's own axis, so the cut is an
+    // extreme too. Across a slanted wall it is no extreme at all.
+    const derivative = bezier.derivative(t);
+    const along = vector.normalizeVector({ x: derivative.x, y: derivative.y });
+    const turn = Math.acos(
+      Math.min(Math.abs(vector.dotVector(along, ball.tangentAt(thetaFirstExtreme))), 1)
+    );
+    return turn <= DROP_CAP_WALL_APEX_TURN ? t : null;
   };
   const shownExtreme =
     wallPoints.length === 4
