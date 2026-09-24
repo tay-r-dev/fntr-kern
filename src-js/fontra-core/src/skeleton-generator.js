@@ -97,6 +97,7 @@ const HARMONIOUS_MAX_HANDLE = 2;
 // How far off its axis the point where the ball meets the wall may turn and
 // still stand in for the ball's first extreme, in radians. Past it the
 // handover moves onto the wall's own extreme.
+const DROP_CAP_WALL_MAX_TURN = (3 * Math.PI) / 4;
 const DROP_CAP_HANDOVER_SKEW = (5 * Math.PI) / 180;
 // Samples the handle range is scanned at, and the shortest a handle may be, as
 // a share of the chord. A handle near zero matches any curvature on paper and
@@ -7760,16 +7761,29 @@ function buildDropCap({
   // instead made an extreme just behind that meeting and one just ahead pick
   // different threes, a quarter turn apart, so the same bulb drew its points in
   // different places either side of that edge.
-  // A ball that wraps far round, as a bent stem makes it, reaches a fourth
-  // extreme: the outermost one, at or just behind where the ball meets the
-  // wall. It stays, so the handover can find it on the wall. Cutting to three
-  // from the arc's end dropped it, and the wall's last curve then ran into the
-  // next apex across the whole stroke.
+  // Three extremes, counted back from the arc's end. Where the wall would
+  // have to turn more than DROP_CAP_WALL_MAX_TURN to reach the first of them,
+  // the extreme before it stays as well: it is the outermost point, on the
+  // wall, and without it the wall's last curve ran into the next apex across
+  // the whole stroke. A ball that wraps that far then has a fourth point.
   const allExtremes = dropCapApexAngles(ball, thetaArcEnd - 2 * Math.PI).filter(
     (theta) => theta < thetaArcEnd - 1e-9
   );
-  const reached = allExtremes.filter((theta) => theta > thetaOuter + 1e-9).length + 1;
-  const extremes = allExtremes.slice(-Math.max(DROP_CAP_APEX_COUNT, reached));
+  let extremes = allExtremes.slice(-DROP_CAP_APEX_COUNT);
+  const wallTerminal = getSideSegmentsFromTerminal(trimmedOuterSide, position)[0];
+  if (extremes.length && wallTerminal && allExtremes.length > extremes.length) {
+    const points =
+      position === "end"
+        ? wallTerminal.segmentPoints
+        : [...wallTerminal.segmentPoints].reverse();
+    const along = vector.normalizeVector(vector.subVectors(points[1], points[0]));
+    const turn = Math.acos(
+      Math.min(Math.max(vector.dotVector(along, ball.tangentAt(extremes[0])), -1), 1)
+    );
+    if (turn > DROP_CAP_WALL_MAX_TURN) {
+      extremes = allExtremes.slice(-(DROP_CAP_APEX_COUNT + 1));
+    }
+  }
   const apexes = extremes
     // Held inside the drawn arc. Behind where the ball meets the wall is the
     // far side of the stroke's own edge, and an arc reaching back there draws
