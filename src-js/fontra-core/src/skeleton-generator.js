@@ -6928,7 +6928,12 @@ function emitDropCapHandover({
     const { t } = createBezierFromPoints(skeletonPoints).project(
       ball.at(thetaFirstExtreme)
     );
-    if (!(t > 1e-6 && t < 1 - 1e-6)) {
+    // Only on the wall as it shows: past the meeting the skeleton runs on
+    // inside the ball, and a cut there is a point nobody drew.
+    const meeting = createBezierFromPoints(skeletonPoints).project(
+      wallPoints[wallPoints.length - 1]
+    ).t;
+    if (!(t > 1e-6 && t <= meeting + 1e-6)) {
       return null;
     }
     const at = createBezierFromPoints(skeletonPoints).get(t);
