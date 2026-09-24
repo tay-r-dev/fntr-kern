@@ -6827,6 +6827,10 @@ function emitDropCapHandover({
   const forward = (segment) =>
     position === "end" ? segment.segmentPoints : [...segment.segmentPoints].reverse();
   const wallPoints = forward(terminal);
+  const start = wallPoints[0];
+  const startDirection = vector.normalizeVector(
+    vector.subVectors(wallPoints[1], start)
+  );
   const second = dropCapOnCurve(ball.at(thetaSecond));
   const secondIn = vector.mulVectorScalar(ball.tangentAt(thetaSecond), -1);
   // Measured on the arc pieces AS THEY WILL BE EMITTED, on the grid. Matching
@@ -6923,75 +6927,39 @@ function emitDropCapHandover({
     ];
   }
 
-  // The wall's last curve stays whole, and its meeting with the ball stays a
-  // point. The curve into the apex starts there, along the wall and with the
-  // wall's own curvature. Drawing the wall's last curve into the apex instead
-  // threw away the outermost point, and where that curve is a whole stroke
-  // segment, the whole side with it.
-  let meeting = { ...wallPoints[wallPoints.length - 1], smooth: true };
-  const meetingDirection = vector.normalizeVector(
-    vector.subVectors(meeting, wallPoints[wallPoints.length - 2])
-  );
-  const apex = dropCapOnCurve(ball.at(thetaFirst));
+  // Matched to the curve before the wall's last one where the two meet
+  // smoothly. At a corner there is nothing to match, and the wall's own
+  // curvature stands.
+  const beforePoints = before ? forward(before) : null;
+  const startCurvature =
+    start.smooth && beforePoints?.length === 4
+      ? -cubicStartCurvature([...beforePoints].reverse())
+      : start.smooth && beforePoints
+        ? 0
+        : wallPoints.length === 4
+          ? cubicStartCurvature(wallPoints)
+          : 0;
+  const point = dropCapOnCurve(ball.at(thetaFirst));
+  point.skipColinear = true;
   const tangent = ball.tangentAt(thetaFirst);
   const back = vector.mulVectorScalar(tangent, -1);
-  const endCurvature = arcStartCurvature(thetaFirst, thetaSecond);
+  const into = solveHarmoniousHandles({
+    from: start,
+    u: startDirection,
+    startCurvature,
+    to: point,
+    v: back,
+    endCurvature: arcStartCurvature(thetaFirst, thetaSecond),
+    reference: circular(start, startDirection, point, back),
+  });
   // Left off the grid, deliberately: curvature at a cubic's end goes as one
   // over the square of its handle, so half a unit of rounding on a short handle
   // is the step this solve exists to remove.
-  const solved = (start, startDirection, startCurvature, point) => {
-    const into = solveHarmoniousHandles({
-      from: start,
-      u: startDirection,
-      startCurvature,
-      to: point,
-      v: back,
-      endCurvature,
-      reference: circular(start, startDirection, point, back),
-    });
-    const [a, b] = lengths(start, startDirection, point, back, into);
-    return [place(start, startDirection, a), place(point, back, b)];
-  };
-  let wallHandles = wallPoints.slice(1, -1).map((handle) => ({ ...handle }));
-  let intoApex;
-  let point;
-  if (vector.distance(apex, meeting) < 1) {
-    // An apex within a unit of the meeting IS the meeting. The curve between
-    // them collapses onto it, and the wall's last curve is solved into the
-    // apex instead, matched to the curve before it and to the ball, so the
-    // join is as smooth as the ball's own.
-    point = apex;
-    meeting = { ...meeting, x: apex.x, y: apex.y };
-    const start = wallPoints[0];
-    const beforePoints = before ? forward(before) : null;
-    const startCurvature =
-      start.smooth && beforePoints?.length === 4
-        ? -cubicStartCurvature([...beforePoints].reverse())
-        : start.smooth && beforePoints
-          ? 0
-          : wallPoints.length === 4
-            ? cubicStartCurvature(wallPoints)
-            : 0;
-    const startDirection = vector.normalizeVector(
-      vector.subVectors(wallPoints[1], start)
-    );
-    wallHandles = solved(start, startDirection, startCurvature, point);
-    intoApex = [
-      { ...point, type: "cubic" },
-      { ...point, type: "cubic" },
-    ].map(({ x, y, type }) => ({ x, y, type }));
-  } else {
-    point = apex;
-    const startCurvature =
-      wallPoints.length === 4 ? -cubicStartCurvature([...wallPoints].reverse()) : 0;
-    intoApex = solved(meeting, meetingDirection, startCurvature, point);
-  }
-  point.skipColinear = true;
+  const [a, b] = lengths(start, startDirection, point, back, into);
   const handles = arcHandles(thetaFirst, thetaSecond);
   return [
-    ...wallHandles,
-    meeting,
-    ...intoApex,
+    place(start, startDirection, a),
+    place(point, back, b),
     point,
     dropCapHandle(handles.start),
     dropCapHandle(handles.end),
