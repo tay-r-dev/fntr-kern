@@ -221,8 +221,11 @@ Selections, undo and provenance all refer to points by these names rather than b
 list, so inserting a point in the middle cannot silently make a selection point at its neighbour.
 
 **Modifier behavior** — a key held during a drag to change what the drag means: **D** fixed rib,
-**S** fixed rib compress, **X** equalize, **Z** tangent-only, **A** independent rib. They are named
-behaviors inside the editing rules, not switches that skip the rules.
+**S** fixed rib compress, **X** equalize, **Z** tangent-only, **A** independent rib, **B** handle
+length. They are named behaviors inside the editing rules, not switches that skip the rules.
+
+**B drag** — hold **B** and drag a handle: it slides along its own line, so its length changes and
+its angle does not. Works on drawn contours and on skeleton centerlines.
 
 **Independent rib** — the **A** modifier. Held during a width drag, the dragged side takes the
 cursor's width and the far side stays exactly where it stands, whatever the link and the

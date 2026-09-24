@@ -331,6 +331,7 @@ thin documentation. This section flags them so nobody mistakes them for upstream
 | **Quad handles**         | `path-functions.js:insertHandles` (type/shiftKey params), `edit-tools-pen.js`                                                  | Shift modifier picks 1 vs 2 handles for quad curves                          |
 | **Equalize**             | `edit-behavior.js`, `tunni-interactions.js`                                                                                    | Alt-drag. Explicitly frozen during WS-4 — regression-watch it                |
 | **Pen connect**          | `edit-tools-pen.js:_getPathConnectTargetPoint`                                                                                 | Connect to an open contour's endpoint                                        |
+| **B drag (handle length)** | `fontra-core/src/handle-length.js` (+60), `views-editor/src/handle-length-editing.js` (+200), dispatch in `edit-tools-pointer.js`, the `handle-length` behavior in `edit-behavior.js` | Hold B; an empty match tree and one target entry per layer (R-E). Feature model §14 |
 | **Distance / Manhattan** | `distance-angle.js`, two layers                                                                                                | Frozen — superseded by Q-measure, kept because `distance-angle.js` is shared |
 
 ### F9 — Base-curve expansion

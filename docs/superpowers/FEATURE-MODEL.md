@@ -1900,3 +1900,30 @@ in several masters. Placement defaults to the active source alone.
 
 **Groups carry visibility only.** No shared target: one number owned by two levels is the
 trap this project has recorded four times.
+
+---
+
+## 14. The B drag
+
+Hold **B** and drag a handle. The handle slides along its own line: its length
+changes and its angle does not. The movement across the handle is ignored.
+
+- **What engages.** At least one selected handle with an owner: the on-curve
+  next to it. A single quadratic control point between two on-curves, and a
+  point inside a quadratic chain, have no owner, because moving either along a
+  line turns something else. A handle on a generated contour does not engage,
+  because its skeleton owns it. A skeleton centerline handle does, and is
+  written through `editSkeleton` (rail R-C). Everything else in the selection
+  holds still. Where nothing qualifies, the drag is a plain move.
+- **The handle stops on its own on-curve point** rather than passing through
+  it, because past it the handle would point the opposite way. A handle that
+  already lies on its on-curve point has no direction and does not move.
+- **Every frame is measured from the pre-drag drawing**, so a handle that
+  reaches its on-curve point keeps its direction for the rest of the drag.
+- **Each master keeps its own angle.** Every layer applies the pointer's
+  movement along its own handle's direction.
+- **The result lands on whole units**, like every drag, so the angle holds to
+  within the grid: `atan(0.7 / length)`, the same as any rounded handle (§3).
+- **A smooth partner does not move.** The angle does not change, so the
+  partner stays on the line.
+- **Snapping is off** under B by default, with a switch beside the others.
