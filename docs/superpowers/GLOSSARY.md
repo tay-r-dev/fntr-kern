@@ -301,8 +301,7 @@ around with it.
 
 **Underside cup** — the hollow under the foot of the serif, drawn as one curve from tip to tip
 rather than one per wing, so the two sides cannot disagree in the middle. Its lowest point sits
-where the stroke meets the foot line, shifted by half the difference between the wings, and the
-**cup balance** slides it from there out onto either tip.
+midway between the two tips, and the **cup balance** slides it from there out onto either tip.
 
 **Serif units mode** — whether the serif's five distance settings are fixed units, or a multiple of
 the stroke width so that the serif grows with the weight.

@@ -465,9 +465,19 @@ export function makeSerifWall(points) {
   const parameterAtSignedLength = (length) =>
     length <= 0 ? 0 : parameterAtDistance(0, length);
 
+  // Where the stem stands across the foot at a depth. Past the rib end the
+  // stroke has stopped, so the answer is the rib end, straight across: NOT the
+  // stem's edge continued. That edge can run nearly along the foot line -- a
+  // stroke leaving along the serif's own axis, on the `l` of skeletron -- and
+  // its crossing then flew 1584 units off in a quarter-unit drag. The two
+  // answers meet where the rib end sits on the foot line, so nothing steps.
+  const stemAtDepth = (depth) =>
+    depth < start.v ? { u: start.u, v: depth } : pointAt(parameterAtDepth(depth));
+
   return {
     pointAt,
     tangentAt,
+    stemAtDepth,
     pointAtLength,
     parameterAtSignedLength,
     extensionAtDepth,
@@ -550,30 +560,23 @@ export function buildHalfSerif({ side, wall, params }) {
     MAX_TIP_CUT_ANGLE
   );
 
-  // The wing is measured from the STROKE: from where the wall stands at the
-  // tip's own height, not from the wall's foot. Reported on the `l` of
-  // skeletron, whose stroke meets a vertical serif at about 71 degrees. Cut
-  // along that vertical, the stroke ends in a long thin sliver whose point is
-  // the wall's foot, and a wing of 0 stood its tip on that point: 59 units out
-  // from the stroke at the tip's height, with every other wing added on top.
-  // Where the wall stands straight up in the frame its foot and its position at
-  // any height are the same, so nothing drawn on an upright stem moves.
-  //
-  // This is also why the tip needs no limit on its thickness. The top of the tip
-  // stands the wing length outside the wall at its own height, by construction,
-  // so it cannot push through to the far side however thick it grows. The limit
-  // that used to stop it, and the "wing swallowed" case it led to, measured the
-  // wing from the foot; a wall leaning over the wing then met the tip's top.
+  // The serif is drawn in three steps: the foot goes out to the side from the
+  // stem at the foot line, the height goes straight up from the foot's end,
+  // and the slope runs back toward the stem until it meets it. So the wing is
+  // measured from the stem AT THE FOOT LINE, which the height does not move,
+  // and the tips hold still while the height changes. On a curving stem the
+  // stem at the tip's own height moves instead, and measuring there slid both
+  // tips along the curve. A tall tip on a stem leaning over its wing can end
+  // up inside the stroke. That is allowed.
   //
   // A negative thickness grows the platform OUTWARD, past the end of the
   // stroke. The shoulder -- the top of the tip, where the slope starts -- stays
-  // on the foot line and the slope still climbs the stem from there, so every
-  // point shared with the stroke is still found on the wall. Only the tip's
-  // bottom leaves it. At zero both readings put shoulder and bottom on the
-  // foot line, so the height passes through zero without a step.
+  // on the foot line and the slope still climbs the stem from there. Only the
+  // tip's bottom leaves it. At zero both readings put shoulder and bottom on
+  // the foot line, so the height passes through zero without a step.
   const tipThickness = Math.max(wantedTipThickness, 0);
   const footDepth = Math.min(wantedTipThickness, 0);
-  const tipU = wall.pointAt(wall.parameterAtDepth(tipThickness)).u + side * wingLength;
+  const tipU = wall.stemAtDepth(0).u + side * wingLength;
 
   const cutOffset =
     side * Math.abs(wantedTipThickness) * Math.tan((cutAngle * Math.PI) / 180);
@@ -843,37 +846,22 @@ export function buildSerifTerminal({
       params: right,
     }),
   };
-  // The balance slides the centre along the axis, as a fraction of the way from
-  // its anchor to the tip it slides toward. A fraction rather than a distance: the foot it divides
+  // The balance slides the centre along the axis, as a fraction of the half-span
+  // between the two tips. A fraction rather than a distance: the foot it divides
   // is what sets the scale, so one number reads the same on a narrow serif and a
   // wide one, the units mode never touches it, and a preset carries it between
   // masters unchanged. At either extreme the centre lands on a tip and one half
   // of the sweep collapses to nothing, which is a legal shape here - points
   // collapse, they do not disappear.
-  //
-  // The centre is anchored where the stroke meets the foot line: halfway
-  // between the two rib ends, shifted by half the difference between the two
-  // wings. It is NOT the midpoint of the tips. Each tip stands a wing length
-  // out from the stem at its own height, so on a curving stroke both tips slide
-  // along the curve as the height grows, and their midpoint went with them --
-  // 41 units over heights 0 to 150 on the `f` of skeletron. Where the stem
-  // stands straight up the two are the same point, so no upright foot moves.
-  // A collapsed half has no wing, so the anchor still lands in the middle of
-  // the foot that is drawn.
-  const anchor =
-    (leftWall.pointAt(0).u +
-      (left?.wingLength ?? 0) +
-      rightWall.pointAt(0).u -
-      (right?.wingLength ?? 0)) /
-    2;
+  const midpoint = (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2;
+  const halfSpan = (halves.left.tipBottom.u - halves.right.tipBottom.u) / 2;
   const balance = Math.min(Math.max(undersideCupBalance ?? 0, -1), 1);
-  const toward = balance >= 0 ? halves.left.tipBottom.u : halves.right.tipBottom.u;
   // The cup is measured from the foot, which a negative height carries outward.
   // Two halves of different heights have tips at two depths, so the centre
   // starts between them and the sweep stays one curve.
   const footDepth = (halves.left.tipBottom.v + halves.right.tipBottom.v) / 2;
   const centre = {
-    u: anchor + (toward - anchor) * Math.abs(balance),
+    u: midpoint + halfSpan * balance,
     v: footDepth + Math.max(undersideCup ?? 0, 0),
   };
 

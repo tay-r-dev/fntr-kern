@@ -795,6 +795,25 @@ stem walls the designer had turned down, corrected by the wings, so a collapsed
 half still centres the drawn foot. After: 305 at every height from −100 to 150.
 No golden fixture moved, because every fixture stem stands straight up.
 
+**The centre stood still and the wings still changed**, and the designer said
+so. Both tips still slid, so from a fixed centre one wing grew and the other
+shrank. The anchor was reverted the same day. The fix was the designer's
+three-step rule, stated many times: the foot goes out from the stem AT THE
+FOOT LINE, the height goes up, the slope runs back to the stem. The tips then
+hold still (y 173 and 367 on the `f` at every height from −100 to 150), and the
+centre is the midpoint of the tips again. **A fix to the centre treated the
+symptom the designer pointed at, not the rule that caused it.**
+
+- The `l`'s tip-height rule was withdrawn with it. Its 59-unit report is the
+  designer's to answer with the wing lengths.
+- **The stem's edge continued cannot place the foot.** On a stroke leaving
+  along the axis it runs nearly along the foot line, and its crossing flew
+  1584 units in a quarter-unit drag, caught by the easing-merge drag sweep.
+  Past the rib end the foot is measured from the rib end, straight across.
+- The reported `l` now merges both easing sides, 6 points, where the hand
+  edit on its old shape merged one. The test was changed to match. Owed: a
+  look at the `l` in the editor.
+
 Contact height over a stem leaning to 30 degrees, old rule / new rule, in the
 perpendicular axis mode. Under a flat foot every row is identical at every tilt,
 and that is arithmetic rather than luck: an axis with no rise cannot carry the

@@ -1178,35 +1178,24 @@ the wall rather than being handed one beside it.
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.
 
-**The tip stops at the wall, and emits no wing slope once it gets there.** The top of the tip stands
-straight above the wing's end, so its limit is where the wall crosses that line. A wall that never
-runs out that far sets no limit, which is the ordinary straight stem. Past the limit the tip's top
-ends up on the far side of the wall and the outline notches where the tip pokes through, so the
-thickness stops there and holds however much further it is pushed.
+**The serif is drawn in three steps** (decided 2026-09-24). The foot goes out to the side from the
+stem at the foot line, by the wing length. The height goes straight up from the foot's end. The
+slope runs back toward the stem from the top of the tip until it meets the stem. So the wing is
+measured AT THE FOOT LINE, which the height does not move: the tips hold still while the height
+changes, and the slope keeps the angle its two numbers state.
 
-At the limit the top of the tip and the wing's inner corner are the same point: the wing's top
-surface has no length rather than no existence, and the wing slope is not emitted at all. Climbing a
-surface that is not there would carry the bracket back out into space the stroke already occupies,
-and would leave the slope still moving the shape after the wing it belongs to had gone.
+Measured at the tip's own height instead, which was the rule from the `l` report until this date,
+both tips slid along a curving stem as the height grew: 41 units over heights 0 to 150 on the `f`
+of skeletron. That changed the wing lengths and the slope angles with the height.
 
-**The rounding moves to the corner that is left.** Once the wing is swallowed the bracket runs from
-the corner up the wall, so both ends of the rounding would land on the same surface and the scoop
-would have nothing to cut. The only corner in the shape is where the tip's own edge meets the wall,
-so the rounding's far end steps down that edge instead, and the top of the tip comes down with it —
-rounding a corner takes material from both surfaces, not one. The tip's top surface has no length
-there, so the end of the tip's edge and the rounding's landing are the same point.
+**Past the rib end the foot is measured from the rib end, straight across.** A rib end that stands
+inside the foot line has no stem below it. The stem's edge continued is not used here, because it
+can run nearly along the foot line: on a stroke leaving along the serif's own axis its crossing
+flew 1584 units off in a quarter-unit drag. The two answers meet where the rib end sits on the
+foot line, so nothing steps.
 
-This is the one place a serif snaps. At the instant the wing is swallowed, the surface the
-rounding's far end steps along turns by about a right angle, from the wing's top surface to the tip's
-edge, and the far end moves by roughly the ease distance — about 15 units at an ease distance of 15,
-more when there is reach as well. The two shapes either side of the instant are each correct; there
-is no in-between surface to slide along, because the wing's top surface does not shrink, it stops
-existing. Carrying the ease step past the end of the bracket and on down the tip's edge would close
-it, at the cost of changing what the ease distance means on every healthy wing.
-
-With no wing at all the tip stands on the wall's own foot, so the line it stands on is the wall and
-every depth reads as a crossing. That is a wing already collapsed, not a tip poking through one, and
-the limit does not apply.
+**A tall tip may end up inside the stroke**, on a stem that leans over its wing. That is allowed.
+Nothing limits the height, and the outline may cross itself there.
 
 #### What absorbs the lean, and why it is the bracket
 
@@ -1271,21 +1260,15 @@ degenerate value" covers this directly, because this is the interpolation contra
 ### The underside is one curve
 
 One cup value drives a single curve across the whole terminal, tip to tip. It is not one curve per
-half. The foot centre sits **where the stroke meets the foot line**: halfway between the two rib
-ends, shifted by half the difference between the two wing lengths. Where the stem stands straight
-up, that is the midpoint of the two tips, which are the two ends of this very curve.
-
-It is not taken from the tips themselves. Each tip stands a wing length out from the stem at its
-own height, so on a curving stroke both tips slide along the curve as the height grows, and a
-centre read off them went too: 41 units over heights 0 to 150 on the `f` of skeletron
-(2026-09-24). The anchor does not read the height, so the foot centre stays put.
+half. The foot centre sits **midway between the two tips**, which are the two ends of this very
+curve. The tips are measured at the foot line, so the height does not move them or the centre.
 
 It used to sit on the skeleton, which reads correctly only while the two halves match. Single-sided
 mode collapses one half to zeros, so the whole terminal stands on one side of the skeleton and the
 cup's lowest point lands on the foot's own edge instead of its middle.
 
-**The balance slides that centre along the foot.** It is a fraction of the way from the anchor to
-the tip it slides toward, not a distance: the foot it divides is what sets the scale, so one number reads the same
+**The balance slides that centre along the foot.** It is a fraction of the half-span between the
+two tips, not a distance: the foot it divides is what sets the scale, so one number reads the same
 on a narrow serif and a wide one, the units mode never touches it, and a preset carries it between
 masters unchanged. Zero is the midpoint, so a terminal drawn before the control existed does not
 move. At either extreme the centre lands on a tip and one half of the sweep collapses to nothing,

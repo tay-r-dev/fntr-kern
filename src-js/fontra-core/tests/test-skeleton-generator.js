@@ -5313,10 +5313,13 @@ describe("simplify and harmonize serif easings", () => {
     return atEnd ? -k : k;
   };
 
-  it("merges on the reported l exactly as the designer did by hand", () => {
-    // Three points fewer: the easing's point on the wall with its two handles,
-    // the end the culling already drops being gone either way.
-    expect(on(reportedL())).to.have.length(off(reportedL()).length - 3);
+  it("merges both sides of the reported l", () => {
+    // Three points fewer per side: the easing's point on the wall with its two
+    // handles. The designer's hand edit merged one side, on the shape the `l`
+    // had while the wing was measured at the tip's height. Measured at the foot
+    // line (2026-09-24) both tips moved and both runs bend one way, so both
+    // sides merge.
+    expect(on(reportedL())).to.have.length(off(reportedL()).length - 6);
   });
 
   // Reported on the `l` of skeletron: its stroke leaves the serif point exactly
