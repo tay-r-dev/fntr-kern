@@ -7760,9 +7760,16 @@ function buildDropCap({
   // instead made an extreme just behind that meeting and one just ahead pick
   // different threes, a quarter turn apart, so the same bulb drew its points in
   // different places either side of that edge.
-  const extremes = dropCapApexAngles(ball, thetaArcEnd - 2 * Math.PI)
-    .filter((theta) => theta < thetaArcEnd - 1e-9)
-    .slice(-DROP_CAP_APEX_COUNT);
+  // A ball that wraps far round, as a bent stem makes it, reaches a fourth
+  // extreme: the outermost one, at or just behind where the ball meets the
+  // wall. It stays, so the handover can find it on the wall. Cutting to three
+  // from the arc's end dropped it, and the wall's last curve then ran into the
+  // next apex across the whole stroke.
+  const allExtremes = dropCapApexAngles(ball, thetaArcEnd - 2 * Math.PI).filter(
+    (theta) => theta < thetaArcEnd - 1e-9
+  );
+  const reached = allExtremes.filter((theta) => theta > thetaOuter + 1e-9).length + 1;
+  const extremes = allExtremes.slice(-Math.max(DROP_CAP_APEX_COUNT, reached));
   const apexes = extremes
     // Held inside the drawn arc. Behind where the ball meets the wall is the
     // far side of the stroke's own edge, and an arc reaching back there draws
