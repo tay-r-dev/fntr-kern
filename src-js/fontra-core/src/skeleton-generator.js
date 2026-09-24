@@ -7007,6 +7007,14 @@ function emitDropCapHandover({
     ];
   }
 
+  // An extreme hidden behind the meeting, with no place on the wall to stand
+  // in for it, is no point at all: held at the meeting it drew a slanted
+  // point that is neither an apex nor the wall's. The caller moves on to the
+  // next apex.
+  if (thetaFirstExtreme < thetaFirst - 1e-9) {
+    return null;
+  }
+
   // Matched to the curve before the wall's last one where the two meet
   // smoothly. At a corner there is nothing to match, and the wall's own
   // curvature stands.
@@ -7874,21 +7882,38 @@ function buildDropCap({
   // The ball's first point is the earliest of them. It is the HANDOVER: the one
   // point where the wall gives way to the ball, and the ball's tangency with
   // the wall is not a point at all.
-  const thetaFirst = apexes.length ? apexes.shift() : thetaOuter;
-  const thetaSecond = apexes.length ? apexes.shift() : thetaArcEnd;
-  const arc = [
-    ...emitDropCapHandover({
+  const wallSegments = getSideSegmentsFromTerminal(trimmedOuterSide, position);
+  const fullWall = getSideSegmentsFromTerminal(outerSideArr, position)[0];
+  let thetaFirstExtreme = extremes[0];
+  let handover = null;
+  let thetaFirst;
+  let thetaSecond;
+  while (!handover) {
+    thetaFirst = apexes.length ? apexes.shift() : thetaOuter;
+    thetaSecond = apexes.length ? apexes.shift() : thetaArcEnd;
+    handover = emitDropCapHandover({
       ball,
       thetaFirst,
-      thetaFirstExtreme: extremes[0] ?? thetaFirst,
+      thetaFirstExtreme: thetaFirstExtreme ?? thetaFirst,
       thetaSecond,
       thetaThird: apexes[0] ?? thetaArcEnd,
-      wall: getSideSegmentsFromTerminal(trimmedOuterSide, position),
-      fullWall: getSideSegmentsFromTerminal(outerSideArr, position)[0],
+      wall: wallSegments,
+      fullWall,
       position,
-    }),
-    ...emitDropCapArc(ball, thetaSecond, thetaArcEnd, apexes),
-  ];
+    });
+    if (!handover) {
+      // The hidden extreme is dropped. The next one, held at the meeting or
+      // not, is measured as itself.
+      if (thetaSecond !== thetaArcEnd) {
+        apexes.unshift(thetaSecond);
+      }
+      thetaFirstExtreme = extremes[extremes.indexOf(thetaFirstExtreme) + 1];
+      if (thetaFirstExtreme === undefined) {
+        thetaFirstExtreme = thetaOuter;
+      }
+    }
+  }
+  const arc = [...handover, ...emitDropCapArc(ball, thetaSecond, thetaArcEnd, apexes)];
   // The wall's last curve is the handover's to draw, so the side ends at the
   // on-curve before it.
   trimmedOuterSide = withoutTerminalSegment(trimmedOuterSide, position);
