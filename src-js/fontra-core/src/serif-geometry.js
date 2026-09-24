@@ -513,12 +513,21 @@ export function buildHalfSerif({ side, wall, params }) {
   // so it cannot push through to the far side however thick it grows. The limit
   // that used to stop it, and the "wing swallowed" case it led to, measured the
   // wing from the foot; a wall leaning over the wing then met the tip's top.
-  const tipThickness = wantedTipThickness;
+  //
+  // A negative thickness grows the platform OUTWARD, past the end of the
+  // stroke. The shoulder -- the top of the tip, where the slope starts -- stays
+  // on the foot line and the slope still climbs the stem from there, so every
+  // point shared with the stroke is still found on the wall. Only the tip's
+  // bottom leaves it. At zero both readings put shoulder and bottom on the
+  // foot line, so the height passes through zero without a step.
+  const tipThickness = Math.max(wantedTipThickness, 0);
+  const footDepth = Math.min(wantedTipThickness, 0);
   const tipU = wall.pointAt(wall.parameterAtDepth(tipThickness)).u + side * wingLength;
 
-  const cutOffset = side * tipThickness * Math.tan((cutAngle * Math.PI) / 180);
+  const cutOffset =
+    side * Math.abs(wantedTipThickness) * Math.tan((cutAngle * Math.PI) / 180);
 
-  const tipBottom = { u: tipU + cutOffset, v: 0 };
+  const tipBottom = { u: tipU + cutOffset, v: footDepth };
   const tipTop = { u: tipU, v: tipThickness };
 
   // The wing's inner corner is where the wing's top surface reaches the stem.
@@ -776,9 +785,13 @@ export function buildSerifTerminal({
   const midpoint = (halves.left.tipBottom.u + halves.right.tipBottom.u) / 2;
   const halfSpan = (halves.left.tipBottom.u - halves.right.tipBottom.u) / 2;
   const balance = Math.min(Math.max(undersideCupBalance ?? 0, -1), 1);
+  // The cup is measured from the foot, which a negative height carries outward.
+  // Two halves of different heights have tips at two depths, so the centre
+  // starts between them and the sweep stays one curve.
+  const footDepth = (halves.left.tipBottom.v + halves.right.tipBottom.v) / 2;
   const centre = {
     u: midpoint + halfSpan * balance,
-    v: Math.max(undersideCup ?? 0, 0),
+    v: footDepth + Math.max(undersideCup ?? 0, 0),
   };
 
   const onCurve = (uv) => frame.toGlyph(uv);

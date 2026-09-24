@@ -2571,13 +2571,14 @@ export default class SkeletonParametersPanel {
       checked: sides != null && on[side],
     }));
     this.serifSidesOverflow.disabled = !canEdit;
-    // Lengths stop at zero, except the signed wing slope; the tip cut stops at
+    // Lengths stop at zero, except the signed wing slope and the tip height,
+    // whose negative side grows the platform outward; the tip cut stops at
     // the geometry's own limit either way; the three ratios keep their sliders'
     // percent ranges. Declared here rather than left to the model: without it
     // a drag past the end keeps counting while the shape has stopped.
     const boundsOf = (field) =>
       SERIF_PERCENT_FIELD_BOUNDS[field] ??
-      (field === "wingSlope"
+      (field === "wingSlope" || field === "tipThickness"
         ? {}
         : field === "tipCutAngle"
           ? { minValue: -MAX_TIP_CUT_ANGLE, maxValue: MAX_TIP_CUT_ANGLE }

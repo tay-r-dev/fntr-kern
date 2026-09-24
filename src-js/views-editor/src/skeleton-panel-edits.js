@@ -1322,6 +1322,7 @@ export async function forcePanelSerifSide(
 //   stopped moving, and the panel would show an angle the terminal is not at.
 const SERIF_NUDGE_BOUNDS = {
   wingSlope: { min: null, max: null },
+  tipThickness: { min: null, max: null },
   tipCutAngle: { min: -MAX_TIP_CUT_ANGLE, max: MAX_TIP_CUT_ANGLE },
 };
 const DEFAULT_SERIF_NUDGE_BOUNDS = { min: 0, max: null };

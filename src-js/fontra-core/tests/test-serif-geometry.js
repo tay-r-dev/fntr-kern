@@ -783,6 +783,57 @@ describe("serif terminal assembly", () => {
     expect(points.filter((point) => !point.type)).to.have.length(7);
   });
 
+  describe("negative height", () => {
+    const onCurves = (overrides) =>
+      terminal(overrides).points.filter((point) => !point.type);
+
+    it("puts the shoulder on the foot line and grows the platform outward", () => {
+      const { halves } = terminal({
+        left: { ...half, tipThickness: -12, wingSlope: 10 },
+        right: { ...half, tipThickness: -12, wingSlope: 10 },
+      });
+      expectClose(halves.left.tipTop.v, 0);
+      expectClose(halves.left.tipBottom.v, -12);
+      // The slope still climbs the stem from the shoulder.
+      expectClose(halves.left.corner.v, 10);
+    });
+
+    it("moves the cup with the platform", () => {
+      const flat = { ...half, tipThickness: -12 };
+      const centre = terminal({
+        left: flat,
+        right: flat,
+        undersideCup: 5,
+      }).points.filter((point) => !point.type)[3];
+      // The frame's depth runs up the glyph here, so v is y.
+      expectClose(centre.y, -7);
+    });
+
+    it("keeps seven on-curves and does not step through zero", () => {
+      let previous = null;
+      for (let step = -80; step <= 80; step++) {
+        const height = step / 4;
+        const shaped = {
+          ...half,
+          tipThickness: height,
+          wingSlope: 10,
+          tipCutAngle: 20,
+        };
+        const points = onCurves({ left: shaped, right: shaped, undersideCup: 4 });
+        expect(points).to.have.length(7);
+        if (previous) {
+          const worst = Math.max(
+            ...points.map((p, i) =>
+              Math.hypot(p.x - previous[i].x, p.y - previous[i].y)
+            )
+          );
+          expect(worst, `step at height ${height}`).to.be.below(1);
+        }
+        previous = points;
+      }
+    });
+  });
+
   it("starts and ends with a handle, not an on-curve", () => {
     const { points } = terminal();
     expect(points[0].type).to.equal("cubic");
