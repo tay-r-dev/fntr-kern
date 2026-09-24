@@ -1327,27 +1327,35 @@ It is on F9, in the context menu, and in the Transformation sidebar panel. The
 math is pure and lives in `harmonization.js`. The editor calls it from the scene
 controller.
 
-### 10.2 One control, three positions
+### 10.2 Two ticks, four constructions
 
-Every position removes the curvature step at the joint. They differ in what
-they do to the curve either side of it: position 1 keeps the curvature the
-designer drew, and positions 2 and 3 throw it away and compute a new one from
-the two outer handles.
+Every construction removes the curvature step at the joint. They differ in what
+they do to the curve either side of it. Under G2 two ticks choose one; under G3
+there is one construction and both ticks grey out.
 
-One press draws one answer. A slider names the construction that runs, and the
-construction gives its answer alone. Until 2026-09-01 the press drew several
-answers and ranked them on nine terms, which is why the tick boxes were not
-switches: a tick added an answer to a field and the field then decided whether
-to keep it. The output was identical with the match-curvature tick on and off at
-three of the four smooth joints of `N^1.json`.
+| preserve curvature | move on-curve | what runs                                                           |
+| ------------------ | ------------- | ------------------------------------------------------------------- |
+| on                 | off           | the nearest answer: the four handle lengths, as little as it can    |
+| off                | off           | the joint construction: the two inner handle lengths                |
+| on                 | on            | the slide, then the nearest answer for whatever the slide left      |
+| off                | on            | the slide, then the joint construction for whatever the slide left  |
 
-| position | name                         | what it may move                             |
-| -------- | ---------------------------- | -------------------------------------------- |
-| 1        | Preserve curvature           | the four handle lengths, as little as it can |
-| 2        | Recompute curvature          | the two inner handle lengths                 |
-| 3        | Recompute, move the on-curve | the two inner handle lengths, and the joint  |
+One press draws one answer. Until 2026-09-01 the press drew several answers and
+ranked them on nine terms, so a tick added an answer to a field and the field
+decided whether to keep it: the output was identical with the match-curvature
+tick on and off at three of the four smooth joints of `N^1.json`. From then
+until 2026-09-24 a three-position slider named the construction.
 
-**Position 1, preserve curvature.** It is the nearest answer. `harmonize-nearest.js`, ported from
+**The two sides of a joint are compared by size, not by sign.** At an S-bend the
+curve bends one way before the joint and the other way after it, and signed
+curvatures meet only at zero: the joint goes flat. What a designer asks for is
+the comb as long on one side as on the other, which is what the harmonic
+construction always gave. The nearest answer, the score and the finishing
+repair all read size (`curvatureStepAcross`). Where the two sides bend the same
+way, size and sign agree. Matching sign on `skeletron` M^1 point 3 took every
+handle to the ceiling, about 250 units of movement; matching size moves 55.
+
+**Preserve curvature: the nearest answer.** `harmonize-nearest.js`, ported from
 `_external/g1_g2_g3_bezier_harmonizer.html`. Equal curvature across the joint is
 one equation and the four handle lengths are four unknowns, so the answers form
 a surface. It returns the point of that surface nearest the drawing.
@@ -1359,7 +1367,7 @@ a surface. It returns the point of that surface nearest the drawing.
 - The step is the **minimum-norm Gauss-Newton** step, which is what makes the
   answer the nearest one rather than one particular one. Each step is capped at
   forty per cent of any one multiplier and taken at nine tenths.
-- It **moves the two outer handles**, which the other positions never do. That
+- It **moves the two outer handles**, which the other constructions never do. That
   is the departure that buys its accuracy: on a joint with one flat side and one
   bent side the two inner handles hit the tension ceiling and leave the joint
   unmatched, and all four reach it exactly. On point 3 of `N^1.json` the
@@ -1371,24 +1379,37 @@ a surface. It returns the point of that surface nearest the drawing.
   No handle may pass its segment's tangent-ray crossing, and no handle may be
   shorter than one unit. Where a handle lands on a limit and the curvatures still
   differ the joint reports `tension-limited`, not `harmonized`.
-- **The tension ceiling is a live constraint here, not a formality.** Where a
-  drag carries a joint toward an inflection both curvatures fall toward zero and
-  matching them asks for arbitrarily long handles. On point 19 of `I^1.json`,
-  over three units of drag: curvature 6.5e-5 to -6.0e-6, largest tension 1.95 to
-  3.85, handle movement 1227 to 2517 units. Nothing jumps; the answer grows.
+- **The tension ceiling is a live constraint here, not a formality.** Where
+  both curvatures are near zero, matching them asks for very long handles.
+- **Whether a joint is an S-bend is read once, from the drawing as it arrives.**
+  The solver then matches `kIn = -kOut` there and `kIn = kOut` everywhere else.
+  Both equations are smooth. The size itself has a corner at zero, and a side
+  lying flat at the joint stalled the step on it.
 - **G2 only.** On two equations the same solver is unusable, and this is
   measured. Over a quarter-unit drag sweep its answer steps by up to 2687 units
   between two adjacent frames, reaches a tension of 11.34, and moves the drawing
   461 to 2611 units on the joints where it converges at all.
 
-**Positions 2 and 3, recompute the curvature.** The joint construction. `harmonizeByJointInPlace`,
-unchanged. Position 2 holds the joint still. Position 3 lets the joint slide
-along its own tangent; measured on `I^1.json` the slide changes 18 points and
-201 units of drawing. Both move the two inner handles and neither touches an
-outer handle.
+**Preserve curvature off: the joint construction.** `harmonizeByJointInPlace`.
+It holds the joint still, computes one curvature from the two outer handles and
+moves the two inner handles to reach it. It never touches an outer handle.
+
+**Move on-curve: the slide.** `slideOnCurvesInPlace`. It runs first, and every
+time its tick is on. The handles hold still and the on-curve moves along the
+line between them to the harmonic point, where the two curvatures are equal in
+size. That point always lies between the two handles. A joint's end curvature
+reads only its own three nearest points, so one joint's slide does not disturb
+another and one pass is the whole of it.
+
+The slide stops where the handle it shortens reaches its cusp floor. Where it
+gets all the way the construction after it has nothing left to do. Where it
+stops early the construction does the rest. Measured on `skeletron` M^1: point
+3 slides 32 units and is matched; point 10 wants 49 units, its outgoing handle
+is 58 units long with a floor of 30, so it slides 28 and the construction does
+the rest.
 
 **The finishing pass: one balance, then one repair.** A tick box, on by default,
-and it applies to all three positions.
+and it applies to all four constructions.
 
 Every construction here solves the joint and says nothing about how a segment's
 two handles compare, so it can leave the curvature right and the handles
@@ -1396,7 +1417,7 @@ lopsided. That is a handle configuration a designer does not want to work with,
 and it is what the pass is for. Measured on `N^1.json` point 12.
 
 - **It is one balance and one repair, not a loop.** The balance is the Balance
-  command's own rule, and the repair is position 1.
+  command's own rule, and the repair is the nearest answer.
 - **The order is the whole of it.** Balancing LAST gives the joint up: measured
   on `N^1.json` point 12, eight presses took it 0%, 6.9%, 9.5%, 13.0%, 17.8% and
   on to 63%. The repair goes last, and it is safe there because it is the
@@ -1410,10 +1431,10 @@ and it is what the pass is for. Measured on `N^1.json` point 12.
 
   A joint that arrived harmonic is not excluded. Its curvature needing no work
   says nothing about how its two handles compare, and evening them is the whole
-  of what this pass is for. Position 1 reports `already-harmonic` far more often
+  of what this pass is for. The nearest answer reports `already-harmonic` far more often
   than the other two, because it measures the joint relatively and squaring the
   joint up beforehand often settles it -- so gating on "the construction did
-  something" turned the pass off almost everywhere at position 1.
+  something" turned the pass off almost everywhere under it.
 
 - **It is off under G3.** The repair matches curvature and nothing else, so
   running it after a G3 answer throws the rate away.
@@ -1443,8 +1464,8 @@ stands. Two things make it inadmissible: an inflection, where it asks for the
 square root of a negative product, and an answer outside the cusp floor or the
 tangent intersection.
 
-**G3 has one construction, and turning it on greys the slider out.** Position 1
-cannot apply, for the reasons above. Position 3 is refused: moving the on-curve
+**G3 has one construction, and turning it on greys both ticks out.** The
+nearest answer cannot apply, for the reasons above. The slide is refused: moving the on-curve
 under G3 moves the drawing 1013 units on `I^1.json` against 201 under G2, and
 the shape it draws is not wanted.
 
@@ -1596,9 +1617,9 @@ because a different set of handles has a different harmonic target.
 - **The score does not rank on bending energy.** It did, and that is the second
   fault the 2026-09-01 rework removed: once every answer cleared the joint
   bound the ranks tied, the flattest answer won, and the command spent 45 more
-  units of movement on a difference nobody can see. The slide choosers inside
-  the joint construction still read it to pick a position along the tangent,
-  which is position 3's own business and not a comparison between constructions.
+  units of movement on a difference nobody can see. Nothing in the module
+  reads it now: the slide goes to the harmonic point rather than searching the
+  tangent.
 - **A verdict describes the drawing that was kept.** A joint can converge
   exactly and still have nothing to write, because its correction was smaller
   than the grid can hold and the position it already sits on is the best one
@@ -1611,16 +1632,13 @@ because a different set of handles has a different harmonic target.
   The grid search counts ceiling violations ahead of curvature, so it will not
   choose a position that crosses one, but it cannot undo an overshoot that
   every candidate shares.
-- **Squaring a bent joint up may move the on-curve point, at every position.**
+- **Squaring a bent joint up may move the on-curve point, whatever the ticks.**
   Where neither handle is more deliberate than the other, that pass brings the
-  joint to the handles. Position 1 promises never to move an on-curve point and
-  position 2 promises to hold the joint still; both promises describe the
-  construction, not the pass that runs before it. On a drawing whose joints
-  arrive straight the pass moves nothing, which is the ordinary case.
-- **Position 3 still chooses its place along the tangent by bending energy.**
-  The slide's own chooser was left as it was, because position 3 is today's
-  construction unchanged. On the reported arch joint it slides the joint 11
-  units where the correction is 0.344 units. Position 2 leaves that joint alone.
+  joint to the handles. The nearest answer promises never to move an on-curve
+  point and the joint construction promises to hold the joint still; both
+  promises describe the construction, not the pass that runs before it. On a
+  drawing whose joints arrive straight the pass moves nothing, which is the
+  ordinary case.
 
 ---
 

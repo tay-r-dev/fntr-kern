@@ -177,14 +177,44 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 ## Harmonize (map F8, carried fork extras)
 
-**State: shipped, reworked 2026-09-01.** One slider names one construction:
-preserve curvature, recompute curvature, or recompute and move the on-curve.
-Every position finishes with one balance and one repair, behind a tick box that
-is on by default.
-Every position removes the curvature step at the joint; they differ in what they
-do to the curve either side. G3 has one construction and greys the slider out. Squaring a bent joint up always runs. It reaches skeleton
-centerlines as well as ordinary paths. Feature model section 10 holds the rules;
-this is what measured them.
+**State: shipped, reworked 2026-09-24.** Under G2 two ticks choose the
+construction: preserve curvature (the nearest answer, or the joint construction)
+and move on-curve (a slide first, with the handles held). G3 has one
+construction and greys both out. Every construction finishes with one balance
+and one repair, behind a tick box that is on by default. Squaring a bent joint
+up always runs. The two sides of a joint are compared by size, not by sign. It
+reaches skeleton centerlines as well as ordinary paths. Feature model section 10
+holds the rules; this is what measured them.
+
+### The slider became two ticks, and an S-bend stopped going flat (2026-09-24)
+
+Reported on `skeletron` M^1 points 3 and 10, as redrawn after the entry below:
+even at position 3 the command skipped the obvious answer, which is to slide
+the on-curve between its handles until the comb reads the same on both sides.
+
+- **Position 3 never tried it.** Its search moved the joint and both inner
+  handles together, so every place it tried was already matched with the outer
+  handles fixed, and bending energy picked one. Holding the handles and moving
+  the on-curve alone was not among the candidates. The search is deleted; the
+  slide goes to the harmonic point, stopping at the cusp floor.
+- **The slide is complete where it reaches.** At the harmonic point the joint is
+  matched, so whichever construction follows has nothing left. The two ticks
+  differ only where the slide stops early: point 3 slides 32 units and is
+  matched, point 10 wants 49 and its 58-unit handle has a floor of 30.
+- **Both joints are S-bends, and three readers matched signed curvature.**
+  Signed curvatures across an S-bend meet only at zero, so the nearest answer
+  flattened the joint and took every handle to about 0.75: 245 units of
+  movement at point 3 and a 65 per cent step left. The finishing repair is the
+  same solver, so equalize took the same route with preserve off. The score
+  read the even comb as worse than the drawing and reverted the slide at point
+  10 whole. The harmonic construction had always compared sizes, which is why
+  preserve off looked right and preserve on looked wrong.
+- **Size has a corner at zero, and a flat side stalls a gradient on it.** The
+  nearest solver decides once, from the arriving drawing, whether the joint is an
+  S-bend, and solves the smooth equation for that case. The unit test with one
+  side lying exactly on the tangent is what caught it.
+- After, preserve curvature on, equalize off: point 3 matched to 0.1 per cent
+  for 55 units of movement, point 10 matched for 33. Suite 2839 to 2845.
 
 ### A short handle beside an over-tension one (2026-09-23)
 
