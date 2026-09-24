@@ -396,6 +396,7 @@ export const strings = {
   "shortcuts.realtime.tension-aware": "Tension aware (hold)",
   "shortcuts.realtime.power-tension-aware": "Power stretch (hold)",
   "shortcuts.realtime.point-slide": "Point slide (hold)",
+  "shortcuts.realtime.handle-length": "Handle length only (hold)",
   "shortcuts.realtime.independent-rib": "Independent rib (hold)",
   "shortcuts.reset-all": "Reset all shortcuts",
   "shortcuts.tooltip.clear": "Clear",

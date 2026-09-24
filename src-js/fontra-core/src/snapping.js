@@ -262,6 +262,7 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   snapDuringPowerTensionAware: 0,
   snapDuringIndependentRib: 0,
   snapDuringPointSlide: 0,
+  snapDuringHandleLength: 0,
   // An Alt drag of corner points only still snaps, as a plain drag does. A
   // corner has no tangent for Alt to hold.
   altCornersSnap: 1,
@@ -868,7 +869,8 @@ export function roundSnapped(result, roundFunc) {
 
 // A modified drag states its own geometry, and a magnet pulling the point
 // somewhere else fights it: Alt equalizes, Z slides along a tangent, X and C
-// hold the drawn shape, A moves one rib end alone and V slides the point. D and
+// hold the drawn shape, A moves one rib end alone, V slides the point and B
+// slides a handle along itself. D and
 // S pin one edge of the stroke and carry a switch, because a designer may want
 // a width to land on a metric. Read every frame, so a key pressed mid-drag
 // takes on the next one.
@@ -888,6 +890,7 @@ const MODIFIER_SNAP_SWITCHES = [
   ["powerTensionAwareMode", "snapDuringPowerTensionAware"],
   ["independentRibMode", "snapDuringIndependentRib"],
   ["pointSlideMode", "snapDuringPointSlide"],
+  ["handleLengthMode", "snapDuringHandleLength"],
   ["fixedRibMode", "snapDuringFixedRib"],
   ["fixedRibCompressMode", "snapDuringFixedRib"],
 ];

@@ -804,6 +804,11 @@ export class EditorController extends ViewController {
         titleKey: "shortcuts.realtime.point-slide",
         defaultShortCuts: [{ baseKey: "v" }],
       });
+      registerActionInfo("action.realtime.handle-length", {
+        topic,
+        titleKey: "shortcuts.realtime.handle-length",
+        defaultShortCuts: [{ baseKey: "b" }],
+      });
     }
 
     {

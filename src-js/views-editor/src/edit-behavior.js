@@ -1487,6 +1487,13 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // B: each selected handle slides along its own line. The entry is the only
+  // writer, so the match tree matches no point (R-E).
+  "handle-length": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
   "equalize": {
     matchTree: buildPointMatchTree(defaultRules),
     actions: actionFactories,

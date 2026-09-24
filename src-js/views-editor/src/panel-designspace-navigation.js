@@ -247,6 +247,7 @@ const MOD_SNAP_CONTROLS = [
   },
   { path: "snapDuringIndependentRib", label: "A (independent rib)", type: "toggle" },
   { path: "snapDuringPointSlide", label: "V (point slide)", type: "toggle" },
+  { path: "snapDuringHandleLength", label: "B (handle length)", type: "toggle" },
 ];
 
 // The snapping numbers, as one table. Each row states its own range, so the panel

@@ -50,6 +50,11 @@ import {
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { handlesEqual } from "./edit-tools-pen.js";
+import {
+  HANDLE_LENGTH_BEHAVIOR_NAME,
+  createHandleLengthTargetEntries,
+  getHandleLengthBehaviorName,
+} from "./handle-length-editing.js";
 import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
@@ -128,6 +133,7 @@ const REALTIME_TENSION_AWARE_ACTION = "action.realtime.tension-aware";
 const REALTIME_INDEPENDENT_RIB_ACTION = "action.realtime.independent-rib";
 const REALTIME_POWER_TENSION_AWARE_ACTION = "action.realtime.power-tension-aware";
 const REALTIME_POINT_SLIDE_ACTION = "action.realtime.point-slide";
+const REALTIME_HANDLE_LENGTH_ACTION = "action.realtime.handle-length";
 
 const REALTIME_MODIFIER_ACTIONS = [
   {
@@ -158,6 +164,10 @@ const REALTIME_MODIFIER_ACTIONS = [
     action: REALTIME_POINT_SLIDE_ACTION,
     modeProperty: "pointSlideMode",
   },
+  {
+    action: REALTIME_HANDLE_LENGTH_ACTION,
+    modeProperty: "handleLengthMode",
+  },
 ];
 
 export class PointerTools {
@@ -179,6 +189,7 @@ export class PointerTool extends BaseTool {
     this.independentRibMode = false;
     this.powerTensionAwareMode = false;
     this.pointSlideMode = false;
+    this.handleLengthMode = false;
     this._realtimeModifierKeyUpHandlers = new Map();
     this._boundRealtimeModifierWindowBlur = null;
     // One reveal for the whole scene. There is more than one pointer tool, and
@@ -888,11 +899,22 @@ export class PointerTool extends BaseTool {
         independentRibMode: this.independentRibMode,
         powerTensionAwareMode: this.powerTensionAwareMode,
         pointSlideMode: this.pointSlideMode,
+        handleLengthMode: this.handleLengthMode,
       });
       const getSelectionBehaviorName = (event) =>
         getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getPointSlideBehaviorName(
+          getRealtimeModifiers(),
+          targetKinds,
+          sceneController.selection,
+          editLayerGlyph,
+          {
+            isGeneratedContour: (contourIndex) =>
+              this.sceneModel.isGeneratedPathContour(contourIndex),
+          }
+        ) ||
+        getHandleLengthBehaviorName(
           getRealtimeModifiers(),
           targetKinds,
           sceneController.selection,
@@ -943,6 +965,17 @@ export class PointerTool extends BaseTool {
             isPrimary,
             session: pointSlideSession,
           });
+        }
+        if (name === HANDLE_LENGTH_BEHAVIOR_NAME) {
+          return createHandleLengthTargetEntries(
+            layerGlyph,
+            sceneController.selection,
+            {
+              isGeneratedContour: (contourIndex) =>
+                this.sceneModel.isGeneratedPathContour(contourIndex),
+              referenceSkeletonData,
+            }
+          );
         }
         if (
           name === TENSION_AWARE_BEHAVIOR_NAME ||
