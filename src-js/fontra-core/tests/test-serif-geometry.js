@@ -1639,7 +1639,57 @@ describe("serif wing on a leaning wall", () => {
         params: { wingLength: 30, tipThickness, wingSlope: 20 },
       });
       expectClose(half.tipTop.u, -60, `tip top at height ${tipThickness}`);
-      expectClose(half.tipTop.v - half.tipBottom.v, tipThickness, "height was clamped");
+    }
+  });
+
+  it("stops the height where the tip's edge meets the stem", () => {
+    // The wall stands at u = -90 + 1.5 v, so the edge at u = -60 meets it at 20.
+    for (const tipThickness of [20, 80, 200]) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: leaningWall(-90, 1.5),
+        params: {
+          wingLength: 30,
+          tipThickness,
+          wingSlope: 20,
+          tension: 0.8,
+          concavity: 0.6,
+        },
+      });
+      expectClose(half.tipTop.v, 20, `tip top at height ${tipThickness}`);
+      // The slope, the corner and the bracket collapse onto that point, and the
+      // stem is cut there.
+      for (const name of ["corner", "junction", "release", "control1", "control2"]) {
+        expectClose(half[name].u, -60, `${name} u at ${tipThickness}`);
+        expectClose(half[name].v, 20, `${name} v at ${tipThickness}`);
+      }
+    }
+  });
+
+  it("does not step as the height reaches the stem", () => {
+    let previous = null;
+    for (let step = 0; step <= 160; step++) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: leaningWall(-90, 1.5),
+        params: {
+          wingLength: 30,
+          tipThickness: step / 4,
+          wingSlope: 20,
+          tension: 0.8,
+          concavity: 0.6,
+        },
+      });
+      if (previous) {
+        for (const name of ["tipTop", "corner", "junction", "release"]) {
+          const moved = Math.hypot(
+            half[name].u - previous[name].u,
+            half[name].v - previous[name].v
+          );
+          expect(moved, `${name} at ${step / 4}`).to.be.below(1);
+        }
+      }
+      previous = half;
     }
   });
 

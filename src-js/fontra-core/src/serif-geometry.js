@@ -582,7 +582,32 @@ export function buildHalfSerif({ side, wall, params }) {
     side * Math.abs(wantedTipThickness) * Math.tan((cutAngle * Math.PI) / 180);
 
   const tipBottom = { u: tipU + cutOffset, v: footDepth };
-  const tipTop = { u: tipU, v: tipThickness };
+  // The height rises from the foot's end and STOPS where it meets the stem. On
+  // a stem leaning over its wing a tall tip would otherwise rise through the
+  // black and cut the stroke inside it: on the `f` of skeletron, a height of 127
+  // on a wing of 30. Stopped there, the top of the tip is a point on the wall,
+  // the slope has no length, and the corner and the bracket collapse onto it.
+  // The wall is cut at that point, so the rest of it keeps its shape. The edge
+  // reaches the wall continuously as the height grows, so nothing steps.
+  const edge = { u: -cutOffset, v: tipThickness - footDepth };
+  const edgeHit = tipThickness > 0 ? wall.meetRay(tipBottom, edge) : null;
+  // Only an edge that goes INTO the stroke stops. A wingless tip stands on the
+  // wall's own foot, so its edge touches the wall at height zero; running along
+  // the wall or away from it, that is not a crossing.
+  const entersStroke = (t) => {
+    const along = wall.tangentAt(t);
+    return side * (edge.u * along.v - along.u * edge.v) < -1e-9;
+  };
+  const stoppedParameter =
+    edgeHit !== null &&
+    lengthUV(subUV(wall.pointAt(edgeHit), tipBottom)) <= lengthUV(edge) + 1e-9 &&
+    entersStroke(edgeHit)
+      ? edgeHit
+      : null;
+  const tipTop =
+    stoppedParameter !== null
+      ? wall.pointAt(stoppedParameter)
+      : { u: tipU, v: tipThickness };
 
   // The wing's inner corner is where the wing's top surface reaches the stem.
   // The surface leaves the top of the tip running inward, rising by the wing
@@ -613,7 +638,7 @@ export function buildHalfSerif({ side, wall, params }) {
       ? hit
       : null;
   };
-  const onWall = wingLength > 0 ? meetWingSurface() : null;
+  const onWall = stoppedParameter ?? (wingLength > 0 ? meetWingSurface() : null);
   const cornerParameter = onWall ?? wall.parameterAtDepth(tipThickness + wingSlope);
   // Nothing on the wall, and the corner wanted past the rib end: it goes onto
   // the stem's edge continued. Both answers meet the wall at the rib end
