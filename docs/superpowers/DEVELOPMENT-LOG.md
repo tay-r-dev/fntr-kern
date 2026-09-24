@@ -946,6 +946,15 @@ corner lands on the stem's edge continued: right 0, −8.5 and −23.2 in depth,
 left 0, −10 and −30. **The fault predates the negative height**, which only made
 the region past the rib end easy to reach.
 
+**The first fix moved only the corner**, and the designer saw it at once: with
+a flat bracket, the bracket's stem end stayed on the rib end and its handles
+went on alone, so the dip was drawn by handles. The corner is an attractor and
+not a point, so moving it moves nothing an on-curve sits on. The reach and the
+easing are a signed length from the corner now, running down the continued edge
+and up the real wall as one measure. On the `f` at height 0 and slope −25, the
+right bracket's stem end went from the rib end (402, 267) to the corner
+(437, 255), and a flat bracket keeps its handles collapsed.
+
 ### Gaps, and what is left alone
 
 - **The golden fixtures moved for none of the geometry changes above.** They

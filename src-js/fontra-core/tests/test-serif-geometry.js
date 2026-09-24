@@ -1338,14 +1338,30 @@ describe("a wing corner past the rib end", () => {
     }
   });
 
-  it("moves no release and no junction", () => {
+  it("takes the bracket's stem end down to the corner", () => {
     const half = buildHalfSerif({
       side: 1,
       wall: upright,
-      params: { ...params, wingSlope: -10 },
+      params: { ...params, wingSlope: -10, tension: 0, concavity: 0 },
     });
+    expectClose(half.junction.u, 50);
+    expectClose(half.junction.v, -10);
+    expectClose(half.release.v, -10);
+    // The stroke is still cut at the rib end.
     expect(half.releaseParameter).to.equal(0);
-    expectClose(half.junction.v, 20);
+    // A flat bracket keeps its handles collapsed on their own ends.
+    expectClose(half.control2.v, half.junction.v);
+    expectClose(half.control1.v, half.tipTop.v);
+  });
+
+  it("measures the reach up the continued edge and onto the wall", () => {
+    const half = buildHalfSerif({
+      side: 1,
+      wall: upright,
+      params: { ...params, wingSlope: -10, reach: 50 },
+    });
+    expectClose(half.junction.v, 40);
+    expect(half.releaseParameter).to.be.above(0);
   });
 });
 

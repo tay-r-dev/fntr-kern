@@ -454,9 +454,22 @@ export function makeSerifWall(points) {
     return { u: origin.u + direction.u * s, v: origin.v + direction.v * s };
   };
 
+  // A position along the wall as a signed length from the rib end: positive
+  // runs up the real wall, negative down the continued edge. One measure for
+  // both, so a reach or an easing that starts on the continued edge carries on
+  // up the real wall by the same distance, with no seam at the rib end.
+  const pointAtLength = (length) =>
+    length < 0
+      ? { u: start.u - back.u * length, v: start.v - back.v * length }
+      : pointAt(parameterAtDistance(0, length));
+  const parameterAtSignedLength = (length) =>
+    length <= 0 ? 0 : parameterAtDistance(0, length);
+
   return {
     pointAt,
     tangentAt,
+    pointAtLength,
+    parameterAtSignedLength,
     extensionAtDepth,
     meetExtension,
     parameterAtDepth,
@@ -602,11 +615,19 @@ export function buildHalfSerif({ side, wall, params }) {
   // Nothing on the wall, and the corner wanted past the rib end: it goes onto
   // the stem's edge continued. Both answers meet the wall at the rib end
   // itself, so the corner does not step as it crosses it.
-  const corner =
-    onWall === null && cornerParameter === 0
-      ? ((wingLength > 0 ? wall.meetExtension(tipTop, cornerRay) : null) ??
-        wall.extensionAtDepth(tipThickness + wingSlope))
-      : wall.pointAt(cornerParameter);
+  const pastRibEnd = onWall === null && cornerParameter === 0;
+  const corner = pastRibEnd
+    ? ((wingLength > 0 ? wall.meetExtension(tipTop, cornerRay) : null) ??
+      wall.extensionAtDepth(tipThickness + wingSlope))
+    : wall.pointAt(cornerParameter);
+  // The corner as a signed length along the wall. Below the rib end it is on
+  // the continued edge, and the bracket's stem end goes down there with it:
+  // held to the real wall, that end stopped at the rib end while the corner
+  // and the handles went on, so only the handles dipped.
+  const ribEnd = wall.pointAt(0);
+  const cornerLength = pastRibEnd
+    ? -lengthUV(subUV(corner, ribEnd))
+    : wall.lengthAt(cornerParameter);
 
   // Reach and ease distance are LENGTHS ALONG THE WALL above the corner. They
   // are lengths in the panel, so they are lengths here. Advancing by depth
@@ -616,13 +637,13 @@ export function buildHalfSerif({ side, wall, params }) {
   // its wall end travelled 17.3 for an ease distance of 15 at a lean of 30
   // degrees, while its other end travelled 15. Tip thickness stays a depth,
   // because the thickness of the tip is measured square to the foot.
-  const room = Math.max(wall.maxLength - wall.lengthAt(cornerParameter), 0);
+  const room = Math.max(wall.maxLength - cornerLength, 0);
   const wantedReach = Math.max(params.reach ?? 0, 0);
   const reach = Math.min(wantedReach, room);
   // Where the serif lets go of the stroke, and the straight run below it. Both
   // sit ON the wall above the corner, at their own depths.
-  const junctionParameter = wall.parameterAtDistance(cornerParameter, reach);
-  const junction = wall.pointAt(junctionParameter);
+  const junctionLength = cornerLength + reach;
+  const junction = wall.pointAtLength(junctionLength);
   // The rounding runs out where the bracket meets the wing, and the same bound
   // holds both ends: the flank end stops where the bracket end stops, or the
   // scoop goes lopsided at exactly the settings a designer is pushing hardest.
@@ -646,8 +667,12 @@ export function buildHalfSerif({ side, wall, params }) {
   const depthClamped = wantedReach > reach || wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
 
-  const releaseParameter = wall.parameterAtDistance(junctionParameter, easeDistance);
-  const release = wall.pointAt(releaseParameter);
+  // Below the rib end the stroke is still cut AT the rib end, and the straight
+  // run from there down to the release is the first curve of the terminal,
+  // which the terminal already owns: no point is added.
+  const releaseLength = junctionLength + easeDistance;
+  const releaseParameter = wall.parameterAtSignedLength(releaseLength);
+  const release = wall.pointAtLength(releaseLength);
 
   // The transition cubic runs junction -> tipTop, and both of its handles
   // lie on the line from their own end toward the wing's inner corner. That is

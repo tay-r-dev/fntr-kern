@@ -1162,10 +1162,15 @@ depth, because the thickness of a tip is measured square to its foot.
 at the rib end, and a negative slope, or a rib end that a forced axis puts inside
 the foot line, can ask for a corner further out than that. The corner then lands
 on the straight line that continues the wall along its own direction at the rib
-end. Only the corner reads that line. The release, the reach and the easing stay
-on the real wall, and the wall is never bent onto the line, so this is not the
-flank line closed in §9. The two answers meet at the rib end, so the corner does
-not step as it crosses it.
+end. The reach and the easing are measured from the corner, so they start on
+that line and carry on up the real wall by the same length, with no seam at the
+rib end. The bracket's stem end goes down with the corner: held to the real
+wall, it stopped at the rib end while the corner and the handles went on, and
+only the handles dipped. The stroke is still cut at the rib end, and the
+straight run from there down to the release is the terminal's first curve, so
+no point is added. The wall is never bent onto the line, so this is not the
+flank line closed in §9. The two answers meet at the rib end, so nothing steps
+as the corner crosses it.
 
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
 the wall rather than being handed one beside it.
