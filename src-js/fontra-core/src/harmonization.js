@@ -430,7 +430,22 @@ export function measureG2Discontinuity(ctx) {
   const curvatureOut =
     (2 / 3) * (crossProduct(outgoing, subVectors(NN, N)) / outgoingLength ** 3);
 
-  return Math.abs(curvatureIn - curvatureOut);
+  return curvatureStepAcross(curvatureIn, curvatureOut);
+}
+
+//
+// The curvature step across a joint: how much stronger one side bends than the
+// other. The sides are compared by size and not by sign.
+//
+// At an S-bend the two sides bend opposite ways, so their signed curvatures can
+// only agree at zero. Matching signs there flattens the joint, and it takes
+// every handle to the ceiling to get there: 250 units of movement on
+// `skeletron` M^1 point 3. What a designer asks for is the comb as long on one
+// side as on the other, which is what the harmonic construction has always
+// given. Where the two sides bend the same way, size and sign agree.
+//
+function curvatureStepAcross(curvatureIn, curvatureOut) {
+  return Math.abs(Math.abs(curvatureIn) - Math.abs(curvatureOut));
 }
 
 //
@@ -478,7 +493,7 @@ function curvatureRateAt(points, atEnd) {
 // Zero exactly when the joint is G2, respectively G3.
 //
 export function curvatureDiscontinuity(incoming, outgoing) {
-  return Math.abs(curvatureAt(incoming, true) - curvatureAt(outgoing, false));
+  return curvatureStepAcross(curvatureAt(incoming, true), curvatureAt(outgoing, false));
 }
 
 export function curvatureRateDiscontinuity(incoming, outgoing) {
@@ -800,7 +815,7 @@ function jointError(stencil, continuity) {
 
   const curvatureIn = curvatureAt(incoming, true);
   const curvatureOut = curvatureAt(outgoing, false);
-  let error = Math.abs(curvatureIn - curvatureOut) * length;
+  let error = curvatureStepAcross(curvatureIn, curvatureOut) * length;
 
   if (continuity === "G3") {
     const rateIn = curvatureRateAt(incoming, true);
@@ -860,11 +875,8 @@ export function gridKinkAllowance(P, node, N) {
 // which is exactly the step a designer sees in the curvature comb, the fringe
 // on one side against the fringe on the other.
 //
-// This normalisation saturates at 2 across an inflection, where the two
-// curvatures have opposite signs. That makes it useless as a gradient, which is
-// why the residual does not use it. As a threshold it is fine: an inflection
-// reads 200%, the drawing it arrived as reads 200% too, and the ceiling below
-// simply does not bind.
+// The two sides are compared by size, as everywhere in this module, so an
+// S-bend reads the difference between its two comb lengths.
 function relativeCurvatureStep(path, ctx) {
   const stencil = jointStencil(path, ctx);
   if (!stencil) {
@@ -876,7 +888,7 @@ function relativeCurvatureStep(path, ctx) {
   if (!scale || !Number.isFinite(scale)) {
     return 0;
   }
-  const step = Math.abs(inside - outside) / scale;
+  const step = curvatureStepAcross(inside, outside) / scale;
   return Number.isFinite(step) ? step : Infinity;
 }
 
@@ -2167,11 +2179,15 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
   writeBack(path, working);
 
   if (!repaired) {
-    // A construction measures the joint after the square-up, so a joint the
-    // square-up settled reads `already-harmonic` there. The press still moved
-    // it, and the verdict describes the drawing that was kept.
+    // A construction measures the joint after the square-up and the slide, so
+    // a joint either of them settled reads `already-harmonic` or `below-grid`
+    // there. The press still moved it, and the verdict describes the drawing
+    // that was kept.
     for (const state of report) {
-      if (state.status !== "skipped" || state.reason !== "already-harmonic") {
+      if (
+        state.status !== "skipped" ||
+        !["already-harmonic", "below-grid"].includes(state.reason)
+      ) {
         continue;
       }
       const ctx = getJointContext(path, state.pointIndex);

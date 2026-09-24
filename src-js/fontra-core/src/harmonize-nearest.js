@@ -124,14 +124,32 @@ function curvatureStepOf(points) {
   const [incoming, outgoing] = segmentsOf(points);
   const kIn = endCurvature(incoming, true);
   const kOut = endCurvature(outgoing, false);
-  return Math.abs(kIn - kOut) / Math.max(Math.abs(kIn), Math.abs(kOut), 1e-12);
+  return (
+    Math.abs(Math.abs(kIn) - Math.abs(kOut)) /
+    Math.max(Math.abs(kIn), Math.abs(kOut), 1e-12)
+  );
 }
 
-function residualOf(points) {
+// By size, not by sign. At an S-bend the two sides bend opposite ways and
+// signed curvatures meet only at zero, which flattens the joint. See
+// `curvatureStepAcross` in harmonization.js.
+//
+// The size itself has a corner at zero, and a side lying flat at the joint
+// stalls the Gauss-Newton step on it. So `across` is decided once from the
+// drawing as it arrived: -1 at an S-bend, where the equation is kIn = -kOut,
+// and 1 everywhere else, where it is kIn = kOut. Both are smooth, and at an
+// answer either one leaves the two sides equal in size.
+function residualOf(points, across) {
   const [incoming, outgoing] = segmentsOf(points);
   return (
-    (endCurvature(incoming, true) - endCurvature(outgoing, false)) * RESIDUAL_SCALE
+    (endCurvature(incoming, true) - across * endCurvature(outgoing, false)) *
+    RESIDUAL_SCALE
   );
+}
+
+function bendsAcross(points) {
+  const [incoming, outgoing] = segmentsOf(points);
+  return endCurvature(incoming, true) * endCurvature(outgoing, false) < 0 ? -1 : 1;
 }
 
 //
@@ -193,6 +211,7 @@ export function solveNearestHandleScales(stencil, options = {}) {
     };
   }
 
+  const across = bendsAcross(stencil);
   const dials = requestedDials ?? (outerHandlesHold ? [0, 1, 1, 0] : [1, 1, 1, 1]);
   const ceilings = ceilingScales(stencil, handles, maxHandleTension);
   const floors = handles.map((h, k) =>
@@ -204,7 +223,7 @@ export function solveNearestHandleScales(stencil, options = {}) {
     );
 
   for (let iteration = 0; iteration < iterations; iteration++) {
-    const residual = residualOf(buildStencil(stencil, handles, scales));
+    const residual = residualOf(buildStencil(stencil, handles, scales), across);
     if (Math.abs(residual) < 1e-10) {
       break;
     }
@@ -218,7 +237,7 @@ export function solveNearestHandleScales(stencil, options = {}) {
       }
       const stepped = scales.slice();
       stepped[k] *= Math.exp(DERIVATIVE_STEP);
-      const other = residualOf(buildStencil(stencil, handles, stepped));
+      const other = residualOf(buildStencil(stencil, handles, stepped), across);
       jacobian[k] = (other - residual) / DERIVATIVE_STEP;
     }
 
