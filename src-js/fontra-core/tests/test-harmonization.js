@@ -2639,3 +2639,100 @@ describe("harmonization: a joint with one short handle (skeletron-test M^1)", ()
     });
   }
 });
+
+// `_external/skeletron.fontra` M^1 as redrawn on 2026-09-24. Points 3 and 10 are
+// S-bends: the curve bends one way before the joint and the other way after it.
+describe("harmonization: an S-bend evens its comb (skeletron M^1)", () => {
+  const M = () =>
+    VarPackedPath.fromUnpackedContours([
+      {
+        points: [
+          { x: 644, y: 365 },
+          { x: 527, y: 281, type: "cubic" },
+          { x: 384, y: 321, type: "cubic" },
+          { x: 305, y: 350, smooth: true },
+          { x: 206, y: 387, type: "cubic" },
+          { x: -1, y: 371, type: "cubic" },
+          { x: 46, y: 99 },
+          { x: 124, y: 115 },
+          { x: 92, y: 262, type: "cubic" },
+          { x: 184, y: 310, type: "cubic" },
+          { x: 283, y: 270, smooth: true },
+          { x: 337, y: 248, type: "cubic" },
+          { x: 517, y: 175, type: "cubic" },
+          { x: 690, y: 299 },
+        ],
+        isClosed: true,
+      },
+    ]);
+  const curvatureSizeStep = (path, i) => {
+    const p = (j) => path.getPoint(j);
+    const k = (a, b, c) => {
+      const f = { x: b.x - a.x, y: b.y - a.y };
+      const cross = f.x * (c.y - 2 * b.y + a.y) - f.y * (c.x - 2 * b.x + a.x);
+      return Math.abs(cross / Math.hypot(f.x, f.y) ** 3);
+    };
+    const kIn = k(p(i), p(i - 1), p(i - 2));
+    const kOut = k(p(i), p(i + 1), p(i + 2));
+    return Math.abs(kIn - kOut) / Math.max(kIn, kOut);
+  };
+  const travel = (path) => {
+    const start = M();
+    let total = 0;
+    for (let j = 0; j < path.numPoints; j++) {
+      const [x, y] = path.getPointPosition(j);
+      const [x0, y0] = start.getPointPosition(j);
+      total += Math.hypot(x - x0, y - y0);
+    }
+    return total;
+  };
+  const press = (index, ticks) => {
+    const path = M();
+    const [report] = harmonizePathInPlace(path, [index], {
+      equalizeHandles: false,
+      roundCoordinates: true,
+      ...ticks,
+    });
+    return { path, report };
+  };
+
+  for (const index of [3, 10]) {
+    it(`preserves the curvature at point ${index} rather than flattening the joint`, () => {
+      // Matching signed curvature met only at zero here, and took every handle
+      // to the ceiling: about 250 units at point 3.
+      const { path, report } = press(index, TICKS.nearest);
+      expect(report.status).to.equal("harmonized");
+      expect(curvatureSizeStep(path, index)).to.be.below(0.01);
+      expect(travel(path)).to.be.below(60);
+    });
+
+    it(`slides the on-curve at point ${index} with the handles held`, () => {
+      const { path } = press(index, TICKS["canonical-slide"]);
+      expect(path.getPoint(index)).to.not.deep.include(M().getPoint(index));
+      expect(curvatureSizeStep(path, index)).to.be.below(
+        curvatureSizeStep(M(), index) / 10
+      );
+    });
+  }
+
+  it("slides point 3 the whole way, so the construction has nothing left", () => {
+    // Within the grid: the square-up and the rounding each move a unit or so.
+    const { path } = press(3, TICKS["canonical-slide"]);
+    for (const j of [1, 2, 4, 5]) {
+      const [x, y] = path.getPointPosition(j);
+      const [x0, y0] = M().getPointPosition(j);
+      expect(Math.hypot(x - x0, y - y0), `point ${j}`).to.be.at.most(2);
+    }
+  });
+
+  it("stops point 10 where its short handle reaches the floor", () => {
+    // The equal point is 49 units along; the outgoing handle is 58 long and its
+    // floor is 7.5% of a 407-unit chord.
+    const { path } = press(10, TICKS["canonical-slide"]);
+    const handle = Math.hypot(
+      path.getPoint(11).x - path.getPoint(10).x,
+      path.getPoint(11).y - path.getPoint(10).y
+    );
+    expect(handle).to.be.within(29, 32);
+  });
+});
