@@ -1022,6 +1022,21 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(edit.tension).to.be.a("number");
   });
 
+  // The drawn neck runs on to the stem's on-curve with its stem handle
+  // stretched, so it reads a different tension from the pin. Reading that one
+  // wrote it back, and the neck jumped at the first grab.
+  it("grabs the neck without moving it: a still drag writes back the pin", () => {
+    for (const capBallEasing of [0.3, 0.8]) {
+      const neck = neckSegments({ capBallEasing, capBallEaseCurvature: 0.5 })[0];
+      const edit = calculateGeneratedCurvatureEdits({
+        segmentPoints: neck.points,
+        provenance: neck.provenance,
+        delta: { x: 0, y: 0 },
+      });
+      expect(edit.tension, `easing ${capBallEasing}`).to.be.closeTo(0.5, 1e-3);
+    }
+  });
+
   it("reports the neck's curvature as pinned once the cap field is set", () => {
     const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
     const skeletonData = getSkeletonData(layer);
@@ -1039,8 +1054,10 @@ describe("the curvature gizmo at a bulb terminal", () => {
   function trimmedSides(capFields) {
     const layer = makeBulbGlyph(capFields);
     return buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)
-      .filter((segment) =>
-        segment.provenance.some((entry) => entry?.constructionSegment)
+      .filter(
+        (segment) =>
+          segment.provenance.some((entry) => entry?.constructionSegment) &&
+          !segment.provenance.some((entry) => entry?.capCurvatureField)
       )
       .map((segment) => segment.side);
   }

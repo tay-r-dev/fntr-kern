@@ -8009,6 +8009,27 @@ function buildDropCap({
     // the segment walk to see the neck at all; the walk takes a segment only
     // when all four of its points carry one.
     withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
+    // The pin governs the neck on its own chord, into the inner trim, and not
+    // the drawn neck, whose stem-side handle is stretched by the run to the
+    // stem's on-curve. The gizmo read the drawn one and wrote that back as the
+    // pin, and the neck jumped at the first grab. That chord is published, as
+    // a cut segment publishes its uncut curve, so the gizmo reads what it
+    // writes.
+    const neckStart = arc[arc.length - 1];
+    if (neckStart._provenance) {
+      neckStart._provenance.constructionSegment = [
+        ballAttach,
+        vector.addVectors(
+          ballAttach,
+          vector.mulVectorScalar(sweepTangent, clampNeckLen(neckLengths.startLen))
+        ),
+        vector.addVectors(
+          innerTrim,
+          vector.mulVectorScalar(innerTangent, clampNeckLen(neckLengths.endLen))
+        ),
+        innerTrim,
+      ].map(({ x, y }) => ({ x, y }));
+    }
   } else if (mode === "bridge") {
     // Small ball: connect the last arc on-curve to the inner terminal with a
     // short concave neck cubic, scaled by tension.
