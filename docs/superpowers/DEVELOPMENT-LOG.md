@@ -886,13 +886,14 @@ numbers to the v1 nine. One of the three is here.
 - **It was never the tilt's either.** The same 342-unit step is reachable at an
   absolute axis of 128 degrees on the same glyph, and had been in the tree since
   the wall was written.
-- **`depthSign` is not here, and the answer is the release rule.** The lab flips
-  the depth so the wing block grows against the stroke — its reverse block and
-  its lowercase entry serif. The lab can, because its flank is a line at a fixed
-  `u` and nothing cares which side of the terminal plane the tip is on. Our
-  terminal finds every shared point ON the wall, and outward of the rib end there
-  is no wall: building one is the straight line from the rib end, closed
-  2026-08-08. It is a second feature: backlog S1.
+- **`depthSign` is not here, and the answer is the release rule.** Flipping
+  the whole frame needs a wall outward of the rib end, and building one is the
+  straight line from the rib end, closed 2026-08-08. **The shape the designer
+  wanted needed no such wall** (2026-09-24): a negative tip height keeps the
+  shoulder on the foot line and grows only the platform outward, so the slope
+  still climbs the real wall. The change is two depths in the half and one in
+  the cup. The closed idea had been read as "the block grows outward", and the
+  question that settled it was which part of the block.
 - **`backset` is not here either.** Sliding the origin outward leaves the
   terminal joined to the stroke by its two brackets alone. It composes with the
   tilt rather than competing with it. Backlog S2.

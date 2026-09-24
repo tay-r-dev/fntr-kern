@@ -1222,6 +1222,26 @@ function of everything a designer has done to that segment, and a curvature pin 
 along the stroke. Reading it off the wall as solved is not the same thing, and is what the terminal
 now does: the wall is decided by the centerline and the widths alone, before any authoring.
 
+### A negative height grows the platform outward
+
+**Below zero, the shoulder stays on the foot line and the platform grows past
+the end of the stroke.** The shoulder is the top of the tip, where the wing's
+slope starts. The slope still climbs the stem from there, so the corner, the
+reach, the bracket and the easing are all found on the wall exactly as above,
+and the release rule holds unchanged. Only the tip's bottom leaves the wall's
+side of the foot line: it stands the height outside it, and the tip cut angle
+leans that outer face over the platform's own height. The cup is measured from
+the platform, so it moves outward with it.
+
+At zero, both readings put the shoulder and the tip's bottom on the foot line.
+The height passes through zero with no step and no change in point count. With
+no slope and no reach, a zero height draws the wing as a line with no area.
+That is a collapse under the ground rule, not a gap, and the designer accepted
+it (2026-09-24).
+
+Two halves of different heights put their tips at two depths. The cup's centre
+starts midway between the two depths, so the underside stays one curve.
+
 ### Point count
 
 **Seven on-curve points per terminal, at every parameter value**, including every degenerate one:
@@ -1306,7 +1326,7 @@ once.
 | **Build the serif terminal against the cut it made in the EMITTED edge**      | Built, reverted, and still closed. It does fix the step a flank-built terminal leaves on a curved approach, and it fixes it by making the terminal a function of the emitted edge's shape. So a curvature pin, whose whole job is to reshape that edge, walked the release and the straight run's bottom along the stroke. Reading the wall as SOLVED, before any authored layer touches it, is not the same thing and is what the terminal does now (§8).                                                                                                  |
 | **Place the serif's shared points on a straight flank line from the rib end** | Closed 2026-08-08. The line is the wall only on a straight stem. On a curved one the wall was dragged onto the line and its handle turned, and both grew with the depth the serif reached at — so tip thickness, which sets that depth, reshaped the stem by up to 23 units. The wing's top surface now meets the wall itself, and the wall is cut where it is met.                                                                                                                                                                                         |
 | **Apply a curvature pin to a serifed terminal before the trim**               | Closed with the above. The serif finds its release ON the wall, so a pin applied before the cut reshapes the wall the release is found on and walks the whole terminal up and down the stem. All three authored layers now go behind the cut, which also makes the stored pin mean the segment the gizmo measures.                                                                                                                                                                                                                                          |
-| **Grow the serif body against the stroke** (the lab's `depthSign`)            | Not built, and the reason is the release rule. Serif Lab II flips the sign of the frame's depth so the wing block sits past the terminal and the bracket sweeps out to it: the lowercase entry serif, the reverse block. It works there because the lab has no wall — its flank is a line at a fixed `u`. Ours finds every shared point ON the wall, and there is no wall outward of the rib end. Building one means the straight line from the rib end, closed 2026-08-08. The shape is real, and is a second feature rather than a sign flip: backlog S1. |
+| **Grow the serif body against the stroke** (the lab's `depthSign`)            | Not built as a flip of the frame. Serif Lab II flips the sign of the frame's depth so the whole wing block sits past the terminal. Ours finds every shared point ON the wall, and there is no wall outward of the rib end. Building one means the straight line from the rib end, closed 2026-08-08. What was built instead, 2026-09-24, is a negative tip height (§8): only the platform grows outward, and the slope still climbs the wall from the foot line, so no point needs a wall that is not there. |
 | **Lean the whole serif frame with the stroke**                                | Built, reverted. Under a rib angle lock the wall leans against a flat foot, so shearing the frame makes the two halves match under the lean and puts the cupped foot centre back on the skeleton. It also puts the tip's outer edge parallel to the stem, which deforms the wing, and it does not remove the bracket asymmetry in glyph space — it only makes it symmetric in a coordinate system nobody is looking at. The serif's own shape is square to its foot; only the wall follows the stroke (§8).                                                 |
 | **Let `tension` and `concavity` scale each other**                            | Built, reverted. Two sliders over one product means that either one at zero cancels the other. Both defaulted to zero, so a fresh serif drew a flat bevel and neither slider appeared to do anything. They are now a length and a balance over the same corner-aimed construction, and they are independent.                                                                                                                                                                                                                                                |
 | **Rebuild the parameter form on every field change**                          | `setFieldDescriptions` exists for this, and it clears `innerHTML`. So an arrow-key edit destroyed the input it came from and took the focus with it, one increment per click. The panel now compares a layout signature, and writes values in place when only values changed, skipping whichever field the user is currently in.                                                                                                                                                                                                                            |
