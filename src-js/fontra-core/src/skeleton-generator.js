@@ -94,6 +94,11 @@ const DROP_CAP_APEX_COUNT = 3;
 // handle may be as a multiple of the chord.
 const HARMONIOUS_SOLVE_STEPS = 40;
 const HARMONIOUS_MAX_HANDLE = 2;
+// Samples the handle range is scanned at where its two ends do not bracket an
+// answer, and how far an answer found that way may leave the end curvature
+// from the one asked for, as a fraction of it.
+const HARMONIOUS_SCAN_STEPS = 64;
+const HARMONIOUS_NEAR_MISS = 0.02;
 // How far back the tangency sits where no harmonious answer exists, as a share
 // of the ball's own lateral radius.
 const DROP_CAP_EASE_IN_RATIO = 0.5;
@@ -5574,6 +5579,14 @@ function solveTerminalSplitForDistance(bezier, fromEnd, trimDistance) {
   const targetLength = fromEnd
     ? totalLength - clampedTrimDistance
     : clampedTrimDistance;
+  // The two ends are exact. The search below stops within half a unit, which
+  // leaves a sliver of curve where a cut asked for the whole of it.
+  if (targetLength <= 0) {
+    return 0;
+  }
+  if (targetLength >= totalLength) {
+    return 1;
+  }
 
   let low = 0;
   let high = 1;
@@ -6672,7 +6685,7 @@ function solveHarmoniousHandles({ from, u, startCurvature, to, v, endCurvature }
   const high = chord * HARMONIOUS_MAX_HANDLE;
   const lowSign = residual(1e-6) < 0;
   if (lowSign === residual(high) < 0) {
-    return null;
+    return solveTouchingHarmoniousHandles(bFor, residual, high, C, B);
   }
   let low = 1e-6;
   let top = high;
@@ -6687,6 +6700,67 @@ function solveHarmoniousHandles({ from, u, startCurvature, to, v, endCurvature }
   const a = (low + top) / 2;
   const b = bFor(a);
   return a > 0 && b > 0 && Number.isFinite(a) && Number.isFinite(b) ? { a, b } : null;
+}
+
+// Where the residual has the same sign at both ends of the range, the answer
+// can still be there: two roots inside it, or one where the residual only
+// touches zero. The ease-in that takes a wall's whole last curve on the `h` of
+// skeletron is the second kind, and the bisection above cannot bracket it. A
+// fixed scan finds a crossing if there is one, and otherwise the sample nearest
+// zero, refined at a fixed trip count. That answer is taken only while the end
+// curvature it leaves stays within HARMONIOUS_NEAR_MISS of the one asked for.
+function solveTouchingHarmoniousHandles(bFor, residual, high, C, B) {
+  const valid = (value) => bFor(value) > 0;
+  const relative = (value) =>
+    Math.abs(residual(value)) / Math.max(Math.abs(C + value * B), 1e-9);
+  const samples = Array.from(
+    { length: HARMONIOUS_SCAN_STEPS },
+    (_, index) => (high * (index + 1)) / HARMONIOUS_SCAN_STEPS
+  );
+  for (let index = 1; index < samples.length; index++) {
+    let low = samples[index - 1];
+    let top = samples[index];
+    const lowSign = residual(low) < 0;
+    if (lowSign === residual(top) < 0 || !valid(low) || !valid(top)) {
+      continue;
+    }
+    for (let step = 0; step < HARMONIOUS_SOLVE_STEPS; step++) {
+      const middle = (low + top) / 2;
+      if (residual(middle) < 0 === lowSign) {
+        low = middle;
+      } else {
+        top = middle;
+      }
+    }
+    const a = (low + top) / 2;
+    return { a, b: bFor(a) };
+  }
+  let best = null;
+  for (const value of samples) {
+    if (valid(value) && (best === null || relative(value) < relative(best))) {
+      best = value;
+    }
+  }
+  if (best === null) {
+    return null;
+  }
+  // Golden-section search on the nearest miss, between the samples either side.
+  const spacing = high / HARMONIOUS_SCAN_STEPS;
+  let low = Math.max(best - spacing, 1e-6);
+  let top = Math.min(best + spacing, high);
+  const ratio = (Math.sqrt(5) - 1) / 2;
+  for (let step = 0; step < HARMONIOUS_SOLVE_STEPS; step++) {
+    const one = top - ratio * (top - low);
+    const other = low + ratio * (top - low);
+    if (relative(one) < relative(other)) {
+      top = other;
+    } else {
+      low = one;
+    }
+  }
+  const a = (low + top) / 2;
+  const b = bFor(a);
+  return b > 0 && relative(a) <= HARMONIOUS_NEAR_MISS ? { a, b } : null;
 }
 
 // The two kappa handles of one arc piece from `a` to `b`, in device space.
@@ -7526,8 +7600,15 @@ function buildDropCap({
       position,
       split.referenceEndpointIndex
     );
+    // A cut the whole length of the wall's last curve leaves that curve
+    // collapsed on its far on-curve, and the curve the ease-in continues is the
+    // one before it.
     const wallPoints =
-      getRoundCapTerminalSegment(sidePoints, position)?.segmentPoints ?? [];
+      getSideSegmentsFromTerminal(sidePoints, position).find(
+        ({ segmentPoints }) =>
+          vector.distance(segmentPoints[0], segmentPoints[segmentPoints.length - 1]) >
+          1e-6
+      )?.segmentPoints ?? [];
     // The wall's own terminal piece runs away from the tangency, the ease-in
     // toward the ball, so the wall's curvature is negated to face the same way.
     const wall = position === "end" ? [...wallPoints].reverse() : wallPoints;
@@ -7574,6 +7655,21 @@ function buildDropCap({
       }
     }
     chosen = high;
+  } else {
+    // No setback in the run balances the two handles. A ball much tighter than
+    // its wall does this: the short ease-in the run allows cannot bend from one
+    // curvature to the other, and the circular fallback left steps of 39 and 44
+    // per cent on the `h` of skeletron. The cut then takes the wall's whole last
+    // curve, so the ease-in runs from the on-curve before it into the ball and
+    // the tangency collapses onto that on-curve. A curve that long has the room
+    // to match both ends; where even it cannot, the circular fallback stands.
+    // Where even that curve cannot, the short circular ease-in stands. The
+    // switch between the two is a step in shape: 120 units on the `h` when its
+    // first skeleton handle is dragged 11 units left.
+    const whole = getTerminalSegmentLength(trimmedOuterSide, position);
+    if (easeInAt(whole)?.solved) {
+      chosen = whole;
+    }
   }
   const easeInAttempt = easeInAt(chosen);
   let easeIn = [];

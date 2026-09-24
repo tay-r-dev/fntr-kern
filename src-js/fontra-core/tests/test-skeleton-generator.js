@@ -1723,6 +1723,89 @@ describe("skeleton-generator drop caps", () => {
     expect(easeInX({ capBallRatio: 2 })).to.be.lessThan(easeInX({ capBallRatio: 0.8 }));
   });
 
+  // Reported on the `h` of skeletron: a ball much tighter than the wall it sits
+  // on has no balanced ease-in anywhere along the wall's last curve, and the
+  // ease-in fell back to circular handles, 39 and 44 per cent out at its two
+  // ends. The wall's whole last curve is the ease-in there.
+  it("eases into the ball harmoniously where no balanced setback exists", () => {
+    const skeleton = {
+      version: 1,
+      nextId: 10,
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 80,
+          singleSided: "right",
+          points: [
+            {
+              id: 2,
+              x: 358,
+              y: 209,
+              type: null,
+              smooth: false,
+              capStyle: "drop",
+              capBallRatio: 2.53,
+              capBallEasing: 0.36,
+              capBallShape: 0,
+              capBallSide: "left",
+              width: { left: 14, right: 14, linked: true },
+            },
+            { id: 3, x: 387, y: 283, type: "cubic" },
+            { id: 4, x: 351, y: 348, type: "cubic" },
+            {
+              id: 5,
+              x: 271,
+              y: 348,
+              type: null,
+              smooth: true,
+              width: { left: 13, right: 15, linked: false },
+              nudge: { left: 0, right: -6 },
+            },
+            { id: 6, x: 204, y: 348, type: "cubic" },
+            { id: 7, x: 153, y: 300, type: "cubic" },
+            {
+              id: 8,
+              x: 153,
+              y: 208,
+              type: null,
+              smooth: false,
+              width: { left: 22, right: 22, linked: true },
+            },
+          ],
+        },
+      ],
+      generated: [],
+    };
+    const points = removeCollapsedOutlinePoints(
+      generateFromSkeleton(skeleton).contours[0].points
+    );
+    const count = points.length;
+    const at = (index) => points[(index + count) % count];
+    const startCurvature = (p) => {
+      const t = { x: p[1].x - p[0].x, y: p[1].y - p[0].y };
+      const s = { x: p[2].x - 2 * p[1].x + p[0].x, y: p[2].y - 2 * p[1].y + p[0].y };
+      return ((2 / 3) * (t.x * s.y - t.y * s.x)) / Math.hypot(t.x, t.y) ** 3;
+    };
+    const endCurvature = (p) => -startCurvature([...p].reverse());
+    const step = (index) => {
+      const before = [at(index - 3), at(index - 2), at(index - 1), at(index)];
+      const after = [at(index), at(index + 1), at(index + 2), at(index + 3)];
+      const one = endCurvature(before);
+      const other = startCurvature(after);
+      return Math.abs(one - other) / Math.max(Math.abs(one), Math.abs(other));
+    };
+    // The ball's first point is its rightmost extreme; the ease-in leaves it
+    // for the wall.
+    const onCurves = points.map((p, i) => i).filter((i) => !points[i].type);
+    const ballStart = onCurves.reduce((best, i) =>
+      points[i].x > points[best].x ? i : best
+    );
+    expect(at(ballStart + 1).type).to.equal("cubic");
+    expect(step(ballStart), "ball joint").to.be.below(0.02);
+    expect(step(ballStart + 3), "wall joint").to.be.below(0.02);
+  });
+
   it("capBallShape 0 leaves the round ball unchanged", () => {
     const round = generateFromSkeleton(makeDropSkeleton());
     const shaped = generateFromSkeleton(makeDropSkeleton({ capBallShape: 0 }));
