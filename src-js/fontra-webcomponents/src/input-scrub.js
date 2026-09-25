@@ -42,7 +42,12 @@ export class InputScrub extends UnlitElement {
       min-width: 0;
     }
 
+    /* The ref composite sizes the button explicitly (0.5em x 1.5em between
+       ~1.75em-tall fields): centred, its gray edges merge with the fields'
+       outer shells, the notches aligning with the inner boxes' inset. */
     ui-link-button {
+      width: 0.5em;
+      height: 1.5em;
       flex: 0 0 0.5em;
     }
   `;
@@ -57,7 +62,29 @@ export class InputScrub extends UnlitElement {
     this._min = undefined;
     this._max = undefined;
     this._step = undefined;
+    this._integer = false;
+    this._icon = undefined;
+    this._iconTooltip = "";
     this._disabled = false;
+    this._linkTooltip = "";
+
+    // The fields are built once here, not per render: they keep their focus
+    // and their listeners across re-renders, and a consumer can hold them
+    // (leftField/rightField) before the element is ever attached.
+    this._leftField = this._makeField("left");
+    this._rightField = this._makeField("right");
+    this._syncFields();
+  }
+
+  // The inner compact-scrub-fields, for a consumer that needs a plain field's
+  // API (writing .value on an undo restore, say). Events still come from the
+  // composite.
+  get leftField() {
+    return this._leftField;
+  }
+
+  get rightField() {
+    return this._rightField;
   }
 
   get link() {
@@ -66,6 +93,7 @@ export class InputScrub extends UnlitElement {
 
   set link(value) {
     this._link = LINK_STATES.has(value) ? value : "on";
+    this._applyDisabled();
     this.requestUpdate();
   }
 
@@ -75,9 +103,7 @@ export class InputScrub extends UnlitElement {
 
   set leftLabel(value) {
     this._leftLabel = value || "";
-    if (this._leftField) {
-      this._leftField.label = this._leftLabel;
-    }
+    this._leftField.label = this._leftLabel;
   }
 
   get rightLabel() {
@@ -86,9 +112,7 @@ export class InputScrub extends UnlitElement {
 
   set rightLabel(value) {
     this._rightLabel = value || "";
-    if (this._rightField) {
-      this._rightField.label = this._rightLabel;
-    }
+    this._rightField.label = this._rightLabel;
   }
 
   get leftValue() {
@@ -97,9 +121,7 @@ export class InputScrub extends UnlitElement {
 
   set leftValue(value) {
     this._leftValue = value;
-    if (this._leftField) {
-      this._leftField.value = value;
-    }
+    this._leftField.value = value;
   }
 
   get rightValue() {
@@ -108,9 +130,7 @@ export class InputScrub extends UnlitElement {
 
   set rightValue(value) {
     this._rightValue = value;
-    if (this._rightField) {
-      this._rightField.value = value;
-    }
+    this._rightField.value = value;
   }
 
   get min() {
@@ -119,7 +139,7 @@ export class InputScrub extends UnlitElement {
 
   set min(value) {
     this._min = value;
-    this._applyBounds();
+    this._syncFields();
   }
 
   get max() {
@@ -128,7 +148,7 @@ export class InputScrub extends UnlitElement {
 
   set max(value) {
     this._max = value;
-    this._applyBounds();
+    this._syncFields();
   }
 
   get step() {
@@ -137,7 +157,36 @@ export class InputScrub extends UnlitElement {
 
   set step(value) {
     this._step = value;
-    this._applyBounds();
+    this._syncFields();
+  }
+
+  get integer() {
+    return this._integer;
+  }
+
+  set integer(value) {
+    this._integer = !!value;
+    this._syncFields();
+  }
+
+  // One icon for both fields (the row's icon, decorative only, per
+  // compact-scrub-field.js).
+  get icon() {
+    return this._icon;
+  }
+
+  set icon(value) {
+    this._icon = value || undefined;
+    this._syncFields();
+  }
+
+  get iconTooltip() {
+    return this._iconTooltip;
+  }
+
+  set iconTooltip(value) {
+    this._iconTooltip = value || "";
+    this._syncFields();
   }
 
   get disabled() {
@@ -147,38 +196,47 @@ export class InputScrub extends UnlitElement {
   set disabled(value) {
     this._disabled = !!value;
     this._applyDisabled();
+    this.requestUpdate();
+  }
+
+  // The link button's tooltip (localized by the caller); empty leaves the
+  // button's own default titles.
+  get linkTooltip() {
+    return this._linkTooltip;
+  }
+
+  set linkTooltip(value) {
+    this._linkTooltip = value || "";
+    this.requestUpdate();
   }
 
   _linked() {
     return this._link === "on";
   }
 
-  _applyBounds() {
-    for (const field of [this._leftField, this._rightField]) {
-      if (field) {
-        field.minValue = this._min;
-        field.maxValue = this._max;
-        field.step = this._step;
-      }
+  _syncFields() {
+    for (const [field, label, value] of [
+      [this._leftField, this._leftLabel, this._leftValue],
+      [this._rightField, this._rightLabel, this._rightValue],
+    ]) {
+      field.label = label;
+      field.value = value;
+      field.minValue = this._min;
+      field.maxValue = this._max;
+      field.step = this._step;
+      field.integer = this._integer;
+      field.icon = this._icon;
+      field.iconTooltip = this._iconTooltip;
     }
   }
 
   _applyDisabled() {
-    if (this._leftField) {
-      this._leftField.disabled = this._disabled;
-    }
-    if (this._rightField) {
-      this._rightField.disabled = this._disabled || this._linked();
-    }
+    this._leftField.disabled = this._disabled;
+    this._rightField.disabled = this._disabled || this._linked();
   }
 
   render() {
     const link = this._link;
-
-    this._leftField = this._makeField("left", this._leftLabel, this._leftValue);
-    this._rightField = this._makeField("right", this._rightLabel, this._rightValue);
-    this._applyBounds();
-    this._applyDisabled();
 
     const children = [this._leftField];
 
@@ -186,6 +244,7 @@ export class InputScrub extends UnlitElement {
       const linkButton = html.createDomElement("ui-link-button");
       linkButton.state = link;
       linkButton.disabled = this._disabled;
+      linkButton.tooltip = this._linkTooltip;
       linkButton.addEventListener("link-changed", (event) => {
         this._handleLinkChanged(event);
       });
@@ -200,10 +259,8 @@ export class InputScrub extends UnlitElement {
     );
   }
 
-  _makeField(side, label, value) {
+  _makeField(side) {
     const field = html.createDomElement("compact-scrub-field");
-    field.label = label;
-    field.value = value;
 
     field.addEventListener("change", (event) => this._handleFieldChange(side, event));
     field.addEventListener("scrubstart", (event) => {

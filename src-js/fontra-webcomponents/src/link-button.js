@@ -4,17 +4,24 @@ import { themeColorCSS } from "./theme-support.js";
 
 // The link button from the Figma scrub-input design
 // (_external/component-code/scrub/link buttonm.txt): a narrow strip between
-// two fields. "on" draws as a bracket/tab merged into the fields on either
-// side; "off" draws as three dots. Clicking toggles it and sends
-// "link-changed" with detail {state, linked}. Unlike chain-link (an icon
-// button), this one is purely CSS-drawn per the design.
+// two fields. "on" draws as two solid bars anchored to the strip's top and
+// bottom, their facing ends pill-rounded; on hover the bars grow toward each
+// other (120ms), shrinking the gap. "off" draws as three dots. Clicking
+// toggles it and sends "link-changed" with detail {state, linked}. Unlike
+// chain-link (an icon button), this one is purely CSS-drawn.
+//
+// (The ref txt drew "on" as two background-colored triangles biting into the
+// gray strip -- a mis-translation of the Figma; the bars here are the glyph
+// itself, so they read the same on any page background.)
 //
 // `state` is "on" or "off" (`linked` mirrors it as a boolean); both are
 // plain JS properties, the convention every UnlitElement component in this
 // tree uses.
 const colors = {
+  // The strip keeps the fields' outer-shell gray, so it merges with them.
   "link-button-background-color": ["#f5f5f5", "#3a3a3a"],
-  "link-button-tab-color": ["#fff", "#222222"],
+  // Bars and dots share the dots' gray: just darker than the strip.
+  "link-button-bar-color": ["#dedede", "#5a5a5a"],
   "link-button-dot-color": ["#dedede", "#5a5a5a"],
   "link-button-dot-hover-color": ["#d6d6d6", "#707070"],
 };
@@ -43,40 +50,44 @@ export class LinkButton extends UnlitElement {
       border: 0;
       background: transparent;
       cursor: pointer;
+      /* A <button> gets the UA font, not the host's -- but every internal
+         size (the triangle borders whose base must equal the strip width,
+         the dots) is in ems. Inherit so the notch geometry matches the
+         0.5em x 1.5em host strip exactly. */
+      font: inherit;
     }
 
     .ui-link-button.state-on {
       background: var(--link-button-background-color);
     }
 
+    /* "on": two solid bars filling the strip's width, one anchored top, one
+       bottom, their facing ends pill-rounded. On hover they grow toward each
+       other, shrinking the gap (0.5em -> 0.1875em) in the ref's 120ms. */
     .ui-link-button.state-on::before,
     .ui-link-button.state-on::after {
       position: absolute;
       left: 0;
-      width: 0;
-      height: 0;
-      border-right: 0.25em solid transparent;
-      border-left: 0.25em solid transparent;
+      width: 100%;
+      height: 0.5em;
+      background: var(--link-button-bar-color);
       content: "";
       transition: 120ms;
     }
 
     .ui-link-button.state-on::before {
       top: 0;
-      border-top: 0.5em solid var(--link-button-tab-color);
+      border-radius: 0 0 0.25em 0.25em;
     }
 
     .ui-link-button.state-on::after {
       bottom: 0;
-      border-bottom: 0.5em solid var(--link-button-tab-color);
+      border-radius: 0.25em 0.25em 0 0;
     }
 
-    .ui-link-button.state-on:hover::before {
-      border-top-width: 0.65625em;
-    }
-
+    .ui-link-button.state-on:hover::before,
     .ui-link-button.state-on:hover::after {
-      border-bottom-width: 0.65625em;
+      height: 0.65625em;
     }
 
     .ui-link-button-dots {
@@ -114,6 +125,7 @@ export class LinkButton extends UnlitElement {
     super();
     this._state = "on";
     this._disabled = false;
+    this._tooltip = "";
   }
 
   get state() {
@@ -142,8 +154,20 @@ export class LinkButton extends UnlitElement {
     this.requestUpdate();
   }
 
+  // Overrides the default "Link values"/"Unlink values" titles, so a caller
+  // can pass a localized tooltip.
+  get tooltip() {
+    return this._tooltip;
+  }
+
+  set tooltip(value) {
+    this._tooltip = value || "";
+    this.requestUpdate();
+  }
+
   render() {
     const state = this._state;
+    const tooltip = this._tooltip || (state === "on" ? "Unlink values" : "Link values");
 
     return html.createDomElement(
       "button",
@@ -151,8 +175,8 @@ export class LinkButton extends UnlitElement {
         "class": `ui-link-button state-${state}`,
         "type": "button",
         "disabled": this._disabled,
-        "title": state === "on" ? "Unlink values" : "Link values",
-        "aria-label": state === "on" ? "Unlink values" : "Link values",
+        "title": tooltip,
+        "aria-label": tooltip,
         "aria-pressed": state === "on",
         "onclick": () => this._toggle(),
       },

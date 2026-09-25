@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ui-link-button / ui-input-scrub preview</title>
+    <style>
+      /* Mirrors core.css's theme tokens so the tab notches take the page
+         background exactly as in the app. */
+      :root {
+        --fontra-theme-marker: ;
+        --background-color: #f6f6f6;
+      }
+      body {
+        font-family: sans-serif;
+        font-size: 0.9em;
+        background: var(--background-color);
+        display: flex;
+        gap: 3em;
+        padding: 2em;
+      }
+      .col {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5em;
+        align-items: start;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+      }
+    </style>
+    <script type="module">
+      import "/src-js/fontra-webcomponents/src/link-button.js";
+      import "/src-js/fontra-webcomponents/src/input-scrub.js";
+    </script>
+  </head>
+  <body>
+    <div class="col">
+      <ui-link-button state="on"></ui-link-button>
+      <ui-link-button state="on" disabled></ui-link-button>
+      <ui-link-button state="off"></ui-link-button>
+      <ui-link-button state="off" disabled></ui-link-button>
+    </div>
+    <div class="col">
+      <ui-input-scrub
+        id="pair-on"
+        style="width: 14em"
+      ></ui-input-scrub>
+      <ui-input-scrub id="pair-off" style="width: 14em"></ui-input-scrub>
+      <ui-input-scrub id="pair-na" style="width: 14em"></ui-input-scrub>
+      <ui-input-scrub id="pair-disabled" style="width: 14em"></ui-input-scrub>
+    </div>
+    <script type="module">
+      const setup = (id, link, disabled = false) => {
+        const el = document.getElementById(id);
+        el.leftLabel = "X";
+        el.rightLabel = "Y";
+        el.leftValue = 100;
+        el.rightValue = 100;
+        el.step = 1;
+        el.link = link;
+        el.disabled = disabled;
+      };
+      setup("pair-on", "on");
+      setup("pair-off", "off");
+      setup("pair-na", "n/a");
+      setup("pair-disabled", "on", true);
+    </script>
+  </body>
+</html>

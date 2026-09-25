@@ -26,8 +26,8 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
-import "@fontra/web-components/chain-link.js"; // for the Scale chain
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
+import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Scale row's linked pair
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
 import "@fontra/web-components/overflow-popover.js"; // for the Harmonize card
@@ -71,7 +71,7 @@ export default class TransformationPanel {
   }
 
   .ui-form-value.universal-row > compact-scrub-field,
-  .ui-form-value.universal-row > .scale-y-with-overflow {
+  .ui-form-value.universal-row > ui-input-scrub {
     flex: 1 1 0;
     min-width: 0;
   }
@@ -79,16 +79,14 @@ export default class TransformationPanel {
   /* Ticket 39: the Origin row is the grid, then the typed X and Y with the
      pick and clear buttons in a row under them. The grid is twice an
      input's height, so this row's label and value grow past 1.6em. */
-  /* Ticket 41: the Smart scale overflow sits after Scale Y, in the gutter. */
+  /* Ticket 41: the Smart scale overflow sits after the Scale pair, in the
+     gutter. The wrapper now holds only the overflow, so it takes no flex
+     share and leaves both halves of the row to the ui-input-scrub. */
   .scale-y-with-overflow {
     display: flex;
     align-items: center;
     gap: 0.35rem;
-  }
-
-  .scale-y-with-overflow > compact-scrub-field {
-    flex: 1 1 0;
-    min-width: 0;
+    flex: 0 0 auto;
   }
 
   .scale-y-with-overflow > overflow-button {
@@ -573,62 +571,74 @@ export default class TransformationPanel {
 
     const scaleYFor = (x) =>
       this.transformParameters.scaleLinked ? x : this.transformParameters.scaleY;
-    const {
-      row: scaleRow,
-      fieldX: scaleXField,
-      fieldY: scaleYField,
-    } = this._buildScrubXYRow({
-      label: translate("sidebar.selection-transformation.scale"),
-      icon: "/tabler-icons/resize.svg",
-      tooltip: translate("sidebar.selection-transformation.scale"),
-      valueX: this.transformParameters.scaleX,
-      valueY: this.transformParameters.scaleY,
-      onChangeX: (value) => {
+    // The Scale row is the linked-pair composite: X, the link button, Y in one
+    // element. Linked, Y follows X and is greyed -- the composite's own link
+    // "on" semantics, mirroring and disabling the right field itself. The
+    // fields are the composite's inner compact-scrub-fields, so the reset and
+    // undo-restore write them through RELATIVE_TRANSFORM_FIELDS as before.
+    const scaleInput = html.createDomElement("ui-input-scrub");
+    scaleInput.leftLabel = "X";
+    scaleInput.rightLabel = "Y";
+    scaleInput.icon = "/tabler-icons/resize.svg";
+    scaleInput.iconTooltip = translate("sidebar.selection-transformation.scale");
+    scaleInput.step = 0.1;
+    scaleInput.leftValue = this.transformParameters.scaleX;
+    scaleInput.rightValue = this.transformParameters.scaleY;
+    scaleInput.link = this.transformParameters.scaleLinked ? "on" : "off";
+    scaleInput.linkTooltip = translate("sidebar.skeleton-parameters.linked");
+    this.scaleXField = scaleInput.leftField;
+    this.scaleYField = scaleInput.rightField;
+    // The value stays exactly where the drag or the typed edit left it, like
+    // the other rows. When linked the composite already mirrors Y's field;
+    // here the model follows.
+    scaleInput.addEventListener("change", (event) => {
+      const { value, side } = event.detail;
+      if (side === "left") {
         this.transformParameters.scaleX = value;
         if (this.transformParameters.scaleLinked) {
           this.transformParameters.scaleY = value;
-          this.scaleYField.value = value;
         }
-      },
-      onChangeY: (value) => (this.transformParameters.scaleY = value),
-      onApply: () =>
-        this.transformSelection(
-          () =>
-            new Transform().scale(
-              this.transformParameters.scaleX / 100,
-              scaleYFor(this.transformParameters.scaleX) / 100
-            ),
-          "scale"
-        ),
-      // Linked, Y follows X, so both axes take X's ratio.
-      makeTransformationForX: (x, startX) => () => {
-        const ratio = scrubAmountSinceStart(x, startX, "ratio");
-        return new Transform().scale(
-          ratio,
-          this.transformParameters.scaleLinked ? ratio : 1
-        );
-      },
-      makeTransformationForY: (y, startY) => () =>
-        new Transform().scale(1, scrubAmountSinceStart(y, startY, "ratio")),
-      undoLabel: "scale",
+      } else {
+        this.transformParameters.scaleY = value;
+      }
     });
-    this.scaleXField = scaleXField;
-    this.scaleYField = scaleYField;
-    scaleYField.disabled = this.transformParameters.scaleLinked;
-    // The chain between X and Y, as on the skeleton width. Closed, Y follows X
-    // and is greyed.
-    const scaleChain = html.createDomElement("chain-link", {
-      tooltip: translate("sidebar.skeleton-parameters.linked"),
+    scaleInput.addEventListener("apply", () =>
+      this.transformSelection(
+        () =>
+          new Transform().scale(
+            this.transformParameters.scaleX / 100,
+            scaleYFor(this.transformParameters.scaleX) / 100
+          ),
+        "scale"
+      )
+    );
+    // The composite forwards the inner field's own scrubstart stream, so one
+    // drag is still one undo step; `side` picks the axis. Linked, Y follows
+    // X, so both axes take X's ratio.
+    scaleInput.addEventListener("scrubstart", (event) => {
+      const { valueStream, startValue, side } = event.detail;
+      this.transformSelectionStream(
+        valueStream,
+        side === "left"
+          ? (x) => () => {
+              const ratio = scrubAmountSinceStart(x, startValue, "ratio");
+              return new Transform().scale(
+                ratio,
+                this.transformParameters.scaleLinked ? ratio : 1
+              );
+            }
+          : (y) => () =>
+              new Transform().scale(1, scrubAmountSinceStart(y, startValue, "ratio")),
+        "scale"
+      );
     });
-    scaleChain.linked = this.transformParameters.scaleLinked;
-    scaleChain.addEventListener("change", (event) => {
+    scaleInput.addEventListener("link-changed", (event) => {
       const linked = event.detail.linked;
       this.transformParameters.scaleLinked = linked;
       if (linked) {
+        // The composite has already mirrored Y's field to X's value.
         this.transformParameters.scaleY = this.transformParameters.scaleX;
-        scaleYField.value = this.transformParameters.scaleX;
       }
-      scaleYField.disabled = linked;
     });
     // Ticket 41: Smart scale, the tension-aware scale held on X, keeps its two
     // app-wide settings in an overflow at the row's end. Preserve aspect ratio
@@ -648,13 +658,19 @@ export default class TransformationPanel {
       this._refreshScaleOverflow();
     });
     this._refreshScaleOverflow();
-    scaleRow.field3 = {
-      type: "auxiliaryElement",
-      auxiliaryElement: html.div({ class: "scale-y-with-overflow" }, [
-        scaleChain,
-        scaleYField,
-        this.scaleOverflow,
-      ]),
+    const scaleRow = {
+      type: "universal-row",
+      field1: {
+        type: "text",
+        value: translate("sidebar.selection-transformation.scale"),
+      },
+      field2: { type: "auxiliaryElement", auxiliaryElement: scaleInput },
+      field3: {
+        type: "auxiliaryElement",
+        auxiliaryElement: html.div({ class: "scale-y-with-overflow" }, [
+          this.scaleOverflow,
+        ]),
+      },
     };
     formContents.push(scaleRow);
 
