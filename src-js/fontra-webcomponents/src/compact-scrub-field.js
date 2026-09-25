@@ -28,10 +28,26 @@ import { themeColorCSS } from "./theme-support.js";
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
 // ones ui-form.js's own label-drag scrub uses -- this is a second place to
 // grab a field, not a second scrub.
+// Figma scrub-field design (_external/component-code/scrub/scrub.txt): light
+// gray box, a faint border on hover, and a lime accent border with a white
+// background while scrubbing or editing manually. Each light color carries a
+// dark-theme counterpart.
 const colors = {
-  "compact-scrub-field-background-color": ["#eee", "#3a3a3a"],
-  "compact-scrub-field-border-color": ["#ccc", "#555"],
-  "compact-scrub-field-text-color": ["#000", "#fff"],
+  "compact-scrub-field-background-color": ["#f5f5f5", "#3a3a3a"],
+  "compact-scrub-field-hover-background-color": ["#f7f7f7", "#464646"],
+  "compact-scrub-field-hover-border-color": [
+    "rgba(0, 0, 0, 0.08)",
+    "rgba(255, 255, 255, 0.14)",
+  ],
+  "compact-scrub-field-active-background-color": ["#fff", "#2c2c2c"],
+  "compact-scrub-field-active-border-color": ["#def280", "#8fae4a"],
+  "compact-scrub-field-text-color": ["#8e8e8e", "#b0b0b0"],
+  "compact-scrub-field-hover-text-color": ["#303030", "#e0e0e0"],
+  "compact-scrub-field-active-text-color": ["#151515", "#f0f0f0"],
+  "compact-scrub-field-handle-color": ["#b4b4b4", "#777777"],
+  "compact-scrub-field-selection-color": ["#d5ed57", "#5c7033"],
+  "compact-scrub-field-stepper-color": ["#d9d9d9", "#666666"],
+  "compact-scrub-field-stepper-active-color": ["#303030", "#dddddd"],
 };
 
 export class CompactScrubField extends UnlitElement {
@@ -42,28 +58,46 @@ export class CompactScrubField extends UnlitElement {
       display: block;
     }
 
+    /* The design is two nested boxes: the outer .box keeps the constant gray
+       background and padding; the inner container carries the border and all
+       hover/scrub/manual-input background and text changes. */
     .box {
-      display: flex;
-      align-items: center;
-      gap: 0.35em;
       background-color: var(--compact-scrub-field-background-color);
-      border: 1px solid var(--compact-scrub-field-border-color);
-      border-radius: 0.25em;
-      padding: 0.2em 0.5em;
+      border-radius: 0.375em;
+      padding: 0.125em;
       color: var(--compact-scrub-field-text-color);
-      /* The outline shows only while the value is being typed. */
-      border-color: transparent;
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
     }
 
-    .box:focus-within {
-      border-color: var(--compact-scrub-field-border-color);
+    .inner {
+      display: flex;
+      align-items: center;
+      gap: 0.35em;
+      border: 1px solid transparent;
+      border-radius: 0.25em;
+      padding: 0.15em 0.4em;
+    }
+
+    .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {
+      background-color: var(--compact-scrub-field-hover-background-color);
+      border-color: var(--compact-scrub-field-hover-border-color);
+      color: var(--compact-scrub-field-hover-text-color);
+    }
+
+    /* Scrubbing and manual input share the design's active look: lime accent
+       border on white, dark text. */
+    .box.scrubbing .inner,
+    .box.editing .inner,
+    .box:focus-within .inner {
+      background-color: var(--compact-scrub-field-active-background-color);
+      border-color: var(--compact-scrub-field-active-border-color);
+      color: var(--compact-scrub-field-active-text-color);
     }
 
     .box.disabled {
-      opacity: 0.5;
+      opacity: 0.3;
       cursor: default;
     }
 
@@ -86,13 +120,13 @@ export class CompactScrubField extends UnlitElement {
       flex: 0 0 auto;
       width: 0.9em;
       height: 0.9em;
-      opacity: 0.55;
+      color: var(--compact-scrub-field-handle-color);
     }
 
-    /* Stretched to the box's height, so a blank value -- a mixed selection,
-       or no selection at all -- still has something to click. Centred on its
-       own text line it collapsed to zero height, and the keyboard editor it
-       opens was out of reach. */
+    /* Stretched to the inner container's height, so a blank value -- a mixed
+       selection, or no selection at all -- still has something to click.
+       Centred on its own text line it collapsed to zero height, and the
+       keyboard editor it opens was out of reach. */
     .value {
       flex: 0 0 auto;
       align-self: stretch;
@@ -120,6 +154,65 @@ export class CompactScrubField extends UnlitElement {
       font: inherit;
       padding: 0;
       outline: none;
+      /* The design's own up/down steppers replace the native spin buttons. */
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    .value input::-webkit-inner-spin-button,
+    .value input::-webkit-outer-spin-button {
+      appearance: none;
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .value input::selection {
+      background: var(--compact-scrub-field-selection-color);
+      color: #151515;
+    }
+
+    /* Up/down steppers, visible only in manual input (per the Figma design).
+       They live inside the value element, so the input's removal on edit end
+       takes them along. */
+    .steppers {
+      display: flex;
+      flex-direction: column;
+      align-self: stretch;
+      justify-content: center;
+      margin-left: 0.15em;
+    }
+
+    .stepper {
+      display: grid;
+      place-items: center;
+      width: 0.9em;
+      height: 0.6em;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--compact-scrub-field-stepper-color);
+      cursor: pointer;
+    }
+
+    .stepper:hover {
+      color: var(--compact-scrub-field-stepper-active-color);
+    }
+
+    .stepper::before {
+      width: 0;
+      height: 0;
+      border-right: 0.2em solid transparent;
+      border-left: 0.2em solid transparent;
+      content: "";
+    }
+
+    .stepper.up::before {
+      border-bottom: 0.2em solid currentColor;
+    }
+
+    .stepper.down::before {
+      border-top: 0.2em solid currentColor;
     }
   `;
 
@@ -326,13 +419,15 @@ export class CompactScrubField extends UnlitElement {
         },
       },
       [
-        ...(this._iconElement ? [this._iconElement] : []),
-        this._nameElement,
-        html.createDomElement("inline-svg", {
-          class: "scrub-icon",
-          src: "/tabler-icons/arrows-horizontal.svg",
-        }),
-        this._valueElement,
+        html.div({ class: "inner" }, [
+          ...(this._iconElement ? [this._iconElement] : []),
+          this._nameElement,
+          html.createDomElement("inline-svg", {
+            class: "scrub-icon",
+            src: "/tabler-icons/arrows-horizontal.svg",
+          }),
+          this._valueElement,
+        ]),
       ]
     );
     return this._box;
@@ -358,6 +453,7 @@ export class CompactScrubField extends UnlitElement {
       return;
     }
     this._editing = true;
+    this._box.classList.add("editing");
     const input = html.createDomElement("input", {
       type: "number",
       value: this._displayValue(),
@@ -417,6 +513,7 @@ export class CompactScrubField extends UnlitElement {
         return;
       }
       this._editing = false;
+      this._box.classList.remove("editing");
       if (!commit && steppedLive) {
         // Escape takes back what the arrows applied.
         this._commit(
@@ -469,27 +566,23 @@ export class CompactScrubField extends UnlitElement {
         finishEdit(false);
       }
     });
-    // The input's own spin buttons step the value too. Their "input" event
-    // cannot be told from a typed one by the event alone, but a spin button is
-    // held under the pointer and typing never is.
-    let pointerHeld = false;
-    input.addEventListener("pointerdown", () => (pointerHeld = true));
-    input.addEventListener("pointerup", () => (pointerHeld = false));
-    input.addEventListener("pointerleave", () => (pointerHeld = false));
-    input.addEventListener("input", () => {
-      if (!pointerHeld) {
-        return;
-      }
-      const parsed = parseFloat(input.value);
-      if (Number.isFinite(parsed)) {
-        applyLive(
-          roundScrubValue(
-            clampScrubValue(parsed, this._boundsFieldItem),
-            this._boundsFieldItem
-          )
-        );
-      }
-    });
+    // The design's own up/down steppers (the native spin buttons are hidden
+    // by the CSS above). They step the value live like the arrow keys, and
+    // their pointerdown is cancelled so the input keeps focus.
+    const makeStepper = (direction, label) =>
+      html.createDomElement("button", {
+        "class": `stepper ${direction > 0 ? "up" : "down"}`,
+        "type": "button",
+        "tabindex": -1,
+        "aria-label": label,
+        "onpointerdown": (event) => event.preventDefault(),
+        "onclick": (event) => stepLive(direction, event.shiftKey),
+      });
+    const steppers = html.div({ class: "steppers" }, [
+      makeStepper(1, "Increase"),
+      makeStepper(-1, "Decrease"),
+    ]);
+    this._valueElement.appendChild(steppers);
     input.addEventListener("blur", () => finishEdit(true), { once: true });
   }
 
@@ -533,6 +626,7 @@ export class CompactScrubField extends UnlitElement {
           return;
         }
         dragging = true;
+        this._box.classList.add("scrubbing");
         scrub.begin(moveEvent);
         // One stream per gesture, opened the moment it is confirmed to be a
         // drag rather than a click. A caller that wants the whole drag as one
@@ -551,6 +645,7 @@ export class CompactScrubField extends UnlitElement {
     };
 
     const detach = () => {
+      this._box.classList.remove("scrubbing");
       this._box.removeEventListener("pointermove", onMove);
       this._box.removeEventListener("pointerup", onUp);
       this._box.removeEventListener("pointercancel", onUp);
