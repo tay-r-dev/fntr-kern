@@ -539,67 +539,46 @@ plus the tip points. It takes the handle lengths from a tension parameter. The *
 cap that does not simply close the two side ends. It trims a length off each side first, and
 splices its own terminal on. See §8.
 
-The **drop** cap (the bulb) is the other one that trims. Its ball swells off the outer edge and
-crosses the inner edge, and the notch that crossing leaves is softened by **easing**. Easing is a
-0–1 fraction of the run from that crossing back to the next on-curve on the inner edge, and it
-places the neck's far end directly at that fraction. At 1 the far end collapses onto the on-curve.
-Because the number is a fraction of a run that ends at an on-curve, the geometry's stop and the
-panel's top of range are the same fact, and the neck can never eat an on-curve. An earlier version
-inflated a second ball and took whatever crossing that made, which no reading of the number could
-predict.
+The **drop** cap (the bulb) grows beyond the endpoint rib (decided 2026-09-26).
+Both generated walls remain complete. Their endpoint positions and outward
+handle directions are the only wall geometry the cap reads. No wall is cut,
+refit, lengthened or moved to make room for the bulb.
 
-**The ball's on-curves sit on its extremes in the glyph's own axes** (decided 2026-09-17), which
-is where a designer puts them by hand, and the ball is drawn from one to the next as an exact
-kappa arc. The terminal reads, from the neck back to the stroke: the neck's landing, three
-extremes, and the tangency point on the outer wall.
+`bulb-geometry.js` builds the added terminal. The outer rib end runs forward to
+an elliptical ball, the ball turns around its front and inner side, and a cubic
+neck returns to the inner rib end. The ball's transverse axis follows the rib,
+so an angle-locked rib can give a sheared ellipse. The outer direction is the
+actual generated wall's tangent; the inner join reads its own wall's tangent.
 
-**The three extremes are counted back from the arc's END**, which is the neck's own start and the
-one landmark nothing else sits on. Counting forward from where the ball meets the wall instead
-makes an extreme just behind that meeting and one just ahead pick different threes, a quarter turn
-apart, so one bulb drawn with the same numbers puts its points in different places either side of
-that edge. One that falls outside the drawn arc is held at its edge rather than dropped: behind the
-meeting is the far side of the stroke's own edge, and an arc reaching back there loops the outline;
-past the arc's end is the neck's. Held rather than dropped, because dropping one steps the count,
-and an extreme a degree behind the meeting is the meeting. So the same three are drawn at every
-lean, size, shape and easing, and the point count never changes.
+- **Size** sets the lateral radius, as half the stroke width times the ratio.
+- **Shape** stretches the ball forward: its along-stroke radius is the lateral
+  radius times `1 + 1.4 * shape`. There is no limit from the length of the
+  skeleton's terminal segment.
+- **Easing** adds forward approach length, from one along-stroke radius to two.
+  It gives the neck more room outside the stroke. It no longer names a cut
+  along the inner wall, and zero still has a neck.
+- **Neck curvature** changes its two handles with fixed ends. The cap field is
+  still `capBallEaseCurvature`. Where the tangent intersection is unreachable,
+  the emitted handles are bounded by the chord and the rib's forward half-plane;
+  the stored value is unchanged.
 
-**Where the ball meets the wall is not a point.** The outer wall is cut a second time and the
-tangency point sits at that cut. One cubic, the ease-in, runs from it into the ball's first extreme,
-and the meeting is passed over. Emitting the meeting as well put a point between the last extreme
-and the tangency that answers to nothing a designer set.
+Four new on-curves always exist: the outer shoulder, forward tip, inner extreme,
+and neck shoulder. Two rib ends remain the wall's own points. The three ball
+arcs use fixed ellipse parameters, so rotation cannot add or remove a point.
+They are extremes in the terminal frame, not necessarily the glyph axes. This
+replaces the old handover's changing choice of wall and ball extremes.
 
-**The ease-in is harmonious, not merely tangent.** Both of its handle lengths are solved so its
-curvature equals the wall's where it leaves and the ball's where it arrives. A cubic's end
-curvature is set by that end and the two points beside it, so the pair solves by substitution, and
-it is bisected at a fixed trip count. Tangency alone leaves a curvature step, and the comb draws
-that step as a spike however smooth the join looks.
+**The joints promise tangent continuity where the handles are non-zero, not
+curvature matching.** The outer approach is straight and the ball is curved,
+so their curvature differs. The original walls must not move to eliminate that
+step. Added points stay in floating point to keep the cap's tangent directions;
+the cap does not change the wall's existing grid positions. The colinearity
+pass does not rotate either wall handle at the rib.
 
-**The tangency then slides until those two lengths come out equal**, and that is what the sliding
-is for. Set back by a fixed share of the ball instead, the solve still answers, but with one handle
-long and the other a few units, and a few units is where half a unit of grid rounding is a sixth of
-the curvature. The step comes back on the emitted outline. Balanced, both handles are about a third
-of the chord. The balance grows with the setback, so it too is bisected for.
-
-**The ease-in is emitted off the grid**, its point and both handles, as the colinearity pass already
-is (§3). The ball's curvature is read off the arc piece as it will be drawn rather than off the
-exact circle. Either one alone leaves several per cent of the step behind.
-
-**A straight wall has no harmonious answer at any setback**, and that is geometry rather than a
-failure: a circle tangent to a straight line steps in curvature where it touches, whatever runs
-between them. There the cut takes a share of the ball's own lateral radius and the join keeps its
-tangents alone.
-
-One further cost is measured: on a slanted stroke the ball's forward tip is not an on-curve, so the
-arc through it can stand a fraction of a percent of the radius past the terminal plane.
-
-Exactly one curvature gizmo lives at a bulb's terminal. Without easing it sits on the inner edge
-above the incision: the trim rebuilds that segment's two handles from a bezier split, so they are
-given the original handles' addresses and the crossing on-curve carries the untrimmed segment, the
-same pair the round-cap split publishes. With easing it moves onto the neck. A neck has no skeleton
-segment behind it, so its curvature is stored in `capBallEaseCurvature` on the cap-owning point and
-its four points name that point and that field. Neck points are addressable by the gizmo and by
-nothing else — no on-curve gizmo, no direct handle drag — because they are cap geometry and
-dragging one would move the rib the neck hangs off.
+The neck has its own curvature gizmo. Both original wall cubics retain their
+own gizmos at every easing. No untrimmed snapshot is needed: the neck on screen
+is the curve its pin governs. Its cap provenance prevents direct point or handle
+editing and the on-curve gizmo, as before.
 
 ### Step 5 — Assembly
 

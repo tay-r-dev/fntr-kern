@@ -919,10 +919,7 @@ describe("generated on-curve gizmo edits", () => {
   });
 });
 
-// A bulb's terminal carries exactly one curvature gizmo. Without easing it sits
-// on the stroke edge above the incision; with easing it sits on the neck, which
-// is cap geometry with no skeleton segment behind it and therefore stores its
-// number in a cap field instead of in `segmentCurvature`.
+// A bulb adds a neck gizmo. Both original wall segments keep their own gizmos.
 describe("the curvature gizmo at a bulb terminal", () => {
   function makeBulbGlyph(capFields) {
     const layer = {
@@ -1005,8 +1002,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
     }
   });
 
-  it("gives the neck no segment when easing is off", () => {
-    expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
+  it("keeps the neck addressable at zero easing", () => {
+    expect(neckSegments({ capBallEasing: 0 })).to.have.length(1);
   });
 
   it("addresses a neck drag to the cap field, not to a side's pin", () => {
@@ -1022,9 +1019,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(edit.tension).to.be.a("number");
   });
 
-  // The drawn neck runs on to the stem's on-curve with its stem handle
-  // stretched, so it reads a different tension from the pin. Reading that one
-  // wrote it back, and the neck jumped at the first grab.
+  // The read and the write govern the same emitted neck.
   it("grabs the neck without moving it: a still drag writes back the pin", () => {
     for (const capBallEasing of [0.3, 0.8]) {
       const neck = neckSegments({ capBallEasing, capBallEaseCurvature: 0.5 })[0];
@@ -1046,44 +1041,25 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
   });
 
-  // The trim rewrites this segment's two handles from a bezier split. Without
-  // the original handles' addresses the gizmo cannot find the segment at all,
-  // which is why the edge above a bulb's incision used to have no gizmo.
-  // The outer edge is trimmed too, and its own split has always published these.
-  // What matters is the inner side, where the incision is.
-  function trimmedSides(capFields) {
-    const layer = makeBulbGlyph(capFields);
-    return buildGeneratedTunniSegments(getSkeletonData(layer), layer.path)
-      .filter(
-        (segment) =>
-          segment.provenance.some((entry) => entry?.constructionSegment) &&
-          !segment.provenance.some((entry) => entry?.capCurvatureField)
-      )
-      .map((segment) => segment.side);
-  }
-
-  it("keeps the edge above the incision addressable when easing is off", () => {
-    const layer = makeBulbGlyph({ capBallEasing: 0 });
-    const skeletonData = getSkeletonData(layer);
-    const trimmed = buildGeneratedTunniSegments(skeletonData, layer.path).filter(
-      (segment) => segment.provenance.some((entry) => entry?.constructionSegment)
-    );
-    // The inner edge above the incision, which had no gizmo at all before, and
-    // the outer edge, which is the skeleton's own curve cut at the ball.
-    expect(new Set(trimmed.map((segment) => segment.side)).size).to.equal(2);
-    for (const segment of trimmed) {
-      // Each measures its own untrimmed curve, which is the one its pin governs.
-      const carrier = segment.provenance.find((entry) => entry.constructionSegment);
-      expect(carrier.constructionSegment).to.have.length(4);
+  it("keeps both original walls addressable at every easing", () => {
+    for (const capBallEasing of [0, 0.5, 1]) {
+      const layer = makeBulbGlyph({ capBallEasing });
+      const walls = buildGeneratedTunniSegments(
+        getSkeletonData(layer),
+        layer.path
+      ).filter(
+        (segment) => !segment.provenance.some((entry) => entry?.capCurvatureField)
+      );
+      expect(new Set(walls.map((segment) => segment.side))).to.deep.equal(
+        new Set(["left", "right"])
+      );
+      expect(walls).to.have.length(2);
+      expect(
+        walls.some((segment) =>
+          segment.provenance.some((entry) => entry?.constructionSegment)
+        )
+      ).to.equal(false);
     }
-  });
-
-  it("leaves the edge above the incision without a second gizmo once eased", () => {
-    const crisp = trimmedSides({ capBallEasing: 0 });
-    const eased = trimmedSides({ capBallEasing: 0.5 });
-    // The inner one moves onto the neck, so only the outer edge's is left.
-    expect(eased).to.have.length(crisp.length - 1);
-    expect(eased.every((side) => !side || crisp.includes(side))).to.equal(true);
   });
 
   // A cut segment's two pieces are a different curve from the one the generator

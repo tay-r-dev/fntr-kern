@@ -1876,95 +1876,40 @@ Four sweeps rather than assertions: the turn from 20 to 140 degrees in half
 degree steps, the width from 10 to 100, the proportion between the two, and an
 arm bowed until the inner crossing goes away.
 
-### The bulb
+### The bulb grows from the rib (2026-09-26)
 
-**The ball is solved for, not tested for.** The trim was guessed, tested against a
-hard fit predicate and grown until it passed, and four faults followed: the
-accepted trim was the first that passed, leaving the ball 21 units deep against
-55 across on a ball asked for at 75; past the predicate the search returned its
-first guess, reusing a trim distance as a ball radius, with which of the two a
-glyph got turning on a margin of two hundredths of a unit; where no cut delivered
-the depth the search took whatever sat at the end of the run, so at ball ratio 2
-and above the bulb vanished; and a ball whose sideways swell alone passes the
-terminal plane satisfied the pin at no cut, so the terminal fell through to a
-plain cap.
+**The terminal-plane constraint was withdrawn.** Keeping the ball's front at the
+skeleton endpoint required a trim search, an inner-wall crossing search, and a
+handover that replaced the outer wall's last curve. The eased neck also replaced
+the inner wall's last curve. Preserving their shapes could not be guaranteed
+while those curves were being replaced.
 
-The trim is bisected for. Sweeping the far skeleton point 40 units, worst
-single-step outline movement 93.94 before and 3.00 after; sweeping ball ratio 0.5
-to 3, six steps drew a plain cap before and none now. **A predicate answers
-whether, and the question was how much** — the fit predicate was correct and
-useless, able to confirm a trim and not to rank two.
+The bulb now appends to the two rib ends and grows beyond the skeleton. The pure
+construction is in `bulb-geometry.js`; the generator only connects it and assigns
+provenance. Size and shape have no dependency on how much wall remains behind
+the endpoint. Easing buys forward room instead of consuming wall.
 
-**The neck's easing was named tension, which it is not**, and it was indirect:
-the value grew a second, inflated ball and took whatever crossing that made, so
-no reading of the number told you where the neck would land. It is a 0 to 1
-fraction of the run from the plain ball crossing back to the next on-curve now,
-with one run serving both the geometry and the panel's top of range.
+**The regression is an exact comparison of wall coordinates and provenance.**
+Both ends, both sides, single-sided strokes, taper and rib locks are covered.
+Parameter sweeps check finite geometry, fixed topology and step size. A short
+terminal segment must still carry a full-size bulb. The neck's zero-delta grab
+still writes back the same pin, and both wall gizmos survive at every easing.
 
-**The arc was cut into four equal pieces whatever the sweep**, so a default
-bulb carried five on-curves on the ball at about -32, 26, 85 and 143 degrees,
-none of them on an extreme. Reported 2026-09-17 as one point too many. The
-terminal is the neck's landing, three glyph-axis extremes and the tangency point
-on the wall; the count holds under every drag and the ease-in is curvature
-continuous at both ends.
+**Two old guarantees are deliberately gone.** The bulb lengthens the stroke, and
+its new joins are tangent rather than curvature-matched. Its fixed arc points
+follow the terminal frame rather than the glyph axes. The old geometry is kept
+as measured output at commit `635a1d3aa` for the comparison page; no old generator
+is retained in production.
 
-- **Six rounds went into the point beside the tangency, and five were the same
-  mistake.** On an upright stroke the ball's meeting with the wall IS its top
-  extreme, so the two were coincident, and each round chose the ball's points by
-  working FORWARD from that meeting: merging the extreme into it, sliding the
-  wall onto the extreme and deleting the tangency, gating that slide on an
-  angle, then on a window, then taking a fixed three from that window. Every one
-  held the count at one lean and stepped at another -- 30 degrees for the gate,
-  45 for the window, ratio 1.02 and 2.02 for the size, and the window swapped
-  which three extremes were drawn a quarter turn apart either side of its edge.
-  **An anchor two constructions both sit on is the wrong thing to count from.**
-  Counted back from the arc's END, which is the neck's own start, there is
-  nothing to disambiguate.
-- **Dropping an extreme that falls outside the arc steps the count; holding it
-  at the edge does not.** Behind the meeting the arc loops over the wall, so the
-  clamp is needed; but an extreme a degree behind the meeting is the meeting,
-  and dropping that one stepped the count at a lean of exactly zero.
-- **Tangency is not harmony, and the comb says so.** The ease-in matched
-  direction at both ends and jumped curvature by 16 per cent at the ball. Its
-  two handle lengths are solved from the two curvatures now, which is one
-  substitution and a bisection.
-- **The solve was exact and the grid ate it.** Set back by a fixed share of the
-  ball, the answer came out with one handle at 32 units and the other at 6, and
-  on a 6-unit handle half a unit of rounding is a sixth of the curvature: 16 per
-  cent at the ball end, 8 at the wall. The setback is bisected for the balance
-  now, which is the widest the shorter handle gets -- about a third of the chord
-  either side -- and the ease-in is emitted off the grid, with the ball's
-  curvature read off the arc AS DRAWN. Each of the three alone left several per
-  cent; together the two joints measure 0.00.
-- **The count was measured, not reasoned.** Sweeps over lean from -60 to 60
-  degrees, size 0.5 to 3, shape and easing 0 to 1, plain and eased, on a test
-  stroke and on the `underscore` of skeletron.fontra. No single configuration
-  showed any of the steps above.
-- **The continuity bound had to rise from 6 units to 12.** The ease-in's handles
-  are solved from CURVATURE, a second derivative, so they move further per unit
-  of skeleton than a position does. The on-curves under the same sweep move
-  about one unit.
-- **The neck was rebuilt and did not need to be.** Reading the ease-in as "the
-  neck starts at the last extreme" took the neck's own backed-off point away,
-  and on the `underscore` -- where the ball sits beside a near-vertical stroke
-  and the two neck tangents run nearly parallel -- no single tension described
-  the result: the handles ran the whole chord and the neck folded, or were
-  clamped and drew a straight drop with the ball's underside gone. Reverted
-  whole. **The report said easing, and easing was not the part that changed.**
+**Baseline:** 2868 core tests passed and two serif-easing tests failed before
+this work: the reported `l` emitted 29 points against 26, and a vertical-stroke
+drag stepped 261.63 units against a bound of 5. They are unrelated to the bulb.
 
-- The curvature gizmo was absent from the whole terminal region, because the
-  segment walk takes a segment only when all four points carry addresses and the
-  trim rebuilt the inner edge's handles without re-attaching theirs.
-- **Naming the point is not the same as owning it.** The neck names the
-  cap-owning skeleton point so the gizmo can find it, and that alone made every
-  neck point resolve as an editable generated handle — a drag would have moved
-  the rib the neck hangs off. Three readers had to be told the difference.
-  **Provenance that names a point is an address, not a claim of ownership.**
-- **A straight stroke cannot test this.** The inner edge's terminal segment is a
-  line there and a line has no curvature gizmo.
-- **Open: where the ball grows large enough to swallow the whole inner edge**,
-  the crossing that anchors the neck flips between the terminal and the contour's
-  far end. That drives the remaining jumps under a ball ratio or shape sweep.
+**Manual matrix owed:** change Size, Shape and Easing on both ends of a curved
+stroke; repeat on both sides and a single-sided stroke; use a locked rib; edit
+the neck curvature and grab it without movement; confirm both wall gizmos still
+work; undo and redo a terminal edit in multiple masters. Bundling is left to the
+designer's running watcher, per `START-HERE.md`.
 
 ### Fixture gap
 

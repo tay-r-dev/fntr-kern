@@ -1,0 +1,89 @@
+<div id="bulb-comparison">
+  <style>
+    #bulb-comparison{color:var(--foreground)}
+    #bulb-comparison .bulb-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:20px 0}
+    #bulb-comparison .bulb-options,#bulb-comparison .bulb-legend{display:flex;flex-wrap:wrap;gap:16px;align-items:center;margin:12px 0}
+    #bulb-comparison .bulb-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+    #bulb-comparison .bulb-panel{min-width:0}
+    #bulb-comparison .bulb-plot{width:100%;display:block;overflow:hidden;outline:1px solid var(--border)}
+    #bulb-comparison .bulb-fill{fill:var(--foreground);fill-opacity:.14;stroke:var(--foreground);stroke-width:1.4;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-reference{fill:none;stroke:var(--viz-series-2);stroke-width:1.3;stroke-dasharray:4 3;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-centerline{fill:none;stroke:var(--viz-series-1);stroke-width:1.6;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-rib{stroke:var(--viz-series-1);stroke-width:2;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-endpoint{fill:var(--viz-series-1);stroke:var(--background);stroke-width:1;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-node{fill:var(--background);stroke:var(--foreground);stroke-width:1;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-handle{fill:var(--foreground)}
+    #bulb-comparison .bulb-handle-line{stroke:var(--muted-foreground);stroke-width:.7;vector-effect:non-scaling-stroke}
+    #bulb-comparison .bulb-caption{color:var(--muted-foreground)}
+    #bulb-comparison .swatch{display:inline-block;width:18px;height:2px;vertical-align:middle;margin-right:6px;background:var(--foreground)}
+    #bulb-comparison .swatch.skeleton{background:var(--viz-series-1)}
+    #bulb-comparison .swatch.reference{background:var(--viz-series-2)}
+    @media(max-width:620px){#bulb-comparison .bulb-panels{grid-template-columns:1fr}#bulb-comparison .bulb-controls{gap:12px}}
+  </style>
+  <h1>Bulb terminal</h1>
+  <div class="bulb-controls">
+    <label class="form-label" for="bulb-size">Size <output id="bulb-size-value" class="tabular-nums">125%</output><input id="bulb-size" class="form-range" type="range" min="0" max="7" value="3" step="1"></label>
+    <label class="form-label" for="bulb-shape">Shape <output id="bulb-shape-value" class="tabular-nums">0%</output><input id="bulb-shape" class="form-range" type="range" min="0" max="2" value="0" step="1"></label>
+    <label class="form-label" for="bulb-easing">Easing <output id="bulb-easing-value" class="tabular-nums">50%</output><input id="bulb-easing" class="form-range" type="range" min="0" max="2" value="1" step="1"></label>
+  </div>
+  <div class="bulb-options">
+    <label class="form-check"><input id="bulb-reference" class="form-check-input" type="checkbox" checked><span class="form-check-label">Original stroke</span></label>
+    <label class="form-check"><input id="bulb-nodes" class="form-check-input" type="checkbox"><span class="form-check-label">Points and handles</span></label>
+    <label class="form-check"><input id="bulb-closeup" class="form-check-input" type="checkbox"><span class="form-check-label">Terminal close-up</span></label>
+  </div>
+  <div class="bulb-panels">
+    <section class="bulb-panel"><h2>Old · cut into the walls</h2><svg id="bulb-old" class="bulb-plot" role="img" aria-label="Old generated bulb, cut into the stroke walls"></svg></section>
+    <section class="bulb-panel"><h2>New · grow from the rib</h2><svg id="bulb-new" class="bulb-plot" role="img" aria-label="New generated bulb, added beyond the endpoint rib"></svg></section>
+  </div>
+  <div class="bulb-legend text-small"><span><i class="swatch"></i>Generated outline</span><span><i class="swatch skeleton"></i>Skeleton and endpoint rib</span><span><i class="swatch reference"></i>Original stroke</span></div>
+  <div id="bulb-status" class="bulb-caption text-small" aria-live="polite"></div>
+  <script>
+    (() => {
+      const root = document.getElementById('bulb-comparison');
+      const data = /* BULB_DATA */ null;
+      const sizes = [0.5,0.8,1,1.25,1.5,2,2.5,3];
+      const $ = id => root.querySelector('#bulb-' + id);
+      const ns = 'http://www.w3.org/2000/svg';
+      const el = (tag, attrs) => {const node=document.createElementNS(ns,tag);for(const [k,v] of Object.entries(attrs))node.setAttribute(k,v);return node;};
+      function path(points){
+        const first=points.findIndex(p=>!p[2]);const p=[...points.slice(first),...points.slice(0,first)];
+        let d=`M ${p[0][0]} ${p[0][1]}`;
+        for(let i=1;i<=p.length;){const q=p[i%p.length];if(q[2]){const r=p[(i+1)%p.length],s=p[(i+2)%p.length];d+=` C ${q[0]} ${q[1]} ${r[0]} ${r[1]} ${s[0]} ${s[1]}`;i+=3;}else{d+=` L ${q[0]} ${q[1]}`;i++;}}return d+' Z';
+      }
+      function draw(){
+        const ratio=sizes[+$('size').value],shape=+$('shape').value/2,easing=+$('easing').value/2;
+        const row=data.cases.find(r=>r.ratio===ratio&&r.shape===shape&&r.easing===easing);
+        for(const [key,value] of Object.entries({size:ratio,shape,easing})){$(key+'-value').value=Math.round(value*100)+'%';$(key).setAttribute('aria-valuetext',Math.round(value*100)+' percent');}
+        const all=[...row.old,...row.current,...data.plain];
+        const close=$('closeup').checked;
+        const minX=close?320:Math.min(...all.map(p=>p[0]))-25,maxX=Math.max(...all.map(p=>p[0]))+25;
+        const subset=close?all.filter(p=>p[0]>300):all;
+        const minY=Math.min(...subset.map(p=>p[1]))-25,maxY=Math.max(...subset.map(p=>p[1]))+25;
+        const endpoint=data.points.at(-1), rib=data.plain.filter(p=>!p[2]&&p[0]>400);
+        for(const [id,points] of [['old',row.old],['new',row.current]]){
+          const svg=$(id),width=Math.max(svg.clientWidth,280),height=Math.max(230,Math.min(370,width*.8));
+          svg.setAttribute('viewBox',`0 0 ${width} ${height}`);svg.style.height=height+'px';svg.replaceChildren();
+          const scale=Math.min((width-32)/(maxX-minX),(height-32)/(maxY-minY));
+          const tx=(width-scale*(maxX-minX))/2-scale*minX,ty=(height-scale*(maxY-minY))/2+scale*maxY;
+          const g=el('g',{transform:`translate(${tx} ${ty}) scale(${scale} ${-scale})`});svg.append(g);
+          g.append(el('path',{d:path(points),class:'bulb-fill'}));
+          if($('reference').checked)g.append(el('path',{d:path(data.plain),class:'bulb-reference'}));
+          const p=data.points;
+          g.append(el('path',{d:`M ${p[0].x} ${p[0].y} C ${p[1].x} ${p[1].y} ${p[2].x} ${p[2].y} ${p[3].x} ${p[3].y}`,class:'bulb-centerline'}));
+          g.append(el('line',{x1:rib[0][0],y1:rib[0][1],x2:rib[1][0],y2:rib[1][1],class:'bulb-rib'}));
+          if($('nodes').checked){
+            points.forEach((p,i)=>{
+              if(p[2]){const a=points[(i-1+points.length)%points.length],b=points[(i+1)%points.length],owner=!a[2]?a:b;g.append(el('line',{x1:p[0],y1:p[1],x2:owner[0],y2:owner[1],class:'bulb-handle-line'}));}
+              g.append(el('circle',{cx:p[0],cy:p[1],r:(p[2]?2:3)/scale,class:p[2]?'bulb-handle':'bulb-node'}));
+            });
+          }
+          g.append(el('circle',{cx:endpoint.x,cy:endpoint.y,r:4/scale,class:'bulb-endpoint'}));
+        }
+        $('status').textContent=`Same curve, same 80-unit stroke. Old: ${data.commit}. New: endpoint-rib construction.`;
+      }
+      root.querySelectorAll('input').forEach(input=>input.addEventListener('input',draw));
+      new ResizeObserver(draw).observe(root.querySelector('.bulb-panels'));
+      draw();
+    })();
+  </script>
+</div>

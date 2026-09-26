@@ -2330,9 +2330,8 @@ export default class SkeletonParametersPanel {
         percentOf(cap.capBallShape, DEFAULT_CAP_BALL_SHAPE),
         { minValue: CAP_SHAPE_MIN, maxValue: CAP_SHAPE_MAX }
       );
-      // Easing, not tension: how far back along the inner edge the neck starts,
-      // as a percent of the run to the next generated on-curve. 100 collapses
-      // the two, and there is no geometry past it.
+      // Easing adds approach length beyond the endpoint rib: 100 adds one
+      // along-stroke ball radius. The neck never consumes the inner wall.
       this._refreshCompactField(
         this.capFields.balleasing,
         "cap:balleasing",
