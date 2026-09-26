@@ -833,11 +833,13 @@ export const strings = {
   "sidebar.selection-transformation.flip.vertically": "Flip Vertically",
   "sidebar.selection-transformation.harmonize": "Harmonize",
   "sidebar.selection-transformation.harmonize.apply": "Run",
+  "sidebar.selection-transformation.harmonize.balance": "Balance handles",
   "sidebar.selection-transformation.harmonize.g3": "G3 continuity",
   "sidebar.selection-transformation.harmonize.g3.tooltip":
     "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize": "Equalize handles",
+  "sidebar.selection-transformation.harmonize.g2": "Harmonize G2 (hold for options)",
   "sidebar.selection-transformation.harmonize.equalize.tooltip":
     "Finish with one pass that equalizes each segment's two handles and then repairs the joint. Every position solves the joint and says nothing about how a segment's two handles compare, so it can leave the curvature right and the handles lopsided. Off under G3, where the repair would throw the rate away.",
   "sidebar.selection-transformation.harmonize.move-on-curve": "Move on-curve",
@@ -871,6 +873,7 @@ export const strings = {
   "sidebar.selection-transformation.harmonize.tooltip":
     "What absorbs the correction. At “handles” the on-curve point never moves, so extrema and metric alignment survive; at “point” the handles keep the positions you gave them. The curvature result is the same either way.",
   "sidebar.selection-transformation.move": "Move",
+  "sidebar.selection-transformation.operations": "Operations",
   "sidebar.selection-transformation.origin": "Origin",
   "sidebar.selection-transformation.origin.bottom.center": "Origin bottom center",
   "sidebar.selection-transformation.origin.bottom.left": "Origin bottom left",
@@ -885,11 +888,14 @@ export const strings = {
   "sidebar.selection-transformation.origin.top.center": "Origin top center",
   "sidebar.selection-transformation.origin.top.left": "Origin top left",
   "sidebar.selection-transformation.origin.top.right": "Origin top right",
+  "sidebar.selection-transformation.path": "Path",
   "sidebar.selection-transformation.path-operations": "Path Operations",
   "sidebar.selection-transformation.path-operations.exclude": "Exclude contours",
   "sidebar.selection-transformation.path-operations.intersect": "Intersect contours",
   "sidebar.selection-transformation.path-operations.subtract": "Subtract contours",
   "sidebar.selection-transformation.path-operations.union": "Remove overlaps",
+  "sidebar.selection-transformation.path-operations.union.more":
+    "Remove overlaps (hold for more)",
   "sidebar.selection-transformation.rotate": "Rotate",
   "sidebar.selection-transformation.scale": "Scale",
   "sidebar.selection-transformation.skew": "Skew",

@@ -14,6 +14,7 @@ import {
   getSelectionByContour,
 } from "@fontra/core/path-functions.js";
 import { rectCenter, rectSize, unionRect } from "@fontra/core/rectangle.ts";
+import { balancePathInPlace } from "@fontra/core/harmonization.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
@@ -29,10 +30,6 @@ import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Scale row's linked pair
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
-import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 41
-import "@fontra/web-components/overflow-popover.js"; // for the Harmonize card
-import "@fontra/web-components/segmented-control.js"; // for the Harmonize movement
-import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 43's G3
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
@@ -50,7 +47,11 @@ export default class TransformationPanel {
   /* The label column is as wide as the widest label and no wider. */
   .ui-form {
     grid-template-columns: max-content minmax(0, 1fr);
-    column-gap: 0.75em;
+    column-gap: 8px;
+  }
+
+  .ui-form-value.universal-row {
+    gap: 8px;
   }
 
   .ui-form-label {
@@ -61,73 +62,59 @@ export default class TransformationPanel {
     height: 1.6em;
   }
 
-  /* Every packed row shares one grid: its fields split the value column
-     evenly, and a trailing gutter holds an overflow where a row has one, so
-     a row with an overflow lines up with a row without. Labels sit flush
-     left, as in the design. */
-  .ui-form-value.universal-row {
-    position: relative;
-    padding-right: 1.6em;
-  }
-
+  /* Every packed row: the row's icon in the label column, then its fields
+     splitting the value column evenly. */
   .ui-form-value.universal-row > compact-scrub-field,
   .ui-form-value.universal-row > ui-input-scrub {
     flex: 1 1 0;
     min-width: 0;
   }
 
-  /* Ticket 39: the Origin row is the grid, then the typed X and Y with the
-     pick and clear buttons in a row under them. The grid is twice an
-     input's height, so this row's label and value grow past 1.6em. */
-  /* Ticket 41: the Smart scale overflow sits after the Scale pair, in the
-     gutter. The wrapper now holds only the overflow, so it takes no flex
-     share and leaves both halves of the row to the ui-input-scrub. */
-  .scale-y-with-overflow {
+  .row-icon {
+    width: 16px;
+    height: 16px;
+    padding: 2px;
+  }
+
+  /* The Origin row: the grid, the typed X and Y, then pick and clear. */
+  .origin-row {
     display: flex;
+    flex: 1 1 0;
+    min-width: 0;
     align-items: center;
-    gap: 0.35rem;
-    flex: 0 0 auto;
+    gap: 4px;
   }
 
-  .scale-y-with-overflow > overflow-button {
-    position: absolute;
-    right: 0;
-  }
-
-  /* The Origin row: its label, then the grid spanning two lines, with X and
-     Y on the first line beside it and pick and clear under them. */
-  .ui-form-value:has(.origin-buttons) {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-    align-items: center;
-    gap: 0.3em 0.5em;
-  }
-
-  .ui-form-value:has(.origin-buttons) > .origin-radio-buttons {
-    grid-column: 1;
-    grid-row: 1 / span 2;
+  .origin-row > compact-scrub-field {
+    flex: 1 1 0;
+    min-width: 0;
   }
 
   .origin-buttons {
-    grid-column: 2 / span 2;
-    grid-row: 2;
     display: flex;
-    gap: 0.3em;
+    gap: 6px;
+    padding-left: 2px;
+    opacity: 0.3;
+  }
+
+  .origin-buttons:hover,
+  .origin-buttons:has(icon-button[on]) {
+    opacity: 1;
   }
 
   .origin-buttons icon-button {
-    width: 1.1em;
-    height: 1.1em;
+    width: 16px;
+    height: 16px;
   }
 
-  /* 3 x 0.96em + 2 gaps = 3.2em, two input heights. */
+  /* A 24px square: 3 x 6px dots and two 3px gaps. */
   .origin-radio-buttons {
     display: grid;
-    grid-template-columns: repeat(3, 0.96em);
-    grid-auto-rows: 0.96em;
-    gap: 0.16em;
-    justify-content: end;
-    align-content: center;
+    grid-template-columns: repeat(3, 6px);
+    grid-auto-rows: 6px;
+    gap: 3px;
+    padding: 1.5px;
+    flex: 0 0 auto;
   }
 
   .origin-radio-buttons > input[type="radio"] {
@@ -136,22 +123,16 @@ export default class TransformationPanel {
     background-color: var(--editor-mini-console-background-color-light);
     margin: 0;
     padding: 0;
-    color: var(--editor-mini-console-background-color-light);
     width: 100%;
     height: 100%;
-    border: 0.15em solid var(--editor-mini-console-background-color-light);
+    border: none;
     border-radius: 50%;
     cursor: pointer;
   }
 
-  .origin-radio-buttons > input[type="radio"]:hover {
-    background-color: var(--text-input-background-color-dark);
-    border: 0.15em solid var(--text-input-background-color-dark);
-  }
-
+  .origin-radio-buttons > input[type="radio"]:hover,
   .origin-radio-buttons > input[type="radio"]:checked {
     background-color: var(--text-input-background-color-dark);
-    border: 0.15em solid var(--text-input-background-color-dark);
   }
 
   .harmonize-report {
@@ -159,10 +140,38 @@ export default class TransformationPanel {
     opacity: 0.7;
   }
 
-  /* Ticket 40: Flip+Align share one row, Distribute+Bools share the next,
-     each row carrying two small group labels instead of a header of its
-     own. The group styles are shared (selection-row-group-styles.js). */
+  /* Operations, Path, Harmonize: a small label over segmented rows, two
+     groups side by side. The tray itself is shared
+     (selection-row-group-styles.js). */
   ${SELECTION_ROW_GROUP_STYLES}
+
+  .transform-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 12px;
+  }
+
+  .transform-group-label {
+    font-size: 9px;
+    line-height: 10px;
+    letter-spacing: -0.03em;
+    color: #8e8e8e;
+  }
+
+  .transform-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .transform-pair > .transform-group {
+    padding-bottom: 0;
+  }
+
+  .transform-pair .tray {
+    justify-self: stretch;
+  }
 `;
 
   constructor(editorController, contentElement) {
@@ -381,10 +390,26 @@ export default class TransformationPanel {
   // transformSelection via onApply. 0.1 is the rounding grid, not just the raw drag value, so a
   // drag lands on a clean number instead of a long, jittery decimal
   // (roundScrubValue's own step handling).
+  // A row's name is its icon, in the label column. A row with options holds
+  // them in the icon's dropdown; a click opens it, as the icon does nothing
+  // else.
+  _rowIcon(src, tooltip, dropdown) {
+    const icon = html.createDomElement("icon-button", {
+      "class": "row-icon",
+      "src": src,
+      "data-tooltip": tooltip,
+      "data-tooltipposition": "left",
+    });
+    if (dropdown) {
+      icon.dropdown = dropdown;
+    }
+    return { auxiliaryElement: icon };
+  }
+
   _buildScrubXYRow({
-    label,
     icon,
     tooltip,
+    labels = ["X", "Y"],
     valueX,
     valueY,
     step = 0.1,
@@ -396,17 +421,13 @@ export default class TransformationPanel {
     undoLabel,
   }) {
     const fieldX = html.createDomElement("compact-scrub-field", {
-      label: "X",
+      label: labels[0],
       value: valueX,
-      icon,
-      iconTooltip: tooltip,
       step,
     });
     const fieldY = html.createDomElement("compact-scrub-field", {
-      label: "Y",
+      label: labels[1],
       value: valueY,
-      icon,
-      iconTooltip: tooltip,
       step,
     });
     // The value stays exactly where the drag or the typed edit left it --
@@ -440,7 +461,7 @@ export default class TransformationPanel {
       fieldY,
       row: {
         type: "universal-row",
-        field1: { type: "text", value: label },
+        field1: this._rowIcon(icon, tooltip),
         field2: { type: "auxiliaryElement", auxiliaryElement: fieldX },
         field3: { type: "auxiliaryElement", auxiliaryElement: fieldY },
       },
@@ -459,6 +480,7 @@ export default class TransformationPanel {
 
     formContents.push({
       type: "header",
+      level: "h2",
       label: translate("sidebar.selection-transformation.title"),
     });
 
@@ -509,41 +531,47 @@ export default class TransformationPanel {
     });
     clearButton.onclick = () => this._clearOrigin();
 
-    // One row: the Origin label, the grid, the typed X and Y, then pick and
-    // clear under them.
+    // The typed origin: two plain fields, no scrub. A typed value is the pin,
+    // and no grid position is checked then.
+    const originField = (label, key) => {
+      const field = html.createDomElement("compact-scrub-field", {
+        label,
+        value: this.transformParameters[`${key}Button`],
+      });
+      field.scrubIcon = false;
+      field.addEventListener("change", (event) => {
+        this.transformParameters[key] = event.detail.value;
+        this.transformParameters[`${key}Button`] = event.detail.value;
+        this._checkOriginRadio(null);
+      });
+      return field;
+    };
+    this.originXField = originField("X", "originX");
+    this.originYField = originField("Y", "originY");
+
+    // One row: the origin icon, the grid, the typed X and Y, pick and clear.
     formContents.push({
       type: "universal-row",
-      field1: {
-        type: "text",
-        value: translate("sidebar.selection-transformation.origin"),
-      },
-      field2: {
-        type: "edit-number",
-        key: "originXButton",
-        value: this.transformParameters.originXButton,
-        allowEmptyField: true,
-        auxiliaryElement: radioButtonOrigin,
-      },
+      field1: this._rowIcon(
+        "/tabler-icons/circle-dot.svg",
+        translate("sidebar.selection-transformation.origin")
+      ),
+      field2: { type: "auxiliaryElement", auxiliaryElement: radioButtonOrigin },
       field3: {
-        type: "edit-number",
-        key: "originYButton",
-        value: this.transformParameters.originYButton,
-        allowEmptyField: true,
-        auxiliaryElement: html.div({ class: "origin-buttons" }, [
-          pickButton,
-          clearButton,
+        type: "auxiliaryElement",
+        auxiliaryElement: html.div({ class: "origin-row" }, [
+          this.originXField,
+          this.originYField,
+          html.div({ class: "origin-buttons" }, [pickButton, clearButton]),
         ]),
       },
     });
-
-    formContents.push({ type: "divider" });
 
     const {
       row: moveRow,
       fieldX: moveXField,
       fieldY: moveYField,
     } = this._buildScrubXYRow({
-      label: translate("sidebar.selection-transformation.move"),
       icon: "/tabler-icons/arrow-move-right.svg",
       tooltip: translate("sidebar.selection-transformation.move"),
       valueX: this.transformParameters.moveX,
@@ -579,8 +607,6 @@ export default class TransformationPanel {
     const scaleInput = html.createDomElement("ui-input-scrub");
     scaleInput.leftLabel = "X";
     scaleInput.rightLabel = "Y";
-    scaleInput.icon = "/tabler-icons/resize.svg";
-    scaleInput.iconTooltip = translate("sidebar.selection-transformation.scale");
     scaleInput.step = 0.1;
     scaleInput.leftValue = this.transformParameters.scaleX;
     scaleInput.rightValue = this.transformParameters.scaleY;
@@ -641,44 +667,50 @@ export default class TransformationPanel {
       }
     });
     // Ticket 41: Smart scale, the tension-aware scale held on X, keeps its two
-    // app-wide settings in an overflow at the row's end. Preserve aspect ratio
+    // app-wide settings in the Scale icon's dropdown. Preserve aspect ratio
     // lets tension points slide along their straights; off, the scale only
     // adjusts handles. Slide adjacent tension points lets both ends of a
     // straight lying across the scaled axis travel; off, both stand still. It
     // means nothing while the slide is off, so it is greyed then.
-    this.scaleOverflow = html.createDomElement("overflow-button", {
-      "data-tooltip": translate("sidebar.selection-transformation.smart-scale"),
-      "data-tooltipposition": "left",
-    });
-    this.scaleOverflow.addEventListener("change", (event) => {
-      const checked = event.detail.checked;
-      const settings = applicationSettingsController.model;
-      settings.preserveAspectRatio = checked.includes("preserve-aspect-ratio");
-      settings.slideBothTensionPoints = checked.includes("slide-adjacent");
-      this._refreshScaleOverflow();
-    });
+    const settingCheck = (key, labelKey, onChange) => {
+      const check = html.input({ type: "checkbox" });
+      check.addEventListener("change", () => onChange(check.checked));
+      this.scaleChecks[key] = check;
+      return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
+        check,
+        translate(`sidebar.selection-transformation.${labelKey}`),
+      ]);
+    };
+    this.scaleChecks = {};
+    const smartScaleCard = html.div(
+      {
+        style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
+      },
+      [
+        settingCheck("preserve", "preserve-aspect-ratio", (checked) => {
+          applicationSettingsController.model.preserveAspectRatio = checked;
+          this._refreshScaleOverflow();
+        }),
+        settingCheck("slide", "slide-both-tension-points", (checked) => {
+          applicationSettingsController.model.slideBothTensionPoints = checked;
+        }),
+      ]
+    );
     this._refreshScaleOverflow();
     const scaleRow = {
       type: "universal-row",
-      field1: {
-        type: "text",
-        value: translate("sidebar.selection-transformation.scale"),
-      },
+      field1: this._rowIcon(
+        "/tabler-icons/resize.svg",
+        translate("sidebar.selection-transformation.smart-scale"),
+        smartScaleCard
+      ),
       field2: { type: "auxiliaryElement", auxiliaryElement: scaleInput },
-      field3: {
-        type: "auxiliaryElement",
-        auxiliaryElement: html.div({ class: "scale-y-with-overflow" }, [
-          this.scaleOverflow,
-        ]),
-      },
+      field3: {},
     };
-    formContents.push(scaleRow);
 
     const rotateField = html.createDomElement("compact-scrub-field", {
-      label: "",
+      label: "Angle",
       value: this.transformParameters.rotation,
-      icon: "/tabler-icons/rotate.svg",
-      iconTooltip: translate("sidebar.selection-transformation.rotate"),
       step: 0.1,
     });
     const applyRotate = () =>
@@ -707,10 +739,10 @@ export default class TransformationPanel {
     this.rotateField = rotateField;
     formContents.push({
       type: "universal-row",
-      field1: {
-        type: "text",
-        value: translate("sidebar.selection-transformation.rotate"),
-      },
+      field1: this._rowIcon(
+        "/tabler-icons/rotate.svg",
+        translate("sidebar.selection-transformation.rotate")
+      ),
       field2: { type: "auxiliaryElement", auxiliaryElement: rotateField },
       field3: {},
     });
@@ -720,7 +752,6 @@ export default class TransformationPanel {
       fieldX: skewXField,
       fieldY: skewYField,
     } = this._buildScrubXYRow({
-      label: translate("sidebar.selection-transformation.skew"),
       icon: "/images/skew.svg",
       tooltip: translate("sidebar.selection-transformation.skew"),
       valueX: this.transformParameters.skewX,
@@ -751,8 +782,7 @@ export default class TransformationPanel {
     this.skewXField = skewXField;
     this.skewYField = skewYField;
     formContents.push(skewRow);
-
-    formContents.push({ type: "divider" });
+    formContents.push(scaleRow);
 
     const applyDimensions = async () => {
       const glyph =
@@ -785,9 +815,9 @@ export default class TransformationPanel {
       fieldX: dimensionWidthField,
       fieldY: dimensionHeightField,
     } = this._buildScrubXYRow({
-      label: translate("sidebar.selection-info.dimensions"),
       icon: "/tabler-icons/dimensions.svg",
       tooltip: translate("sidebar.selection-info.dimensions"),
+      labels: ["W", "H"],
       valueX: this.transformParameters.dimensionWidth,
       valueY: this.transformParameters.dimensionHeight,
       onChangeX: (value) => (this.transformParameters.dimensionWidth = value),
@@ -818,199 +848,160 @@ export default class TransformationPanel {
     this.dimensionHeightField = dimensionHeightField;
     formContents.push(dimensionsRow);
 
-    formContents.push({ type: "divider" });
+    // Operations, Path and Harmonize: each group is one segmented button row
+    // (the shared tray), two groups side by side. Choices a row has no room
+    // for hang off a segment as a dropdown, opened by a long press.
+    const segment = (src, tooltipKey, onclick, dropdown) => {
+      const button = html.createDomElement("icon-button", {
+        "src": src,
+        "data-tooltip": translate(tooltipKey),
+        "data-tooltipposition": "top",
+      });
+      if (onclick) {
+        button.onclick = onclick;
+      }
+      if (dropdown) {
+        button.dropdown = dropdown;
+      }
+      return button;
+    };
+    const tray = (buttons) =>
+      html.div({ class: "selection-row-group-icons tray" }, buttons);
+    const groupLabel = (key) =>
+      html.span({ class: "transform-group-label" }, [translate(key)]);
+    const pairRow = (left, right) =>
+      html.div({ class: "transform-pair" }, [left, right]);
+    const labeledGroup = (key, element) =>
+      html.div({ class: "transform-group" }, [groupLabel(key), element]);
 
-    // Ticket 40: Flip and Align used to be a row plus a header-and-two-rows
-    // section of their own; now they share one row under two small labels.
-    const labelKeyPathOperations = "sidebar.selection-transformation.path-operations";
+    // The distribution spacing lives in each distribute button's dropdown;
+    // both write the one parameter.
+    const spacingCard = () =>
+      html.input({
+        type: "number",
+        value:
+          this.transformParameters.customDistributionSpacing == null
+            ? ""
+            : String(this.transformParameters.customDistributionSpacing),
+        placeholder: translate(
+          "sidebar.selection-transformation.distribute.distance-in-units"
+        ),
+        oninput: (event) => {
+          const raw = event.target.value;
+          this.transformParameters.customDistributionSpacing =
+            raw === "" ? null : Number(raw);
+        },
+      });
 
-    const flipAlignRow = html.div({ class: "selection-row-group" }, [
-      html.span({ class: "selection-row-group-label" }, [
-        translate("sidebar.selection-transformation.flip"),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/flip-vertical.svg",
-          "data-tooltip": translate("sidebar.selection-transformation.flip.vertically"),
-          "data-tooltipposition": "top",
-          "onclick": (event) =>
+    const K = "sidebar.selection-transformation";
+    const operations = html.div({ class: "transform-group" }, [
+      groupLabel(`${K}.operations`),
+      pairRow(
+        tray([
+          segment("/tabler-icons/flip-vertical.svg", `${K}.flip.vertically`, () =>
             this.transformSelection(
               () => new Transform().scale(-1, 1),
               "flip vertically"
-            ),
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/flip-horizontal.svg",
-          "data-tooltip": translate(
-            "sidebar.selection-transformation.flip.horizontally"
+            )
           ),
-          "data-tooltipposition": "top",
-          "onclick": (event) =>
+          segment("/tabler-icons/flip-horizontal.svg", `${K}.flip.horizontally`, () =>
             this.transformSelection(
               () => new Transform().scale(1, -1),
               "flip horizontally"
-            ),
-        }),
-      ]),
-      html.span({ class: "selection-row-group-label" }, [
-        translate("sidebar.selection-transformation.align"),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/vertical-align-left.svg",
-          "onclick": (event) => this.moveObjects(alignLeft),
-          "data-tooltip": translate("sidebar.selection-transformation.align.left"),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/vertical-align-center.svg",
-          "onclick": (event) => this.moveObjects(alignCenter),
-          "data-tooltip": translate("sidebar.selection-transformation.align.center"),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/vertical-align-right.svg",
-          "onclick": (event) => this.moveObjects(alignRight),
-          "data-tooltip": translate("sidebar.selection-transformation.align.right"),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/horizontal-align-top.svg",
-          "onclick": (event) => this.moveObjects(alignTop),
-          "data-tooltip": translate("sidebar.selection-transformation.align.top"),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/horizontal-align-center.svg",
-          "onclick": (event) => this.moveObjects(alignMiddle),
-          "data-tooltip": translate("sidebar.selection-transformation.align.middle"),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/horizontal-align-bottom.svg",
-          "onclick": (event) => this.moveObjects(alignBottom),
-          "data-tooltip": translate("sidebar.selection-transformation.align.bottom"),
-          "data-tooltipposition": "top",
-        }),
-      ]),
-    ]);
-    formContents.push({ type: "single-icon", element: flipAlignRow });
-
-    formContents.push({ type: "spacer" });
-
-    // Ticket 40: Distribute (with its spacing number) and Bools (the path
-    // operations) share the next row, same way.
-    const distributionSpacingInput = html.input({
-      "type": "number",
-      "value":
-        this.transformParameters.customDistributionSpacing == null
-          ? ""
-          : String(this.transformParameters.customDistributionSpacing),
-      "data-tooltip": translate(
-        "sidebar.selection-transformation.distribute.distance-in-units"
+            )
+          ),
+        ]),
+        tray([
+          segment(
+            "/tabler-icons/layout-distribute-vertical.svg",
+            `${K}.distribute.horizontally`,
+            () => this.moveObjects(distributeHorizontally),
+            spacingCard()
+          ),
+          segment(
+            "/tabler-icons/layout-distribute-horizontal.svg",
+            `${K}.distribute.vertically`,
+            () => this.moveObjects(distributeVertically),
+            spacingCard()
+          ),
+        ])
       ),
-      "data-tooltipposition": "top",
-      "oninput": (event) => {
-        const raw = event.target.value;
-        this.transformParameters.customDistributionSpacing =
-          raw === "" ? null : Number(raw);
-      },
-    });
-
-    const distributeBoolsRow = html.div({ class: "selection-row-group" }, [
-      html.span({ class: "selection-row-group-label" }, [
-        translate("sidebar.selection-transformation.distribute"),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layout-distribute-vertical.svg",
-          "onclick": (event) => this.moveObjects(distributeHorizontally),
-          "data-tooltip": translate(
-            "sidebar.selection-transformation.distribute.horizontally"
+      pairRow(
+        tray([
+          segment("/tabler-icons/vertical-align-left.svg", `${K}.align.left`, () =>
+            this.moveObjects(alignLeft)
           ),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layout-distribute-horizontal.svg",
-          "onclick": (event) => this.moveObjects(distributeVertically),
-          "data-tooltip": translate(
-            "sidebar.selection-transformation.distribute.vertically"
+          segment("/tabler-icons/vertical-align-center.svg", `${K}.align.center`, () =>
+            this.moveObjects(alignCenter)
           ),
-          "data-tooltipposition": "top",
-        }),
-        distributionSpacingInput,
-      ]),
-      html.span({ class: "selection-row-group-label" }, [
-        translate(labelKeyPathOperations),
-      ]),
-      html.div({ class: "selection-row-group-icons" }, [
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layers-union.svg",
-          "onclick": (event) =>
-            this.doPathOperations(this.pathOperations.unionPath, "union"),
-          "data-tooltip": translate(`${labelKeyPathOperations}.union`),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layers-subtract.svg",
-          "onclick": (event) =>
-            this.doPathOperations(this.pathOperations.subtractPath, "subtract"),
-          "data-tooltip": translate(`${labelKeyPathOperations}.subtract`),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layers-intersect-2.svg",
-          "onclick": (event) =>
-            this.doPathOperations(this.pathOperations.intersectPath, "intersect"),
-          "data-tooltip": translate(`${labelKeyPathOperations}.intersect`),
-          "data-tooltipposition": "top",
-        }),
-        html.createDomElement("icon-button", {
-          "src": "/tabler-icons/layers-difference.svg",
-          "onclick": (event) =>
-            this.doPathOperations(this.pathOperations.excludePath, "exclude"),
-          "data-tooltip": translate(`${labelKeyPathOperations}.exclude`),
-          "data-tooltipposition": "top",
-        }),
-      ]),
+          segment("/tabler-icons/vertical-align-right.svg", `${K}.align.right`, () =>
+            this.moveObjects(alignRight)
+          ),
+        ]),
+        tray([
+          segment("/tabler-icons/horizontal-align-top.svg", `${K}.align.top`, () =>
+            this.moveObjects(alignTop)
+          ),
+          segment(
+            "/tabler-icons/horizontal-align-center.svg",
+            `${K}.align.middle`,
+            () => this.moveObjects(alignMiddle)
+          ),
+          segment(
+            "/tabler-icons/horizontal-align-bottom.svg",
+            `${K}.align.bottom`,
+            () => this.moveObjects(alignBottom)
+          ),
+        ])
+      ),
     ]);
-    formContents.push({ type: "single-icon", element: distributeBoolsRow });
+    formContents.push({ type: "single-icon", element: operations });
 
-    // Point labels checkboxes moved to the Measurements accordion in the
-    // Designspace panel's Visual group (ticket 28); the Harmonize section
-    // below no longer has a position-bound sibling ahead of it.
-    formContents.push({ type: "divider" });
+    // Path: remove overlaps, with the other three boolean operations in its
+    // dropdown; simplify; balance.
+    const P = `${K}.path-operations`;
+    const booleanCard = tray([
+      segment("/tabler-icons/layers-subtract.svg", `${P}.subtract`, () =>
+        this.doPathOperations(this.pathOperations.subtractPath, "subtract")
+      ),
+      segment("/tabler-icons/layers-intersect-2.svg", `${P}.intersect`, () =>
+        this.doPathOperations(this.pathOperations.intersectPath, "intersect")
+      ),
+      segment("/tabler-icons/layers-difference.svg", `${P}.exclude`, () =>
+        this.doPathOperations(this.pathOperations.excludePath, "exclude")
+      ),
+    ]);
+    const pathGroup = tray([
+      segment(
+        "/tabler-icons/layers-union.svg",
+        `${P}.union.more`,
+        () => this.doPathOperations(this.pathOperations.unionPath, "union"),
+        booleanCard
+      ),
+      segment("/tabler-icons/shape.svg", "action.simplify-contour", () => {
+        this.sceneController.updateContextMenuState(null);
+        this.sceneController.doSimplifySelectedContours();
+      }),
+      segment("/tabler-icons/arrows-horizontal.svg", `${K}.harmonize.balance`, () =>
+        this.doBalance()
+      ),
+    ]);
 
-    // The Harmonize header carries everything: the G3 toggle, Run, and an
-    // overflow holding the two G2 ticks (preserve curvature, move on-curve) and
-    // the two options. One press draws one answer, so each pick is written to
-    // the settings at once and there is no mid-gesture state to read back.
-    this.harmonizeG3Toggle = html.createDomElement("labeled-toggle", {
-      label: translate("sidebar.selection-transformation.harmonize.g3"),
-      checked: !!applicationSettingsController.model.harmonizeG3,
-    });
-    this.harmonizeG3Toggle.addEventListener("change", () => {
-      applicationSettingsController.model.harmonizeG3 = this.harmonizeG3Toggle.checked;
-      this._refreshHarmonizeOverflow();
-    });
-    // The overflow is a card, as the Rib one: the two G2 ticks, then the two
-    // options, all as checks.
+    // Harmonize: one segment per continuity. G2's options hang off it; G3 has
+    // one construction and reads none of the G2 ticks.
     const settings = applicationSettingsController.model;
     this.harmonizeChecks = {};
     const optionCheck = (key, labelKey) => {
       const check = html.input({ type: "checkbox" });
+      check.checked = !!settings[key];
       check.addEventListener("change", () => (settings[key] = check.checked));
       this.harmonizeChecks[key] = check;
       return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
         check,
-        translate(`sidebar.selection-transformation.harmonize.${labelKey}`),
+        translate(`${K}.harmonize.${labelKey}`),
       ]);
     };
-    this.harmonizeOverflow = html.createDomElement("overflow-popover", {
-      "data-tooltip": translate("sidebar.selection-transformation.harmonize.options"),
-      "data-tooltipposition": "left",
-    });
-    this.harmonizeOverflow.content = html.div(
+    const harmonizeOptions = html.div(
       {
         style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
       },
@@ -1021,33 +1012,32 @@ export default class TransformationPanel {
         optionCheck("harmonizeOtherSources", "other-sources"),
       ]
     );
-    this._refreshHarmonizeOverflow();
+    const g3Button = segment(undefined, `${K}.harmonize.g3`, () =>
+      this.doHarmonize(true)
+    );
+    g3Button.label = "G3";
+    const g2Button = segment(
+      undefined,
+      `${K}.harmonize.g2`,
+      () => this.doHarmonize(false),
+      harmonizeOptions
+    );
+    g2Button.label = "G2";
+
     formContents.push({
-      type: "header",
-      label: translate("sidebar.selection-transformation.harmonize"),
-      auxiliaryElement: html.div(
-        { style: "display: flex; align-items: center; gap: 0.4em;" },
-        [
-          this.harmonizeG3Toggle,
-          html.button({ onclick: () => this.doHarmonize() }, [
-            translate("sidebar.selection-transformation.harmonize.apply"),
-          ]),
-          this.harmonizeOverflow,
-        ]
+      type: "single-icon",
+      element: pairRow(
+        labeledGroup(`${K}.path`, pathGroup),
+        labeledGroup(`${K}.harmonize`, tray([g3Button, g2Button]))
       ),
     });
 
     formContents.push({
-      type: "universal-row",
-      field1: {},
-      field2: {
-        type: "auxiliaryElement",
-        auxiliaryElement: (this.harmonizeReportElement = html.span(
-          { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
-          [this.harmonizeReportText || ""]
-        )),
-      },
-      field3: {},
+      type: "single-icon",
+      element: (this.harmonizeReportElement = html.span(
+        { class: "harmonize-report", title: this.harmonizeReportDetail || "" },
+        [this.harmonizeReportText || ""]
+      )),
     });
 
     this.infoForm.setFieldDescriptions(formContents);
@@ -1068,27 +1058,19 @@ export default class TransformationPanel {
       }
 
       this.transformParameters[fieldItem.key] = value;
-
-      if (fieldItem.key === "originXButton" || fieldItem.key === "originYButton") {
-        this.transformParameters[fieldItem.key.replace("Button", "")] = value;
-
-        const iconRadioButtons = this.infoForm.shadowRoot.querySelectorAll(
-          ".ui-form-radio-button"
-        );
-        iconRadioButtons.forEach((radioButton) => {
-          radioButton.checked = false;
-        });
-      }
     };
 
     this.updateDimensions();
   }
 
-  async doHarmonize() {
+  // The pressed segment names the continuity. It is also stored, so the
+  // Harmonize shortcut repeats whichever was pressed last.
+  async doHarmonize(useG3) {
     const settings = applicationSettingsController.model;
+    settings.harmonizeG3 = useG3;
     const options = {
-      useG3: !!settings.harmonizeG3,
-      // The overflow writes a tick to the setting the moment it is made, so
+      useG3,
+      // The dropdown writes a tick to the setting the moment it is made, so
       // the stored ticks are the ones the card shows.
       preserveCurvature: !!settings.harmonizePreserveCurvature,
       moveOnCurve: !!settings.harmonizeMoveOnCurve,
@@ -1102,16 +1084,28 @@ export default class TransformationPanel {
     );
   }
 
-  // The card's state from the settings. G3 has one construction, so the two
-  // G2 ticks grey while it is on.
-  _refreshHarmonizeOverflow() {
-    const settings = applicationSettingsController.model;
-    for (const [key, check] of Object.entries(this.harmonizeChecks)) {
-      check.checked = !!settings[key];
+  // Balance the handles of the curves at the selected on-curves: one shared
+  // tension per curve, holding its fullness. Ordinary paths only.
+  async doBalance() {
+    const pointSelection = parseSelection(this.sceneController.selection).point;
+    if (!pointSelection?.length) {
+      return;
     }
-    for (const key of ["harmonizePreserveCurvature", "harmonizeMoveOnCurve"]) {
-      this.harmonizeChecks[key].disabled = !!settings.harmonizeG3;
-    }
+    await this.sceneController.editLayersAndRecordChanges((layerGlyphs) => {
+      for (const layerGlyph of Object.values(layerGlyphs)) {
+        // A generated contour is rebuilt from its skeleton, never edited.
+        const indices = pointSelection.filter(
+          (pointIndex) =>
+            !this.sceneController.sceneModel.isGeneratedPathContour(
+              layerGlyph.path.getContourIndex(pointIndex)
+            )
+        );
+        if (indices.length) {
+          balancePathInPlace(layerGlyph.path, indices);
+        }
+      }
+      return translate("sidebar.selection-transformation.harmonize.balance");
+    });
   }
 
   setHarmonizeReport(text, detail = "") {
@@ -1573,19 +1567,9 @@ export default class TransformationPanel {
   _refreshScaleOverflow() {
     const settings = applicationSettingsController.model;
     const preserve = settings.preserveAspectRatio !== false;
-    this.scaleOverflow.items = [
-      {
-        value: "preserve-aspect-ratio",
-        label: translate("sidebar.selection-transformation.preserve-aspect-ratio"),
-        checked: preserve,
-      },
-      {
-        value: "slide-adjacent",
-        label: translate("sidebar.selection-transformation.slide-both-tension-points"),
-        checked: !!settings.slideBothTensionPoints,
-        disabled: !preserve,
-      },
-    ];
+    this.scaleChecks.preserve.checked = preserve;
+    this.scaleChecks.slide.checked = !!settings.slideBothTensionPoints;
+    this.scaleChecks.slide.disabled = !preserve;
   }
 
   _changeOrigin(keyX, keyY) {
@@ -1594,16 +1578,23 @@ export default class TransformationPanel {
     this.transformParameters.originY = keyY;
     this.transformParameters.originXButton = undefined;
     this.transformParameters.originYButton = undefined;
-    this.infoForm.setValue("originXButton", null);
-    this.infoForm.setValue("originYButton", null);
+    if (this.originXField) {
+      this.originXField.value = null;
+      this.originYField.value = null;
+    }
   }
 
   _clearOrigin() {
     this._changeOrigin("center", "middle");
+    this._checkOriginRadio("center-middle");
+  }
+
+  // Checks the grid position `key` ("center-middle"), or none for null.
+  _checkOriginRadio(key) {
     for (const radioButton of this.infoForm.shadowRoot.querySelectorAll(
       ".ui-form-radio-button"
     )) {
-      radioButton.checked = radioButton.value === "center-middle";
+      radioButton.checked = radioButton.value === key;
     }
   }
 
@@ -1667,13 +1658,11 @@ export default class TransformationPanel {
     this.transformParameters.originY = y;
     this.transformParameters.originXButton = x;
     this.transformParameters.originYButton = y;
-    this.infoForm.setValue("originXButton", x);
-    this.infoForm.setValue("originYButton", y);
-    for (const radioButton of this.infoForm.shadowRoot.querySelectorAll(
-      ".ui-form-radio-button"
-    )) {
-      radioButton.checked = false;
+    if (this.originXField) {
+      this.originXField.value = x;
+      this.originYField.value = y;
     }
+    this._checkOriginRadio(null);
   }
 
   _splitSelection(layerGlyphController, selection) {
