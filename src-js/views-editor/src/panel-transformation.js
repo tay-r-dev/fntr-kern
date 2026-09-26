@@ -852,8 +852,10 @@ export default class TransformationPanel {
     // (the shared tray), two groups side by side. Choices a row has no room
     // for hang off a segment as a dropdown, opened by a long press.
     const segment = (src, tooltipKey, onclick, dropdown) => {
+      // A text segment (G3, G2) has no icon; the element refuses an
+      // undefined src.
       const button = html.createDomElement("icon-button", {
-        "src": src,
+        ...(src ? { src } : {}),
         "data-tooltip": translate(tooltipKey),
         "data-tooltipposition": "top",
       });
