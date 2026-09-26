@@ -4,15 +4,13 @@ import { themeColorCSS } from "./theme-support.js";
 
 // The link button from the Figma scrub-input design
 // (_external/component-code/scrub/link buttonm.txt): a narrow strip between
-// two fields. "on" draws as two solid bars anchored to the strip's top and
-// bottom, their facing ends pill-rounded; on hover the bars grow toward each
-// other (120ms), shrinking the gap. "off" draws as three dots. Clicking
+// two fields. "on" draws as a gray strip with a subtle horizontal gradient
+// (darker toward the middle; faint at rest, full strength on hover), and two
+// field-background-colored notches bite into it from top and bottom, their
+// facing ends pill-rounded; on hover the notches grow toward each other
+// (120ms), shrinking the gray waist. "off" draws as three dots. Clicking
 // toggles it and sends "link-changed" with detail {state, linked}. Unlike
 // chain-link (an icon button), this one is purely CSS-drawn.
-//
-// (The ref txt drew "on" as two background-colored triangles biting into the
-// gray strip -- a mis-translation of the Figma; the bars here are the glyph
-// itself, so they read the same on any page background.)
 //
 // `state` is "on" or "off" (`linked` mirrors it as a boolean); both are
 // plain JS properties, the convention every UnlitElement component in this
@@ -20,8 +18,9 @@ import { themeColorCSS } from "./theme-support.js";
 const colors = {
   // The strip keeps the fields' outer-shell gray, so it merges with them.
   "link-button-background-color": ["#f5f5f5", "#3a3a3a"],
-  // Bars and dots share the dots' gray: just darker than the strip.
-  "link-button-bar-color": ["#dedede", "#5a5a5a"],
+  // The notches match the fields' inner background (white / its dark
+  // counterpart), so they read as cutouts from the strip.
+  "link-button-notch-color": ["#ffffff", "#2c2c2c"],
   "link-button-dot-color": ["#dedede", "#5a5a5a"],
   "link-button-dot-hover-color": ["#d6d6d6", "#707070"],
 };
@@ -61,33 +60,55 @@ export class LinkButton extends UnlitElement {
       background: var(--link-button-background-color);
     }
 
-    /* "on": two solid bars filling the strip's width, one anchored top, one
-       bottom, their facing ends pill-rounded. On hover they grow toward each
-       other, shrinking the gap (0.5em -> 0.1875em) in the ref's 120ms. */
-    .ui-link-button.state-on::before,
-    .ui-link-button.state-on::after {
+    /* "on": a horizontal gradient darkens the strip toward its middle
+       (faint at rest, full strength on hover). Two notches in the field
+       background color bite in from the top and bottom, their facing ends
+       pill-rounded; on hover they grow toward each other, shrinking the gray
+       waist (0.5em -> 0.65625em each) in the ref's 120ms. */
+    .ui-link-button.state-on::before {
       position: absolute;
-      left: 0;
-      width: 100%;
-      height: 0.5em;
-      background: var(--link-button-bar-color);
+      inset: 0;
+      background: linear-gradient(
+        90deg,
+        rgba(0, 0, 0, 0.04),
+        rgba(0, 0, 0, 0.086) 32%,
+        rgba(0, 0, 0, 0.086) 68%,
+        rgba(0, 0, 0, 0.04)
+      );
       content: "";
+      opacity: 0.3;
+      pointer-events: none;
       transition: 120ms;
     }
 
-    .ui-link-button.state-on::before {
+    .ui-link-button.state-on:hover::before {
+      opacity: 1;
+    }
+
+    .ui-link-button-notch {
+      position: absolute;
+      left: 0;
+      z-index: 1;
+      width: 100%;
+      height: 0.5em;
+      background: var(--link-button-notch-color);
+      transition: 120ms;
+    }
+
+    .ui-link-button-notch.top {
       top: 0;
       border-radius: 0 0 0.25em 0.25em;
     }
 
-    .ui-link-button.state-on::after {
+    .ui-link-button-notch.bottom {
       bottom: 0;
       border-radius: 0.25em 0.25em 0 0;
     }
 
-    .ui-link-button.state-on:hover::before,
-    .ui-link-button.state-on:hover::after {
-      height: 0.65625em;
+    .ui-link-button.state-on:hover .ui-link-button-notch {
+      /* Past half the strip each: the pill ends overlap on hover, so the
+         rounded corners of one are hidden behind the other. */
+      height: 0.875em;
     }
 
     .ui-link-button-dots {
@@ -188,7 +209,10 @@ export class LinkButton extends UnlitElement {
               html.div({ class: "ui-link-button-dot" }),
             ]),
           ]
-        : []
+        : [
+            html.div({ class: "ui-link-button-notch top" }),
+            html.div({ class: "ui-link-button-notch bottom" }),
+          ]
     );
   }
 

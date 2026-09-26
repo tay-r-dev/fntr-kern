@@ -31,10 +31,15 @@ export class InputScrub extends UnlitElement {
       width: 100%;
       height: 100%;
       align-items: center;
+      /* One measure for the field separation: the n/a state's gap and the
+         link button's width, so the fields stand the same distance apart
+         whether the button is there or not. 8px matches the other panel
+         rows' column-gap. */
+      --link-gap: 8px;
     }
 
     .ui-input-scrub.link-na {
-      gap: 0.5em;
+      gap: var(--link-gap);
     }
 
     compact-scrub-field {
@@ -42,13 +47,14 @@ export class InputScrub extends UnlitElement {
       min-width: 0;
     }
 
-    /* The ref composite sizes the button explicitly (0.5em x 1.5em between
-       ~1.75em-tall fields): centred, its gray edges merge with the fields'
-       outer shells, the notches aligning with the inner boxes' inset. */
+    /* The ref composite sizes the button explicitly (as wide as the n/a
+       gap, 1.5em tall between ~1.75em-tall fields): centred, its gray edges
+       merge with the fields' outer shells, the notches aligning with the
+       inner boxes' inset. */
     ui-link-button {
-      width: 0.5em;
+      width: var(--link-gap);
       height: 24px;
-      flex: 0 0 0.5em;
+      flex: 0 0 var(--link-gap);
     }
   `;
 
