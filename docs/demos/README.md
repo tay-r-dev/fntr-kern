@@ -18,9 +18,12 @@ node scripts/make-bulb-comparison.mjs
 An optional second argument writes the inline comparison fragment to that path.
 `bulb-comparison.template.html` is the editable page fragment.
 
-The new Easing value adds forward approach length. It no longer cuts back into
-the inner wall. New joins preserve tangents; they do not force matching curvature.
-The ball's fixed arc points follow its own frame rather than the glyph axes.
+The new ball's outer apex is the outer rib end. Its front projects one Size
+radius beyond the rib (half the ball's diameter). Shape stretches only its rear
+half. Easing again cuts back along the inner wall and rounds the ball-to-wall
+neck, using the former crossing and neck construction. The outer wall is kept
+complete. Zero easing keeps a crisp incision; a ball that cannot reach the inner
+wall uses the short bridge neck. Ball arc points follow the rib frame.
 
 Validation: all 72 settings and all toggles exercised in a DOM runtime, with no
 script errors; default and maximum geometry inspected in a static rendering.

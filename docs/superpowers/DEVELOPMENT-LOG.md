@@ -1876,7 +1876,7 @@ Four sweeps rather than assertions: the turn from 20 to 140 degrees in half
 degree steps, the width from 10 to 100, the proportion between the two, and an
 arm bowed until the inner crossing goes away.
 
-### The bulb grows from the rib (2026-09-26)
+### The bulb grows from the rib — first interpretation, withdrawn (2026-09-26)
 
 **The terminal-plane constraint was withdrawn.** Keeping the ball's front at the
 skeleton endpoint required a trim search, an inner-wall crossing search, and a
@@ -1910,6 +1910,31 @@ stroke; repeat on both sides and a single-sided stroke; use a locked rib; edit
 the neck curvature and grab it without movement; confirm both wall gizmos still
 work; undo and redo a terminal edit in multiple masters. Bundling is left to the
 designer's running watcher, per `START-HERE.md`.
+
+### The rib is the ball apex; restore the inner neck (2026-09-26)
+
+The previous interpretation extended the entire ball beyond the rib and removed
+both wall cuts. The designer corrected it: the outer rib end is the ball's
+apex, with no approach segment. The front extends one radius (half a diameter,
+explicitly clarified), while the inner wall still needs its cut and neck.
+
+The outer wall stays complete. The ball's forward half has radius R; Shape
+stretches only its rear half. The original inner crossing scan, Easing placement,
+neck construction and curvature snapshot are restored from `635a1d3aa`. The
+outer trim search and handover remain removed. The inner-wall snapshot carries
+the wall gizmo at zero easing; positive easing moves it to the neck again.
+
+Tests check both ends and sides, single-sided strokes, taper, locked ribs, short
+strokes and control sweeps. The key measurement is the ball front: R in the rib
+frame at every Shape and Easing. The neck's still grab must retain its pin.
+The comparison page still uses the actual old output and regenerates its new
+panel from the corrected generator.
+
+**Validation:** 72 focused bulb/gizmo tests pass. The full core suite has 2856
+passes and the same two pre-existing serif-easing failures noted above. All 72
+page settings and its toggles ran without DOM script errors; the default and
+maximum examples were inspected as rendered outlines. Live browser/editor QA
+remains manual, as does bundling through the running watcher.
 
 ### Fixture gap
 

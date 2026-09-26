@@ -919,7 +919,7 @@ describe("generated on-curve gizmo edits", () => {
   });
 });
 
-// A bulb adds a neck gizmo. Both original wall segments keep their own gizmos.
+// The outer wall keeps its gizmo. The inner one moves onto the eased neck.
 describe("the curvature gizmo at a bulb terminal", () => {
   function makeBulbGlyph(capFields) {
     const layer = {
@@ -1002,8 +1002,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
     }
   });
 
-  it("keeps the neck addressable at zero easing", () => {
-    expect(neckSegments({ capBallEasing: 0 })).to.have.length(1);
+  it("keeps the crisp inner incision when easing is zero", () => {
+    expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
   });
 
   it("addresses a neck drag to the cap field, not to a side's pin", () => {
@@ -1019,7 +1019,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(edit.tension).to.be.a("number");
   });
 
-  // The read and the write govern the same emitted neck.
+  // The construction snapshot lets a still grab preserve the neck pin.
   it("grabs the neck without moving it: a still drag writes back the pin", () => {
     for (const capBallEasing of [0.3, 0.8]) {
       const neck = neckSegments({ capBallEasing, capBallEaseCurvature: 0.5 })[0];
@@ -1041,24 +1041,24 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
   });
 
-  it("keeps both original walls addressable at every easing", () => {
+  it("keeps the outer wall gizmo and the crisp inner cut's construction snapshot", () => {
     for (const capBallEasing of [0, 0.5, 1]) {
-      const layer = makeBulbGlyph({ capBallEasing });
+      const layer = makeBulbGlyph({ capBallEasing, capBallSide: "left" });
       const walls = buildGeneratedTunniSegments(
         getSkeletonData(layer),
         layer.path
       ).filter(
         (segment) => !segment.provenance.some((entry) => entry?.capCurvatureField)
       );
-      expect(new Set(walls.map((segment) => segment.side))).to.deep.equal(
-        new Set(["left", "right"])
+      expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
+      expect(walls.filter((segment) => segment.side === "right")).to.have.length(
+        capBallEasing ? 0 : 1
       );
-      expect(walls).to.have.length(2);
-      expect(
-        walls.some((segment) =>
-          segment.provenance.some((entry) => entry?.constructionSegment)
-        )
-      ).to.equal(false);
+      const snapshots = walls.filter((segment) =>
+        segment.provenance.some((entry) => entry?.constructionSegment)
+      );
+      expect(snapshots).to.have.length(capBallEasing ? 0 : 1);
+      if (snapshots.length) expect(snapshots[0].side).to.equal("right");
     }
   });
 

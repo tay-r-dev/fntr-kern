@@ -2330,8 +2330,8 @@ export default class SkeletonParametersPanel {
         percentOf(cap.capBallShape, DEFAULT_CAP_BALL_SHAPE),
         { minValue: CAP_SHAPE_MIN, maxValue: CAP_SHAPE_MAX }
       );
-      // Easing adds approach length beyond the endpoint rib: 100 adds one
-      // along-stroke ball radius. The neck never consumes the inner wall.
+      // Easing cuts back along the inner wall from the ball crossing to the
+      // preceding on-curve; 100 consumes that whole remaining run.
       this._refreshCompactField(
         this.capFields.balleasing,
         "cap:balleasing",

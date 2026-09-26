@@ -1,94 +1,74 @@
-import { computeTunniHandleLengths } from "./tunni-calculations.js";
 import * as vector from "./vector.js";
 
-// The bulb starts at the endpoint rib. No part of this construction reads a
-// wall curve: it receives two attachment points and their outward directions.
-// Its four new on-curves are the outer shoulder, forward tip, inner extreme,
-// and neck shoulder. They exist at every setting.
-export function buildBulbTerminal({
-  outer,
-  inner,
-  outerDirection,
-  innerDirection,
-  radius,
-  shape,
-  easing,
-  tension,
-}) {
-  const across = vector.normalizeVector(vector.subVectors(inner, outer));
-  const forward = vector.normalizeVector(outerDirection);
-  const inwardHandle = vector.normalizeVector(innerDirection);
-  const alongRadius = radius * (1 + 1.4 * shape);
-  // Easing buys room for the neck by extending the terminal, never by taking
-  // room from the stroke. Shape elongates the ball; easing extends its approach.
-  const approach = alongRadius * (1 + easing);
-  const at = (x, y) => ({
-    x: outer.x + forward.x * x + across.x * y,
-    y: outer.y + forward.y * x + across.y * y,
-  });
-  const ball = (angle) =>
-    at(approach + alongRadius * Math.cos(angle), radius * (1 + Math.sin(angle)));
-  const derivative = (angle) => ({
-    x: -forward.x * alongRadius * Math.sin(angle) + across.x * radius * Math.cos(angle),
-    y: -forward.y * alongRadius * Math.sin(angle) + across.y * radius * Math.cos(angle),
-  });
-  const handle = (point) => ({ ...point, type: "cubic" });
-  const onCurve = (point) => ({ ...point, smooth: true, skipColinear: true });
-  const moved = (point, direction, distance) =>
-    vector.addVectors(point, vector.mulVectorScalar(direction, distance));
-
-  // The approach starts in the unchanged wall's direction and reaches the
-  // ball's outer shoulder in that same direction.
-  const points = [
-    handle(at(approach / 3, 0)),
-    handle(at((approach * 2) / 3, 0)),
-    onCurve(at(approach, 0)),
-  ];
-  let previous = -Math.PI / 2;
-  for (const angle of [0, Math.PI / 2, (3 * Math.PI) / 4]) {
-    const k = (4 / 3) * Math.tan((angle - previous) / 4);
-    points.push(
-      handle(moved(ball(previous), derivative(previous), k)),
-      handle(moved(ball(angle), derivative(angle), -k)),
-      onCurve(ball(angle))
-    );
-    previous = angle;
-  }
-
-  const shoulder = points.at(-1);
-  const neckDirection = vector.normalizeVector(derivative(previous));
-  const lengths = computeTunniHandleLengths(
-    shoulder,
-    neckDirection,
-    inner,
-    inwardHandle,
-    tension
-  );
-  // A tangent intersection behind an attachment must not grow an unbounded
-  // handle. The convex hull stays on the terminal's side of the rib. The
-  // transverse rib may be tilted, so this is a frame coordinate, not a dot
-  // product with the stroke direction.
-  const determinant = forward.x * across.y - forward.y * across.x;
-  const forwardComponent = (direction) =>
-    Math.abs(determinant) < 1e-10
-      ? 0
-      : (direction.x * across.y - direction.y * across.x) / determinant;
-  const shoulderAdvance = approach + alongRadius * Math.cos(previous);
-  const chord = vector.distance(shoulder, inner);
-  const bounded = (length, advance, direction) => {
-    const rate = forwardComponent(direction);
-    const ceiling = rate < 0 ? Math.max(advance / -rate, 0) : chord;
-    return Math.min(Math.max(length, 0), chord, ceiling);
+// The outer rib end IS the ball's outer apex. The forward half has radius R;
+// Shape stretches only the rear half. There is no approach or outer-wall cut.
+export function makeBulbBall({ outer, inner, outerDirection, radius, shape }) {
+  const ex = vector.normalizeVector(outerDirection);
+  const ey = vector.normalizeVector(vector.subVectors(inner, outer));
+  const center = vector.addVectors(outer, vector.mulVectorScalar(ey, radius));
+  const rearRadius = radius * (1 + 1.4 * shape);
+  const determinant = ex.x * ey.y - ex.y * ey.x;
+  if (Math.abs(determinant) < 1e-10) return null;
+  const alongRadius = (u) => (u < -1e-10 ? rearRadius : radius);
+  return {
+    ex,
+    ey,
+    center,
+    radius,
+    rearRadius,
+    toDevice(u, v, along = alongRadius(u)) {
+      return {
+        x: center.x + ex.x * along * u + ey.x * radius * v,
+        y: center.y + ex.y * along * u + ey.y * radius * v,
+      };
+    },
+    at(theta) {
+      return this.toDevice(Math.cos(theta), Math.sin(theta));
+    },
+    tangentAt(theta) {
+      const along = alongRadius(Math.cos(theta));
+      return vector.normalizeVector({
+        x: -ex.x * along * Math.sin(theta) + ey.x * radius * Math.cos(theta),
+        y: -ex.y * along * Math.sin(theta) + ey.y * radius * Math.cos(theta),
+      });
+    },
+    localOf(point) {
+      const d = vector.subVectors(point, center);
+      // Invert the frame, including sheared frames at angle-locked ribs.
+      const x = (d.x * ey.y - d.y * ey.x) / determinant;
+      const y = (ex.x * d.y - ex.y * d.x) / determinant;
+      return { u: x / alongRadius(x), v: y / radius };
+    },
+    thetaOf(point) {
+      const { u, v } = this.localOf(point);
+      return Math.atan2(v, u);
+    },
+    contains(point) {
+      const { u, v } = this.localOf(point);
+      return u * u + v * v < 1;
+    },
   };
-  points.push(
-    handle(
-      moved(
-        shoulder,
-        neckDirection,
-        bounded(lengths.startLen, shoulderAdvance, neckDirection)
-      )
-    ),
-    handle(moved(inner, inwardHandle, bounded(lengths.endLen, 0, inwardHandle)))
-  );
+}
+
+// Always keep the three frame extremes plus the neck attachment. A stop past
+// the attachment collapses onto it, preserving point order as controls move.
+export function buildBulbArc(ball, thetaEnd) {
+  const points = [];
+  let a = -Math.PI / 2;
+  for (const stop of [0, Math.PI / 2, Math.PI, thetaEnd]) {
+    const b = Math.max(a, Math.min(stop, thetaEnd));
+    const along = Math.cos((a + b) / 2) < 0 ? ball.rearRadius : ball.radius;
+    const k = (4 / 3) * Math.tan((b - a) / 4);
+    const u0 = Math.cos(a),
+      v0 = Math.sin(a);
+    const u1 = Math.cos(b),
+      v1 = Math.sin(b);
+    points.push(
+      { ...ball.toDevice(u0 - k * v0, v0 + k * u0, along), type: "cubic" },
+      { ...ball.toDevice(u1 + k * v1, v1 - k * u1, along), type: "cubic" },
+      { ...ball.at(b), smooth: true, skipColinear: true }
+    );
+    a = b;
+  }
   return points;
 }

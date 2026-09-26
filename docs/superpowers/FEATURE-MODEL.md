@@ -539,46 +539,41 @@ plus the tip points. It takes the handle lengths from a tension parameter. The *
 cap that does not simply close the two side ends. It trims a length off each side first, and
 splices its own terminal on. See §8.
 
-The **drop** cap (the bulb) grows beyond the endpoint rib (decided 2026-09-26).
-Both generated walls remain complete. Their endpoint positions and outward
-handle directions are the only wall geometry the cap reads. No wall is cut,
-refit, lengthened or moved to make room for the bulb.
+The **drop** cap (the bulb) has its outer apex at the outer endpoint rib end
+(corrected 2026-09-26). The outer wall runs intact to that point. The ball starts
+there directly, without an approach segment or an outer-wall trim search.
 
-`bulb-geometry.js` builds the added terminal. The outer rib end runs forward to
-an elliptical ball, the ball turns around its front and inner side, and a cubic
-neck returns to the inner rib end. The ball's transverse axis follows the rib,
-so an angle-locked rib can give a sheared ellipse. The outer direction is the
-actual generated wall's tangent; the inner join reads its own wall's tangent.
+`bulb-geometry.js` builds the ball in the rib frame. Its outward direction is
+the actual outer wall tangent; its transverse direction follows the rib. At an
+angle-locked rib this frame can shear the ball, so the inner-wall intersection
+uses the inverse frame rather than dot products against assumed square axes.
 
-- **Size** sets the lateral radius, as half the stroke width times the ratio.
-- **Shape** stretches the ball forward: its along-stroke radius is the lateral
-  radius times `1 + 1.4 * shape`. There is no limit from the length of the
-  skeleton's terminal segment.
-- **Easing** adds forward approach length, from one along-stroke radius to two.
-  It gives the neck more room outside the stroke. It no longer names a cut
-  along the inner wall, and zero still has a neck.
-- **Neck curvature** changes its two handles with fixed ends. The cap field is
-  still `capBallEaseCurvature`. Where the tangent intersection is unreachable,
-  the emitted handles are bounded by the chord and the rib's forward half-plane;
-  the stored value is unchanged.
+- **Size** sets radius R to half the stroke width times the ratio. The forward
+  half reaches exactly R beyond the rib: half the ball's diameter, as clarified
+  by the designer. Neither Shape nor Easing moves that front.
+- **Shape** stretches the rear half to `R * (1 + 1.4 * shape)`; the forward half
+  remains round in the ball frame. Its two halves meet tangentially.
+- **Easing** again cuts back along the inner wall from the rear ball crossing
+  toward the preceding on-curve. The former crossing scan, eased cut, and neck
+  are reused. Zero keeps the crisp incision; positive easing backs off the ball
+  attachment and joins it through the neck. Small balls use the former bridge
+  to the inner rib end when they cannot reach the wall.
+- **Neck curvature** still uses `capBallEaseCurvature`. The eased neck consumes
+  the terminal inner-wall piece and meets the stem's own on-curve. Its original
+  construction chord is published so a still gizmo grab preserves its pin.
 
-Four new on-curves always exist: the outer shoulder, forward tip, inner extreme,
-and neck shoulder. Two rib ends remain the wall's own points. The three ball
-arcs use fixed ellipse parameters, so rotation cannot add or remove a point.
-They are extremes in the terminal frame, not necessarily the glyph axes. This
-replaces the old handover's changing choice of wall and ball extremes.
+The outer wall's own curvature gizmo remains. At zero easing the cut inner
+wall carries its untrimmed construction segment and gizmo; with easing that
+gizmo moves onto the neck. Cap provenance prevents direct point or handle
+editing and the on-curve gizmo. This restores the prior inner-wall behavior.
 
-**The joints promise tangent continuity where the handles are non-zero, not
-curvature matching.** The outer approach is straight and the ball is curved,
-so their curvature differs. The original walls must not move to eliminate that
-step. Added points stay in floating point to keep the cap's tangent directions;
-the cap does not change the wall's existing grid positions. The colinearity
-pass does not rotate either wall handle at the rib.
+The ball arc keeps four slots: forward extreme, inner extreme, rear extreme,
+and neck attachment. Unreached extremes collapse onto the attachment; rotation
+does not select different glyph-axis extremes. The restored inner cut/neck modes
+can still change total outline topology, as before the previous rewrite.
 
-The neck has its own curvature gizmo. Both original wall cubics retain their
-own gizmos at every easing. No untrimmed snapshot is needed: the neck on screen
-is the curve its pin governs. Its cap provenance prevents direct point or handle
-editing and the on-curve gizmo, as before.
+Outer-wall tangency is preserved; G2 matching at the rib is not imposed. The
+colinearity pass must not rotate the outer wall handle to change this join.
 
 ### Step 5 — Assembly
 
