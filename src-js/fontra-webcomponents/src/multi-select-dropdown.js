@@ -59,7 +59,9 @@ export class MultiSelectDropdown extends UnlitElement {
       border-radius: 6px;
       padding: 4px 6px;
       gap: 4px;
-      font-family: inherit;
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-label);
+      font-stretch: var(--ui-stretch-condensed);
       font-size: 10px;
       letter-spacing: -0.3px;
       line-height: 12px;

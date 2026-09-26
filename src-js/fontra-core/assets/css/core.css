@@ -1,12 +1,12 @@
 @font-face {
   font-family: "fontra-ui-regular";
-  src: url("../fonts/InriaSans-Light.woff2") format("woff2");
+  src: url("../fonts/MartianMono-StdRg.woff2") format("woff2");
   font-weight: 400;
 }
 
 @font-face {
   font-family: "fontra-ui-regular";
-  src: url("../fonts/InriaSans-Medium.woff2") format("woff2");
+  src: url("../fonts/MartianMono-StdBd.woff2") format("woff2");
   font-weight: 700;
 }
 
@@ -15,10 +15,38 @@
   src: url("../fonts/InriaSans-Regular.woff2") format("woff2");
 }
 
+/* Figma's component text styles (heading/h2-h5, label/XS, label/S) use two
+   static widths: wdth 75 (exact match: MartianMono Condensed) and wdth 90
+   (no exact static instance; nearest is Narrow, 87.5). Weight 220 (label/XS,
+   label/S) has no static file either; nearest is Light (300). */
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnLt.woff2") format("woff2");
+  font-weight: 300;
+  font-stretch: condensed; /* wdth 75 */
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrRg.woff2") format("woff2");
+  font-weight: 400;
+  font-stretch: semi-condensed; /* nearest static to wdth 90 (87.5) */
+}
+
 :root {
   /* https://css-tricks.com/the-css-custom-property-toggle-trick/ */
   --fontra-theme-marker: ; /* a space, which is valid */
   --top-bar-height: 35px;
+
+  /* Figma text styles (font family/weight/stretch only; each consuming
+     component keeps its own font-size/line-height/letter-spacing). */
+  --ui-font-mono: "fontra-ui-mono", "fontra-ui-regular", monospace;
+  --ui-stretch-condensed: condensed; /* wdth 75 */
+  --ui-stretch-narrow: semi-condensed; /* nearest static to wdth 90 */
+  --ui-weight-heading: 300; /* ui/heading/h2, h3, h4 (Light) */
+  --ui-weight-heading-h5: 400; /* ui/heading/h5 (Regular) */
+  --ui-weight-label: 300; /* ui/label/XS, ui/label/S: weight 220 has no
+    static file, nearest is Light (300) */
 }
 
 :root.dark-theme {

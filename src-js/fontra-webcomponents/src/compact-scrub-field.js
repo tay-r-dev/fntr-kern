@@ -74,6 +74,10 @@ export class CompactScrubField extends UnlitElement {
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
+      /* Figma ui/label/XS (weight 220 has no static file; nearest is Light) */
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-label);
+      font-stretch: var(--ui-stretch-condensed);
     }
 
     .inner {
@@ -145,7 +149,7 @@ export class CompactScrubField extends UnlitElement {
       justify-content: flex-end;
       min-width: 2.5em;
       min-height: 1.2em;
-      font-family: monospace;
+      font-family: var(--ui-font-mono), monospace;
       cursor: text;
     }
 

@@ -58,6 +58,9 @@ export class SegmentedControl extends UnlitElement {
       background: transparent;
       color: var(--segmented-control-off-text-color);
       font: inherit;
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-label);
+      font-stretch: var(--ui-stretch-condensed);
       font-size: 11px;
       letter-spacing: -0.11px;
       white-space: nowrap;

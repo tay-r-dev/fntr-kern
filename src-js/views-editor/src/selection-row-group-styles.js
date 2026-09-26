@@ -120,10 +120,15 @@ export const SELECTION_ROW_GROUP_STYLES = `
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding-bottom: 12px;
+    /* 12px to the next group, with the form's 8px row gap. */
+    padding-bottom: 4px;
   }
 
+  /* ui/heading/h5 */
   .row-group > .selection-row-group-label {
+    font-family: var(--ui-font-mono);
+    font-weight: var(--ui-weight-heading-h5);
+    font-stretch: var(--ui-stretch-narrow);
     font-size: 9px;
     line-height: 10px;
     letter-spacing: -0.03em;

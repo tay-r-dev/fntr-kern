@@ -29,7 +29,8 @@ export class Form extends SimpleElement {
       display: grid;
       align-items: center;
       grid-template-columns: var(--label-column-width) auto;
-      gap: 0.35rem 0.35rem;
+      /* The design's rhythm: 8px between rows. */
+      gap: 8px 0.35rem;
       margin: 0em;
       padding: 0em;
     }
@@ -57,13 +58,14 @@ export class Form extends SimpleElement {
       grid-column: 1 / span 2;
     }
 
+    /* A divider is space, not a line: the two row gaps either side of it put
+       sections 16px apart. */
     hr {
       border: none;
-      border-top: 1px solid var(--horizontal-rule-color);
       width: 100%;
-      height: 1px;
-      margin-block-start: 0.2em;
-      margin-block-end: 0.1em;
+      height: 0;
+      margin-block-start: 0;
+      margin-block-end: 0;
       grid-column: 1 / span 2;
     }
 
@@ -81,7 +83,8 @@ export class Form extends SimpleElement {
       grid-template-columns: auto auto;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.35rem;
+      /* 12px from a heading to its first row, with the row gap. */
+      margin-bottom: 4px;
     }
 
     /* Figma heading design: H2/H3 are uppercase and shrink by size, H4 is a
@@ -89,6 +92,9 @@ export class Form extends SimpleElement {
        A header with no explicit level defaults to H3 -- the closest match to
        this row's previous plain-bold look. */
     .ui-form-label.header-h2 {
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-heading);
+      font-stretch: var(--ui-stretch-condensed);
       font-size: 13px;
       line-height: 14px;
       letter-spacing: -0.39px;
@@ -96,6 +102,9 @@ export class Form extends SimpleElement {
     }
 
     .ui-form-label.header-h3 {
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-heading);
+      font-stretch: var(--ui-stretch-condensed);
       font-size: 12px;
       line-height: 12px;
       letter-spacing: -0.36px;
@@ -103,6 +112,9 @@ export class Form extends SimpleElement {
     }
 
     .ui-form-label.header-h4 {
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-heading-h5);
+      font-stretch: var(--ui-stretch-narrow);
       font-size: 9px;
       line-height: 10px;
       letter-spacing: -0.27px;
@@ -160,7 +172,9 @@ export class Form extends SimpleElement {
       outline: none;
       padding: 4px 6px;
       height: 24px;
-      font-family: inherit;
+      font-family: var(--ui-font-mono);
+      font-weight: var(--ui-weight-label);
+      font-stretch: var(--ui-stretch-condensed);
       font-size: 10px;
       letter-spacing: -0.3px;
       line-height: 12px;

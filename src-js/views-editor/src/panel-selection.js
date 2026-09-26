@@ -23,9 +23,31 @@ export default class SelectionPanel extends Panel {
     // Transform block down one column instead of each taking half the height
     // and scrolling on its own.
     const scrollArea = html.div(
-      { class: "panel-section panel-section--flex panel-section--scrollable" },
+      {
+        class:
+          "panel-section panel-section--flex panel-section--scrollable selection-cards",
+      },
       []
     );
+    // Each part is a card on the sidebar's grey, 8px apart (Figma
+    // 287:18592).
+    this._appendStyle(`
+      .selection-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        background-color: var(--background-color);
+      }
+
+      .selection-cards > div {
+        flex: none;
+        padding: 8px;
+        border: 1px solid #00000008;
+        border-radius: 14px;
+        background-color: var(--ui-element-background-color);
+      }
+    `);
     this.contentElement.appendChild(scrollArea);
     this.transformationPart = new TransformationPanel(editorController, scrollArea);
     this.skeletonPart = new SkeletonParametersPanel(editorController, scrollArea);

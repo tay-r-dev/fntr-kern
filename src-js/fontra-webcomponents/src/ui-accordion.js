@@ -32,7 +32,9 @@ export class Accordion extends UnlitElement {
     align-items: center;
     /* Figma heading/H1: light weight, uppercase, larger and looser than the
        body text it sits above. */
-    font-weight: normal;
+    font-family: var(--ui-font-mono);
+    font-weight: var(--ui-weight-heading);
+    font-stretch: var(--ui-stretch-condensed);
     font-size: 16px;
     line-height: 16px;
     letter-spacing: -0.48px;
