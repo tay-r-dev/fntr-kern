@@ -18,10 +18,14 @@ import { themeColorCSS } from "./theme-support.js";
 // attributes -- set them after creating the element, the convention every
 // UnlitElement-based component in this tree uses.
 const colors = {
-  "segmented-control-tray-color": ["#e9e9ed", "#3a3a3e"],
-  "segmented-control-border-color": ["#8f8f9d", "#6a6a74"],
-  "segmented-control-small-border-color": ["#8f8f9d29", "#8f8f9d40"],
+  "segmented-control-tray-color": ["#f7f7f7", "#3a3a3e"],
+  "segmented-control-border-color": ["#efefef", "#6a6a74"],
   "segmented-control-on-background-color": ["#fff", "#5a5a60"],
+  "segmented-control-on-shadow-color": ["#ebebeb", "#000000a0"],
+  "segmented-control-off-text-color": ["#15151580", "#ffffff80"],
+  "segmented-control-on-text-color": ["#4c4c4c", "#e9e9ed"],
+  "segmented-control-hover-background-color": ["#a5c500", "#a5c500"],
+  "segmented-control-hover-text-color": ["#fff", "#fff"],
 };
 
 export class SegmentedControl extends UnlitElement {
@@ -36,30 +40,41 @@ export class SegmentedControl extends UnlitElement {
       display: flex;
       flex: 1 1 auto;
       align-items: center;
-      padding: var(--segmented-control-tray-padding, 0.2em);
+      box-sizing: border-box;
+      height: 28px;
+      padding: var(--segmented-control-tray-padding, 2px);
       gap: 0;
       background: var(--segmented-control-tray-color);
       border: 1px solid var(--segmented-control-border-color);
-      border-radius: 0.65em;
+      border-radius: 6px;
     }
 
     button {
       flex: 1 1 auto;
       margin: 0;
-      padding: 0.2em 0.85em;
+      padding: 4px 6px;
       border: none;
-      border-radius: 0.45em;
+      border-radius: 4px;
       background: transparent;
-      color: inherit;
+      color: var(--segmented-control-off-text-color);
       font: inherit;
+      font-size: 11px;
+      letter-spacing: -0.11px;
       white-space: nowrap;
       cursor: pointer;
       box-sizing: border-box;
-      height: var(--segmented-control-button-height, auto);
+      height: var(--segmented-control-button-height, 24px);
     }
 
     button.on {
       background: var(--segmented-control-on-background-color);
+      box-shadow: 0 1px 1px var(--segmented-control-on-shadow-color);
+      color: var(--segmented-control-on-text-color);
+    }
+
+    button:hover:not(.on):not(:disabled) {
+      background: var(--segmented-control-hover-background-color);
+      color: var(--segmented-control-hover-text-color);
     }
 
     button:disabled {
@@ -72,16 +87,15 @@ export class SegmentedControl extends UnlitElement {
     }
 
     :host([small]) .row {
-      padding: 2px;
-      border-color: var(--segmented-control-small-border-color);
+      height: 24px;
       border-radius: 999px;
-      font-size: 0.8em;
     }
 
     :host([small]) button {
-      flex: 1 1 auto;
-      padding: 0.15em 0.6em;
       border-radius: 999px;
+      font-size: 10px;
+      letter-spacing: -0.3px;
+      height: var(--segmented-control-button-height, 20px);
     }
   `;
 
