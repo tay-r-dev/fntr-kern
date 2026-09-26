@@ -11,7 +11,23 @@ import { themeColorCSS } from "./theme-support.js";
 // loaded).
 const colors = {
   "icon-button-on-background-color": ["#ddd", "#555"],
+  // button/latch (Figma 287:15701): rest/hover/press/active backgrounds and
+  // the shared border color, plus the dropdown card's own colors (moved in
+  // from overflow-popover.js, which is now a thin subclass of this button).
+  "icon-button-latch-background-color": ["#f5f5f5", "#3a3a3a"],
+  "icon-button-latch-hover-background-color": ["#f7f7f7", "#444"],
+  "icon-button-latch-press-background-color": ["#fcfcfc", "#4a4a4a"],
+  "icon-button-latch-active-background-color": ["#f0f0f0", "#505050"],
+  "icon-button-latch-border-color": ["#e0e0e0", "#555"],
+  "overflow-popover-background-color": ["#fff", "#2a2a2a"],
+  "overflow-popover-shadow-color": ["#0003", "#0008"],
 };
+
+// A long press on the dropdown chevron opens the card; a plain click does
+// too when the button has no click handler of its own (see the "on has no
+// onclick" branch below).
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_MOVE_TOLERANCE = 4;
 
 export class IconButton extends UnlitElement {
   static styles = `
@@ -23,6 +39,9 @@ export class IconButton extends UnlitElement {
 
     button {
       display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
       background-color: transparent;
       border: none;
       padding: 0;
@@ -31,6 +50,7 @@ export class IconButton extends UnlitElement {
       height: 100%;
       cursor: pointer;
       contain: content;
+      font: inherit;
     }
 
     button > inline-svg {
@@ -74,17 +94,78 @@ export class IconButton extends UnlitElement {
       outline-offset: -1px;
       border-radius: 0.25em;
     }
+
+    /* button/latch (Figma 287:15701): rest/hover/press/active/disabled, off
+       by default like "on" -- callers opt in with the latch attribute. */
+    button.icon-button-latch {
+      box-sizing: border-box;
+      width: 24px;
+      height: 24px;
+      background: var(--icon-button-latch-background-color);
+      border: 1px solid var(--icon-button-latch-border-color);
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      padding: 4px;
+    }
+
+    button.icon-button-latch:hover {
+      background: var(--icon-button-latch-hover-background-color);
+      border-bottom-width: 1px;
+    }
+
+    button.icon-button-latch:active {
+      background: var(--icon-button-latch-press-background-color);
+      border-top-width: 2px;
+      border-bottom-width: 1px;
+    }
+
+    button.icon-button-latch.icon-button-on {
+      background: var(--icon-button-latch-active-background-color);
+      border-top-width: 2px;
+      border-bottom-width: 1px;
+      border-radius: 6px;
+    }
+
+    button.icon-button-latch:hover svg,
+    button.icon-button-latch:active svg {
+      transform: none;
+    }
+
+    /* segment/button's 6px chevron (Figma 287:15640's "dropdown" state). */
+    inline-svg.icon-button-chevron {
+      width: 6px;
+      height: 6px;
+      flex: none;
+      transform: rotate(180deg);
+    }
+
+    /* The dropdown card: a native popover placed under the button, same as
+       overflow-popover.js drew it before this became a shared implementation. */
+    .card {
+      position: fixed;
+      inset: auto;
+      margin: 0;
+      padding: 1em;
+      border: none;
+      border-radius: 0.8em;
+      background: var(--overflow-popover-background-color);
+      color: inherit;
+      box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
+    }
   `;
 
   constructor(src) {
     super();
     if (src) {
       this.setAttribute("src", src);
+      this.src = src;
     }
   }
 
   static properties = {
     src: { type: String },
+    label: { type: String },
+    latch: { type: Boolean },
   };
 
   get disabled() {
@@ -93,8 +174,12 @@ export class IconButton extends UnlitElement {
 
   set disabled(value) {
     this._buttonDisabled = value;
+    this.toggleAttribute("disabled", !!value);
     if (this._button) {
       this._button.disabled = value;
+    }
+    if (value && this._card?.matches(":popover-open")) {
+      this._card.hidePopover();
     }
   }
 
@@ -136,29 +221,113 @@ export class IconButton extends UnlitElement {
     }
   }
 
+  // The card's content (an HTMLElement built by the caller, e.g. a
+  // segmented control or a form). Building the card once and keeping it
+  // around (rather than rebuilding it on every render) means an open
+  // popover survives an unrelated property change.
+  get dropdown() {
+    return this._dropdownContent;
+  }
+
+  set dropdown(element) {
+    this._dropdownContent = element;
+    if (!this._card) {
+      this._card = html.div({ class: "card", popover: "auto" }, []);
+      // Placed under the button's right edge, and kept on screen -- same
+      // placement overflow-popover.js used.
+      this._card.addEventListener("beforetoggle", (event) => {
+        if (event.newState !== "open") {
+          return;
+        }
+        const rect = this._button.getBoundingClientRect();
+        this._card.style.top = `${rect.bottom + 4}px`;
+        this._card.style.right = `${Math.max(4, window.innerWidth - rect.right)}px`;
+      });
+    }
+    if (element) {
+      this._card.replaceChildren(element);
+    }
+    this.requestUpdate();
+  }
+
+  _openDropdown() {
+    if (this._card && !this._card.matches(":popover-open")) {
+      this._card.showPopover();
+    }
+  }
+
   click() {
     this._button.click();
   }
 
   render() {
     const focus = new FocusKeeper();
+    const children =
+      this.label && !this.src
+        ? [this.label]
+        : [html.createDomElement("inline-svg", { src: this.src })];
+    if (this.dropdown) {
+      children.push(
+        html.createDomElement("inline-svg", {
+          src: "/tabler-icons/chevron-up.svg",
+          class: "icon-button-chevron",
+        })
+      );
+    }
     this._button = html.button(
       {
         onmousedown: focus.save,
+        onpointerdown: (event) => {
+          this._wasOpen = this._card?.matches(":popover-open") ?? false;
+          this._pointerDownPos = { x: event.clientX, y: event.clientY };
+          if (this.dropdown) {
+            this._longPressTimer = setTimeout(() => {
+              this._longPressTimer = null;
+              this._suppressClick = true;
+              this._openDropdown();
+            }, LONG_PRESS_MS);
+          }
+        },
+        onpointermove: (event) => {
+          if (!this._longPressTimer || !this._pointerDownPos) {
+            return;
+          }
+          const moved = Math.hypot(
+            event.clientX - this._pointerDownPos.x,
+            event.clientY - this._pointerDownPos.y
+          );
+          if (moved > LONG_PRESS_MOVE_TOLERANCE) {
+            clearTimeout(this._longPressTimer);
+            this._longPressTimer = null;
+          }
+        },
+        onpointerup: () => clearTimeout(this._longPressTimer),
+        onpointerleave: () => clearTimeout(this._longPressTimer),
         onclick: (event) => {
-          this._buttonOnClick?.(event);
+          if (this._suppressClick) {
+            // A long press already opened the card; don't also click.
+            this._suppressClick = false;
+          } else if (this._buttonOnClick) {
+            this._buttonOnClick(event);
+          } else if (this.dropdown && !this._wasOpen) {
+            this._openDropdown();
+          }
           event.stopImmediatePropagation();
           focus.restore();
         },
         disabled: this._buttonDisabled,
-        class: [this.on ? "icon-button-on" : "", this.mixed ? "icon-button-mixed" : ""]
+        class: [
+          this.latch ? "icon-button-latch" : "",
+          this.on ? "icon-button-on" : "",
+          this.mixed ? "icon-button-mixed" : "",
+        ]
           .join(" ")
           .trim(),
         style: `color: undefined var(--foreground-color);`, // TODO: huh.
       },
-      [html.createDomElement("inline-svg", { src: this.src })]
+      children
     );
-    return this._button;
+    return this.dropdown ? [this._button, this._card] : this._button;
   }
 }
 

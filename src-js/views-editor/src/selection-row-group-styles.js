@@ -39,21 +39,60 @@ export const SELECTION_ROW_GROUP_STYLES = `
     width: 3.5em;
   }
 
-  /* A tray: one grey plate holding a group's buttons, an overflow set off by
-     a line, and a segmented control drawn flat on the plate. */
+  /* A tray: button/segmented's plate (Figma 287:15729) holding a group's
+     buttons, an overflow set off by a line, and a segmented control drawn
+     flat on the plate. */
   .selection-row-group-icons.tray {
     justify-self: start;
-    gap: 2px;
-    padding: 2px;
-    border-radius: 0.35em;
-    background: #8883;
+    gap: 1px;
+    padding: 0;
+    border-radius: 6px;
+    background: #e0e0e0;
   }
 
+  /* Each icon-button child styled from outside as segment/button (Figma
+     287:15640): the host itself is the segment's face, since the button
+     inside its shadow root stays transparent and 100% of the host box. */
   .selection-row-group-icons.tray icon-button {
     box-sizing: border-box;
-    width: 1.8em;
-    height: 1.8em;
-    padding: 0.35em;
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+    height: 24px;
+    padding: 4px;
+    background: #f5f5f5;
+    border: none;
+    border-bottom: 2px solid #e0e0e0;
+  }
+
+  .selection-row-group-icons.tray icon-button:first-child {
+    border-radius: 6px 0 0 6px;
+  }
+
+  .selection-row-group-icons.tray icon-button:last-child {
+    border-radius: 0 6px 6px 0;
+  }
+
+  .selection-row-group-icons.tray icon-button:hover {
+    background: #fff;
+    border-top: 1px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .selection-row-group-icons.tray icon-button:active {
+    background: #fcfcfc;
+    border-top: 2px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .selection-row-group-icons.tray icon-button[on] {
+    background: #f0f0f0;
+    border-top: 2px solid #e0e0e0;
+    border-bottom: 1px solid #e0e0e0;
+  }
+
+  .selection-row-group-icons.tray icon-button[disabled] {
+    opacity: 35%;
   }
 
   .selection-row-group-icons.tray overflow-button,
