@@ -666,43 +666,11 @@ export default class TransformationPanel {
         this.transformParameters.scaleY = this.transformParameters.scaleX;
       }
     });
-    // Ticket 41: Smart scale, the tension-aware scale held on X, keeps its two
-    // app-wide settings in the Scale icon's dropdown. Preserve aspect ratio
-    // lets tension points slide along their straights; off, the scale only
-    // adjusts handles. Slide adjacent tension points lets both ends of a
-    // straight lying across the scaled axis travel; off, both stand still. It
-    // means nothing while the slide is off, so it is greyed then.
-    const settingCheck = (key, labelKey, onChange) => {
-      const check = html.input({ type: "checkbox" });
-      check.addEventListener("change", () => onChange(check.checked));
-      this.scaleChecks[key] = check;
-      return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
-        check,
-        translate(`sidebar.selection-transformation.${labelKey}`),
-      ]);
-    };
-    this.scaleChecks = {};
-    const smartScaleCard = html.div(
-      {
-        style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
-      },
-      [
-        settingCheck("preserve", "preserve-aspect-ratio", (checked) => {
-          applicationSettingsController.model.preserveAspectRatio = checked;
-          this._refreshScaleOverflow();
-        }),
-        settingCheck("slide", "slide-both-tension-points", (checked) => {
-          applicationSettingsController.model.slideBothTensionPoints = checked;
-        }),
-      ]
-    );
-    this._refreshScaleOverflow();
     const scaleRow = {
       type: "universal-row",
       field1: this._rowIcon(
         "/tabler-icons/resize.svg",
-        translate("sidebar.selection-transformation.smart-scale"),
-        smartScaleCard
+        translate("sidebar.selection-transformation.scale")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: scaleInput },
       field3: {},
@@ -850,7 +818,7 @@ export default class TransformationPanel {
 
     // Operations, Path and Harmonize: each group is one segmented button row
     // (the shared tray), two groups side by side. Choices a row has no room
-    // for hang off a segment as a dropdown, opened by a long press.
+    // for hang off a segment as a dropdown, opened by the right button.
     const segment = (src, tooltipKey, onclick, dropdown) => {
       // A text segment (G3, G2) has no icon; the element refuses an
       // undefined src.
@@ -1564,14 +1532,6 @@ export default class TransformationPanel {
       };
     });
     return committed;
-  }
-
-  _refreshScaleOverflow() {
-    const settings = applicationSettingsController.model;
-    const preserve = settings.preserveAspectRatio !== false;
-    this.scaleChecks.preserve.checked = preserve;
-    this.scaleChecks.slide.checked = !!settings.slideBothTensionPoints;
-    this.scaleChecks.slide.disabled = !preserve;
   }
 
   _changeOrigin(keyX, keyY) {

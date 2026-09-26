@@ -862,8 +862,33 @@ export class EditorController extends ViewController {
     document.querySelector(".top-bar-container").appendChild(myMenuBar);
   }
 
+  // The smart-scale settings live here until the tool settings panel exists.
   getEditMenuItems() {
-    return this.basicContextMenuItems;
+    const settings = applicationSettingsController.model;
+    const preserve = () => settings.preserveAspectRatio !== false;
+    return [
+      ...this.basicContextMenuItems,
+      MenuItemDivider,
+      {
+        title: translate("sidebar.selection-transformation.smart-scale"),
+        getItems: () => [
+          {
+            title: translate("sidebar.selection-transformation.preserve-aspect-ratio"),
+            checked: preserve(),
+            callback: () => (settings.preserveAspectRatio = !preserve()),
+          },
+          {
+            title: translate(
+              "sidebar.selection-transformation.slide-both-tension-points"
+            ),
+            checked: !!settings.slideBothTensionPoints,
+            enabled: preserve,
+            callback: () =>
+              (settings.slideBothTensionPoints = !settings.slideBothTensionPoints),
+          },
+        ],
+      },
+    ];
   }
 
   getViewMenuItems() {

@@ -839,7 +839,8 @@ export const strings = {
     "Also match the rate of change of curvature, which is what removes the crease from the curvature comb. Falls back to G2 where it has no answer.",
   "sidebar.selection-transformation.harmonize.nothing-to-do": "Nothing to harmonize",
   "sidebar.selection-transformation.harmonize.equalize": "Equalize handles",
-  "sidebar.selection-transformation.harmonize.g2": "Harmonize G2 (hold for options)",
+  "sidebar.selection-transformation.harmonize.g2":
+    "Harmonize G2 (right-click for options)",
   "sidebar.selection-transformation.harmonize.equalize.tooltip":
     "Finish with one pass that equalizes each segment's two handles and then repairs the joint. Every position solves the joint and says nothing about how a segment's two handles compare, so it can leave the curvature right and the handles lopsided. Off under G3, where the repair would throw the rate away.",
   "sidebar.selection-transformation.harmonize.move-on-curve": "Move on-curve",
@@ -895,7 +896,7 @@ export const strings = {
   "sidebar.selection-transformation.path-operations.subtract": "Subtract contours",
   "sidebar.selection-transformation.path-operations.union": "Remove overlaps",
   "sidebar.selection-transformation.path-operations.union.more":
-    "Remove overlaps (hold for more)",
+    "Remove overlaps (right-click for more)",
   "sidebar.selection-transformation.rotate": "Rotate",
   "sidebar.selection-transformation.scale": "Scale",
   "sidebar.selection-transformation.skew": "Skew",
