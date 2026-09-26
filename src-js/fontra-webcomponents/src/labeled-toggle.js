@@ -32,6 +32,9 @@ export class LabeledToggle extends UnlitElement {
       display: inline-flex;
       align-items: center;
       gap: 0.4em;
+      /* ui/label/S */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
       color: var(--labeled-toggle-text-color);
       cursor: pointer;
       user-select: none;

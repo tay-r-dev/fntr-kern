@@ -911,7 +911,11 @@ export default class SkeletonParametersPanel {
       ]);
     const groupTitle = (labelKey) =>
       html.span(
-        { style: "font-weight: bold; grid-column: 1 / -1; margin-top: 0.5em;" },
+        {
+          // ui/heading/h5
+          style:
+            "font: var(--ui-text-heading-h5); letter-spacing: var(--ui-tracking); grid-column: 1 / -1; margin-top: 0.5em;",
+        },
         [translate(`sidebar.skeleton-parameters.${labelKey}`)]
       );
     // A group adds its cells to the one serif grid below, so every serif label
@@ -1960,6 +1964,7 @@ export default class SkeletonParametersPanel {
     const formContents = [
       {
         type: "header",
+        level: "h2",
         label: translate("sidebar.skeleton-parameters.title"),
         auxiliaryElement: this.projectionHeader,
       },
@@ -2074,6 +2079,7 @@ export default class SkeletonParametersPanel {
     this._refreshWidthPresetControls();
     formContents.push({
       type: "header",
+      level: "h3",
       label: translate("sidebar.skeleton-parameters.generation"),
       auxiliaryElement: this.widthPresetControl.element,
     });
@@ -2206,6 +2212,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
+      level: "h3",
       label: translate("sidebar.skeleton-parameters.caps"),
       // The kind, as the small chips on the heading.
       auxiliaryElement: this.terminalKindControl,
@@ -2385,6 +2392,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
+      level: "h3",
       label: translate("sidebar.skeleton-parameters.corner-rounding"),
     });
     const asPercent = (summary) => ({
@@ -2453,6 +2461,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
+      level: "h3",
       label: translate("sidebar.skeleton-parameters.insertion"),
     });
     // A closed link greys the right-hand fields, which follow the left, the

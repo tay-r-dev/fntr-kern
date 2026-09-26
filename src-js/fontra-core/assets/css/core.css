@@ -38,15 +38,19 @@
   --fontra-theme-marker: ; /* a space, which is valid */
   --top-bar-height: 35px;
 
-  /* Figma text styles (font family/weight/stretch only; each consuming
-     component keeps its own font-size/line-height/letter-spacing). */
+  /* The Figma text styles, one token each: use `font: var(--ui-text-...)`
+     with the matching letter-spacing, and set no size of your own.
+     Condensed is wdth 75; semi-condensed (87.5) is the nearest file to
+     wdth 90. Weight 220 has no file, so the labels use Light (300). */
   --ui-font-mono: "fontra-ui-mono", "fontra-ui-regular", monospace;
-  --ui-stretch-condensed: condensed; /* wdth 75 */
-  --ui-stretch-narrow: semi-condensed; /* nearest static to wdth 90 */
-  --ui-weight-heading: 300; /* ui/heading/h2, h3, h4 (Light) */
-  --ui-weight-heading-h5: 400; /* ui/heading/h5 (Regular) */
-  --ui-weight-label: 300; /* ui/label/XS, ui/label/S: weight 220 has no
-    static file, nearest is Light (300) */
+  --ui-text-heading-h2: 300 condensed 16px / 16px var(--ui-font-mono);
+  --ui-text-heading-h3: 300 condensed 13px / 14px var(--ui-font-mono);
+  --ui-text-heading-h4: 300 condensed 12px / 12px var(--ui-font-mono);
+  --ui-text-heading-h5: 400 semi-condensed 9px / 10px var(--ui-font-mono);
+  --ui-text-label-xs: 300 condensed 10px / 12px var(--ui-font-mono);
+  --ui-text-label-s: 300 condensed 11px / 12px var(--ui-font-mono);
+  --ui-tracking: -0.03em; /* every style but label/S */
+  --ui-tracking-label-s: -0.01em;
 }
 
 :root.dark-theme {

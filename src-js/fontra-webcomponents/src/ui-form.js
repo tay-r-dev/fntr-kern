@@ -35,6 +35,21 @@ export class Form extends SimpleElement {
       padding: 0em;
     }
 
+    /* ui/label/XS for row labels, values and whole-width rows; label/S for
+       checks. */
+    .ui-form-label,
+    .ui-form-value,
+    .ui-form-full-width {
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
+    }
+
+    .ui-form-label.checkbox,
+    .ui-form-value.checkbox {
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
+    }
+
     .ui-form-label {
       text-align: right;
       overflow-x: hidden;
@@ -87,37 +102,29 @@ export class Form extends SimpleElement {
       margin-bottom: 4px;
     }
 
-    /* Figma heading design: H2/H3 are uppercase and shrink by size, H4 is a
-       small mixed-case section label (e.g. "Wing", "Bracket", "Operations").
-       A header with no explicit level defaults to H3 -- the closest match to
-       this row's previous plain-bold look. */
+    /* Heading levels by the Figma style names: h2 to h4 are uppercase, h5 is
+       a small mixed-case section label. A header with no level is h4. */
     .ui-form-label.header-h2 {
-      font-family: var(--ui-font-mono);
-      font-weight: var(--ui-weight-heading);
-      font-stretch: var(--ui-stretch-condensed);
-      font-size: 13px;
-      line-height: 14px;
-      letter-spacing: -0.39px;
+      font: var(--ui-text-heading-h2);
+      letter-spacing: var(--ui-tracking);
       text-transform: uppercase;
     }
 
     .ui-form-label.header-h3 {
-      font-family: var(--ui-font-mono);
-      font-weight: var(--ui-weight-heading);
-      font-stretch: var(--ui-stretch-condensed);
-      font-size: 12px;
-      line-height: 12px;
-      letter-spacing: -0.36px;
+      font: var(--ui-text-heading-h3);
+      letter-spacing: var(--ui-tracking);
       text-transform: uppercase;
     }
 
     .ui-form-label.header-h4 {
-      font-family: var(--ui-font-mono);
-      font-weight: var(--ui-weight-heading-h5);
-      font-stretch: var(--ui-stretch-narrow);
-      font-size: 9px;
-      line-height: 10px;
-      letter-spacing: -0.27px;
+      font: var(--ui-text-heading-h4);
+      letter-spacing: var(--ui-tracking);
+      text-transform: uppercase;
+    }
+
+    .ui-form-label.header-h5 {
+      font: var(--ui-text-heading-h5);
+      letter-spacing: var(--ui-tracking);
     }
 
     input {
@@ -127,8 +134,8 @@ export class Form extends SimpleElement {
       border: none;
       outline: none;
       padding: 0.1em 0.3em;
-      font-family: "fontra-ui-regular";
-      font-size: 100%;
+      font: inherit;
+      letter-spacing: inherit;
     }
 
     .ui-form-value {
@@ -172,12 +179,9 @@ export class Form extends SimpleElement {
       outline: none;
       padding: 4px 6px;
       height: 24px;
-      font-family: var(--ui-font-mono);
-      font-weight: var(--ui-weight-label);
-      font-stretch: var(--ui-stretch-condensed);
-      font-size: 10px;
-      letter-spacing: -0.3px;
-      line-height: 12px;
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       box-sizing: border-box;
     }
 
@@ -295,7 +299,7 @@ export class Form extends SimpleElement {
       const labelElement = document.createElement("div");
       labelElement.classList.add("ui-form-label", fieldItem.type);
       if (fieldItem.type === "header") {
-        labelElement.classList.add(`header-${fieldItem.level || "h3"}`);
+        labelElement.classList.add(`header-${fieldItem.level || "h4"}`);
       }
       const valueElement = document.createElement("div");
       valueElement.classList.add("ui-form-value", fieldItem.type);

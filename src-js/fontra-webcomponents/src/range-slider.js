@@ -28,7 +28,9 @@ export class RangeSlider extends html.UnlitElement {
       display: grid;
       grid-template-columns: min-content auto;
       gap: 0.5em;
-      font-family: fontra-ui-regular, sans-serif;
+      /* ui/label/S */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
       font-feature-settings: "tnum" 1;
     }
 
@@ -160,9 +162,9 @@ export class RangeSlider extends html.UnlitElement {
       margin: 0;
 
       text-align: center;
-      font-family: fontra-ui-regular;
+      font: inherit;
+      letter-spacing: inherit;
       font-feature-settings: "tnum" 1;
-      font-size: 0.9em;
       vertical-align: middle;
     }
 

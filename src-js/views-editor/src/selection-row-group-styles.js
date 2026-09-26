@@ -126,12 +126,8 @@ export const SELECTION_ROW_GROUP_STYLES = `
 
   /* ui/heading/h5 */
   .row-group > .selection-row-group-label {
-    font-family: var(--ui-font-mono);
-    font-weight: var(--ui-weight-heading-h5);
-    font-stretch: var(--ui-stretch-narrow);
-    font-size: 9px;
-    line-height: 10px;
-    letter-spacing: -0.03em;
+    font: var(--ui-text-heading-h5);
+    letter-spacing: var(--ui-tracking);
     color: #8e8e8e;
   }
 

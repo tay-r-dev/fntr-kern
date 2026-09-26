@@ -57,12 +57,9 @@ export class SegmentedControl extends UnlitElement {
       border-radius: 4px;
       background: transparent;
       color: var(--segmented-control-off-text-color);
-      font: inherit;
-      font-family: var(--ui-font-mono);
-      font-weight: var(--ui-weight-label);
-      font-stretch: var(--ui-stretch-condensed);
-      font-size: 11px;
-      letter-spacing: -0.11px;
+      /* ui/label/S */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
       white-space: nowrap;
       cursor: pointer;
       box-sizing: border-box;
@@ -96,8 +93,9 @@ export class SegmentedControl extends UnlitElement {
 
     :host([small]) button {
       border-radius: 999px;
-      font-size: 10px;
-      letter-spacing: -0.3px;
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       height: var(--segmented-control-button-height, 100%);
     }
   `;

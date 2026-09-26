@@ -44,7 +44,9 @@ export class IconButton extends UnlitElement {
       height: 100%;
       cursor: pointer;
       contain: content;
-      font: inherit;
+      /* ui/label/S, for a text segment. */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
     }
 
     /* The icon fills the button's height and keeps its proportions; the
@@ -148,6 +150,9 @@ export class IconButton extends UnlitElement {
       border-radius: 0.8em;
       background: var(--overflow-popover-background-color);
       color: inherit;
+      /* ui/label/S, for the checks and toggles a card holds. */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking-label-s);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }
   `;
