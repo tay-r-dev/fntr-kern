@@ -30,7 +30,13 @@ export class Accordion extends UnlitElement {
     grid-template-columns: auto 1fr auto;
     justify-content: start;
     align-items: center;
-    font-weight: bold;
+    /* Figma heading/H1: light weight, uppercase, larger and looser than the
+       body text it sits above. */
+    font-weight: normal;
+    font-size: 16px;
+    line-height: 16px;
+    letter-spacing: -0.48px;
+    text-transform: uppercase;
     cursor: pointer;
   }
 

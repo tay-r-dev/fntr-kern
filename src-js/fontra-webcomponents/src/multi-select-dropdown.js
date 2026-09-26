@@ -24,10 +24,23 @@ import { themeColorCSS } from "./theme-support.js";
 // An item may carry `group`: the items of one group are one choice among
 // themselves, inside an otherwise multi-select list. `{divider: true}` draws a
 // line. "change" also carries the picked item in event.detail.item.
+// Figma input/dropdown design: a white box with a faint border, a slightly
+// darker fill and border on hover, and a lime accent border while pressed --
+// the same accent compact-scrub-field.js uses, so its dark-theme counterparts
+// are reused here too.
 const colors = {
-  "multi-select-dropdown-border-color": ["#bbb", "#555"],
-  "multi-select-dropdown-text-color": ["#000", "#fff"],
-  "multi-select-dropdown-hover-color": ["#eee", "#444"],
+  "multi-select-dropdown-background-color": ["#fff", "#2c2c2c"],
+  "multi-select-dropdown-border-color": [
+    "rgba(0, 0, 0, 0.1)",
+    "rgba(255, 255, 255, 0.14)",
+  ],
+  "multi-select-dropdown-hover-color": ["#f7f7f7", "#464646"],
+  "multi-select-dropdown-hover-border-color": [
+    "rgba(0, 0, 0, 0.12)",
+    "rgba(255, 255, 255, 0.18)",
+  ],
+  "multi-select-dropdown-active-border-color": ["#def280", "#8fae4a"],
+  "multi-select-dropdown-text-color": ["#303030", "#e0e0e0"],
 };
 
 export class MultiSelectDropdown extends UnlitElement {
@@ -40,13 +53,16 @@ export class MultiSelectDropdown extends UnlitElement {
 
     button {
       cursor: pointer;
-      background-color: transparent;
+      background-color: var(--multi-select-dropdown-background-color);
       color: var(--multi-select-dropdown-text-color);
       border: 1px solid var(--multi-select-dropdown-border-color);
-      border-radius: 0.25em;
-      padding: 0.2em 0.6em;
+      border-radius: 6px;
+      padding: 4px 6px;
+      gap: 4px;
       font-family: inherit;
-      font-size: inherit;
+      font-size: 10px;
+      letter-spacing: -0.3px;
+      line-height: 12px;
       box-sizing: border-box;
       height: var(--multi-select-dropdown-height, auto);
       width: var(--multi-select-dropdown-width, auto);
@@ -57,6 +73,19 @@ export class MultiSelectDropdown extends UnlitElement {
 
     button:hover {
       background-color: var(--multi-select-dropdown-hover-color);
+      border-color: var(--multi-select-dropdown-hover-border-color);
+    }
+
+    /* Pressed: the lime accent border from the Figma design's "press" state.
+       The "selecting" (open) state keeps the rest-state border. */
+    button:active {
+      border-color: var(--multi-select-dropdown-active-border-color);
+    }
+
+    /* The chevron flips while the list is open, matching the design's
+       "selecting" state. */
+    button.open .triangle {
+      transform: scaleY(-1);
     }
 
     /* A label longer than the button ends in an ellipsis; the triangle stays. */
@@ -79,6 +108,7 @@ export class MultiSelectDropdown extends UnlitElement {
     /* Ticket 48: the icon mode, which is how the overflow button draws. */
     button.icon-mode {
       display: flex;
+      background-color: transparent;
       border: none;
       padding: 0;
       width: 1.5em;
@@ -235,17 +265,21 @@ export class MultiSelectDropdown extends UnlitElement {
       menuItems.push(MenuItemDivider);
       menuItems.push({ title: this._note, enabled: () => false });
     }
+    this._button.classList.add("open");
     this._menu = showMenu(
       menuItems,
       { x: rect.left, y: rect.bottom },
       {
         onClose: () => {
           this._menu = null;
+          this._button.classList.remove("open");
         },
         onSelect: () => {
           this._menu = null;
           if (!this._singleChoice) {
             this.openMenu();
+          } else {
+            this._button.classList.remove("open");
           }
         },
       }

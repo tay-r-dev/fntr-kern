@@ -74,7 +74,7 @@ export class Form extends SimpleElement {
 
     .ui-form-label.header {
       overflow-x: unset;
-      font-weight: bold;
+      font-weight: normal;
       grid-column: 1 / span 2;
       text-align: left;
       display: grid;
@@ -82,6 +82,30 @@ export class Form extends SimpleElement {
       justify-content: space-between;
       align-items: center;
       margin-bottom: 0.35rem;
+    }
+
+    /* Figma heading design: H2/H3 are uppercase and shrink by size, H4 is a
+       small mixed-case section label (e.g. "Wing", "Bracket", "Operations").
+       A header with no explicit level defaults to H3 -- the closest match to
+       this row's previous plain-bold look. */
+    .ui-form-label.header-h2 {
+      font-size: 13px;
+      line-height: 14px;
+      letter-spacing: -0.39px;
+      text-transform: uppercase;
+    }
+
+    .ui-form-label.header-h3 {
+      font-size: 12px;
+      line-height: 12px;
+      letter-spacing: -0.36px;
+      text-transform: uppercase;
+    }
+
+    .ui-form-label.header-h4 {
+      font-size: 9px;
+      line-height: 10px;
+      letter-spacing: -0.27px;
     }
 
     input {
@@ -120,6 +144,23 @@ export class Form extends SimpleElement {
 
     .ui-form-value input[type="number"] {
       width: 4em;
+    }
+
+    /* Figma input/dropdown design's closed (rest/filled) look, applied to
+       the plain native select -- same box, same type scale. */
+    select {
+      background-color: var(--text-input-background-color);
+      color: var(--text-input-foreground-color);
+      border-radius: 6px;
+      border: none;
+      outline: none;
+      padding: 4px 6px;
+      height: 24px;
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: -0.3px;
+      line-height: 12px;
+      box-sizing: border-box;
     }
 
     /* Read-only companion to an editable expression: the resolved number sits
@@ -235,6 +276,9 @@ export class Form extends SimpleElement {
 
       const labelElement = document.createElement("div");
       labelElement.classList.add("ui-form-label", fieldItem.type);
+      if (fieldItem.type === "header") {
+        labelElement.classList.add(`header-${fieldItem.level || "h3"}`);
+      }
       const valueElement = document.createElement("div");
       valueElement.classList.add("ui-form-value", fieldItem.type);
       if (fieldItem.width) {
