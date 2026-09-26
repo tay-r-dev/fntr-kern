@@ -35,21 +35,6 @@ export class Form extends SimpleElement {
       padding: 0em;
     }
 
-    /* ui/label/XS for row labels, values and whole-width rows; label/S for
-       checks. */
-    .ui-form-label,
-    .ui-form-value,
-    .ui-form-full-width {
-      font: var(--ui-text-label-xs);
-      letter-spacing: var(--ui-tracking);
-    }
-
-    .ui-form-label.checkbox,
-    .ui-form-value.checkbox {
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking-label-s);
-    }
-
     .ui-form-label {
       text-align: right;
       overflow-x: hidden;
@@ -134,8 +119,8 @@ export class Form extends SimpleElement {
       border: none;
       outline: none;
       padding: 0.1em 0.3em;
-      font: inherit;
-      letter-spacing: inherit;
+      font-family: "fontra-ui-regular";
+      font-size: 100%;
     }
 
     .ui-form-value {
@@ -179,9 +164,10 @@ export class Form extends SimpleElement {
       outline: none;
       padding: 4px 6px;
       height: 24px;
-      /* ui/label/XS */
+      /* ui/label/XS's size, in the old UI font: every form's select. */
       font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
+      font-family: var(--ui-font-old);
       box-sizing: border-box;
     }
 

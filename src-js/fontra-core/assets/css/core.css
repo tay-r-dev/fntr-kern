@@ -1,12 +1,12 @@
 @font-face {
   font-family: "fontra-ui-regular";
-  src: url("../fonts/MartianMono-StdRg.woff2") format("woff2");
+  src: url("../fonts/InriaSans-Light.woff2") format("woff2");
   font-weight: 400;
 }
 
 @font-face {
   font-family: "fontra-ui-regular";
-  src: url("../fonts/MartianMono-StdBd.woff2") format("woff2");
+  src: url("../fonts/InriaSans-Medium.woff2") format("woff2");
   font-weight: 700;
 }
 
@@ -39,10 +39,14 @@
   --top-bar-height: 35px;
 
   /* The Figma text styles, one token each: use `font: var(--ui-text-...)`
-     with the matching letter-spacing, and set no size of your own.
+     with the matching letter-spacing, and set no size of your own. They are
+     Martian Mono, which is for the new components and headings only; an old
+     control takes a style's size in the UI font by setting
+     `font-family: var(--ui-font-old)` after the token.
      Condensed is wdth 75; semi-condensed (87.5) is the nearest file to
      wdth 90. Weight 220 has no file, so the labels use Light (300). */
   --ui-font-mono: "fontra-ui-mono", "fontra-ui-regular", monospace;
+  --ui-font-old: "fontra-ui-regular", sans-serif;
   --ui-text-heading-h2: 300 condensed 16px / 16px var(--ui-font-mono);
   --ui-text-heading-h3: 300 condensed 13px / 14px var(--ui-font-mono);
   --ui-text-heading-h4: 300 condensed 12px / 12px var(--ui-font-mono);

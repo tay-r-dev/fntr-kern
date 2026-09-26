@@ -150,9 +150,11 @@ export class IconButton extends UnlitElement {
       border-radius: 0.8em;
       background: var(--overflow-popover-background-color);
       color: inherit;
-      /* ui/label/S, for the checks and toggles a card holds. */
+      /* ui/label/S's size in the old UI font, for the checks and toggles
+         a card holds. */
       font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking-label-s);
+      font-family: var(--ui-font-old);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }
   `;

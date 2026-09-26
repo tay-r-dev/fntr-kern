@@ -28,9 +28,10 @@ export class RangeSlider extends html.UnlitElement {
       display: grid;
       grid-template-columns: min-content auto;
       gap: 0.5em;
-      /* ui/label/S */
+      /* ui/label/S's size, in the old UI font */
       font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking-label-s);
+      font-family: var(--ui-font-old);
       font-feature-settings: "tnum" 1;
     }
 

@@ -144,4 +144,22 @@ export const SELECTION_ROW_GROUP_STYLES = `
   .row-pair .tray {
     justify-self: stretch;
   }
+
+  /* The redesigned panels' plain text takes the design's sizes in the old
+     UI font: label/XS for row labels, values and whole-width rows, label/S
+     for checks. The new components and headings bring Martian Mono. */
+  .ui-form-label,
+  .ui-form-value,
+  .ui-form-full-width {
+    font: var(--ui-text-label-xs);
+    letter-spacing: var(--ui-tracking);
+    font-family: var(--ui-font-old);
+  }
+
+  .ui-form-label.checkbox,
+  .ui-form-value.checkbox {
+    font: var(--ui-text-label-s);
+    letter-spacing: var(--ui-tracking-label-s);
+    font-family: var(--ui-font-old);
+  }
 `;
