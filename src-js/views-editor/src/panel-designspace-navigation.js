@@ -71,6 +71,7 @@ import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the 
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/range-slider.js";
+import "@fontra/web-components/segmented-control.js"; // for the Skeleton heading's Gizmo/Handles
 import {
   Accordion,
   groupAccordionHeaderButtons,
@@ -553,6 +554,30 @@ export default class DesignspaceNavigationPanel extends Panel {
   // listener keeps the toggle from also opening or closing the accordion --
   // the same job makeAccordionHeaderButton's icon-button does for the
   // existing header icons via stopImmediatePropagation in its own render.
+  // How the generated outline is edited: through its gizmos or its handles.
+  // The gizmo layer's own switch is the single source of truth, so this and
+  // the View menu cannot drift apart.
+  _makeGizmoHandlesControl() {
+    const key = "fontra.skeleton.generated-tunni";
+    const settings = this.editorController.visualizationLayersSettings;
+    const control = html.createDomElement("segmented-control", {
+      options: ["gizmo", "handles"].map((value) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.mode.${value}`),
+      })),
+      value: settings.model[key] === true ? "gizmo" : "handles",
+    });
+    control.setAttribute("small", "");
+    control.addEventListener("click", (event) => event.stopPropagation());
+    control.addEventListener("change", (event) => {
+      settings.model[key] = event.detail.value === "gizmo";
+    });
+    settings.addKeyListener(key, (event) => {
+      control.value = event.newValue === true ? "gizmo" : "handles";
+    });
+    return control;
+  }
+
   _makeVisualHeaderToggle(id) {
     const toggle = html.createDomElement("labeled-toggle", { id });
     toggle.addEventListener("click", (event) => event.stopPropagation());
@@ -938,6 +963,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         // draws while the generated outline is hidden and SpeedPunk is on.
         id: "skeleton-visual-accordion-item",
         label: translate("sidebar.designspace-navigation.skeleton"),
+        auxiliaryHeaderElement: this._makeGizmoHandlesControl(),
         open: false,
         content: html.div(
           {

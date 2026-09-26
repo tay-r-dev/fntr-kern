@@ -145,33 +145,6 @@ export default class TransformationPanel {
      (selection-row-group-styles.js). */
   ${SELECTION_ROW_GROUP_STYLES}
 
-  .transform-group {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding-bottom: 12px;
-  }
-
-  .transform-group-label {
-    font-size: 9px;
-    line-height: 10px;
-    letter-spacing: -0.03em;
-    color: #8e8e8e;
-  }
-
-  .transform-pair {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 8px;
-  }
-
-  .transform-pair > .transform-group {
-    padding-bottom: 0;
-  }
-
-  .transform-pair .tray {
-    justify-self: stretch;
-  }
 `;
 
   constructor(editorController, contentElement) {
@@ -838,11 +811,10 @@ export default class TransformationPanel {
     const tray = (buttons) =>
       html.div({ class: "selection-row-group-icons tray" }, buttons);
     const groupLabel = (key) =>
-      html.span({ class: "transform-group-label" }, [translate(key)]);
-    const pairRow = (left, right) =>
-      html.div({ class: "transform-pair" }, [left, right]);
+      html.span({ class: "selection-row-group-label" }, [translate(key)]);
+    const pairRow = (left, right) => html.div({ class: "row-pair" }, [left, right]);
     const labeledGroup = (key, element) =>
-      html.div({ class: "transform-group" }, [groupLabel(key), element]);
+      html.div({ class: "row-group" }, [groupLabel(key), element]);
 
     // The distribution spacing lives in each distribute button's dropdown;
     // both write the one parameter.
@@ -864,7 +836,7 @@ export default class TransformationPanel {
       });
 
     const K = "sidebar.selection-transformation";
-    const operations = html.div({ class: "transform-group" }, [
+    const operations = html.div({ class: "row-group" }, [
       groupLabel(`${K}.operations`),
       pairRow(
         tray([

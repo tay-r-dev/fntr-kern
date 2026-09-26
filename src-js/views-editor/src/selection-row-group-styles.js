@@ -113,4 +113,34 @@ export const SELECTION_ROW_GROUP_STYLES = `
     --segmented-control-tray-padding: 0;
     --segmented-control-button-height: 100%;
   }
+
+  /* A labeled group over its tray, and two such groups sharing a row half
+     and half (the Transform and Skeleton panels). */
+  .row-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-bottom: 12px;
+  }
+
+  .row-group > .selection-row-group-label {
+    font-size: 9px;
+    line-height: 10px;
+    letter-spacing: -0.03em;
+    color: #8e8e8e;
+  }
+
+  .row-pair {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .row-pair > .row-group {
+    padding-bottom: 0;
+  }
+
+  .row-pair .tray {
+    justify-self: stretch;
+  }
 `;

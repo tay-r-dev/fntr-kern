@@ -408,36 +408,6 @@ export default class SkeletonParametersPanel {
       this.updateBound
     );
 
-    // Ticket 44: a Gizmo/Handles pair at the Skeleton heading's right,
-    // replacing the Ribs section's Generated gizmos checkbox. Built once
-    // here rather than inside update()'s formContents, so the same node
-    // -- and the View menu's own external writes to it -- keep working
-    // whether the next update() rebuilds the form or takes its in-place,
-    // values-only path (formContentsLayoutSignature unchanged).
-    const gizmoHandlesOptions = [
-      { value: "gizmo", label: translate("sidebar.skeleton-parameters.mode.gizmo") },
-      {
-        value: "handles",
-        label: translate("sidebar.skeleton-parameters.mode.handles"),
-      },
-    ];
-    this.gizmoHandlesControl = html.createDomElement("segmented-control", {
-      options: gizmoHandlesOptions,
-      value: this._generatedGizmosEnabled() ? "gizmo" : "handles",
-    });
-    this.gizmoHandlesControl.setAttribute("small", "");
-    this.gizmoHandlesControl.addEventListener("change", (event) => {
-      this.editorController.visualizationLayersSettings.model[
-        "fontra.skeleton.generated-tunni"
-      ] = event.detail.value === "gizmo";
-    });
-    this.editorController.visualizationLayersSettings.addKeyListener(
-      "fontra.skeleton.generated-tunni",
-      (event) => {
-        this.gizmoHandlesControl.value = event.newValue === true ? "gizmo" : "handles";
-      }
-    );
-
     // Ticket 45: the chain between Left and Right, bound to `width:linked`.
     // Built once, like the Gizmo/Handles pair, so a values-only refresh keeps
     // the same node and the rebuild just re-places it. Its state is set on
@@ -758,11 +728,12 @@ export default class SkeletonParametersPanel {
         { style: "display: flex; flex-direction: column; gap: 0.25em;" },
         children
       );
-    this.ribOverflow = html.createDomElement("overflow-popover", {
+    this.ribOverflow = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/lock.svg",
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });
-    this.ribOverflow.content = html.div(
+    this.ribOverflow.dropdown = html.div(
       {
         class: "selection-row-group-icons",
         style: "display: flex; flex-direction: column; align-items: start; gap: 0.9em;",
@@ -1036,19 +1007,29 @@ export default class SkeletonParametersPanel {
       },
       [...this.serifGroupBlocks, this.serifAxisRow, this.serifCupBlock]
     );
-    // Projection, Reset and Rib, one row spread across the panel.
-    this.generationIconRow = html.div({ class: "selection-row-group spread" }, [
-      ...iconGroup("group.projection", [
-        this.projectionControl,
-        this.projectionOverflow,
+    // Reset and Rib share one row, each group half of it.
+    this.generationIconRow = html.div({ class: "row-pair" }, [
+      html.div({ class: "row-group" }, [
+        ...iconGroup("group.reset", [
+          this.resetHandleButton,
+          this.resetSlideButton,
+          this.resetAllButton,
+        ]),
       ]),
-      ...iconGroup("group.reset", [
-        this.resetHandleButton,
-        this.resetSlideButton,
-        this.resetAllButton,
+      html.div({ class: "row-group" }, [
+        ...iconGroup("group.rib", [
+          this.tiedButton,
+          this.detachButton,
+          this.ribOverflow,
+        ]),
       ]),
-      ...iconGroup("group.rib", [this.tiedButton, this.detachButton, this.ribOverflow]),
     ]);
+    // Projection sits in the Skeleton heading, with its options beside it.
+    this.projectionControl.setAttribute("small", "");
+    this.projectionHeader = html.div(
+      { style: "display: flex; align-items: center; gap: 4px;" },
+      [this.projectionControl, this.projectionOverflow]
+    );
   }
 
   // One compact scrub field that lives for the life of the panel. A drag runs
@@ -1980,7 +1961,7 @@ export default class SkeletonParametersPanel {
       {
         type: "header",
         label: translate("sidebar.skeleton-parameters.title"),
-        auxiliaryElement: this.gizmoHandlesControl,
+        auxiliaryElement: this.projectionHeader,
       },
     ];
     const widthPoints = collectWidthEditPoints(panelSelection);
@@ -3055,18 +3036,6 @@ export default class SkeletonParametersPanel {
       this._widthPoints(),
       values,
       this._undo("set-corner")
-    );
-  }
-
-  // The gizmo layer's own switch is the single source of truth for the mode, so
-  // the panel checkbox and the View menu can never drift apart. Nothing about
-  // this is stored in the glyph: it is how the outline is edited, not what the
-  // outline is.
-  _generatedGizmosEnabled() {
-    return (
-      this.editorController.visualizationLayersSettings.model[
-        "fontra.skeleton.generated-tunni"
-      ] === true
     );
   }
 
