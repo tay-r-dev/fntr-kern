@@ -1057,9 +1057,32 @@ describe("the curvature gizmo at a bulb terminal", () => {
       const snapshots = walls.filter((segment) =>
         segment.provenance.some((entry) => entry?.constructionSegment)
       );
-      expect(snapshots).to.have.length(capBallEasing ? 0 : 1);
-      if (snapshots.length) expect(snapshots[0].side).to.equal("right");
+      expect(snapshots).to.have.length(capBallEasing ? 1 : 2);
+      expect(snapshots.some((segment) => segment.side === "left")).to.equal(true);
     }
+  });
+
+  it("reads the outer wall's original tension after its entry slides", () => {
+    const layer = makeBulbGlyph({ capBallSide: "left", capBallEasing: 0.5 });
+    const outer = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
+      (segment) =>
+        segment.side === "left" && !segment.provenance.some((p) => p?.capCurvatureField)
+    );
+    const original = outer.provenance.find(
+      (p) => p?.constructionSegment
+    ).constructionSegment;
+    const expected = calculateSegmentTension(
+      original[1],
+      original[0],
+      original[2],
+      original[3]
+    );
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: outer.points,
+      provenance: outer.provenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(expected, 1e-3);
   });
 
   // A cut segment's two pieces are a different curve from the one the generator

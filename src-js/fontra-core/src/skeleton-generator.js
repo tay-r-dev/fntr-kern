@@ -1,5 +1,5 @@
 import { Bezier } from "bezier-js";
-import { buildBulbArc, makeBulbBall } from "./bulb-geometry.js";
+import { buildBulbArc, makeBulbBall, slideBulbEntry } from "./bulb-geometry.js";
 import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
 import { computeHandlesFromFragment } from "./path-functions.js";
@@ -6489,7 +6489,7 @@ function resolveDropCapOuterSide(segment, point, skeletonContour, leftHW, rightH
   return rightHW > leftHW ? "right" : "left";
 }
 
-// The actual wall direction is an input to the join, never a curve to refit.
+// Read the original wall tangent before the entry slide refits its last segment.
 function getSideTerminalTangent(sidePoints, position) {
   const segment = getRoundCapTerminalSegment(sidePoints, position)?.segmentPoints;
   if (!segment) return null;
@@ -6798,10 +6798,10 @@ function buildDropCap({
   });
   if (!ball) return null;
   const ex = ball.ex;
-  // The outer wall remains intact all the way to the rib apex.
+  // The rib fixes the construction. Only the emitted entry is V-slid below.
   tangency.skipColinear = true;
   tangency.smooth = true;
-  const trimmedOuterSide = outerSideArr;
+  let trimmedOuterSide = outerSideArr;
 
   const easing = clampCapBallEasing(capBallEasing);
   const easeCurvature = clampCapBallEaseCurvature(capBallEaseCurvature);
@@ -6860,19 +6860,48 @@ function buildDropCap({
   while (thetaInner > thetaOuter + twoPi) {
     thetaInner -= twoPi;
   }
+  // Preserve the existing inner cut and neck attachment. Only the intermediate
+  // ball points are glyph-axis apexes; the neck is a separate join endpoint.
   const sweep = thetaInner - thetaOuter;
-
-  // For a soft neck, back the ball attachment off along the arc as well (not
-  // just the inner trim back along the edge). Ending the arc before the corner
-  // means the fillet cuts across it and eases in from above the edge, instead
-  // of continuing the arc's tangent and overshooting below it into a dip. The
-  // absolute cap keeps a very soft neck from eating the ball itself: past it
-  // the extra tension only reaches further back along the edge.
   const backoff =
     mode === "soft" ? easing * Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
   const thetaArcEnd = thetaInner - backoff;
 
-  const arc = buildBulbArc(ball, thetaArcEnd);
+  let arc = buildBulbArc(ball, thetaArcEnd);
+  const outerSegment = getSideSegmentsFromTerminal(outerSideArr, position)[0];
+  if (outerSegment) {
+    let wall =
+      position === "end"
+        ? outerSegment.segmentPoints
+        : [...outerSegment.segmentPoints].reverse();
+    if (wall.length === 2) {
+      const [a, b] = wall;
+      wall = [
+        a,
+        { ...vector.interpolateVectors(a, b, 1 / 3), type: "cubic" },
+        { ...vector.interpolateVectors(a, b, 2 / 3), type: "cubic" },
+        b,
+      ];
+    }
+    const slid = slideBulbEntry(wall, arc);
+    if (slid) {
+      const entry = slid.wall.at(-1);
+      if (entry._provenance)
+        entry._provenance = {
+          ...entry._provenance,
+          constructionSegment: (position === "end" ? wall : [...wall].reverse()).map(
+            ({ x, y }) => ({ x, y })
+          ),
+        };
+      trimmedOuterSide =
+        position === "end"
+          ? [...outerSideArr.slice(0, outerSegment.segmentStartIndex), ...slid.wall]
+          : [...slid.wall]
+              .reverse()
+              .concat(outerSideArr.slice(outerSegment.segmentEndIndex + 1));
+      arc = slid.arc;
+    }
+  }
   arc.forEach((point, index) => {
     point._provenance = {
       skeletonPointId: endpoint._sourcePointId,
@@ -6981,14 +7010,14 @@ function buildDropCap({
   } else if (mode === "bridge") {
     // Small ball: connect the last arc on-curve to the inner terminal with a
     // short concave neck cubic, scaled by tension.
-    const neckPoint = ball.at(thetaInner);
+    const neckPoint = ball.at(thetaArcEnd);
     const innerTerminal =
       position === "start"
         ? getFirstOnCurvePoint(innerSideArr)
         : getLastOnCurvePoint(innerSideArr);
     const chord = vector.distance(neckPoint, innerTerminal);
     const ballTangent = orientDirectionToward(
-      ball.tangentAt(thetaInner),
+      ball.tangentAt(thetaArcEnd),
       vector.subVectors(innerTerminal, neckPoint)
     );
     const innerTangent = orientDirectionToward(

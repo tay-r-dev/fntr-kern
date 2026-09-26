@@ -18,12 +18,20 @@ node scripts/make-bulb-comparison.mjs
 An optional second argument writes the inline comparison fragment to that path.
 `bulb-comparison.template.html` is the editable page fragment.
 
-The new ball's outer apex is the outer rib end. Its front projects one Size
-radius beyond the rib (half the ball's diameter). Shape stretches only its rear
-half. Easing again cuts back along the inner wall and rounds the ball-to-wall
-neck, using the former crossing and neck construction. The outer wall is kept
-complete. Zero easing keeps a crisp incision; a ball that cannot reach the inner
-wall uses the short bridge neck. Ball arc points follow the rib frame.
+The ball is constructed at the outer rib end with a forward Size radius
+(half the diameter). Shape stretches its rear half. The emitted entry then
+V-slides toward the next ball point to match curvature; its preceding wall
+segment is refit by the same operation used by the editor's V modifier. If
+that interval cannot reach harmony, the shared harmonizer adjusts only the
+wall handles. The ball arc remains fixed.
+
+Intermediate ball points are the true horizontal/vertical extrema in glyph
+coordinates, with axis-aligned handles. The neck attachment is explicitly
+exempt: it keeps the existing inner-wall cut and easing construction. Zero
+easing keeps a crisp incision; small balls retain their bridge neck.
+
+Points and handles are shown by default. Both panels use actual generated
+outlines, and the new panel uses the current working-tree generator.
 
 Validation: all 72 settings and all toggles exercised in a DOM runtime, with no
 script errors; default and maximum geometry inspected in a static rendering.

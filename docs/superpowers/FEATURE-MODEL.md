@@ -539,41 +539,47 @@ plus the tip points. It takes the handle lengths from a tension parameter. The *
 cap that does not simply close the two side ends. It trims a length off each side first, and
 splices its own terminal on. See §8.
 
-The **drop** cap (the bulb) has its outer apex at the outer endpoint rib end
-(corrected 2026-09-26). The outer wall runs intact to that point. The ball starts
-there directly, without an approach segment or an outer-wall trim search.
+The **drop** cap (the bulb) is constructed at the outer endpoint rib end.
+The rib anchors the ball; the emitted entry is then V-slid toward the next ball
+point until the wall and ball have matching tangent and curvature (2026-09-27).
 
 `bulb-geometry.js` builds the ball in the rib frame. Its outward direction is
-the actual outer wall tangent; its transverse direction follows the rib. At an
-angle-locked rib this frame can shear the ball, so the inner-wall intersection
-uses the inverse frame rather than dot products against assumed square axes.
+the original outer wall tangent; its transverse direction follows the rib.
+An angle lock can shear that frame, so inner-wall intersections use its inverse.
 
-- **Size** sets radius R to half the stroke width times the ratio. The forward
-  half reaches exactly R beyond the rib: half the ball's diameter, as clarified
-  by the designer. Neither Shape nor Easing moves that front.
-- **Shape** stretches the rear half to `R * (1 + 1.4 * shape)`; the forward half
-  remains round in the ball frame. Its two halves meet tangentially.
-- **Easing** again cuts back along the inner wall from the rear ball crossing
-  toward the preceding on-curve. The former crossing scan, eased cut, and neck
-  are reused. Zero keeps the crisp incision; positive easing backs off the ball
-  attachment and joins it through the neck. Small balls use the former bridge
-  to the inner rib end when they cannot reach the wall.
-- **Neck curvature** still uses `capBallEaseCurvature`. The eased neck consumes
-  the terminal inner-wall piece and meets the stem's own on-curve. Its original
-  construction chord is published so a still gizmo grab preserves its pin.
+- **Size** sets R to half the stroke width times the ratio. The construction
+  extends R forward: half the diameter, as clarified by the designer. Orthogonal
+  arc cubics approximate that reach to normal circle-cubic accuracy.
+- **Shape** stretches the rear half to `R * (1 + 1.4 * shape)`; the front stays
+  fixed. Cubics crossing the two halves blend their endpoint tangents.
+- **Easing** keeps the existing inner-wall crossing, cut and neck. Zero gives a
+  crisp incision. Small balls that cannot reach the wall retain the bridge neck.
+  The designer explicitly exempted the neck attachment from the apex rule.
+- **Neck curvature** still uses `capBallEaseCurvature` and its construction
+  snapshot, so a still gizmo grab preserves the pin.
 
-The outer wall's own curvature gizmo remains. At zero easing the cut inner
-wall carries its untrimmed construction segment and gizmo; with easing that
-gizmo moves onto the neck. Cap provenance prevents direct point or handle
-editing and the on-curve gizmo. This restores the prior inner-wall behavior.
+The intermediate ball on-curves are horizontal/vertical extrema in **glyph
+coordinates**, with exactly axis-aligned handles. No rib-frame poles are emitted
+as extra ball points. The entry and neck/incision remain join endpoints.
+The number of visible apexes can change as the arc rotates or the cut moves;
+total topology is not promised across those changes.
 
-The ball arc keeps four slots: forward extreme, inner extreme, rear extreme,
-and neck attachment. Unreached extremes collapse onto the attachment; rotation
-does not select different glyph-axis extremes. The restored inner cut/neck modes
-can still change total outline topology, as before the previous rewrite.
+The entry solve reuses `makeSlideCandidate` from `point-slide.js`. It scans for
+the first curvature crossing along the next arc, then bisects. Provisional
+candidates use fewer fit iterations; the emitted slide uses the normal full
+refit. Its kept ball piece is exact. If the next apex leaves too little room for
+a match, the shared nearest harmonizer adjusts only the preceding wall's handle
+lengths within its normal bounds. It never changes the retained ball arc. As in
+the existing harmonizer, opposite-bend joins compare curvature magnitudes.
+Degenerate or handle-limited cases keep the bounded result, not an extrapolation
+past the next apex.
 
-Outer-wall tangency is preserved; G2 matching at the rib is not imposed. The
-colinearity pass must not rotate the outer wall handle to change this join.
+Only the terminal outer segment is refit. Its preceding anchor and tangent stay
+fixed; the rest of that wall is unchanged. Its original construction segment is
+published on the slid entry, so the wall gizmo measures the curve its pin governs.
+The inner wall gizmo lives above the crisp incision at zero easing and moves onto
+the neck at positive easing. Cap provenance still prevents direct point/handle
+editing of the neck and its on-curve gizmo.
 
 ### Step 5 — Assembly
 

@@ -1936,6 +1936,40 @@ page settings and its toggles ran without DOM script errors; the default and
 maximum examples were inspected as rendered outlines. Live browser/editor QA
 remains manual, as does bundling through the running watcher.
 
+### Orthogonal ball apexes and a V-slid entry (2026-09-27)
+
+The rib-frame poles were not the glyph's actual extrema, and a tangent join at
+the rib still had a curvature step. The designer proposed generating the ball
+first, then V-sliding its entry toward the next point until the join is harmonic.
+
+`bulb-geometry.js` now finds horizontal/vertical extrema on each ball half.
+Those are the intermediate on-curves, with exactly axis-aligned handles. The
+entry solve uses the editor's `makeSlideCandidate`; a coarse scan and bisection
+seek the first curvature crossing. Search candidates use an optional reduced
+fit iteration count, but the emitted candidate uses the ordinary full V-slide.
+A nearby axis apex can leave no crossing in the interval. The existing nearest
+harmonizer then adjusts only wall-side handles, retaining its normal bounds.
+The ball arc and apex positions do not change in that correction.
+
+**The neck stays as it was.** Forcing its attachment onto the preceding apex
+flattened the neck; moving it onto the following apex could loop large bulbs.
+The designer explicitly chose to exempt the neck attachment from the apex rule
+and keep the existing inner-wall cut and neck. Neither attempt remains in code.
+
+The slid outer segment publishes its original construction for the curvature
+gizmo. Both its still grab and the neck's still grab are regression tests.
+Other checks measure actual emitted join curvature, axis handles at several
+rotations, both ends and sides, single-sided and locked ribs, short strokes,
+straight terminals, and the exact ball piece retained by V-slide. Earlier
+bit-for-bit outer-wall preservation tests now check the preserved construction;
+the requested slide necessarily refits that final wall segment.
+
+**Validation:** full core suite: 2861 passing, with only the two previously
+recorded serif-easing failures. The bulb, gizmo, V-slide and skeleton-slide
+files contain 109 passing checks. All 72 comparison settings and the page
+toggles ran without DOM script errors; default/maximum outlines were rendered
+and inspected. Live editor/browser QA and the running bundler remain manual.
+
 ### Fixture gap
 
 No golden fixture moved for the corner rounding rework, the corpus carries no

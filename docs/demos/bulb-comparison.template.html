@@ -28,12 +28,12 @@
   </div>
   <div class="bulb-options">
     <label class="form-check"><input id="bulb-reference" class="form-check-input" type="checkbox" checked><span class="form-check-label">Original stroke</span></label>
-    <label class="form-check"><input id="bulb-nodes" class="form-check-input" type="checkbox"><span class="form-check-label">Points and handles</span></label>
+    <label class="form-check"><input id="bulb-nodes" class="form-check-input" type="checkbox" checked><span class="form-check-label">Points and handles</span></label>
     <label class="form-check"><input id="bulb-closeup" class="form-check-input" type="checkbox"><span class="form-check-label">Terminal close-up</span></label>
   </div>
   <div class="bulb-panels">
     <section class="bulb-panel"><h2>Old · cut into the walls</h2><svg id="bulb-old" class="bulb-plot" role="img" aria-label="Old generated bulb, cut into the stroke walls"></svg></section>
-    <section class="bulb-panel"><h2>New · apex at the rib</h2><svg id="bulb-new" class="bulb-plot" role="img" aria-label="New generated bulb, with the outer apex at the rib and a cut inner neck"></svg></section>
+    <section class="bulb-panel"><h2>New · orthogonal apexes + V-slide</h2><svg id="bulb-new" class="bulb-plot" role="img" aria-label="New generated bulb with glyph-axis apexes, a harmonious slid entry, and the existing inner neck"></svg></section>
   </div>
   <div class="bulb-legend text-small"><span><i class="swatch"></i>Generated outline</span><span><i class="swatch skeleton"></i>Skeleton and endpoint rib</span><span><i class="swatch reference"></i>Original stroke</span></div>
   <div id="bulb-status" class="bulb-caption text-small" aria-live="polite"></div>
@@ -79,7 +79,7 @@
           }
           g.append(el('circle',{cx:endpoint.x,cy:endpoint.y,r:4/scale,class:'bulb-endpoint'}));
         }
-        $('status').textContent=`Same curve, same 80-unit stroke. Old: ${data.commit}. New: rib apex; ${40*ratio}-unit forward radius. Shape extends backward; Easing cuts the inner wall.`;
+        $('status').textContent=`Same curve, same 80-unit stroke. Old: ${data.commit}. New: ${40*ratio}-unit construction radius; entry V-slides toward the next apex. Ball apex handles are horizontal or vertical; the existing neck is retained.`;
       }
       root.querySelectorAll('input').forEach(input=>input.addEventListener('input',draw));
       new ResizeObserver(draw).observe(root.querySelector('.bulb-panels'));

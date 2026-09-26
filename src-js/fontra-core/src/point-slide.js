@@ -202,11 +202,13 @@ export function splitSegmentAt(segmentPoints, t) {
  * @param {number} pointIndex - array index of the on-curve point
  * @param {string} side - "previous" or "next"
  * @param {number} t - the parameter along that side's segment
+ * @param {Object} options - optional fitIterations for provisional search candidates;
+ *   omit it for the normal fully refined V-slide.
  * @returns {Object|null} {points, isClosed, movedPointIndex} or null where
  *   the point or the side does not exist. movedPointIndex always equals
  *   pointIndex: the dragged point keeps its slot
  */
-export function makeSlideCandidate(contour, pointIndex, side, t) {
+export function makeSlideCandidate(contour, pointIndex, side, t, options = {}) {
   const adjacent = getAdjacentSegments(contour, pointIndex);
   const segment = side === "previous" ? adjacent.previous : adjacent.next;
   const point = contour.points?.[pointIndex];
@@ -234,7 +236,14 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
     const slot = firstHandleIndex + i;
     newPoints[slot] = { ...contour.points[slot], x: handles[i].x, y: handles[i].y };
   }
-  refitFarSegment(newPoints, adjacent, side, replacement, destination);
+  refitFarSegment(
+    newPoints,
+    adjacent,
+    side,
+    replacement,
+    destination,
+    options.fitIterations ?? FIT_ITERATIONS
+  );
   return { points: newPoints, isClosed: contour.isClosed, movedPointIndex: pointIndex };
 }
 
@@ -259,7 +268,14 @@ export function makeSlideCandidate(contour, pointIndex, side, t) {
  * The far segment's handles always sit at startIndex + 1 and + 2, trailing
  * the array when it wraps.
  */
-function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
+function refitFarSegment(
+  newPoints,
+  adjacent,
+  side,
+  replacement,
+  destination,
+  fitIterations
+) {
   const far = side === "previous" ? adjacent.next : adjacent.previous;
   const traveled = side === "previous" ? adjacent.previous : adjacent.next;
   if (!far?.handles.length) return;
@@ -274,7 +290,7 @@ function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
   // unit, which leaves visible drift here; iterate to convergence instead.
   let parameters = chordLengthParameterize(samples);
   let bezier;
-  for (let i = 0; i < FIT_ITERATIONS; i++) {
+  for (let i = 0; i < fitIterations; i++) {
     bezier = generateBezier(samples, parameters, leftTangent, rightTangent);
     parameters = parameterizeAgainstCubic(bezier.points, samples, parameters);
   }

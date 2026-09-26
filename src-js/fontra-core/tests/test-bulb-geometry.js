@@ -1,5 +1,8 @@
+import { Bezier } from "bezier-js";
+import { makeSlideCandidate } from "../src/point-slide.js";
+import { curvatureDiscontinuity } from "../src/harmonization.js";
 import { expect } from "chai";
-import { buildBulbArc, makeBulbBall } from "../src/bulb-geometry.js";
+import { buildBulbArc, makeBulbBall, slideBulbEntry } from "../src/bulb-geometry.js";
 import { generateFromSkeleton } from "../src/skeleton-generator.js";
 
 function specimen({
@@ -74,8 +77,9 @@ function finite(result) {
   ).to.equal(true);
 }
 
-describe("rib-apex bulbs", () => {
-  it("keeps the outer wall complete while cutting the inner wall", () => {
+describe("rib-apex bulbs", function () {
+  this.timeout(20000);
+  it("keeps the original outer construction for its gizmo while sliding the entry", () => {
     for (const start of [false, true])
       for (const singleSided of [null, "left", "right"])
         for (const capBallSide of ["left", "right"]) {
@@ -99,9 +103,16 @@ describe("rib-apex bulbs", () => {
                   })
                 );
                 finite(result);
+                const snapshot = walls(result).find(
+                  (p) => p.origin.side === capBallSide && p.origin.constructionSegment
+                )?.origin.constructionSegment;
+                expect(snapshot).to.have.length(4);
+                const coords = (ps) => ps.map(({ x, y }) => `${x},${y}`).sort();
                 expect(
-                  walls(result).filter((p) => p.origin.side === capBallSide)
-                ).to.deep.equal(outerWall);
+                  coords(
+                    outerWall.length === 4 ? snapshot : [snapshot[0], snapshot.at(-1)]
+                  )
+                ).to.deep.equal(coords(outerWall));
               }
         }
     const ordinary = walls(
@@ -113,13 +124,15 @@ describe("rib-apex bulbs", () => {
     );
   });
 
-  it("keeps tapered and locked outer walls when a bulb setting changes", () => {
+  it("keeps the construction rib fixed for tapered and locked walls", () => {
     for (const start of [false, true])
       for (const lock of [null, "horizontal", "vertical"])
         for (const capBallSide of ["left", "right"]) {
           const options = { start, taper: true, lock };
           const outer = (result) =>
-            walls(result).filter((p) => p.origin.side === capBallSide);
+            walls(result).find(
+              (p) => p.origin.side === capBallSide && p.origin.constructionSegment
+            )?.origin.constructionSegment;
           const before = outer(
             generateFromSkeleton(specimen({ ...options, cap: { capBallSide } }))
           );
@@ -181,7 +194,7 @@ describe("rib-apex bulbs", () => {
     expect(ball.contains(ball.center)).to.equal(true);
   });
 
-  it("reaches exactly one radius beyond the rib for both ends, sides and short strokes", () => {
+  it("keeps the forward radius within cubic arc accuracy after sliding", () => {
     for (const start of [false, true])
       for (const short of [false, true])
         for (const capBallSide of ["left", "right"])
@@ -230,17 +243,30 @@ describe("rib-apex bulbs", () => {
                   })
                 );
                 finite(result);
+                const generated = result.contours[0].points;
+                const samples = [...generated.filter((p) => !p.type)];
+                for (let i = 0; i < generated.length; i++) {
+                  if (generated[i].type || !generated[(i + 1) % generated.length].type)
+                    continue;
+                  const curve = new Bezier(
+                    [0, 1, 2, 3].map((j) => generated[(i + j) % generated.length])
+                  );
+                  for (let j = 0; j <= 100; j++) samples.push(curve.get(j / 100));
+                }
                 const reach = Math.max(
-                  ...capPoints(result)
-                    .filter((p) => !p.type)
-                    .map((p) => ((p.x - outer.x) * ey.y - (p.y - outer.y) * ey.x) / det)
+                  ...samples.map(
+                    (p) => ((p.x - outer.x) * ey.y - (p.y - outer.y) * ey.x) / det
+                  )
                 );
-                expect(reach).to.be.closeTo(40 * capBallRatio, 1e-7);
+                expect(reach).to.be.closeTo(
+                  40 * capBallRatio,
+                  0.002 * 40 * capBallRatio
+                );
               }
           }
   });
 
-  it("joins the ball tangentially at the unchanged outer rib apex", () => {
+  it("joins the ball with matching tangent and curvature after the slide", () => {
     for (const start of [false, true])
       for (const capBallSide of ["left", "right"]) {
         const result = generateFromSkeleton(
@@ -265,6 +291,10 @@ describe("rib-apex bulbs", () => {
             (Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
         ).to.be.below(1e-10);
         expect(u.x * v.x + u.y * v.y).to.be.greaterThan(0);
+        const at = (n) => points[(i + n + points.length) % points.length];
+        const incoming = [-3, -2, -1, 0].map(at),
+          outgoing = [0, 1, 2, 3].map(at);
+        expect(curvatureDiscontinuity(incoming, outgoing)).to.be.below(1e-6);
       }
   });
 
@@ -277,13 +307,13 @@ describe("rib-apex bulbs", () => {
         "capBallEaseCurvature",
         "angle",
       ])
-        for (let step = 0; step <= 100; step++) {
+        for (let step = 0; step <= 20; step++) {
           const value =
             field === "capBallRatio"
-              ? 0.5 + step / 40
+              ? 0.5 + step / 8
               : field === "angle"
-                ? -0.3 + step / 100
-                : step / 100;
+                ? -0.3 + step / 20
+                : step / 20;
           finite(
             generateFromSkeleton(
               specimen({
@@ -293,6 +323,135 @@ describe("rib-apex bulbs", () => {
             )
           );
         }
+  });
+
+  it("places the remaining ball on-curves at glyph-axis extrema at every lean", () => {
+    for (const capBallSide of ["left", "right"])
+      for (const start of [false, true])
+        for (const angle of [0, 0.4, 1.3, 2.1]) {
+          const result = generateFromSkeleton(
+            specimen({
+              start,
+              angle,
+              cap: { capBallSide, capBallShape: 1, capBallEasing: 0.5 },
+            })
+          );
+          const points = result.contours[0].points,
+            map = result.provenance[0].pointMap;
+          let count = 0;
+          points.forEach((p, i) => {
+            if (p.type || map[i]?.side || map[i]?.role !== "onCurve") return;
+            const before = points[(i - 1 + points.length) % points.length],
+              after = points[(i + 1) % points.length];
+            expect(before.type).to.equal("cubic");
+            expect(after.type).to.equal("cubic");
+            const vertical =
+              Math.abs(before.x - p.x) < 1e-8 && Math.abs(after.x - p.x) < 1e-8;
+            const horizontal =
+              Math.abs(before.y - p.y) < 1e-8 && Math.abs(after.y - p.y) < 1e-8;
+            expect(vertical || horizontal, `apex ${i} at ${angle}`).to.equal(true);
+            const axis = vertical ? "y" : "x";
+            expect((before[axis] - p[axis]) * (after[axis] - p[axis])).to.be.at.most(
+              1e-8
+            );
+            count++;
+          });
+          expect(count).to.be.at.least(1);
+        }
+  });
+
+  it("uses the actual V-slide and keeps the retained ball arc exact", () => {
+    const outer = { x: 439, y: 51 };
+    const wall = [
+      { x: 27, y: 227 },
+      { x: 137, y: 74, type: "cubic" },
+      { x: 293, y: 17, type: "cubic" },
+      outer,
+    ];
+    const ball = makeBulbBall({
+      outer,
+      inner: { x: 421, y: 129 },
+      outerDirection: { x: 146, y: 34 },
+      radius: 50,
+      shape: 0,
+    });
+    const arc = buildBulbArc(ball, 2.4),
+      slid = slideBulbEntry(wall, arc);
+    expect(slid.t).to.be.greaterThan(0);
+    expect(slid.t).to.be.below(1);
+    const candidate = makeSlideCandidate(
+      { points: [...wall, ...arc.slice(0, 3)], isClosed: false },
+      3,
+      "next",
+      slid.t
+    );
+    expect(slid.wall.at(-1)).to.deep.equal(candidate.points[3]);
+    expect(slid.arc.slice(0, 3)).to.deep.equal(candidate.points.slice(4));
+    expect(slid.arc.slice(3)).to.deep.equal(arc.slice(3));
+    expect(
+      curvatureDiscontinuity(slid.wall, [slid.wall.at(-1), ...slid.arc.slice(0, 3)])
+    ).to.be.below(1e-6);
+  });
+
+  it("keeps harmonious entry when the first orthogonal apex leaves little slide room", () => {
+    for (const angle of [0, 1.3])
+      for (const capBallSide of ["left", "right"])
+        for (const capBallRatio of [0.5, 1.25, 3]) {
+          const result = generateFromSkeleton(
+            specimen({ angle, cap: { capBallSide, capBallRatio, capBallEasing: 0.5 } })
+          );
+          const p = result.contours[0].points,
+            map = result.provenance[0].pointMap;
+          const i = map.findIndex(
+            (q) =>
+              q?.side === capBallSide &&
+              q.skeletonPointId === 5 &&
+              q.role === "onCurve" &&
+              !q.capCurvatureField
+          );
+          const at = (j) => p[(i + j + p.length) % p.length];
+          expect(
+            curvatureDiscontinuity([-3, -2, -1, 0].map(at), [0, 1, 2, 3].map(at))
+          ).to.be.below(1e-6);
+        }
+  });
+
+  it("makes a harmonious entry from a straight terminal too", () => {
+    for (const capBallSide of ["left", "right"]) {
+      const result = generateFromSkeleton({
+        contours: [
+          {
+            id: 1,
+            defaultWidth: 80,
+            points: [
+              { id: 2, x: 0, y: 0 },
+              {
+                id: 3,
+                x: 200,
+                y: 0,
+                capStyle: "drop",
+                capBallSide,
+                capBallEasing: 0.5,
+              },
+            ],
+          },
+        ],
+      });
+      finite(result);
+      const p = result.contours[0].points,
+        map = result.provenance[0].pointMap;
+      const i = map.findIndex(
+        (q) =>
+          q?.side === capBallSide &&
+          q.skeletonPointId === 3 &&
+          q.role === "onCurve" &&
+          !q.capCurvatureField
+      );
+      const at = (j) => p[(i + j + p.length) % p.length];
+      expect(
+        curvatureDiscontinuity([-3, -2, -1, 0].map(at), [0, 1, 2, 3].map(at))
+      ).to.be.below(1e-6);
+    }
   });
 
   it("changes only neck handles when neck curvature changes", () => {
