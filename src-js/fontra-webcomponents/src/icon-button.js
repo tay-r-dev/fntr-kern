@@ -23,12 +23,6 @@ const colors = {
   "overflow-popover-shadow-color": ["#0003", "#0008"],
 };
 
-// A long press on the dropdown chevron opens the card; a plain click does
-// too when the button has no click handler of its own (see the "on has no
-// onclick" branch below).
-const LONG_PRESS_MS = 500;
-const LONG_PRESS_MOVE_TOLERANCE = 4;
-
 export class IconButton extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
@@ -53,9 +47,13 @@ export class IconButton extends UnlitElement {
       font: inherit;
     }
 
-    button > inline-svg {
-      width: 100%;
+    /* The icon fills the button's height and keeps its proportions; the
+       button's width does not stretch it. */
+    button > inline-svg:not(.icon-button-chevron) {
+      display: block;
       height: 100%;
+      width: auto;
+      aspect-ratio: 1;
     }
 
     button svg {
@@ -277,37 +275,19 @@ export class IconButton extends UnlitElement {
     this._button = html.button(
       {
         onmousedown: focus.save,
-        onpointerdown: (event) => {
+        onpointerdown: () => {
           this._wasOpen = this._card?.matches(":popover-open") ?? false;
-          this._pointerDownPos = { x: event.clientX, y: event.clientY };
+        },
+        // The right button opens the dropdown at once.
+        oncontextmenu: (event) => {
           if (this.dropdown) {
-            this._longPressTimer = setTimeout(() => {
-              this._longPressTimer = null;
-              this._suppressClick = true;
-              this._openDropdown();
-            }, LONG_PRESS_MS);
+            event.preventDefault();
+            event.stopPropagation();
+            this._openDropdown();
           }
         },
-        onpointermove: (event) => {
-          if (!this._longPressTimer || !this._pointerDownPos) {
-            return;
-          }
-          const moved = Math.hypot(
-            event.clientX - this._pointerDownPos.x,
-            event.clientY - this._pointerDownPos.y
-          );
-          if (moved > LONG_PRESS_MOVE_TOLERANCE) {
-            clearTimeout(this._longPressTimer);
-            this._longPressTimer = null;
-          }
-        },
-        onpointerup: () => clearTimeout(this._longPressTimer),
-        onpointerleave: () => clearTimeout(this._longPressTimer),
         onclick: (event) => {
-          if (this._suppressClick) {
-            // A long press already opened the card; don't also click.
-            this._suppressClick = false;
-          } else if (this._buttonOnClick) {
+          if (this._buttonOnClick) {
             this._buttonOnClick(event);
           } else if (this.dropdown && !this._wasOpen) {
             this._openDropdown();

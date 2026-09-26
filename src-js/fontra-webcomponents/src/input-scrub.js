@@ -47,7 +47,7 @@ export class InputScrub extends UnlitElement {
        outer shells, the notches aligning with the inner boxes' inset. */
     ui-link-button {
       width: 0.5em;
-      height: 1.5em;
+      height: 24px;
       flex: 0 0 0.5em;
     }
   `;

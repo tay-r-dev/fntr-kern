@@ -98,7 +98,7 @@ export const SELECTION_ROW_GROUP_STYLES = `
   .selection-row-group-icons.tray overflow-button,
   .selection-row-group-icons.tray overflow-popover {
     box-sizing: border-box;
-    height: 1.8em;
+    height: 24px;
     display: flex;
     align-items: center;
     padding: 0 0.15em;
@@ -111,6 +111,6 @@ export const SELECTION_ROW_GROUP_STYLES = `
     --segmented-control-tray-color: transparent;
     --segmented-control-border-color: transparent;
     --segmented-control-tray-padding: 0;
-    --segmented-control-button-height: 1.8em;
+    --segmented-control-button-height: 100%;
   }
 `;

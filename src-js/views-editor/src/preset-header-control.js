@@ -22,7 +22,7 @@ import "@fontra/web-components/multi-select-dropdown.js";
 // The caller owns the list, the capture and the writes. Items carry whatever
 // value the caller needs to find the entry again, typically its index in the
 // stored list, and may carry a shorter `name` for the button.
-const TILE = "1.8em";
+const TILE = "24px";
 
 export class PresetHeaderControl {
   constructor({ onPick, onAdd, onUpdate, onLock, onRefresh, onReset }) {

@@ -67,7 +67,9 @@ export class CompactScrubField extends UnlitElement {
     .box {
       background-color: var(--compact-scrub-field-background-color);
       border-radius: 0.375em;
-      padding: 0.125em;
+      box-sizing: border-box;
+      height: 24px;
+      padding: 3px;
       color: var(--compact-scrub-field-text-color);
       cursor: ew-resize;
       user-select: none;
@@ -80,7 +82,9 @@ export class CompactScrubField extends UnlitElement {
       gap: 0.35em;
       border: 1px solid transparent;
       border-radius: 0.25em;
-      padding: 0.15em 0.4em;
+      box-sizing: border-box;
+      height: 100%;
+      padding: 0 0.4em;
     }
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {

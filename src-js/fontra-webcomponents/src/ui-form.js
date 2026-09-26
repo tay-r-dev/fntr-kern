@@ -125,7 +125,11 @@ export class Form extends SimpleElement {
 
     .ui-form-value input {
       width: min(100%, 9.5em);
-      height: 1.6em;
+    }
+
+    .ui-form-value input:not([type="checkbox"]):not([type="radio"]) {
+      box-sizing: border-box;
+      height: 24px;
     }
 
     .ui-form-value input[type="checkbox"] {

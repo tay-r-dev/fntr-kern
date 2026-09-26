@@ -41,7 +41,7 @@ export class SegmentedControl extends UnlitElement {
       flex: 1 1 auto;
       align-items: center;
       box-sizing: border-box;
-      height: 28px;
+      height: 24px;
       padding: var(--segmented-control-tray-padding, 2px);
       gap: 0;
       background: var(--segmented-control-tray-color);
@@ -63,7 +63,7 @@ export class SegmentedControl extends UnlitElement {
       white-space: nowrap;
       cursor: pointer;
       box-sizing: border-box;
-      height: var(--segmented-control-button-height, 24px);
+      height: var(--segmented-control-button-height, 100%);
     }
 
     button.on {
@@ -87,7 +87,7 @@ export class SegmentedControl extends UnlitElement {
     }
 
     :host([small]) .row {
-      height: 24px;
+      height: 22px;
       border-radius: 999px;
     }
 
@@ -95,7 +95,7 @@ export class SegmentedControl extends UnlitElement {
       border-radius: 999px;
       font-size: 10px;
       letter-spacing: -0.3px;
-      height: var(--segmented-control-button-height, 20px);
+      height: var(--segmented-control-button-height, 100%);
     }
   `;
 

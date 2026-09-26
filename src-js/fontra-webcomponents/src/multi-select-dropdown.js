@@ -64,7 +64,7 @@ export class MultiSelectDropdown extends UnlitElement {
       letter-spacing: -0.3px;
       line-height: 12px;
       box-sizing: border-box;
-      height: var(--multi-select-dropdown-height, auto);
+      height: var(--multi-select-dropdown-height, 24px);
       width: var(--multi-select-dropdown-width, auto);
       max-width: 100%;
       display: inline-flex;
