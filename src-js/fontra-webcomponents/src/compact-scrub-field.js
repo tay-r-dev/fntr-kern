@@ -42,6 +42,9 @@ const colors = {
   "compact-scrub-field-active-background-color": ["#fff", "#2c2c2c"],
   "compact-scrub-field-active-border-color": ["#def280", "#8fae4a"],
   "compact-scrub-field-text-color": ["#8e8e8e", "#b0b0b0"],
+  // The design gives the rest-state value a darker gray than its label
+  // (grey/solid/3 vs grey/solid/4) -- every other state matches the two.
+  "compact-scrub-field-value-rest-text-color": ["#565656", "#b0b0b0"],
   "compact-scrub-field-hover-text-color": ["#303030", "#e0e0e0"],
   "compact-scrub-field-active-text-color": ["#151515", "#f0f0f0"],
   "compact-scrub-field-handle-color": ["#b4b4b4", "#777777"],
@@ -96,8 +99,11 @@ export class CompactScrubField extends UnlitElement {
       color: var(--compact-scrub-field-active-text-color);
     }
 
+    /* The design fades the disabled state to 70% opacity, not 30% -- its
+       text is already the faint grey/solid/4, so a heavier fade read as
+       gone rather than disabled. */
     .box.disabled {
-      opacity: 0.3;
+      opacity: 0.7;
       cursor: default;
     }
 
@@ -143,6 +149,10 @@ export class CompactScrubField extends UnlitElement {
       font-family: inherit;
       font-style: italic;
       opacity: 0.6;
+    }
+
+    .box:not(:hover):not(.scrubbing):not(.editing):not(.disabled) .value {
+      color: var(--compact-scrub-field-value-rest-text-color);
     }
 
     .value input {
@@ -214,6 +224,32 @@ export class CompactScrubField extends UnlitElement {
     .stepper.down::before {
       border-top: 0.2em solid currentColor;
     }
+
+    /* Ticket (coordinator addendum): button/icon/increment, node 287:15519 --
+       the same up/down stepper as the manual-input one above, but present in
+       every state (including the plain "input/string" mode) rather than only
+       while editing. Invisible at rest; a hover, a drag or the keyboard focus
+       the editing input already gets reveals it. Hidden again while editing
+       itself, where the value element grows its own copy (_startEdit below)
+       wired to the live text instead of a bare click. */
+    .hover-steppers {
+      display: flex;
+      flex-direction: column;
+      align-self: stretch;
+      justify-content: center;
+      margin-left: 0.15em;
+      opacity: 0;
+    }
+
+    .box:hover:not(.disabled) .hover-steppers,
+    .box.scrubbing .hover-steppers,
+    .box:focus-within .hover-steppers {
+      opacity: 1;
+    }
+
+    .box.editing .hover-steppers {
+      opacity: 0;
+    }
   `;
 
   constructor() {
@@ -230,6 +266,19 @@ export class CompactScrubField extends UnlitElement {
     this._icon = undefined;
     this._iconTooltip = "";
     this._dragValueStream = null;
+    // input/string (Figma 287:15577) is this same field with the scrub
+    // (drag-arrows) icon hidden -- everything else, including the drag
+    // itself, is unchanged.
+    this._scrubIcon = true;
+  }
+
+  get scrubIcon() {
+    return this._scrubIcon;
+  }
+
+  set scrubIcon(value) {
+    this._scrubIcon = value == null ? true : !!value;
+    this.requestUpdate();
   }
 
   // Ticket 38: the transform row's own icon, drawn inside the field rather
@@ -408,12 +457,20 @@ export class CompactScrubField extends UnlitElement {
         })
       : undefined;
 
+    this._hoverSteppers = html.div({ class: "hover-steppers" }, [
+      this._makeStepperButton(1, "Increase"),
+      this._makeStepperButton(-1, "Decrease"),
+    ]);
+
     this._box = html.div(
       {
         class: "box" + (this._disabled ? " disabled" : ""),
         onpointerdown: (event) => this._onPointerDown(event),
         ondblclick: (event) => {
-          if (!this._valueElement.contains(event.target)) {
+          if (
+            !this._valueElement.contains(event.target) &&
+            !this._hoverSteppers.contains(event.target)
+          ) {
             this._resetToDefault();
           }
         },
@@ -422,15 +479,54 @@ export class CompactScrubField extends UnlitElement {
         html.div({ class: "inner" }, [
           ...(this._iconElement ? [this._iconElement] : []),
           this._nameElement,
-          html.createDomElement("inline-svg", {
-            class: "scrub-icon",
-            src: "/tabler-icons/arrows-horizontal.svg",
-          }),
+          ...(this._scrubIcon
+            ? [
+                html.createDomElement("inline-svg", {
+                  class: "scrub-icon",
+                  src: "/tabler-icons/arrows-horizontal.svg",
+                }),
+              ]
+            : []),
           this._valueElement,
+          this._hoverSteppers,
         ]),
       ]
     );
     return this._box;
+  }
+
+  // The always-present increment control (Figma 287:15519, "button/icon/
+  // increment"): opacity 0 until a hover/drag/focus reveals it (CSS above).
+  // A click steps the value exactly one keyStepScrubValue tick and applies
+  // it immediately -- no live drag stream, since there is no gesture to
+  // batch into one undo step.
+  _makeStepperButton(direction, label) {
+    return html.createDomElement("button", {
+      "class": `stepper ${direction > 0 ? "up" : "down"}`,
+      "type": "button",
+      "tabindex": -1,
+      "aria-label": label,
+      "onpointerdown": (event) => event.preventDefault(),
+      "onclick": (event) => {
+        event.stopPropagation();
+        this._stepByClick(direction);
+      },
+    });
+  }
+
+  _stepByClick(direction) {
+    if (this._disabled) {
+      return;
+    }
+    const current = Number.isFinite(this._value) ? this._value : 0;
+    const value = keyStepScrubValue(current, direction, {
+      ...this._boundsFieldItem,
+      shiftKey: false,
+    });
+    this._commit(value);
+    // Mirrors the Enter-key path in _startEdit: the value is already
+    // committed, "apply" just tells a row consumer the edit is final.
+    this.dispatchEvent(new CustomEvent("apply"));
   }
 
   _resetToDefault() {
@@ -595,6 +691,10 @@ export class CompactScrubField extends UnlitElement {
     }
     if (this._valueElement.contains(event.target)) {
       // Let the click-to-edit handler take it instead.
+      return;
+    }
+    if (this._hoverSteppers.contains(event.target)) {
+      // Let the increment button's own click handler take it instead.
       return;
     }
     this._box.setPointerCapture(event.pointerId);
