@@ -1,6 +1,6 @@
 import { Bezier } from "bezier-js";
-import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { makeSlideCandidate } from "./point-slide.js";
+import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import * as vector from "./vector.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
@@ -74,9 +74,27 @@ export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {
   return result.sort((a, b) => a.theta - b.theta);
 }
 
-// Glyph-axis extrema divide the ball. Its final point belongs to the existing
-// neck/incision and may meet the inner wall between extrema. At the transition
-// between front/rear halves a single cubic blends their endpoint tangents.
+// The ball has three points after the entry: the bottom, the pre-neck point and
+// the neck attachment. The bottom is the glyph-axis extreme nearest the ball's
+// front (theta 0), with its handles on that axis. It is the only orthogonal
+// point. It changes axis when the ball's front turns past a diagonal. The
+// pre-neck point sits halfway between the bottom and the neck, by angle. A
+// stop past the neck attachment collapses onto it, so the point count holds.
+export function bulbStops(ball, thetaEnd) {
+  const extremes = bulbApexes(ball, -Math.PI, Math.PI);
+  let bottom = extremes.reduce(
+    (best, e) => (!best || Math.abs(e.theta) < Math.abs(best.theta) ? e : best),
+    null
+  ) ?? { theta: 0, axis: undefined };
+  if (bottom.theta <= -Math.PI / 2 || bottom.theta >= thetaEnd)
+    bottom = { theta: Math.min(Math.max(bottom.theta, -Math.PI / 2), thetaEnd) };
+  const preNeck = { theta: (bottom.theta + thetaEnd) / 2 };
+  return [bottom, preNeck];
+}
+
+// Each segment is the standard circle-cubic of its piece of the ball. At the
+// transition between front/rear halves a single cubic blends their endpoint
+// tangents.
 export function buildBulbArc(ball, thetaEnd) {
   const endDirection = ball.tangentAt(thetaEnd);
   const endAxis =
@@ -85,10 +103,7 @@ export function buildBulbArc(ball, thetaEnd) {
       : Math.abs(endDirection.y) < 1e-10
         ? "y"
         : undefined;
-  const stops = [
-    ...bulbApexes(ball, -Math.PI / 2, thetaEnd),
-    { theta: thetaEnd, axis: endAxis },
-  ];
+  const stops = [...bulbStops(ball, thetaEnd), { theta: thetaEnd, axis: endAxis }];
   const points = [];
   let a = -Math.PI / 2,
     previousAxis;
@@ -123,82 +138,97 @@ export function buildBulbArc(ball, thetaEnd) {
   return points;
 }
 
-// Use the same operation as V-slide. Each candidate starts from the original
-// two curves, never from the previous fit. Take the first curvature crossing
-// toward the next point; stop short of collapsing that point onto the entry.
+// Harmonize the ball one join at a time, from the entry toward the neck. Each
+// join moves only the handle that leaves it along the ball, and only in length,
+// so the joins before it stay matched, the wall is untouched and the bottom
+// handles stay on their axis. The neck attachment is its own join and is left
+// to the neck.
+function harmonizeBallJoins(points) {
+  const result = points.map((p) => ({ ...p }));
+  for (let join = 3; join + 3 < result.length; join += 3) {
+    const stencil = result.slice(join - 3, join + 4);
+    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 0] });
+    const placed = applyHandleScales(stencil, solved.scales);
+    result[join + 1] = { ...result[join + 1], x: placed[4].x, y: placed[4].y };
+  }
+  return result;
+}
+
+// How far up the wall's last segment the entry may slide, as its parameter.
+const SLIDE_LIMIT = 0.9;
+const SLIDE_STEPS = 40;
+
+// Slide the entry up the wall with the editor's V-slide, the way a designer
+// drags it by hand. The wall piece it passes is cut exactly and joins the
+// ball's first segment, which the slide refits. It stops at the first place up
+// from the rib where the wall and that segment bend alike. Where they match
+// nowhere on the segment, it stops at the closest match. A first shallow dip is
+// not taken: the mismatch can ripple on a flat stretch far from any match. Each
+// candidate is a fresh slide from the original two curves, so the answer
+// depends only on the current drawing. The ball segment's entry handle then
+// closes what is left, always, so there is no switch that could jump.
 export function slideBulbEntry(wall, arc) {
   if (wall.length !== 4 || arc.length < 3) return null;
   const contour = { points: [...wall, ...arc.slice(0, 3)], isClosed: false };
-  const sample = (t) => {
-    const candidate =
-      t === 0
-        ? contour
-        : makeSlideCandidate(contour, 3, "next", t, { fitIterations: 8 });
-    if (!candidate) return null;
-    const p = candidate.points;
-    const incoming = new Bezier(p.slice(0, 4)).curvature(1).k;
-    const outgoing = new Bezier(p.slice(3, 7)).curvature(0).k;
-    if (!Number.isFinite(incoming) || !Number.isFinite(outgoing)) return null;
-    const residual = Math.abs(incoming) - Math.abs(outgoing);
-    const error =
-      Math.abs(residual) / Math.max(Math.abs(incoming), Math.abs(outgoing), 1e-12);
-    return { points: p, t, residual, error };
+  const sample = (s) => {
+    const points =
+      s === 0
+        ? contour.points
+        : makeSlideCandidate(contour, 3, "previous", 1 - s)?.points;
+    if (!points) return null;
+    const kWall = Math.abs(new Bezier(points.slice(0, 4)).curvature(1).k);
+    const kBall = Math.abs(new Bezier(points.slice(3, 7)).curvature(0).k);
+    if (!Number.isFinite(kWall) || !Number.isFinite(kBall)) return null;
+    return { s, points, g: (kBall - kWall) / Math.max(kBall, kWall, 1e-12) };
   };
-  let previous = sample(0),
-    best = previous;
-  const steps = 20,
-    limit = 0.98;
-  for (let i = 1; i <= steps; i++) {
-    const current = sample((limit * i) / steps);
-    if (!current) continue;
-    if (!best || current.error < best.error) best = current;
-    if (previous && previous.residual * current.residual <= 0) {
-      let low = previous,
-        high = current;
-      for (let j = 0; j < 18; j++) {
-        const middle = sample((low.t + high.t) / 2);
-        if (!middle) break;
-        if (middle.error < best.error) best = middle;
-        if (low.residual * middle.residual <= 0) high = middle;
-        else low = middle;
-      }
-      break;
+  const refineRoot = (low, high) => {
+    for (let j = 0; j < 24; j++) {
+      const middle = sample((low.s + high.s) / 2);
+      if (!middle) break;
+      if (middle.g <= 0) high = middle;
+      else low = middle;
     }
-    previous = current;
+    return Math.abs(low.g) < Math.abs(high.g) ? low : high;
+  };
+  const refineDip = (low, high) => {
+    // Golden-section search for the smallest mismatch between two samples.
+    const r = (Math.sqrt(5) - 1) / 2;
+    let best = null;
+    for (let j = 0; j < 24; j++) {
+      const c = sample(high.s - r * (high.s - low.s)),
+        d = sample(low.s + r * (high.s - low.s));
+      if (!c || !d) break;
+      for (const e of [c, d]) if (!best || Math.abs(e.g) < Math.abs(best.g)) best = e;
+      if (Math.abs(c.g) < Math.abs(d.g)) high = d;
+      else low = c;
+    }
+    return best;
+  };
+  const samples = [];
+  for (let i = 0; i <= SLIDE_STEPS; i++) {
+    const e = sample((SLIDE_LIMIT * i) / SLIDE_STEPS);
+    if (e) samples.push(e);
   }
-  if (!best) return null;
-  // Search with a cheap fit, then perform the ordinary fully refined V-slide
-  // once at the chosen location. Curvature is rechecked on that emitted fit.
-  if (best.t > 0) {
-    best.points = makeSlideCandidate(contour, 3, "next", best.t).points;
-    const incoming = new Bezier(best.points.slice(0, 4)).curvature(1).k;
-    const outgoing = new Bezier(best.points.slice(3, 7)).curvature(0).k;
-    best.error =
-      Math.abs(Math.abs(incoming) - Math.abs(outgoing)) /
-      Math.max(Math.abs(incoming), Math.abs(outgoing), 1e-12);
+  let chosen = null;
+  if (samples[0]?.g <= 0) chosen = samples[0];
+  for (let i = 1; i < samples.length && !chosen; i++)
+    if (samples[i].g <= 0) chosen = refineRoot(samples[i - 1], samples[i]);
+  if (!chosen && samples.length) {
+    let i = 0;
+    samples.forEach((e, j) => {
+      if (Math.abs(e.g) < Math.abs(samples[i].g)) i = j;
+    });
+    chosen =
+      refineDip(
+        samples[Math.max(i - 1, 0)],
+        samples[Math.min(i + 1, samples.length - 1)]
+      ) ?? samples[i];
   }
-  // A nearby orthogonal apex can leave no G2 crossing inside the interval.
-  // Finish on the wall only, using the shared harmonizer and its handle bounds.
-  // The split ball arc stays exact and the apex handles cannot rotate or grow.
-  let correction = false;
-  if (best.error > 1e-5) {
-    let solved = solveNearestHandleScales(best.points, { dials: [0, 1, 0, 0] });
-    if (solved.curvatureStep > 1e-5)
-      solved = solveNearestHandleScales(best.points, { dials: [1, 1, 0, 0] });
-    const corrected = applyHandleScales(best.points, solved.scales);
-    best.points = best.points.map((p, i) => ({
-      ...p,
-      x: corrected[i].x,
-      y: corrected[i].y,
-    }));
-    best.error = solved.curvatureStep;
-    correction = true;
-  }
+  if (!chosen) return null;
+  const points = harmonizeBallJoins([...chosen.points, ...arc.slice(3)]);
   return {
-    wall: best.points.slice(0, 4),
-    arc: [...best.points.slice(4), ...arc.slice(3)],
-    t: best.t,
-    error: best.error,
-    correction,
+    wall: points.slice(0, 4),
+    arc: points.slice(4),
+    s: chosen.s,
   };
 }
