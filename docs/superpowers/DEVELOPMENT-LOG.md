@@ -636,6 +636,25 @@ the first solved answer and became the arriving drawing, whose report is null.
 
 ## Serif terminal (map F7, skeleton)
 
+### Stable optional easing merges (2026-09-27)
+
+The vertical `l` drag test reported 261.63 units for a quarter-unit move, but
+most of that was contour reordering. Aligning the contour showed a real
+18.28-unit handle jump. The optional merge now uses a bounded two-variable
+least-squares fit with fixed arc-length reparameterizations. A monotone scalar
+curvature solve replaces the general nearest-handle harmonizer. It limits handle
+scaling to 0.8–1.2 and rejects fits whose sampled two-way outline error exceeds
+0.5–2 units according to span size. Original pieces survive a rejected merge.
+
+The old mandatory merge counts were not a safety criterion: both reported `l`
+sides are now retained when the fit cannot meet the shape and curvature limits.
+A separate forced-angle fixture verifies an accepted merge. The drag regression
+compares the drawn outlines rather than matching array indices. Direct fit tests
+cover endpoint tangents, continuous handle movement and incoming G2 continuity.
+The serif geometry, fit and skeleton generator suites pass: 326 tests.
+The full core suite also passes: 2869 tests, including the revised drag and merge
+regressions. Live editor inspection is still owed.
+
 ### Bounded easing and equal arc lengths (2026-09-27)
 
 A forced-axis curved wall exposed an unbounded tangent intersection: changing

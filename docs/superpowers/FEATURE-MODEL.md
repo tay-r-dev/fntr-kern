@@ -1079,6 +1079,15 @@ construction. Backward or parallel intersections also use the local construction
 This prevents forced-angle serifs from developing unbounded handles. Easing remains
 active at full concavity, because a curved wall can still meet that bracket at an angle.
 
+**Simplify and harmonize** can replace the wall/easing run once easing consumes
+the full bracket. Its fit holds the endpoints and tangent directions and solves
+only for bounded positive handle lengths. Fixed arc-length reparameterizations
+avoid the previous general-purpose fit's competing search solutions. At a curved
+wall join, a single monotone curvature solve may scale both handles by at most
+20 percent to reach G2. If that needs a larger change, or sampled two-way outline
+error exceeds two units (less on small spans), the original pieces remain.
+Consequently enabling this option does not guarantee fewer points on every serif.
+
 A half with `wingLength === 0` is **switched off**, and it must add nothing to the outline. Two
 consequences follow, and we found both the hard way.
 
