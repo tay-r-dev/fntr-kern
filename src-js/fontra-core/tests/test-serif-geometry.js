@@ -328,7 +328,7 @@ describe("serif axis tilt", () => {
       reach: 30,
       tension: 0.5,
       concavity: 0.5,
-      easeDistance: 12,
+      easeDistance: 0.05,
       easeCurvature: 0.5,
     };
     // Both walls in glyph space, curving into the stroke. They stand still; only
@@ -532,8 +532,17 @@ describe("half serif in frame coordinates", () => {
     expect(keys({})).to.equal(keys({ wingLength: 0, reach: 0, concavity: -1 }));
   });
 
+  // The ease distance is a share of the wall above the junction. These tests
+  // were written in units, so they state units and convert: the wall runs to
+  // v = 1000, straight up, so the wall left is 1000 less the junction's depth.
+  const inUnits = (params) => {
+    const { junction } = build({ ...params, easeDistance: 0 });
+    return { ...params, easeDistance: params.easeDistance / (1000 - junction.v) };
+  };
   const eased = (overrides = {}) =>
-    build({ concavity: -0.4, easeDistance: 20, easeCurvature: 0.6, ...overrides });
+    build(
+      inUnits({ concavity: -0.4, easeDistance: 20, easeCurvature: 0.6, ...overrides })
+    );
 
   it("puts the release back along the flank by the ease distance", () => {
     const half = eased();
@@ -541,31 +550,107 @@ describe("half serif in frame coordinates", () => {
     expectClose(half.release.v - half.junction.v, 20);
   });
 
-  // The rounding is one curve across a corner. Both of its ends step back from
-  // that corner by the ease distance, each along its own surface. One end
-  // measured in units and the other in curve parameter is what made the two
-  // sides of the scoop grow at different rates and stop at different times.
-  it("steps both ends back from the junction by the same distance", () => {
-    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
-    for (const easeDistance of [5, 20, 40]) {
-      const half = eased({ easeDistance });
-      expectClose(
-        gap(half.easeOnBracket, half.junction),
-        gap(half.release, half.junction),
-        `ease distance ${easeDistance}`
+  it("states the ease distance as a share of the wall above the junction", () => {
+    const params = { concavity: -0.4, easeCurvature: 0.6 };
+    const none = build({ ...params, easeDistance: 0 });
+    expectClose(none.release.v, none.junction.v);
+    const half = build({ ...params, easeDistance: 0.5 });
+    expectClose(half.release.v, (half.junction.v + 1000) / 2, "halfway", 1e-3);
+    // All of it puts the release on the stroke's next on-curve.
+    const all = build({ ...params, easeDistance: 1 });
+    expectClose(all.release.v, 1000, "the next on-curve", 1e-3);
+    const past = build({ ...params, easeDistance: 3 });
+    expectClose(past.release.v, 1000, "clamped", 1e-3);
+  });
+
+  // Integrate independently of the generator's length table.
+  const curveLength = (points) => {
+    const point = (t) => {
+      const s = 1 - t;
+      const weights = [s ** 3, 3 * s * s * t, 3 * s * t * t, t ** 3];
+      return ["u", "v"].map((axis) =>
+        points.reduce((sum, p, i) => sum + weights[i] * p[axis], 0)
       );
+    };
+    let previous = point(0),
+      length = 0;
+    for (let i = 1; i <= 4096; i++) {
+      const current = point(i / 4096);
+      length += Math.hypot(current[0] - previous[0], current[1] - previous[1]);
+      previous = current;
+    }
+    return length;
+  };
+  const bracketLength = (half) =>
+    curveLength([half.tipTop, half.control1, half.control2, half.easeOnBracket]);
+
+  it("cuts equal arc lengths from the wall and the bowed bracket", () => {
+    for (const concavity of [-1, -0.4, 1]) {
+      const full = eased({ concavity, easeDistance: 0 });
+      for (const easeDistance of [5, 20, 40]) {
+        const half = eased({ concavity, easeDistance });
+        expectClose(
+          bracketLength(full) - bracketLength(half),
+          half.release.v - half.junction.v,
+          `arc distance ${easeDistance}, concavity ${concavity}`,
+          0.002
+        );
+      }
     }
   });
 
-  // The rounding runs out where the bracket meets the wing, and not before.
-  // The bracket end lands on the top of the tip, having eaten the whole
-  // bracket, and the flank end is the same distance from the junction.
-  it("stops both ends where the bracket meets the wing", () => {
-    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
-    const far = eased({ easeDistance: 4000 });
-    expectClose(far.easeOnBracket.u, far.tipTop.u);
-    expectClose(far.easeOnBracket.v, far.tipTop.v);
-    expectClose(far.release.v - far.junction.v, gap(far.tipTop, far.junction));
+  it("stops the bracket end at the tip top and runs the release on up the wall", () => {
+    const full = eased({ easeDistance: 0 });
+    const past = eased({ easeDistance: bracketLength(full) + 100 });
+    expectClose(past.easeOnBracket.u, past.tipTop.u);
+    expectClose(past.easeOnBracket.v, past.tipTop.v);
+    expectClose(
+      past.release.v - past.junction.v,
+      bracketLength(full) + 100,
+      "past the arc",
+      0.002
+    );
+    expect(past.easeAtLimit).to.equal(true);
+  });
+
+  it("keeps near-parallel easing handles local and continuous", () => {
+    // A forced vertical axis puts the stroke almost along u. The former
+    // tangent-line intersection sent handles hundreds of units away here.
+    const wall = makeSerifWall([
+      { u: 0, v: 0 },
+      { u: -100, v: 7 },
+      { u: 130, v: 92 },
+      { u: -124, v: 232 },
+    ]);
+    let previous;
+    for (let i = 0; i <= 800; i++) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall,
+        params: {
+          wingLength: 20,
+          tipThickness: 15,
+          reach: 29,
+          concavity: -0.88,
+          tension: 0.48,
+          // About 40 to 48 units of this wall, in steps of about 0.01.
+          easeDistance: 0.1 + i / 40000,
+          easeCurvature: 0.6,
+        },
+      });
+      const gap = (a, b) => Math.hypot(a.u - b.u, a.v - b.v);
+      const chord = gap(half.release, half.easeOnBracket);
+      for (const [start, handle] of [
+        [half.release, half.easeFlankHandle],
+        [half.easeOnBracket, half.easeBracketHandle],
+      ])
+        expect(gap(start, handle)).to.be.at.most(2 * chord);
+      if (previous) {
+        expect(gap(half.easeFlankHandle, previous.easeFlankHandle)).to.be.below(1);
+        expect(gap(half.easeBracketHandle, previous.easeBracketHandle)).to.be.below(1);
+      }
+      previous = half;
+    }
   });
 
   // Reported on the `l` of skeletron: easing stopped at the wing slope's value.
@@ -582,7 +667,7 @@ describe("half serif in frame coordinates", () => {
     const unlimited = buildHalfSerif({
       side: -1,
       wall,
-      params: { ...params, easeDistance: 4000 },
+      params: { ...params, easeDistance: 1 },
     });
     const bracket = Math.hypot(
       unlimited.tipTop.u - unlimited.junction.u,
@@ -590,10 +675,13 @@ describe("half serif in frame coordinates", () => {
     );
     expect(bracket, "the bracket this wall draws").to.be.above(10);
     const asked = Math.min(bracket, 30);
+    // In units along the wall, stated as the share of the wall above the junction.
+    const aboveJunction =
+      wall.maxLength - Math.hypot(unlimited.junction.u + 90, unlimited.junction.v);
     const eased = buildHalfSerif({
       side: -1,
       wall,
-      params: { ...params, easeDistance: asked },
+      params: { ...params, easeDistance: asked / aboveJunction },
     });
     expectClose(
       Math.hypot(
@@ -713,7 +801,9 @@ describe("half serif in frame coordinates", () => {
   it("keeps the rounding on a hollow bracket", () => {
     // Only a fully scooped wing snaps it off. Anything short of that still has
     // a corner at the junction and still wants it rounded.
-    const half = build({ concavity: 0.4, easeDistance: 20, easeCurvature: 0.6 });
+    const half = build(
+      inUnits({ concavity: 0.4, easeDistance: 20, easeCurvature: 0.6 })
+    );
     expectClose(half.release.v - half.junction.v, 20);
     expect(legs(half).flank).to.be.above(0);
   });
@@ -723,7 +813,7 @@ describe("half serif in frame coordinates", () => {
   // true of a straight wall only; on the curved one of the `l` of skeletron the
   // bracket met the wall at 16 and 19 degrees and the easing did nothing.
   it("rounds at full concavity too", () => {
-    const half = build({ concavity: 1, easeDistance: 20, easeCurvature: 0.6 });
+    const half = build(inUnits({ concavity: 1, easeDistance: 20, easeCurvature: 0.6 }));
     expectClose(half.release.v - half.junction.v, 20);
     expect(legs(half).flank).to.be.above(0);
   });
@@ -778,7 +868,12 @@ describe("serif terminal assembly", () => {
   });
 
   it("keeps seven on-curve points with the rounding switched on", () => {
-    const rounded = { ...half, concavity: -0.4, easeDistance: 20, easeCurvature: 0.6 };
+    const rounded = {
+      ...half,
+      concavity: -0.4,
+      easeDistance: 0.05,
+      easeCurvature: 0.6,
+    };
     const { points } = terminal({ left: rounded, right: rounded });
     expect(points.filter((point) => !point.type)).to.have.length(7);
   });
@@ -1127,7 +1222,7 @@ describe("a serif frame the stroke is not square to", () => {
     reach: 30,
     tension: 0.5,
     concavity: 0.5,
-    easeDistance: 15,
+    easeDistance: 0.05,
     easeCurvature: 0.5,
   };
   const tilts = [-40, -20, 20, 40];
@@ -1248,7 +1343,7 @@ describe("half serif on a wall", () => {
     const half = buildHalfSerif({
       side: 1,
       wall,
-      params: { ...params, reach: 900, easeDistance: 900 },
+      params: { ...params, reach: 900, easeDistance: 1 },
     });
     expect(half.release.v).to.be.at.most(wall.maxDepth + 0.01);
     expect(half.depthClamped).to.equal(true);
@@ -1344,19 +1439,19 @@ describe("a wing corner past the rib end", () => {
     expectClose(half.corner.v, -10);
   });
 
-  it("continues a leaning edge along its own direction", () => {
-    const leaning = makeSerifWall([
-      { u: 50, v: 20 },
-      { u: 70, v: 1020 },
-    ]);
-    const half = buildHalfSerif({
-      side: 1,
-      wall: leaning,
-      params: { ...params, wingSlope: -30 },
-    });
-    // On the continued edge: 50 less a fiftieth of the depth travelled back.
-    expectClose(half.corner.u, 50 - (half.corner.v - 20) / -50);
-    expect(half.corner.v).to.be.below(0);
+  it("goes straight across from the rib end whichever way the edge leans", () => {
+    for (const farU of [30, 70]) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: makeSerifWall([
+          { u: 50, v: 20 },
+          { u: farU, v: 1020 },
+        ]),
+        params: { ...params, wingSlope: -30 },
+      });
+      expectClose(half.corner.u, 50, `lean to ${farU}`);
+      expectClose(half.corner.v, -30, `lean to ${farU}`);
+    }
   });
 
   it("does not step where the corner crosses the rib end", () => {
@@ -1383,12 +1478,72 @@ describe("a wing corner past the rib end", () => {
     });
     expectClose(half.junction.u, 50);
     expectClose(half.junction.v, -10);
-    expectClose(half.release.v, -10);
-    // The stroke is still cut at the rib end.
+    // The stroke is still cut at the rib end, and the release is that cut.
+    expectClose(half.release.v, 20);
     expect(half.releaseParameter).to.equal(0);
     // A flat bracket keeps its handles collapsed on their own ends.
     expectClose(half.control2.v, half.junction.v);
     expectClose(half.control1.v, half.tipTop.v);
+  });
+
+  it("stays at the wing's own end where the continued edge runs along the axis", () => {
+    // The `m` of skeletron: the stroke leaves nearly along the serif's axis, so
+    // its edge continued reaches the wing's depth thousands of units away.
+    const alongAxis = makeSerifWall([
+      { u: 50, v: 60 },
+      { u: -400, v: 60.2 },
+    ]);
+    const half = buildHalfSerif({
+      side: 1,
+      wall: alongAxis,
+      // 2 per cent of the 500 units from the junction to the wall's end is 10,
+      // short of the 50-unit straight run.
+      params: { ...params, tipThickness: 10, wingSlope: 0, easeDistance: 0.02 },
+    });
+    // Straight across from the rib end, at the depth the slope states.
+    expectClose(half.corner.u, 50);
+    expectClose(half.corner.v, 10);
+    expectClose(half.junction.u, 50);
+    expectClose(half.junction.v, 10);
+    // The stroke is cut at the rib end, so the easing starts there.
+    expectClose(half.release.u, 50);
+    expectClose(half.release.v, 60);
+  });
+
+  it("grows the easing out of the straight run without a step at the rib end", () => {
+    const leaning = makeSerifWall([
+      { u: 50, v: 60 },
+      { u: -400, v: 200 },
+    ]);
+    let previous = null;
+    for (let step = 0; step <= 400; step++) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: leaning,
+        params: {
+          ...params,
+          tipThickness: 10,
+          wingSlope: 0,
+          easeDistance: step / 400,
+          easeCurvature: 1,
+          concavity: 1,
+          tension: 0.5,
+        },
+      });
+      const points = [half.release, half.easeFlankHandle, half.easeBracketHandle];
+      if (step === 0) {
+        // No easing: the straight run, handles on their own ends.
+        expectClose(half.easeFlankHandle.u, half.release.u);
+        expectClose(half.easeFlankHandle.v, half.release.v);
+      }
+      if (previous) {
+        const moved = Math.max(
+          ...points.map((p, i) => Math.hypot(p.u - previous[i].u, p.v - previous[i].v))
+        );
+        expect(moved, `ease ${step / 4}`).to.be.below(2);
+      }
+      previous = points;
+    }
   });
 
   it("measures the reach up the continued edge and onto the wall", () => {
@@ -1444,10 +1599,10 @@ describe("serif wall", () => {
     expect(wall.tangentAt(0.3).v).to.be.greaterThan(0);
   });
 
-  it("stops short of consuming its whole segment", () => {
+  it("may be consumed up to its own far end", () => {
     const wall = straightWallSample();
-    expect(wall.maxParameter).to.be.lessThan(1);
-    expect(wall.maxDepth).to.be.lessThan(400);
+    expect(wall.maxParameter).to.equal(1);
+    expectClose(wall.maxDepth, 400, undefined, 1e-3);
   });
 });
 
@@ -1478,7 +1633,7 @@ describe("serif wall arc length", () => {
 
   it("reports the length it may be consumed for", () => {
     const wall = straightWallSample();
-    expectClose(wall.maxLength, 380, undefined, 1e-3);
+    expectClose(wall.maxLength, 400, undefined, 1e-3);
     expectClose(wall.lengthAt(wall.parameterAtDepth(100)), 100, undefined, 1e-3);
   });
 });

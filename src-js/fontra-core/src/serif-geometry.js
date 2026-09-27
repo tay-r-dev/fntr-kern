@@ -1,4 +1,3 @@
-import { computeTunniHandleLengths } from "./tunni-calculations.js";
 import * as vector from "./vector.js";
 
 // A serif whose axis runs along the stroke has no wings to speak of and no
@@ -194,9 +193,6 @@ const SCAN_SAMPLES = 256;
 // Bisection steps. 40 halvings take a bracket of one parameter unit below
 // 1e-12, which is far under the grid the result is rounded onto.
 const BISECT_STEPS = 40;
-// A terminal may consume its own segment and no more. The wall stops short of
-// its own far end so a splice always has curve left on both sides of the cut.
-const MAX_CONSUMED_FRACTION = 0.95;
 // Samples in the arc-length table that resolves that fraction.
 const LENGTH_SAMPLES = 256;
 
@@ -308,10 +304,12 @@ function bisect(signAt, low, high) {
  */
 export function makeSerifWall(points) {
   const table = buildLengthTable(points);
-  const maxParameter =
-    table.total > 0
-      ? parameterAtLength(table, table.total * MAX_CONSUMED_FRACTION)
-      : MAX_CONSUMED_FRACTION;
+  // A terminal may consume its own segment and no more: up to the next
+  // on-curve. It used to stop at 95 per cent, so a splice kept curve on both
+  // sides of the cut, and the easing then stopped short of the on-curve the
+  // designer was dragging toward. A cut at the far end leaves the stroke a
+  // zero-length piece, which is a collapse, not a loss: the count holds.
+  const maxParameter = 1;
   // The deepest the wall gets, and where it gets there. NOT the depth of its
   // far end. A wall whose depth only rises makes the two the same point, which
   // is every straight stem and every gently curved one — so nothing already
@@ -418,49 +416,21 @@ export function makeSerifWall(points) {
     return null;
   };
 
-  // Past the rib end there is no wall: the stroke stops there. A wing whose
-  // surface reaches further out -- a negative slope, or a rib end a forced axis
-  // stands inside the foot line -- meets the stem's edge CONTINUED, straight
-  // along the wall's own direction at the rib end. Only the wing's corner is
-  // read here. The release, the reach and the easing stay on the real wall, so
-  // nothing that works inside the stroke moves, and the wall is never bent onto
-  // this line.
+  // Past the rib end there is no wall: the stroke stops there. What stands in
+  // for it is the line straight across from the rib end to the foot, the same
+  // line the foot is measured from (stemAtDepth below). Not the stem's edge
+  // continued: that edge can run nearly along the axis, and a wing's corner
+  // looked for on it at the slope's depth landed some 900 units down the `m`
+  // of skeletron.
   const start = pointAt(0);
-  const back = (() => {
-    const t = tangentAt(0);
-    return { u: -t.u, v: -t.v };
-  })();
-  const extensionAtDepth = (depth) => {
-    if (!(back.v < -1e-9) || !(depth < start.v)) {
-      return start;
-    }
-    const r = (depth - start.v) / back.v;
-    return { u: start.u + back.u * r, v: start.v + back.v * r };
-  };
-  // Where a segment from `origin` along `direction`, no longer than the
-  // direction itself, crosses the continued edge. Null if it does not.
-  const meetExtension = (origin, direction) => {
-    const denominator = direction.u * back.v - direction.v * back.u;
-    if (Math.abs(denominator) < 1e-12) {
-      return null;
-    }
-    const du = start.u - origin.u;
-    const dv = start.v - origin.v;
-    const s = (du * back.v - dv * back.u) / denominator;
-    const r = (du * direction.v - dv * direction.u) / denominator;
-    if (s < 0 || s > 1 + 1e-9 || r < 0) {
-      return null;
-    }
-    return { u: origin.u + direction.u * s, v: origin.v + direction.v * s };
-  };
 
   // A position along the wall as a signed length from the rib end: positive
-  // runs up the real wall, negative down the continued edge. One measure for
-  // both, so a reach or an easing that starts on the continued edge carries on
-  // up the real wall by the same distance, with no seam at the rib end.
+  // runs up the real wall, negative down the line straight across. One measure
+  // for both, so a reach that starts below the rib end carries on up the real
+  // wall by the same distance.
   const pointAtLength = (length) =>
     length < 0
-      ? { u: start.u - back.u * length, v: start.v - back.v * length }
+      ? { u: start.u, v: start.v + length }
       : pointAt(parameterAtDistance(0, length));
   const parameterAtSignedLength = (length) =>
     length <= 0 ? 0 : parameterAtDistance(0, length);
@@ -480,8 +450,6 @@ export function makeSerifWall(points) {
     stemAtDepth,
     pointAtLength,
     parameterAtSignedLength,
-    extensionAtDepth,
-    meetExtension,
     parameterAtDepth,
     parameterAtDistance,
     lengthAt,
@@ -533,6 +501,38 @@ function splitCubic(p0, p1, p2, p3, t) {
   const e = lerpUV(b, c, t);
   const f = lerpUV(d, e, t);
   return { first: [p0, a, d, f], second: [f, e, c, p3] };
+}
+
+// Keep the ordinary Tunni construction where both forward rays meet nearby.
+// Far or backward intersections are not useful corners. Blend to a local
+// chord-based construction before reaching parallel, so neither the handle
+// lengths nor their derivatives jump when the intersection changes sides.
+function boundedEasingHandles(start, startDirection, end, endDirection, curvature) {
+  const chord = lengthUV(subUV(end, start));
+  const fallback = chord / 2;
+  const a = normalize(startDirection);
+  const b = normalize(endDirection);
+  const cross = (p, q) => p.u * q.v - p.v * q.u;
+  const denominator = cross(a, b);
+  const delta = subUV(end, start);
+  const smooth = (value) => {
+    const t = Math.max(0, Math.min(1, value));
+    return t * t * (3 - 2 * t);
+  };
+  let startLen = fallback;
+  let endLen = fallback;
+  if (chord > 0 && Math.abs(denominator) > 1e-12) {
+    const reachStart = cross(delta, b) / denominator;
+    const reachEnd = cross(delta, a) / denominator;
+    if (reachStart > 0 && reachEnd > 0) {
+      const weight =
+        smooth(Math.min(reachStart, reachEnd) / (0.05 * chord)) *
+        (1 - smooth((Math.max(reachStart, reachEnd) - chord) / chord));
+      startLen += weight * (reachStart - fallback);
+      endLen += weight * (reachEnd - fallback);
+    }
+  }
+  return { startLen: startLen * curvature, endLen: endLen * curvature };
 }
 
 // One half-serif, entirely in frame coordinates. `side` is +1 for the left half
@@ -640,21 +640,22 @@ export function buildHalfSerif({ side, wall, params }) {
   };
   const onWall = stoppedParameter ?? (wingLength > 0 ? meetWingSurface() : null);
   const cornerParameter = onWall ?? wall.parameterAtDepth(tipThickness + wingSlope);
-  // Nothing on the wall, and the corner wanted past the rib end: it goes onto
-  // the stem's edge continued. Both answers meet the wall at the rib end
-  // itself, so the corner does not step as it crosses it.
+  // Nothing on the wall, and the corner wanted past the rib end: it is the
+  // surface's own end, straight across from the rib end at the depth the slope
+  // states, which is where the wall stands in for the stroke there. It meets
+  // the wall at the rib end, so the corner does not step as it crosses it.
   const pastRibEnd = onWall === null && cornerParameter === 0;
-  const corner = pastRibEnd
-    ? ((wingLength > 0 ? wall.meetExtension(tipTop, cornerRay) : null) ??
-      wall.extensionAtDepth(tipThickness + wingSlope))
-    : wall.pointAt(cornerParameter);
-  // The corner as a signed length along the wall. Below the rib end it is on
-  // the continued edge, and the bracket's stem end goes down there with it:
-  // held to the real wall, that end stopped at the rib end while the corner
-  // and the handles went on, so only the handles dipped.
   const ribEnd = wall.pointAt(0);
+  const cornerDepth = Math.min(tipThickness + wingSlope, ribEnd.v);
+  const corner = pastRibEnd
+    ? wall.pointAtLength(cornerDepth - ribEnd.v)
+    : wall.pointAt(cornerParameter);
+  // The corner as a signed length along the wall. Below the rib end the
+  // bracket's stem end goes down with it: held to the real wall, that end
+  // stopped at the rib end while the corner and the handles went on, so only
+  // the handles dipped.
   const cornerLength = pastRibEnd
-    ? -lengthUV(subUV(corner, ribEnd))
+    ? cornerDepth - ribEnd.v
     : wall.lengthAt(cornerParameter);
 
   // Reach and ease distance are LENGTHS ALONG THE WALL above the corner. They
@@ -672,121 +673,59 @@ export function buildHalfSerif({ side, wall, params }) {
   // sit ON the wall above the corner, at their own depths.
   const junctionLength = cornerLength + reach;
   const junction = wall.pointAtLength(junctionLength);
-  // The rounding runs out where the bracket meets the wing, and the same bound
-  // holds both ends: the flank end stops where the bracket end stops, or the
-  // scoop goes lopsided at exactly the settings a designer is pushing hardest.
-  //
-  // The bracket measured as it is drawn: straight from the junction to the top
-  // of the tip, which is what both ends of the rounding are measured by.
-  // Worked out from the numbers alone -- across by the wing, up by the slope
-  // and the reach -- it was the bracket on a wall standing straight up, and on
-  // the leaning wall of the `l` of skeletron that is the slope, 10, against a
-  // bracket many times longer. Easing stopped at the slope's value.
-  //
-  // Nothing switches easing off. It used to stand down at full concavity, on the
-  // reasoning that the bracket then leaves along the wall and leaves no corner.
-  // That holds on a straight wall only: on a curved one the bracket meets it
-  // at an angle, 16 and 19 degrees on the same `l`, and easing is the control
-  // for exactly that. On a straight wall it rounds a joint that is already
-  // smooth, which stays smooth.
-  const wantedEase = Math.max(params.easeDistance ?? 0, 0);
-  const bracketChord = lengthUV(subUV(tipTop, junction));
-  const easeDistance = Math.min(wantedEase, bracketChord, Math.max(room - reach, 0));
-  const depthClamped = wantedReach > reach || wantedEase > easeDistance;
-  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
-
-  // Below the rib end the stroke is still cut AT the rib end, and the straight
-  // run from there down to the release is the first curve of the terminal,
-  // which the terminal already owns: no point is added.
-  const releaseLength = junctionLength + easeDistance;
-  const releaseParameter = wall.parameterAtSignedLength(releaseLength);
-  const release = wall.pointAtLength(releaseLength);
-
-  // The transition cubic runs junction -> tipTop, and both of its handles
-  // lie on the line from their own end toward the wing's inner corner. That is
-  // what makes the bracket a bracket: the curve leaves the stroke edge along the
-  // stroke edge, and meets the wing along the wing's top surface. Any non-zero
-  // handle length preserves both tangents, so the two sliders are free to shape
-  // the curve without ever breaking them.
-  //
-  //   concavity is the handle length, as a fraction of the distance to the
-  //   corner. 0 collapses the curve to a straight chamfer, 1 carries the handles
-  //   all the way onto the corner for the deepest hollow, negative sends them the
-  //   other way for a convex bulge.
-  //
-  //   tension is the balance between the two. At 0.5 they are equal; away from
-  //   that the curve turns nearer one end than the other, which is what moves the
-  //   bracket up the stem or out along the wing.
-  //
-  // They cannot cancel each other out: tension only ever splits a length that
-  // concavity set, and the split is bounded so neither handle can vanish.
-  // With no wing there is no corner to bracket around, since it has collapsed
-  // onto the tip. Hollowing toward it only pushes the curve below the foot line
-  // and dimples the baseline, so a half turned off this way stays straight.
+  // Measure both cuts along their curves. Reading the bracket backwards gives
+  // an exact zero cut and an exact full cut, including on a bowed bracket whose
+  // distance from the junction need not increase monotonically.
   const midChord = lerpUV(tipTop, junction, 0.5);
   const attractor = lerpUV(midChord, corner, concavity);
   const control1 = lerpUV(tipTop, attractor, tension);
   const control2 = lerpUV(junction, attractor, tension);
-  // The rounding is one curve across the corner at the junction, and both of
-  // its ends step back from that corner by the ease distance — the flank end
-  // along the flank, the bracket end along the bracket. The bracket end is
-  // found BY DISTANCE. Taking the ease distance as a fraction of the bracket's
-  // chord and using it as a curve parameter measured neither the same quantity
-  // nor in the same unit, so the two ends grew at different rates, and only the
-  // bracket end ever ran out.
-  const bracketPointAt = (fraction) =>
-    splitCubic(tipTop, control1, control2, junction, 1 - fraction).first[3];
-  const distanceToJunction = (point) => lengthUV(subUV(point, junction));
-  let low = 0;
-  let high = 1;
-  for (let step = 0; step < 32; step++) {
-    const mid = (low + high) / 2;
-    if (distanceToJunction(bracketPointAt(mid)) < easeDistance) low = mid;
-    else high = mid;
-  }
+  const bracketLengths = buildLengthTable([junction, control2, control1, tipTop]);
+  // The easing distance is a fraction, 0 to 1, of the wall left above the
+  // junction: at 1 the release sits on the stroke's next on-curve. A length in
+  // units stopped meaning anything once the release could run that far, since
+  // how far that is changes with every edit to the stroke. The two ends stop
+  // at different places: the bracket end at the tip's top, where the bracket
+  // runs out; the release runs on up the wall.
+  const easeFraction = Math.min(Math.max(params.easeDistance ?? 0, 0), 1);
+  const easeDistance = easeFraction * Math.max(room - reach, 0);
+  const bracketEase = Math.min(easeDistance, bracketLengths.total);
+  const depthClamped = wantedReach > reach;
+  const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
+  // The stroke is cut at the rib end at the latest, so that is where the easing
+  // starts while it has not yet eaten the straight run below it. Starting it on
+  // that run instead turned its handle from the stroke's direction to the run's
+  // as it crossed the rib end: 32 units in one step on the `m` of skeletron,
+  // and the outline drew the rib end, not the release, anyway.
+  const releaseLength = Math.max(junctionLength + easeDistance, 0);
+  const releaseParameter = wall.parameterAtSignedLength(releaseLength);
+  const release = wall.pointAtLength(releaseLength);
+  // The share of that straight run the easing has eaten: none leaves the run
+  // straight, all of it is the ordinary rounding from the rib end.
+  const straightRun = Math.max(-junctionLength, 0);
+  const easeShare = straightRun > 0 ? Math.min(easeDistance / straightRun, 1) : 1;
   const bracket = splitCubic(
     tipTop,
     control1,
     control2,
     junction,
-    1 - (low + high) / 2
+    1 - parameterAtLength(bracketLengths, bracketEase)
   );
   const easeOnBracket = bracket.first[3];
-
-  // The rounding is one curve from the release across to its landing on the
-  // bracket, and each of its handles runs along the surface its own end sits on:
-  // the flank line one side, the bracket's own tangent the other. Both are the
-  // SAME LENGTH. A rounding is symmetric or it is not a rounding — giving each
-  // handle a fraction of its own neighbour instead makes the two legs unequal,
-  // because the split bracket's control leg has nothing to do with the ease
-  // distance, and the result reads as a lopsided scoop.
-  //
-  // The length is measured toward the corner the two surfaces would meet at if
-  // the rounding were not there, which is what the curvature slider is a
-  // fraction of: 0 leaves both handles on their ends and cuts a straight chamfer,
-  // 1 carries them onto that corner for the fullest round. Near full concavity
-  // the two surfaces are nearly parallel and the corner runs away, so the reach
-  // is bounded by the ease distance as well.
-  // Out of the stroke along the wall itself. The chord back to the junction is
-  // the same line only while the wall is straight, and a rounding whose handle
-  // leaves off the surface it sits on is not tangent to it.
   const wallOut = wall.tangentAt(releaseParameter);
   const flankDirection = { u: -wallOut.u, v: -wallOut.v };
-  const bracketDirection = subUV(bracket.second[1], easeOnBracket);
-  // Corner rounding's own rule, so the two read the same: each handle is the
-  // curvature times its own end's distance to the corner the two surfaces
-  // make, and at 1 both land on it. Both handles used to take one length -- the
-  // shorter of the two distances, and no more than the easing distance -- so on
-  // a curved wall the bracket's handle stopped short of the corner at full
-  // curvature: 8.5 units short on the `l` of skeletron, and halfway at an easing
-  // distance of 40.
-  const asXY = ({ u, v }) => ({ x: u, y: v });
-  const { startLen, endLen } = computeTunniHandleLengths(
-    asXY(release),
-    asXY(flankDirection),
-    asXY(easeOnBracket),
-    asXY(bracketDirection),
-    easeCurvature
+  // At a collapsed endpoint handle, use the first nonzero control-polygon leg.
+  const bracketDirection =
+    bracket.second
+      .slice(1)
+      .map((point) => subUV(point, easeOnBracket))
+      .find((direction) => lengthUV(direction) > 1e-12) ?? subUV(junction, tipTop);
+  const { startLen, endLen } = boundedEasingHandles(
+    release,
+    flankDirection,
+    easeOnBracket,
+    bracketDirection,
+    easeCurvature * easeShare
   );
   const easeFlankHandle = alongUV(release, flankDirection, startLen);
   const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, endLen);
@@ -808,7 +747,9 @@ export function buildHalfSerif({ side, wall, params }) {
     // tip, and a real rounding lies between the wall and it. What a master's
     // "simplify and harmonize" option merges into the stroke's last curve.
     easeAtLimit:
-      easeDistance > 0 && easeCurvature > 0 && easeDistance >= bracketChord - 1e-9,
+      easeDistance > 0 &&
+      easeCurvature > 0 &&
+      bracketEase >= bracketLengths.total - 1e-9,
   };
 }
 

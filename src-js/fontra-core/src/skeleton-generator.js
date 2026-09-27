@@ -5,9 +5,8 @@ import {
   makeBulbBall,
   slideBulbEntry,
 } from "./bulb-geometry.js";
-import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
-import { computeHandlesFromFragment } from "./path-functions.js";
+import { fitSerifEasing } from "./serif-easing-fit.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
   cornerMiter,
@@ -3346,16 +3345,12 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
 // they are one bend drawn as two. Reported on the `l` of skeletron, where the
 // designer merged them by hand and the result read better. This does that:
 //
-//   1. fits one curve to the pieces from the stroke's previous point to the
-//      tip's top, keeping the direction at both ends (Simplify's own fit);
-//   2. moves only that curve's two handles until its bend where it leaves the
-//      stroke matches the curve arriving there (harmonize's nearest answer,
-//      holding the stroke's curve still).
-//
-// Not merged: a wall piece that is a straight line, which must stay straight;
-// a run the fit cannot hold as one curve; and a result that bends both ways.
-// The merge removes points, so the master forfeits interpolation against one
-// without it, the same trade as removing collapsed points.
+// The bounded fit holds both endpoint tangents and has one continuous solution.
+// Curvature at the wall join uses a monotone solve with a displacement bound.
+// If sampled outline error exceeds two units, keep the
+// original pieces. Straight wall pieces also stay untouched.
+// Removing points still forfeits interpolation against a master without this
+// option, as with removal of collapsed points.
 function mergeSerifEasings(points) {
   let result = points;
   const keys = new Set(
@@ -3460,72 +3455,21 @@ function mergeOneSerifEasing(points, key) {
   const startTangent = direction(first[0], [first[1], first[2], first[3]]);
   const endBack = direction(last[3], [last[2], last[1], last[0]]);
   if (!startTangent || !endBack) return null;
-  // The starting curve. Each handle runs along its end's own direction at one
-  // shared tension, so the hump sits in the middle; the tension is the one at
-  // which the curve bulges as far from its chord as the run it replaces does.
-  // Bulge grows steadily with tension, so a fixed number of halvings finds it
-  // and nothing here can jump. Simplify's fit was used first and it did jump,
-  // 25 units in a quarter-unit drag on the `l` of skeletron: its pattern
-  // search is not continuous in its input.
-  //
-  // Both handles aim at the point where the two end directions meet. Where
-  // they meet ahead of both ends the curve cannot bend both ways; where they
-  // do not, the run hooks back on itself and one curve cannot hold it.
-  const p0 = first[0];
-  const p3 = last[3];
-  const unit = (v) => {
-    const l = Math.hypot(v.x, v.y);
-    return { x: v.x / l, y: v.y / l };
-  };
-  const d0 = unit(startTangent);
-  const d1 = unit(endBack);
-  const denominator = d0.x * d1.y - d0.y * d1.x;
-  if (Math.abs(denominator) < 1e-9) return null;
-  const toEnd = { x: p3.x - p0.x, y: p3.y - p0.y };
-  const reach0 = (toEnd.x * d1.y - toEnd.y * d1.x) / denominator;
-  const reach1 = (toEnd.x * d0.y - toEnd.y * d0.x) / denominator;
-  if (!(reach0 > 0 && reach1 > 0)) return null;
-  // The curve the editor draws when the easing point is deleted from the
-  // outline by hand: the same function, on the same run.
-  const fragment = [alive[0][0]];
-  for (const cubic of alive) {
-    fragment.push(
-      { ...cubic[1], type: "cubic" },
-      { ...cubic[2], type: "cubic" },
-      { x: cubic[3].x, y: cubic[3].y }
-    );
-  }
-  const [handleOne, handleTwo] = computeHandlesFromFragment("cubic", {
-    points: fragment,
-    isClosed: false,
-  });
-  const seed = [
-    p0,
-    { x: handleOne.x, y: handleOne.y },
-    { x: handleTwo.x, y: handleTwo.y },
-    p3,
-  ];
-
-  // Harmonized to the segment that follows it on the stroke, so the smooth
-  // point where they meet is G2: Harmonize's own nearest answer, moving only
-  // this segment's two handles and holding the stroke's still.
-  let merged = seed;
-  const following = [
+  const preceding = [
     at(wallIndex - 3 * step),
     at(wallIndex - 2 * step),
     at(wallIndex - step),
+    first[0],
   ];
-  if (!following[0].type && following[1].type && following[2].type) {
-    const stencil = [...following.map(({ x, y }) => ({ x, y })), ...seed];
-    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 1] });
-    merged = applyHandleScales(stencil, solved.scales).slice(3);
-  }
-
-  const handles = [merged[1], merged[2]].map(({ x, y }) => ({
-    x: Math.round(x),
-    y: Math.round(y),
-    type: "cubic",
-  }));
+  const merged = fitSerifEasing(
+    alive,
+    startTangent,
+    endBack,
+    !preceding[0].type && preceding[1].type && preceding[2].type ? preceding : null
+  );
+  if (!merged) return null;
+  // Keep precision: rounding independent handles can break tangent agreement.
+  const handles = [merged[1], merged[2]].map(({ x, y }) => ({ x, y, type: "cubic" }));
   const interior = new Set();
   for (let i = wallIndex + step; index(i) !== index(tipIndex); i += step) {
     interior.add(index(i));
@@ -7096,7 +7040,6 @@ const SERIF_LENGTH_FIELDS = new Set([
   "tipThickness",
   "wingSlope",
   "reach",
-  "easeDistance",
 ]);
 
 function resolveSerifHalf(pointSerif, side, context = {}) {

@@ -1440,9 +1440,35 @@ describe("skeleton-model serif schema", () => {
   it("stores the ease distance as typed", () => {
     const point = { x: 0, y: 0 };
     setSkeletonSerifParameters(point, {
-      left: { wingLength: 0, wingSlope: 10, reach: 0, easeDistance: 40 },
+      left: { wingLength: 0, wingSlope: 10, reach: 0, easeDistance: 0.4 },
     });
-    expect(point.serif.left.easeDistance).to.equal(40);
+    expect(point.serif.left.easeDistance).to.equal(0.4);
+  });
+
+  // A share of the wall, not a length: rounding it to whole units would take
+  // every easing short of 50 per cent to nothing.
+  it("does not round the ease distance with the lengths", () => {
+    const data = normalizeSkeletonData({
+      contours: [
+        {
+          id: 1,
+          points: [
+            {
+              id: 2,
+              x: 0,
+              y: 0,
+              capStyle: "serif",
+              serif: { left: { easeDistance: 0.4, reach: 10.4 } },
+            },
+            { id: 3, x: 0, y: 100 },
+          ],
+        },
+      ],
+    });
+    roundSkeletonCoordinates(data);
+    const { left } = data.contours[0].points[0].serif;
+    expect(left.easeDistance).to.equal(0.4);
+    expect(left.reach).to.equal(10);
   });
 
   it("defaults the axis mode, both sides and every link closed", () => {

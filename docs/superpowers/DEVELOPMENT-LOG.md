@@ -636,6 +636,37 @@ the first solved answer and became the arriving drawing, whose report is null.
 
 ## Serif terminal (map F7, skeleton)
 
+### Stable optional easing merges (2026-09-27)
+
+The vertical `l` drag test reported 261.63 units for a quarter-unit move, but
+most of that was contour reordering. Aligning the contour showed a real
+18.28-unit handle jump. The optional merge now uses a bounded two-variable
+least-squares fit with fixed arc-length reparameterizations. A monotone scalar
+curvature solve replaces the general nearest-handle harmonizer. It limits handle
+scaling to 0.8–1.2 and rejects fits whose sampled two-way outline error exceeds
+0.5–2 units according to span size. Original pieces survive a rejected merge.
+
+The old mandatory merge counts were not a safety criterion: both reported `l`
+sides are now retained when the fit cannot meet the shape and curvature limits.
+A separate forced-angle fixture verifies an accepted merge. The drag regression
+compares the drawn outlines rather than matching array indices. Direct fit tests
+cover endpoint tangents, continuous handle movement and incoming G2 continuity.
+The serif geometry, fit and skeleton generator suites pass: 326 tests.
+The full core suite also passes: 2869 tests, including the revised drag and merge
+regressions. Live editor inspection is still owed.
+
+### Bounded easing and equal arc lengths (2026-09-27)
+
+A forced-axis curved wall exposed an unbounded tangent intersection: changing
+Ease Distance from 42 to 43.25 grew a handle from 36 to 602 units. Serif easing
+now keeps the nearby forward-ray construction and smoothly blends distant
+intersections to local half-chord handles. The shared Tunni helper is unchanged.
+Both cuts now consume arc length, using the wall's existing length-table method
+for the bracket too. The previous bracket cut measured straight-line distance.
+Regression checks cover equal consumed arcs, the full bracket limit, and an
+800-step near-parallel sweep. All 142 serif-geometry tests pass.
+
+
 **State: built, backlog retired.** Eleven rounds. Suite 1,805 at the last change.
 
 ### The ground rule, and what it costs
@@ -970,18 +1001,62 @@ ignored the drawing. The axis is vertical and the stroke leans, so the rib ends
 stand 20 units outside and 20 inside the foot line, and the wall has nothing
 past its rib end. At a height of −101, the right corner sat on the rib end at
 slopes 0, −10 and −30 alike, and the left one stopped there at −30. After, the
-corner lands on the stem's edge continued: right 0, −8.5 and −23.2 in depth,
-left 0, −10 and −30. **The fault predates the negative height**, which only made
-the region past the rib end easy to reach.
+corner goes past the rib end to the depth the slope states. **The fault
+predates the negative height**, which only made the region past the rib end
+easy to reach.
 
 **The first fix moved only the corner**, and the designer saw it at once: with
 a flat bracket, the bracket's stem end stayed on the rib end and its handles
 went on alone, so the dip was drawn by handles. The corner is an attractor and
-not a point, so moving it moves nothing an on-curve sits on. The reach and the
-easing are a signed length from the corner now, running down the continued edge
-and up the real wall as one measure. On the `f` at height 0 and slope −25, the
-right bracket's stem end went from the rib end (402, 267) to the corner
-(437, 255), and a flat bracket keeps its handles collapsed.
+not a point, so moving it moves nothing an on-curve sits on. The reach is a
+signed length from the corner now, running below the rib end and up the real
+wall as one measure, and a flat bracket keeps its handles collapsed.
+
+**The edge continued was the wrong line past the rib end** (2026-09-27, the `m`
+of skeletron). That fix put the corner on the stem's edge continued along its
+own direction, at the slope's depth. On the `m` the stroke leaves 19 degrees
+off a vertical axis, so that edge reached the wing's depth about 900 units down
+the glyph and the bracket followed it: a spike longer than the letter. It is
+the fault the foot had already shed (the 1584-unit flight on the `l`), and the
+answer is the foot's: straight across from the rib end. Two things came with it.
+
+- **A crossing with the continued edge is a second event.** Kept as the first
+  answer, with the straight-across point as the fallback, it stepped 181 units
+  in tip height where the tip top rose through the continued edge, because the
+  crossing then appears at the tip's end of the surface, not at the rib end's.
+  The straight-across line meets the surface only at its end, so it has no
+  such event. The continued edge and both of its helpers are gone.
+- **The release stays at the rib end** while the easing eats the straight run,
+  its handles scaled by the share eaten. A release on the run turned its
+  handle through the angle between the stroke and the run as it crossed the
+  rib end, 32 units in one easing step.
+
+Worst single step on the `m`, sweeping each field in fine steps, committed code
+against this: tip height 35.9 to 10.1, wing slope 46.0 to 7.6. Easing went
+25.3 to 27.8. That 27.8 is the easing handle rule's own, below.
+
+**The easing stopped at the wing's end again** (2026-09-27). The arc-length
+rework capped the one ease distance at the bracket's length, so the release on
+the wall stopped the moment the other end reached the tip's top. The two ends
+now stop apart: the bracket end at the tip's top, the release at the wall's own
+end. That end was 95 per cent of the segment, so a splice kept curve on both
+sides of the cut. The limit is the whole segment now, up to the next on-curve.
+On the `m`, easing swept 0 to 600 held 33 points with no invalid coordinate,
+with and without simplify.
+
+**The easing distance became a share of the wall** the same day, 0 to 100 per
+cent, on the designer's call. Two places had it down as a length and would have
+broken a share silently: the units mode multiplied it by the stroke width, and
+the rounding pass rounded it to whole units, which takes every easing under 50
+per cent to nothing. A test now covers the second. The tests written in units
+were converted at the value typed over the wall above the junction, measured
+per glyph, so each still draws the shape it was written against.
+
+**Open: the easing handles step where their two lines cross at the bracket
+end.** On the `m`, easing 79 to 81: the handles go from 63 and 63 to 122 and 8
+in about one unit of easing. The bounded rule blends from equal halves to the
+tangent-crossing lengths over 5 per cent of the chord. That is a threshold with
+a slope, which feature model §9 closes for the offset solver.
 
 ### Gaps, and what is left alone
 

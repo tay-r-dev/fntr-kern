@@ -1009,10 +1009,12 @@ A contour can still hold a serif block in an old file. Nothing reads it. Point n
 materializes a serif on every on-curve point, so a point-level fallthrough can never fire, and a
 fallback that cannot fire is worse than one that is documented.
 
-`SERIF_LENGTH_FIELDS` names the five fields that are distances. They are the only ones the source's
+`SERIF_LENGTH_FIELDS` names the four fields that are distances. They are the only ones the source's
 `serifUnitsMode` scales. That mode is `absolute` or `normalized`, and `normalized` multiplies by
 the stroke width. `tipCutAngle` is in degrees. `tension`, `concavity` and `easeCurvature` are
-dimensionless in every mode, and nothing scales them.
+dimensionless in every mode, and nothing scales them. `easeDistance` is a share, 0 to 1, of the
+wall above the junction, so no units mode touches it and the rounding pass leaves it alone. The
+panel shows it as a percent, like the three ratios.
 
 ### Presets, and what a fresh serif is
 
@@ -1066,22 +1068,31 @@ else the junction is a corner, and that is what contour easing is for. A fresh s
 tension 0 and concavity 0, so it arrives as a flat chamfer and the bracket is something the
 designer asks for.
 
-**Contour easing rounds that junction.** `easeDistance` moves the release back along the flank and
-cuts the same amount off the bracket end. The cut is a de Casteljau split, so the surviving bracket
-is the same curve, not a redrawn one. The rounding that fills the gap has one handle on each
-surface: one along the flank, one along the bracket's own tangent. **Both handles are the same
-length.** A rounding is symmetric or it is not a rounding. Giving each handle a fraction of its own
-neighbour instead makes the two legs unequal. The split bracket's control leg has nothing to do
-with the ease distance. The result reads as a lopsided scoop.
+**Contour easing rounds that junction.** `easeDistance` is the share of the wall above
+the junction the release travels: 0 leaves it on the junction, 1 puts it on the
+stroke's next on-curve. The bracket end travels the same arc length until the
+bracket runs out, and from there it stays on the tip's top while the release runs
+on alone. A length in units stopped meaning anything once the release could run
+that far, because how far that is changes with every edit to the stroke.
+The cut is a de Casteljau split, so the surviving bracket keeps its exact shape.
+Both rounding handles follow their own surface tangents.
 
-`easeCurvature` is the fraction of the way to the corner where those two surfaces would meet. At 0
-it leaves both handles on their ends and cuts a straight chamfer. At 1 it carries them onto that
-corner. Near full concavity the two surfaces are nearly parallel and that corner runs far away, so
-the ease distance bounds the reach as well.
+`easeCurvature` scales each handle from zero to its full construction length. If
+both forward tangent rays meet within one easing chord, each full handle reaches
+that intersection. As the intersection travels farther away, the construction
+smoothly blends to half-chord handles; by two chords it uses only that local
+construction. Backward or parallel intersections also use the local construction.
+This prevents forced-angle serifs from developing unbounded handles. Easing remains
+active at full concavity, because a curved wall can still meet that bracket at an angle.
 
-Easing switches itself off at concavity 1, and **only** there. That is the one value where the
-bracket already leaves the junction along the flank, so no corner is left to round. A partly hollow
-bracket still meets the flank at an angle, and wants rounding as much as a bulging one does.
+**Simplify and harmonize** can replace the wall/easing run once easing consumes
+the full bracket. Its fit holds the endpoints and tangent directions and solves
+only for bounded positive handle lengths. Fixed arc-length reparameterizations
+avoid the previous general-purpose fit's competing search solutions. At a curved
+wall join, a single monotone curvature solve may scale both handles by at most
+20 percent to reach G2. If that needs a larger change, or sampled two-way outline
+error exceeds two units (less on small spans), the original pieces remain.
+Consequently enabling this option does not guarantee fewer points on every serif.
 
 A half with `wingLength === 0` is **switched off**, and it must add nothing to the outline. Two
 consequences follow, and we found both the hard way.
@@ -1138,22 +1149,33 @@ curving wall carries the point further than the number says — by the number ov
 lean — so the rounding was lopsided at exactly the leans a designer notices. Tip thickness stays a
 depth, because the thickness of a tip is measured square to its foot.
 
-**Past the rib end the corner meets the stem's edge continued.** The wall starts
-at the rib end, and a negative slope, or a rib end that a forced axis puts inside
-the foot line, can ask for a corner further out than that. The corner then lands
-on the straight line that continues the wall along its own direction at the rib
-end. The reach and the easing are measured from the corner, so they start on
-that line and carry on up the real wall by the same length, with no seam at the
-rib end. The bracket's stem end goes down with the corner: held to the real
-wall, it stopped at the rib end while the corner and the handles went on, and
-only the handles dipped. The stroke is still cut at the rib end, and the
-straight run from there down to the release is the terminal's first curve, so
-no point is added. The wall is never bent onto the line, so this is not the
-flank line closed in §9. The two answers meet at the rib end, so nothing steps
-as the corner crosses it.
+**Past the rib end the corner is straight across from the rib end.** The wall
+starts at the rib end, and a negative slope, a rib end that a forced axis puts
+inside the foot line, or a stroke that stops short of the wing can ask for a
+corner further out than that. The corner is then the wing surface's own end: the
+rib end's position across the foot, at the depth the slope states. This is the
+same line the foot is measured from (below). The stem's edge continued is not
+used, for the same reason as there: it can run nearly along the axis, and on the
+`m` of skeletron the corner looked for on it landed some 900 units down the
+glyph. The reach is measured from the corner, down that line and up the real
+wall as one length, with no seam at the rib end. The bracket's stem end goes
+down with the corner: held to the real wall, it stopped at the rib end while the
+corner and the handles went on, and only the handles dipped. The wall is never
+bent onto the line, so this is not the flank line closed in §9. The two answers
+meet at the rib end, so nothing steps as the corner crosses it.
+
+**The release is never below the rib end.** The stroke is cut at the rib end,
+and the straight run from there down to the junction is the terminal's first
+curve, so no point is added. An easing that has not yet eaten that run starts at
+the rib end, leaving along the stroke, and its handles grow with the share of
+the run it has eaten: none leaves the run straight, all of it is the ordinary
+rounding. A release placed on the run instead turned its handle from the
+stroke's direction to the run's as it crossed the rib end, 32 units in one step
+on the `m`, and the outline drew the rib end in its place anyway.
 
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
-the wall rather than being handed one beside it.
+the wall rather than being handed one beside it. The limit is the whole segment, up to the next
+on-curve. A cut there leaves the stroke a zero-length piece, which is a collapse and keeps the count.
 
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.

@@ -171,8 +171,9 @@ export const VALID_SERIF_UNITS_MODES = new Set(["absolute", "normalized"]);
 export const VALID_SERIF_SIDES = new Set(["both", "left", "right"]);
 
 // One half-serif's shape. Absolute font units unless the source's serif units
-// mode says otherwise; `tipCutAngle` is degrees and `tension`, `concavity` and
-// `easeCurvature` are dimensionless in every mode.
+// mode says otherwise; `tipCutAngle` is degrees; `tension`, `concavity` and
+// `easeCurvature` are dimensionless in every mode, and `easeDistance` is a
+// fraction of the wall left above the junction.
 export const SERIF_HALF_FIELDS = Object.freeze([
   "wingLength",
   "tipThickness",
@@ -5174,15 +5175,9 @@ export function roundSkeletonCoordinates(skeletonData, round = Math.round) {
 }
 
 // The serif half's fields that are distances. `skeleton-generator.js` scales the same
-// five by the stroke width under the normalized units mode, and the two lists are the
+// four by the stroke width under the normalized units mode, and the two lists are the
 // same list for the same reason: these are the lengths.
-const SERIF_UNIT_FIELDS = [
-  "wingLength",
-  "tipThickness",
-  "wingSlope",
-  "reach",
-  "easeDistance",
-];
+const SERIF_UNIT_FIELDS = ["wingLength", "tipThickness", "wingSlope", "reach"];
 
 export function setSkeletonData(layer, skeletonData) {
   if (!layer) {
