@@ -6,6 +6,7 @@ import {
   registerActionInfo,
 } from "@fontra/core/actions.js";
 import { Backend } from "@fontra/core/backend-api.js";
+import { clearBulbSlideMemory } from "@fontra/core/bulb-geometry.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
@@ -348,6 +349,10 @@ export class EditorController extends ViewController {
     );
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
     window.addEventListener("keyup", (event) => this.keyUpHandler(event));
+    // A bulb entry follows its previous slide only within one gesture, on the
+    // canvas or on a panel slider. Releasing the pointer or a key ends it.
+    for (const type of ["pointerup", "keyup"])
+      window.addEventListener(type, () => clearBulbSlideMemory(), { capture: true });
 
     this.canvasController.canvas.addEventListener("pointerdown", (event) =>
       this.pointerDownHandler(event)

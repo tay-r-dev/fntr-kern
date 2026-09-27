@@ -1,5 +1,10 @@
 import { Bezier } from "bezier-js";
-import { buildBulbArc, makeBulbBall, slideBulbEntry } from "./bulb-geometry.js";
+import {
+  buildBulbArc,
+  bulbStops,
+  makeBulbBall,
+  slideBulbEntry,
+} from "./bulb-geometry.js";
 import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
 import { gridKinkAllowance } from "./harmonization.js";
 import { computeHandlesFromFragment } from "./path-functions.js";
@@ -6883,7 +6888,10 @@ function buildDropCap({
         b,
       ];
     }
-    const slid = slideBulbEntry(wall, arc);
+    const slid = slideBulbEntry(wall, arc, {
+      key: `${endpoint._sourcePointId}:${position}`,
+      bottomAxis: bulbStops(ball, thetaArcEnd)[0].axis,
+    });
     if (slid) {
       const entry = slid.wall.at(-1);
       if (entry._provenance)
