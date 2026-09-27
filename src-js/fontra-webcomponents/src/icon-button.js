@@ -44,11 +44,19 @@ export class IconButton extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
 
+    /* The host is the button: the whole box it draws, padding included,
+       takes the pointer. The inner button only draws the face, and takes the
+       keyboard focus. */
     :host {
       line-height: 0;
       /* For the badge dot at the button's top-right corner. */
       position: relative;
       display: inline-block;
+      cursor: pointer;
+    }
+
+    :host([disabled]) {
+      cursor: default;
     }
 
     button {
@@ -64,7 +72,7 @@ export class IconButton extends UnlitElement {
       margin: 0;
       width: 100%;
       height: 100%;
-      cursor: pointer;
+      pointer-events: none;
       contain: content;
       color: var(--icon-button-icon-color);
       transition:
@@ -86,14 +94,14 @@ export class IconButton extends UnlitElement {
     }
 
     /* Hover: a light-grey fill and a darker icon. */
-    button:hover:not(:disabled):not(.icon-button-latch) {
+    :host(:hover) button:not(:disabled):not(.icon-button-latch) {
       background-color: var(--icon-button-hover-background-color);
       color: var(--icon-button-icon-hover-color);
     }
 
     /* Press: a near-white fill with a faint border, and the lime accent
        icon. */
-    button:active:not(:disabled):not(.icon-button-latch) {
+    :host(:active) button:not(:disabled):not(.icon-button-latch) {
       background-color: var(--icon-button-press-background-color);
       border-color: var(--icon-button-press-border-color);
       color: var(--icon-button-icon-press-color);
@@ -101,7 +109,6 @@ export class IconButton extends UnlitElement {
 
     button:disabled {
       color: var(--icon-button-icon-disabled-color);
-      cursor: default;
     }
 
     /* The "alert" state's badge: the design's 6px indication-badge at the
@@ -142,12 +149,12 @@ export class IconButton extends UnlitElement {
       padding: 4px;
     }
 
-    button.icon-button-latch:hover {
+    :host(:hover) button.icon-button-latch {
       background: var(--icon-button-latch-hover-background-color);
       border-bottom-width: 1px;
     }
 
-    button.icon-button-latch:active {
+    :host(:active) button.icon-button-latch {
       background: var(--icon-button-latch-press-background-color);
       border-top-width: 2px;
       border-bottom-width: 1px;
@@ -190,23 +197,41 @@ export class IconButton extends UnlitElement {
 
   constructor(src) {
     super();
-    // A tray pads the host to draw its tile, so the whole host is the button:
-    // the press, the right button and a click on that padding all count.
-    this.addEventListener("pointerdown", () => {
-      this._wasOpen = this._card?.matches(":popover-open") ?? false;
+    this._focusKeeper = new FocusKeeper();
+    // Every pointer event is the host's. A press in the dropdown card is the
+    // card's own and passes through.
+    const own = (event) =>
+      !this._buttonDisabled && !event.composedPath().includes(this._card);
+    this.addEventListener("mousedown", (event) => {
+      if (own(event)) {
+        this._focusKeeper.save();
+      }
+    });
+    this.addEventListener("pointerdown", (event) => {
+      if (own(event)) {
+        this._wasOpen = this._card?.matches(":popover-open") ?? false;
+      }
     });
     // The right button opens the dropdown at once.
     this.addEventListener("contextmenu", (event) => {
-      if (this.dropdown && !this._buttonDisabled) {
+      if (own(event) && this.dropdown) {
         event.preventDefault();
         event.stopPropagation();
         this._openDropdown();
       }
     });
+    // A keyboard press on the focused inner button bubbles here as a click too.
     this.addEventListener("click", (event) => {
-      if (event.composedPath()[0] === this) {
-        this._button?.click();
+      if (!own(event)) {
+        return;
       }
+      if (this._buttonOnClick) {
+        this._buttonOnClick(event);
+      } else if (this.dropdown && !this._wasOpen) {
+        this._openDropdown();
+      }
+      event.stopImmediatePropagation();
+      this._focusKeeper.restore();
     });
     if (src) {
       this.setAttribute("src", src);
@@ -314,7 +339,6 @@ export class IconButton extends UnlitElement {
   }
 
   render() {
-    const focus = new FocusKeeper();
     const children =
       this.label && !this.src
         ? [this.label]
@@ -329,16 +353,6 @@ export class IconButton extends UnlitElement {
     }
     this._button = html.button(
       {
-        onmousedown: focus.save,
-        onclick: (event) => {
-          if (this._buttonOnClick) {
-            this._buttonOnClick(event);
-          } else if (this.dropdown && !this._wasOpen) {
-            this._openDropdown();
-          }
-          event.stopImmediatePropagation();
-          focus.restore();
-        },
         disabled: this._buttonDisabled,
         class: [
           this.latch ? "icon-button-latch" : "",

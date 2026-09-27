@@ -47,12 +47,19 @@ export class MultiSelectDropdown extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
 
+    /* The host is the button: the whole box it draws takes the pointer. The
+       inner button only draws the face, and takes the keyboard focus. */
     :host {
       display: inline-block;
+      cursor: pointer;
+    }
+
+    :host([disabled]) {
+      cursor: default;
     }
 
     button {
-      cursor: pointer;
+      pointer-events: none;
       background-color: var(--multi-select-dropdown-background-color);
       color: var(--multi-select-dropdown-text-color);
       border: 1px solid var(--multi-select-dropdown-border-color);
@@ -70,14 +77,14 @@ export class MultiSelectDropdown extends UnlitElement {
       align-items: center;
     }
 
-    button:hover {
+    :host(:hover) button {
       background-color: var(--multi-select-dropdown-hover-color);
       border-color: var(--multi-select-dropdown-hover-border-color);
     }
 
     /* Pressed: the lime accent border from the Figma design's "press" state.
        The "selecting" (open) state keeps the rest-state border. */
-    button:active {
+    :host(:active) button {
       border-color: var(--multi-select-dropdown-active-border-color);
     }
 
@@ -120,23 +127,21 @@ export class MultiSelectDropdown extends UnlitElement {
     }
 
     button:disabled {
-      cursor: default;
       opacity: 35%;
     }
 
-    button:disabled:hover {
+    :host(:hover) button:disabled {
       background-color: transparent;
     }
   `;
 
   constructor() {
     super();
-    // A press on the button toggles, and it has to be mousedown: the menu
-    // closes itself on any window mousedown (menu-panel.js's own listener), so
-    // by the time a click event arrived the menu was already gone and the
-    // button only ever reopened it. Stopping propagation here keeps that
-    // window listener off our own press. It listens on the host, so the
-    // padding a tray draws the tile with presses the button too.
+    // A press toggles, and it has to be mousedown: the menu closes itself on
+    // any window mousedown (menu-panel.js's own listener), so by the time a
+    // click event arrived the menu was already gone and the button only ever
+    // reopened it. Stopping propagation keeps that window listener off our
+    // own press.
     this.addEventListener("mousedown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -168,6 +173,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set disabled(value) {
     this._disabled = !!value;
+    this.toggleAttribute("disabled", this._disabled);
     if (this._button) {
       this._button.disabled = this._disabled;
     }
