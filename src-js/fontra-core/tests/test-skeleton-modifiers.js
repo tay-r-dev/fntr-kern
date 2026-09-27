@@ -25,6 +25,10 @@ import {
   makeSkeletonPointKey,
   makeSkeletonPointTargetEntry,
 } from "../../views-editor/src/skeleton-editing.js";
+import {
+  setPanelPointTotalWidth,
+  setPanelPointWidthPreset,
+} from "../../views-editor/src/skeleton-panel-edits.js";
 
 before(() => {
   globalThis.window = {
@@ -891,3 +895,57 @@ function makeEditableGeneratedHandleSkeleton() {
     ],
   });
 }
+
+// A straight's two ribs are tied, and the generator draws a tied group at the
+// mean of its widths. A width written to one of them has to reach both.
+describe("a width written to one tied rib", () => {
+  const editOnLayer = (layer) => ({
+    sceneSettings: { editLayerName: "a" },
+    getEditingLayerFromGlyphLayers: (layers) => layers,
+    editGlyph: (edit) => edit(() => {}, { layers: { a: layer } }),
+  });
+
+  // A straight into a curve through a smooth point: the straight's two ribs tie.
+  const makeTiedSkeleton = () =>
+    normalizeSkeletonData({
+      contours: [
+        makeSkeletonContour({
+          id: 10,
+          defaultWidth: 80,
+          points: [
+            makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+            makeSkeletonPoint({ id: 2, x: 100, y: 0, smooth: true }),
+            makeSkeletonPoint({ id: 3, x: 150, y: 0, type: "cubic" }),
+            makeSkeletonPoint({ id: 4, x: 200, y: 50, type: "cubic" }),
+            makeSkeletonPoint({ id: 5, x: 200, y: 100 }),
+          ],
+        }),
+      ],
+    });
+
+  it("applies a preset in full to both ribs", async () => {
+    const layer = makeLayerGlyph(makeTiedSkeleton());
+    await setPanelPointWidthPreset(
+      editOnLayer(layer),
+      [{ contourId: 10, pointId: 1 }],
+      { name: "Wide", width: 120, side: "both" },
+      "preset"
+    );
+    const [first, second] = getSkeletonData(layer).contours[0].points;
+    expect(first.width).to.include({ left: 60, right: 60 });
+    expect(second.width).to.include({ left: 60, right: 60 });
+  });
+
+  it("applies a typed total in full to both ribs", async () => {
+    const layer = makeLayerGlyph(makeTiedSkeleton());
+    await setPanelPointTotalWidth(
+      editOnLayer(layer),
+      [{ contourId: 10, pointId: 2 }],
+      100,
+      "total"
+    );
+    const [first, second] = getSkeletonData(layer).contours[0].points;
+    expect(first.width).to.include({ left: 50, right: 50 });
+    expect(second.width).to.include({ left: 50, right: 50 });
+  });
+});

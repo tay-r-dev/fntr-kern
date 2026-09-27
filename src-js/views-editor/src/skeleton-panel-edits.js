@@ -39,6 +39,7 @@ import {
   getSkeletonPointPresetPick,
   balanceSkeletonPoints,
   harmonizeSkeletonPoints,
+  getTiedRibGroup,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
   joinSkeletonContours,
@@ -155,6 +156,7 @@ export async function editSelectedSkeletonPoints(
     sceneController,
     undoLabel,
     (working, reference) => {
+      const written = [];
       for (const address of selectionAddresses) {
         const resolved = resolveSkeletonAddressAcrossLayers(
           reference,
@@ -169,10 +171,38 @@ export async function editSelectedSkeletonPoints(
           contour: resolved.contour,
           defaultWidth: resolved.contour.defaultWidth,
         });
+        written.push(resolved);
+      }
+      if (editOptions.tiedWidths) {
+        shareWidthsWithTiedRibs(written);
       }
     },
     editOptions
   );
+}
+
+// A tied group draws at the mean of its members' widths, so a width written to
+// one member alone lands halfway between the old and the new. Each member
+// outside the edit takes the written width in full. Members inside it took
+// their own write already: copying between them would count a drag twice.
+function shareWidthsWithTiedRibs(written) {
+  const writtenPoints = new Set(written.map(({ point }) => point));
+  for (const { contour, point } of written) {
+    for (const member of getTiedRibGroup(contour, point) || []) {
+      if (
+        writtenPoints.has(member) ||
+        isSkeletonSideLocked(member, "left", "width") ||
+        isSkeletonSideLocked(member, "right", "width")
+      ) {
+        continue;
+      }
+      if (point.width === undefined) {
+        delete member.width;
+      } else {
+        member.width = structuredClone(point.width);
+      }
+    }
+  }
 }
 
 // Binds every selected point to the named preset of one kind, or unbinds it
@@ -298,7 +328,8 @@ export async function setPanelPointSideWidth(
     (point, _address, { defaultWidth }) => {
       setSkeletonPointWidthFromSide(point, defaultWidth, side, value);
     },
-    undoLabel
+    undoLabel,
+    { tiedWidths: true }
   );
 }
 
@@ -314,7 +345,8 @@ export async function setPanelPointTotalWidth(
     (point, _address, { defaultWidth }) => {
       setSkeletonPointTotalWidth(point, defaultWidth, value);
     },
-    undoLabel
+    undoLabel,
+    { tiedWidths: true }
   );
 }
 
@@ -342,7 +374,7 @@ export async function setPanelPointWidthPreset(
       setSkeletonPointPresetPick(point, "width", preset.name);
     },
     undoLabel,
-    { presetWrite: true }
+    { presetWrite: true, tiedWidths: true }
   );
 }
 
@@ -358,7 +390,8 @@ export async function setPanelPointDistribution(
     (point, _address, { defaultWidth }) => {
       setSkeletonPointWidthDistribution(point, defaultWidth, value);
     },
-    undoLabel
+    undoLabel,
+    { tiedWidths: true }
   );
 }
 
@@ -456,7 +489,8 @@ export async function setPanelPointValuesStream(
   pointAddresses,
   valueStream,
   applyToPoint,
-  undoLabel
+  undoLabel,
+  { tiedWidths = false } = {}
 ) {
   if (!pointAddresses.length) {
     return null;
@@ -465,6 +499,7 @@ export async function setPanelPointValuesStream(
     sceneController,
     valueStream,
     (working, reference, value) => {
+      const written = [];
       for (const address of pointAddresses) {
         const resolved = resolveSkeletonAddressAcrossLayers(
           reference,
@@ -476,6 +511,10 @@ export async function setPanelPointValuesStream(
           continue;
         }
         applyToPoint(resolved.point, resolved.contour, value);
+        written.push(resolved);
+      }
+      if (tiedWidths) {
+        shareWidthsWithTiedRibs(written);
       }
     },
     undoLabel
@@ -722,7 +761,8 @@ export async function setPanelPointDistributionStream(
     (point, contour, value) => {
       setSkeletonPointWidthDistribution(point, contour.defaultWidth, value);
     },
-    undoLabel
+    undoLabel,
+    { tiedWidths: true }
   );
 }
 
@@ -784,7 +824,8 @@ export async function nudgePanelPointWidthStream(
     pointAddresses,
     valueStream,
     (point, contour, change) => moveOnePointWidth(point, contour, side, added(change)),
-    undoLabel
+    undoLabel,
+    { tiedWidths: true }
   );
 }
 
