@@ -49,9 +49,11 @@ import {
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
 
-// Alt on a curvature gizmo keeps the curvature at the leading handle's end
-// (calculateHarmonicHandleDrag). Which handle leads is decided once the pointer
-// has moved far enough to say, and held for the rest of the drag.
+// Alt on a curvature gizmo frees the two handles: each slides along its own
+// direction by its own share of the drag. Alt+Shift keeps the curvature at the
+// leading handle's end (calculateHarmonicHandleDrag). Which handle leads is
+// decided once the pointer has moved far enough to say, and held for the rest
+// of the drag.
 const HARMONIC_LEAD_DEAD_ZONE = 2;
 
 function latchHarmonicLead(segmentPoints) {
@@ -143,12 +145,17 @@ export async function handleTunniDrag({
           [onIndex2, endpoints[1]],
         ];
       } else {
-        const lead = event.altKey ? harmonicLead(delta) : null;
-        const controlPoints = event.altKey
+        const harmonic = event.altKey && event.shiftKey;
+        const lead = harmonic ? harmonicLead(delta) : null;
+        const controlPoints = harmonic
           ? lead === null
             ? null
             : calculateHarmonicHandleDrag(originalPoints, delta, lead)
-          : calculateSkeletonControlPointsFromTunniDelta(delta, tunniSegment, true);
+          : calculateSkeletonControlPointsFromTunniDelta(
+              delta,
+              tunniSegment,
+              !event.altKey
+            );
         writes = controlPoints && [
           [controlIndex1, controlPoints[0]],
           [controlIndex2, controlPoints[1]],
@@ -288,8 +295,9 @@ export async function handleSkeletonTunniDrag({
               round
             );
           } else {
-            const lead = event.altKey ? harmonicLead(delta) : null;
-            const controlPoints = event.altKey
+            const harmonic = event.altKey && event.shiftKey;
+            const lead = harmonic ? harmonicLead(delta) : null;
+            const controlPoints = harmonic
               ? lead === null
                 ? null
                 : calculateHarmonicHandleDrag(
@@ -300,7 +308,7 @@ export async function handleSkeletonTunniDrag({
               : calculateSkeletonControlPointsFromTunniDelta(
                   delta,
                   target.originalSegment,
-                  true
+                  !event.altKey
                 );
             if (!controlPoints) {
               return;
