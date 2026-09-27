@@ -350,8 +350,10 @@ export class EditorController extends ViewController {
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
     window.addEventListener("keyup", (event) => this.keyUpHandler(event));
     // A bulb entry follows its previous slide only within one gesture, on the
-    // canvas or on a panel slider. Releasing the pointer or a key ends it.
-    for (const type of ["pointerup", "keyup"])
+    // canvas or on a panel slider. The next gesture starts it afresh. Release
+    // cannot clear it: the mouse-up is itself the drag's last frame and is
+    // regenerated after the browser's pointerup.
+    for (const type of ["pointerdown", "keydown"])
       window.addEventListener(type, () => clearBulbSlideMemory(), { capture: true });
 
     this.canvasController.canvas.addEventListener("pointerdown", (event) =>

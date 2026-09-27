@@ -191,8 +191,8 @@ const REFINE_STEPS = 12;
 
 // The slide chosen for each bulb during the current gesture. A drag asks for
 // the match nearest the previous frame's, so the entry moves smoothly even when
-// the match it follows travels far. The editor clears this when the pointer or
-// a key is released; after that the rest rule applies again.
+// the match it follows travels far. The editor clears this when the next
+// pointer or key press starts a gesture; after that the rest rule applies.
 // ponytail: keyed by skeleton point, not by glyph; two glyphs regenerated in one
 // gesture with the same point ids would share a slide.
 const slideMemory = new Map();
