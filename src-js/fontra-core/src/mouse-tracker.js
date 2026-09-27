@@ -6,6 +6,7 @@ export class MouseTracker {
   constructor(options) {
     this._dragFunc = options.drag;
     this._hoverFunc = options.hover;
+    this._cancelFunc = options.cancel;
     this._eventStream = undefined;
     this._lastMouseDownEvent = undefined;
     this._getTapCount = getTapCounter();
@@ -36,6 +37,24 @@ export class MouseTracker {
   }
 
   handleMouseDown(event) {
+    // The right button during a drag cancels it, as in Blender: the stream
+    // ends as if released, and the owner reverts what the drag did. The
+    // context menu that right button would open is swallowed.
+    if (event.button === 2 && this._eventStream && !this._eventStream.isDone()) {
+      window.addEventListener(
+        "contextmenu",
+        (menuEvent) => {
+          menuEvent.preventDefault();
+          menuEvent.stopImmediatePropagation();
+        },
+        { capture: true, once: true }
+      );
+      this._cancelFunc?.();
+      delete window._fontraMouseTracker;
+      this._eventStream.done();
+      this._eventStream = undefined;
+      return;
+    }
     ////grid
     if (event.button === 2 /*|| event.ctrlKey*/) {
       // We're not handling contextual menus

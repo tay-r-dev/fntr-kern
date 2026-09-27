@@ -149,6 +149,9 @@ import {
 // These values are chosen arbitrarily and in the future there may
 // be some merit to letting users configure this to their own taste.
 // Simplify's tolerance, in font units.
+// The reason an edit reverts when the right button cancels its drag.
+const DRAG_CANCELLED = "drag-cancelled";
+
 const MIN_SIMPLIFY_TOLERANCE = 1;
 
 // Simplify one contour across its masters with the least deviation that
@@ -740,6 +743,7 @@ export class SceneController {
       drag: async (eventStream, initialEvent) =>
         await this.handleDrag(eventStream, initialEvent),
       hover: (event) => this.handleHover(event),
+      cancel: () => this.cancelDrag(),
       element: this.canvasController.canvas,
     });
     this._eventElement = document.createElement("div");
@@ -1732,8 +1736,20 @@ export class SceneController {
   }
 
   async handleDrag(eventStream, initialEvent) {
-    if (this.selectedTool) {
+    if (!this.selectedTool) {
+      return;
+    }
+    this.dragCancelled = false;
+    this._inDrag = true;
+    const initialSelection = this.selection;
+    try {
       await this.selectedTool.handleDrag(eventStream, initialEvent);
+    } finally {
+      this._inDrag = false;
+    }
+    // Everything the gesture did is dropped, the selection included.
+    if (this.dragCancelled) {
+      this.selection = initialSelection;
     }
   }
 
@@ -1843,6 +1859,14 @@ export class SceneController {
 
   getSceneBounds() {
     return this.sceneModel.getSceneBounds();
+  }
+
+  // The right button during a drag. The running edit reverts to where the drag
+  // began and records no undo step. `dragCancelled` stays set until the next
+  // drag, for a gesture that only changed the selection to put it back.
+  cancelDrag() {
+    this.dragCancelled = true;
+    this.cancelEditing(DRAG_CANCELLED);
   }
 
   cancelEditing(reason) {
@@ -1999,6 +2023,10 @@ export class SceneController {
       this._dispatchEvent("glyphEditCannotEditReadOnly");
       return;
     }
+    // A drag the right button cancelled before its edit began makes none.
+    if (this._inDrag && this.dragCancelled) {
+      return;
+    }
     if (!glyphName) {
       glyphName = this.getSelectedGlyphName();
     }
@@ -2106,6 +2134,10 @@ export class SceneController {
         applyChange(editSubject, changes.rollbackChange);
         await editContext.editIncremental(changes.rollbackChange, false);
         editContext.editCancel();
+        if (this._cancelGlyphEditing === DRAG_CANCELLED) {
+          this.selection = initialSelection;
+          return;
+        }
         message(
           translate("message.glyph-could-not-be-saved"),
           `${translate("message.edit-has-been-reverted")}\n\n${
