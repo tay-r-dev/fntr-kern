@@ -11,6 +11,15 @@ import { expect } from "chai";
 import { normalizeVector } from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
 
+// The fit's sums may run in any order, so compare to well below a unit.
+function expectPointsClose(actual, expected) {
+  expect(actual).to.have.length(expected.length);
+  actual.forEach((p, i) => {
+    expect(p.x).to.be.closeTo(expected[i].x, 1e-9);
+    expect(p.y).to.be.closeTo(expected[i].y, 1e-9);
+  });
+}
+
 describe("chordLengthParameterize", () => {
   it("parameterize the given points", () => {
     const points = [
@@ -128,7 +137,7 @@ describe("fitCubic", () => {
     const leftTangent = normalizeVector({ x: 1, y: 1 });
     const rightTangent = normalizeVector({ x: -1, y: 3 });
     const segment = fitCubic(points, leftTangent, rightTangent, 800);
-    expect(segment.points.map(({ x, y }) => ({ x, y }))).deep.equal([
+    expectPointsClose(segment.points, [
       { x: -28, y: 0 },
       { x: 30.619361253106185, y: 58.619361253106185 },
       { x: 185.4153571748979, y: 415.7539284753063 },
@@ -158,10 +167,10 @@ describe("generateBezier", () => {
       { x: -0.31622776601683794, y: 0.9486832980505138 }
     ).points;
 
-    expect(b1).deep.equal({ x: -28, y: 138 });
-    expect(b2).deep.equal({ x: 98.70185667874232, y: 264.70185667874233 });
-    expect(b3).deep.equal({ x: 274.3331007115815, y: 149.00069786525552 });
-    expect(b4).deep.equal({ x: 318, y: 18 });
+    expectPointsClose([b1], [{ x: -28, y: 138 }]);
+    expectPointsClose([b2], [{ x: 98.70185667874232, y: 264.70185667874233 }]);
+    expectPointsClose([b3], [{ x: 274.3331007115815, y: 149.00069786525552 }]);
+    expectPointsClose([b4], [{ x: 318, y: 18 }]);
 
     [b1, b2, b3, b4] = generateBezier(
       [
@@ -182,10 +191,10 @@ describe("generateBezier", () => {
       { x: -0.31622776601683794, y: 0.9486832980505138 }
     ).points;
 
-    expect(b1).deep.equal({ x: -28, y: 0 });
-    expect(b2).deep.equal({ x: 134.85620891904577, y: 162.85620891904577 });
-    expect(b3).deep.equal({ x: 235.09934508233675, y: 266.7019647529898 });
-    expect(b4).deep.equal({ x: 318, y: 18 });
+    expectPointsClose([b1], [{ x: -28, y: 0 }]);
+    expectPointsClose([b2], [{ x: 134.85620891904577, y: 162.85620891904577 }]);
+    expectPointsClose([b3], [{ x: 235.09934508233675, y: 266.7019647529898 }]);
+    expectPointsClose([b4], [{ x: 318, y: 18 }]);
   });
 });
 

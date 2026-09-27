@@ -156,7 +156,8 @@ function harmonizeBallJoins(points) {
 
 // How far up the wall's last segment the entry may slide, as its parameter.
 const SLIDE_LIMIT = 0.9;
-const SLIDE_STEPS = 40;
+const SLIDE_STEPS = 20;
+const REFINE_STEPS = 12;
 
 // Slide the entry up the wall with the editor's V-slide, the way a designer
 // drags it by hand. The wall piece it passes is cut exactly and joins the
@@ -182,7 +183,7 @@ export function slideBulbEntry(wall, arc) {
     return { s, points, g: (kBall - kWall) / Math.max(kBall, kWall, 1e-12) };
   };
   const refineRoot = (low, high) => {
-    for (let j = 0; j < 24; j++) {
+    for (let j = 0; j < REFINE_STEPS; j++) {
       const middle = sample((low.s + high.s) / 2);
       if (!middle) break;
       if (middle.g <= 0) high = middle;
@@ -194,7 +195,7 @@ export function slideBulbEntry(wall, arc) {
     // Golden-section search for the smallest mismatch between two samples.
     const r = (Math.sqrt(5) - 1) / 2;
     let best = null;
-    for (let j = 0; j < 24; j++) {
+    for (let j = 0; j < REFINE_STEPS; j++) {
       const c = sample(high.s - r * (high.s - low.s)),
         d = sample(low.s + r * (high.s - low.s));
       if (!c || !d) break;

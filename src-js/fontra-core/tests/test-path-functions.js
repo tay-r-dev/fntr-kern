@@ -472,7 +472,14 @@ describe("Path Functions tests", () => {
         testCase.numQuadraticOffCurvePoints
       ).unpackedContours();
 
-      expect(path).to.deep.equal(testCase.expectedPath);
+      // The cubic fit's sums may run in any order; compare below a billionth.
+      const rounded = (value) =>
+        JSON.parse(
+          JSON.stringify(value, (key, v) =>
+            typeof v === "number" ? Math.round(v * 1e9) / 1e9 : v
+          )
+        );
+      expect(rounded(path)).to.deep.equal(rounded(testCase.expectedPath));
     }
   );
 });

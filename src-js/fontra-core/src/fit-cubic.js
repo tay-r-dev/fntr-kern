@@ -9,43 +9,43 @@ import {
   vectorLength,
 } from "./vector.js";
 
-function zeros(length, ...rest) {
-  if (rest.length === 0) {
-    return new Array(length).fill(0);
-  } else {
-    return Array.from(range(length)).map((_) => zeros(...rest));
-  }
-}
-
 // The shared normal equations behind the two-handle fit used by
-// solveHandleLengths.
+// solveHandleLengths. Runs inside every V-slide refit, so it allocates nothing
+// per sample: the chord's cubic (both handles on its ends) is evaluated in
+// closed form.
 export function handleFitSystem(points, parameters, leftTangent, rightTangent) {
-  const bezierLinear = new Bezier(
-    points[0],
-    points[0],
-    points[points.length - 1],
-    points[points.length - 1]
-  );
-  const A = zeros(parameters.length, 2, 2);
-  for (const [i, u] of enumerate(parameters)) {
-    A[i][0] = mulVectorScalar(leftTangent, 3 * (1 - u) ** 2 * u);
-    A[i][1] = mulVectorScalar(rightTangent, 3 * (1 - u) * u ** 2);
-  }
-  const C = zeros(2, 2);
-  const X = zeros(2);
-
+  const first = points[0];
+  const last = points[points.length - 1];
+  let c00 = 0,
+    c01 = 0,
+    c11 = 0,
+    x0 = 0,
+    x1 = 0;
   for (let i = 0; i < points.length; i++) {
     const u = parameters[i];
-    const point = points[i];
-    C[0][0] += dotVector(A[i][0], A[i][0]);
-    C[0][1] += dotVector(A[i][0], A[i][1]);
-    C[1][0] += dotVector(A[i][0], A[i][1]);
-    C[1][1] += dotVector(A[i][1], A[i][1]);
-    const tmp = subVectors(point, bezierLinear.get(u));
-    X[0] += dotVector(A[i][0], tmp);
-    X[1] += dotVector(A[i][1], tmp);
+    const v = 1 - u;
+    const a0 = 3 * v * v * u;
+    const a1 = 3 * v * u * u;
+    const ax = leftTangent.x * a0,
+      ay = leftTangent.y * a0;
+    const bx = rightTangent.x * a1,
+      by = rightTangent.y * a1;
+    const toLast = u * u * (3 - 2 * u);
+    const tx = points[i].x - (first.x + (last.x - first.x) * toLast);
+    const ty = points[i].y - (first.y + (last.y - first.y) * toLast);
+    c00 += ax * ax + ay * ay;
+    c01 += ax * bx + ay * by;
+    c11 += bx * bx + by * by;
+    x0 += ax * tx + ay * ty;
+    x1 += bx * tx + by * ty;
   }
-  return { C, X };
+  return {
+    C: [
+      [c00, c01],
+      [c01, c11],
+    ],
+    X: [x0, x1],
+  };
 }
 
 export function solveHandleLengths(points, parameters, leftTangent, rightTangent) {
@@ -59,7 +59,9 @@ export function solveHandleLengths(points, parameters, leftTangent, rightTangent
   };
 }
 
-export function generateBezier(points, parameters, leftTangent, rightTangent) {
+// The four control points only. A refit loop calls this on every pass, and a
+// Bezier object is costly to build there.
+export function generateBezierPoints(points, parameters, leftTangent, rightTangent) {
   const bezierPoints = [points[0], undefined, undefined, points[points.length - 1]];
   const { alphaL, alphaR } = solveHandleLengths(
     points,
@@ -85,7 +87,13 @@ export function generateBezier(points, parameters, leftTangent, rightTangent) {
       mulVectorScalar(rightTangent, alphaR)
     );
   }
-  return new Bezier(...bezierPoints);
+  return bezierPoints;
+}
+
+export function generateBezier(points, parameters, leftTangent, rightTangent) {
+  return new Bezier(
+    ...generateBezierPoints(points, parameters, leftTangent, rightTangent)
+  );
 }
 
 function sumVector(point) {
@@ -123,13 +131,28 @@ function reparameterize(bezier, points, parameters) {
 // into [0, 1] and keeps the incoming parameter when Newton returns nothing
 // usable, so a caller can feed the answer straight back into solveHandleLengths.
 //
+// One Newton step per sample toward the cubic's nearest point, evaluated in
+// closed form: this runs on every pass of every V-slide refit.
 export function parameterizeAgainstCubic(controlPoints, points, parameters) {
-  const bezier = new Bezier(...controlPoints);
+  const [p0, p1, p2, p3] = controlPoints;
   return points.map((point, index) => {
-    const parameter = newtonRhapsonRootFind(bezier, point, parameters[index]);
-    return Number.isFinite(parameter)
-      ? Math.min(Math.max(parameter, 0), 1)
-      : parameters[index];
+    const t = parameters[index];
+    const u = 1 - t;
+    const bx =
+      u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x;
+    const by =
+      u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y;
+    const d1x =
+      3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x));
+    const d1y =
+      3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y));
+    const d2x = 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x));
+    const d2y = 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y));
+    const dx = bx - point.x,
+      dy = by - point.y;
+    const denominator = d1x * d1x + d1y * d1y + d2x * dx + d2y * dy;
+    const parameter = denominator === 0 ? t : t - (dx * d1x + dy * d1y) / denominator;
+    return Number.isFinite(parameter) ? Math.min(Math.max(parameter, 0), 1) : t;
   });
 }
 

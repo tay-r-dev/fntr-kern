@@ -1,7 +1,7 @@
 import { Bezier } from "bezier-js";
 import {
   chordLengthParameterize,
-  generateBezier,
+  generateBezierPoints,
   parameterizeAgainstCubic,
 } from "./fit-cubic.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
@@ -275,10 +275,10 @@ function refitFarSegment(newPoints, adjacent, side, replacement, destination) {
   let parameters = chordLengthParameterize(samples);
   let bezier;
   for (let i = 0; i < FIT_ITERATIONS; i++) {
-    bezier = generateBezier(samples, parameters, leftTangent, rightTangent);
-    parameters = parameterizeAgainstCubic(bezier.points, samples, parameters);
+    bezier = generateBezierPoints(samples, parameters, leftTangent, rightTangent);
+    parameters = parameterizeAgainstCubic(bezier, samples, parameters);
   }
-  const [, h1, h2] = bezier.points;
+  const [, h1, h2] = bezier;
   const first = far.startIndex + 1;
   newPoints[first] = { ...newPoints[first], x: h1.x, y: h1.y };
   newPoints[first + 1] = { ...newPoints[first + 1], x: h2.x, y: h2.y };
