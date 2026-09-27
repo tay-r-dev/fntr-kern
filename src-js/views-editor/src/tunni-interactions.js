@@ -569,8 +569,6 @@ export async function handleGeneratedTunniDrag({
 
     let accumulated = new ChangeCollector();
     let dragged = false;
-    // Alt latches an on-curve drag to one axis, as on the other two kinds.
-    const lockDeltaToAxis = makeAxisLock();
 
     for await (const event of eventStream) {
       if (event.type === "mouseup") {
@@ -603,11 +601,7 @@ export async function handleGeneratedTunniDrag({
         ? generatedCurvatureWrites(originalPoints, segment, delta, {
             fromBase: !!collapsed,
           })
-        : generatedOnCurveWrites(
-            originalPoints,
-            segment,
-            event.altKey ? lockDeltaToAxis(delta) : delta
-          );
+        : generatedOnCurveWrites(originalPoints, segment, delta);
       if (!writes) {
         continue;
       }
