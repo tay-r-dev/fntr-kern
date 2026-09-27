@@ -337,10 +337,19 @@ export class PointerTool extends BaseTool {
   // Pressing a skeleton or generated gizmo selects what it belongs to, so the
   // panel shows that object: a skeleton segment's two points, or the ribs at
   // the two ends of a generated segment.
-  _selectTunniGizmoOwner(gizmo) {
+  _selectTunniGizmoOwner(gizmo, { basic = false } = {}) {
     const keys = new Set();
     const segment = gizmo.segment;
-    if (gizmo.kind === "skeleton" && segment) {
+    if (basic && gizmo.kind === "basic" && segment) {
+      // A plain click on an outline gizmo: the segment's two on-curve points,
+      // as a click on the segment itself selects.
+      for (const pointIndex of [
+        segment.parentPointIndices[0],
+        segment.parentPointIndices.at(-1),
+      ]) {
+        keys.add(`point/${pointIndex}`);
+      }
+    } else if (gizmo.kind === "skeleton" && segment) {
       for (const pointId of [segment.startPointId, segment.endPointId]) {
         if (pointId !== undefined) {
           keys.add(makeSkeletonPointKey(gizmo.contourId, pointId));
@@ -368,31 +377,37 @@ export class PointerTool extends BaseTool {
   async _handleTunniGizmoDrag(gizmo, eventStream, initialEvent) {
     const sceneController = this.sceneController;
     this._selectTunniGizmoOwner(gizmo);
-    if (gizmo.kind === "generated") {
-      if (initialEvent.detail >= 2) {
-        await handleGeneratedTunniCommand({
-          sceneController,
-          gizmoHit: gizmo,
-          command: "reset",
-        });
-        return;
-      }
-      // Equalizing the two handles is a click on the curvature gizmo, so the
-      // modifiers must not cost the drag: once the pointer moves this falls
-      // through to the ordinary curvature drag.
-      if (
-        initialEvent.ctrlKey &&
-        initialEvent.shiftKey &&
-        gizmo.type === "generated-curvature" &&
-        !(await shouldInitiateDrag(eventStream, initialEvent))
-      ) {
+    const equalize = initialEvent.ctrlKey && initialEvent.shiftKey;
+    if (gizmo.kind === "generated" && initialEvent.detail >= 2) {
+      await handleGeneratedTunniCommand({
+        sceneController,
+        gizmoHit: gizmo,
+        command: "reset",
+      });
+      return;
+    }
+    if (gizmo.kind === "skeleton" && gizmo.type === "tunni" && equalize) {
+      await equalizeSkeletonTunniTensions({ sceneController, tunniHit: gizmo });
+      return;
+    }
+    // A curvature gizmo engages on a drag. A plain click selects its segment,
+    // and Ctrl+Shift+click on a generated one equalizes its two handles.
+    if (
+      CURVATURE_GIZMO_TYPES.has(gizmo.type) &&
+      !(await shouldInitiateDrag(eventStream, initialEvent))
+    ) {
+      if (equalize && gizmo.kind === "generated") {
         await handleGeneratedTunniCommand({
           sceneController,
           gizmoHit: gizmo,
           command: "equalize",
         });
-        return;
+      } else {
+        this._selectTunniGizmoOwner(gizmo, { basic: true });
       }
+      return;
+    }
+    if (gizmo.kind === "generated") {
       // The readout layer re-reads the segment from live geometry each frame,
       // so it shows the curvature the drag is arriving at even when the label
       // layer is switched off.
@@ -414,10 +429,6 @@ export class PointerTool extends BaseTool {
     }
 
     if (gizmo.kind === "skeleton") {
-      if (gizmo.type === "tunni" && initialEvent.ctrlKey && initialEvent.shiftKey) {
-        await equalizeSkeletonTunniTensions({ sceneController, tunniHit: gizmo });
-        return;
-      }
       this.sceneModel.tunniDragTarget = makeSkeletonTunniDragTarget(gizmo);
       try {
         await handleSkeletonTunniDrag({
@@ -1797,6 +1808,8 @@ function makeSkeletonTunniDragTarget(tunniHit) {
 
 // Address the dragged generated segment by its place in the path, so the readout
 // can rebuild it from live geometry rather than the snapshot taken at mousedown.
+const CURVATURE_GIZMO_TYPES = new Set(["curvature", "tunni", "generated-curvature"]);
+
 function makeGeneratedCurvatureDragTarget(gizmoHit) {
   const segment = gizmoHit?.segment;
   if (!Number.isInteger(segment?.pathContourIndex)) {
