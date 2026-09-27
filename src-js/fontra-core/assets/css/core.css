@@ -183,8 +183,10 @@ inline-svg {
   display: inline-block;
 }
 
+/* The design's button/icon (Figma 306:1426) is a 20px tile. Height stays
+   with the row the button sits in. */
 icon-button {
-  width: 1.25em;
+  width: 20px;
 }
 
 .top-bar-container {

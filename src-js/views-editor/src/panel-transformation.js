@@ -30,6 +30,7 @@ import { VarPackedPath } from "@fontra/core/var-path.js";
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
 import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Scale row's linked pair
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
+import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
@@ -74,6 +75,13 @@ export default class TransformationPanel {
     width: 16px;
     height: 16px;
     padding: 2px;
+  }
+
+  /* A static row icon is an inline-svg: fill its box. */
+  inline-svg.row-icon svg {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   /* The Origin row: the grid, the typed X and Y, then pick and clear. */
@@ -363,19 +371,27 @@ export default class TransformationPanel {
   // transformSelection via onApply. 0.1 is the rounding grid, not just the raw drag value, so a
   // drag lands on a clean number instead of a long, jittery decimal
   // (roundScrubValue's own step handling).
-  // A row's name is its icon, in the label column. A row with options holds
-  // them in the icon's dropdown; a click opens it, as the icon does nothing
-  // else.
+  // A row's name is its icon, in the label column: a plain icon (the
+  // design's icon/S), not a button -- it does nothing. A row with options
+  // holds them in the icon's dropdown; only then is it an icon-button, and a
+  // click opens it.
   _rowIcon(src, tooltip, dropdown) {
+    if (!dropdown) {
+      const icon = html.createDomElement("inline-svg", {
+        "class": "row-icon",
+        "src": src,
+        "data-tooltip": tooltip,
+        "data-tooltipposition": "left",
+      });
+      return { auxiliaryElement: icon };
+    }
     const icon = html.createDomElement("icon-button", {
       "class": "row-icon",
       "src": src,
       "data-tooltip": tooltip,
       "data-tooltipposition": "left",
     });
-    if (dropdown) {
-      icon.dropdown = dropdown;
-    }
+    icon.dropdown = dropdown;
     return { auxiliaryElement: icon };
   }
 

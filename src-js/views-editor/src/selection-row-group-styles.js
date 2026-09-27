@@ -27,12 +27,13 @@ export const SELECTION_ROW_GROUP_STYLES = `
   .selection-row-group-icons {
     display: flex;
     align-items: center;
-    gap: 0.35em;
+    /* The design's button/icon row (Figma 312:2780): 20px tiles, 2px apart. */
+    gap: 2px;
   }
 
   .selection-row-group-icons icon-button {
-    width: 1.5em;
-    height: 1.5em;
+    width: 20px;
+    height: 20px;
   }
 
   .selection-row-group-icons input[type="number"] {
