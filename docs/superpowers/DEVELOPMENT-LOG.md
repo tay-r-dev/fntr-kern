@@ -636,6 +636,18 @@ the first solved answer and became the arriving drawing, whose report is null.
 
 ## Serif terminal (map F7, skeleton)
 
+### Bounded easing and equal arc lengths (2026-09-27)
+
+A forced-axis curved wall exposed an unbounded tangent intersection: changing
+Ease Distance from 42 to 43.25 grew a handle from 36 to 602 units. Serif easing
+now keeps the nearby forward-ray construction and smoothly blends distant
+intersections to local half-chord handles. The shared Tunni helper is unchanged.
+Both cuts now consume arc length, using the wall's existing length-table method
+for the bracket too. The previous bracket cut measured straight-line distance.
+Regression checks cover equal consumed arcs, the full bracket limit, and an
+800-step near-parallel sweep. All 142 serif-geometry tests pass.
+
+
 **State: built, backlog retired.** Eleven rounds. Suite 1,805 at the last change.
 
 ### The ground rule, and what it costs

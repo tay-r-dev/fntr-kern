@@ -1066,22 +1066,18 @@ else the junction is a corner, and that is what contour easing is for. A fresh s
 tension 0 and concavity 0, so it arrives as a flat chamfer and the bracket is something the
 designer asks for.
 
-**Contour easing rounds that junction.** `easeDistance` moves the release back along the flank and
-cuts the same amount off the bracket end. The cut is a de Casteljau split, so the surviving bracket
-is the same curve, not a redrawn one. The rounding that fills the gap has one handle on each
-surface: one along the flank, one along the bracket's own tangent. **Both handles are the same
-length.** A rounding is symmetric or it is not a rounding. Giving each handle a fraction of its own
-neighbour instead makes the two legs unequal. The split bracket's control leg has nothing to do
-with the ease distance. The result reads as a lopsided scoop.
+**Contour easing rounds that junction.** `easeDistance` consumes the same arc length
+on the wall and the bracket, limited by the available wall and the full bracket arc.
+The cut is a de Casteljau split, so the surviving bracket keeps its exact shape.
+Both rounding handles follow their own surface tangents.
 
-`easeCurvature` is the fraction of the way to the corner where those two surfaces would meet. At 0
-it leaves both handles on their ends and cuts a straight chamfer. At 1 it carries them onto that
-corner. Near full concavity the two surfaces are nearly parallel and that corner runs far away, so
-the ease distance bounds the reach as well.
-
-Easing switches itself off at concavity 1, and **only** there. That is the one value where the
-bracket already leaves the junction along the flank, so no corner is left to round. A partly hollow
-bracket still meets the flank at an angle, and wants rounding as much as a bulging one does.
+`easeCurvature` scales each handle from zero to its full construction length. If
+both forward tangent rays meet within one easing chord, each full handle reaches
+that intersection. As the intersection travels farther away, the construction
+smoothly blends to half-chord handles; by two chords it uses only that local
+construction. Backward or parallel intersections also use the local construction.
+This prevents forced-angle serifs from developing unbounded handles. Easing remains
+active at full concavity, because a curved wall can still meet that bracket at an angle.
 
 A half with `wingLength === 0` is **switched off**, and it must add nothing to the outline. Two
 consequences follow, and we found both the hard way.

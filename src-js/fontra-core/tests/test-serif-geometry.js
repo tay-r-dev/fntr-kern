@@ -541,31 +541,88 @@ describe("half serif in frame coordinates", () => {
     expectClose(half.release.v - half.junction.v, 20);
   });
 
-  // The rounding is one curve across a corner. Both of its ends step back from
-  // that corner by the ease distance, each along its own surface. One end
-  // measured in units and the other in curve parameter is what made the two
-  // sides of the scoop grow at different rates and stop at different times.
-  it("steps both ends back from the junction by the same distance", () => {
-    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
-    for (const easeDistance of [5, 20, 40]) {
-      const half = eased({ easeDistance });
-      expectClose(
-        gap(half.easeOnBracket, half.junction),
-        gap(half.release, half.junction),
-        `ease distance ${easeDistance}`
+  // Integrate independently of the generator's length table.
+  const curveLength = (points) => {
+    const point = (t) => {
+      const s = 1 - t;
+      const weights = [s ** 3, 3 * s * s * t, 3 * s * t * t, t ** 3];
+      return ["u", "v"].map((axis) =>
+        points.reduce((sum, p, i) => sum + weights[i] * p[axis], 0)
       );
+    };
+    let previous = point(0),
+      length = 0;
+    for (let i = 1; i <= 4096; i++) {
+      const current = point(i / 4096);
+      length += Math.hypot(current[0] - previous[0], current[1] - previous[1]);
+      previous = current;
+    }
+    return length;
+  };
+  const bracketLength = (half) =>
+    curveLength([half.tipTop, half.control1, half.control2, half.easeOnBracket]);
+
+  it("cuts equal arc lengths from the wall and the bowed bracket", () => {
+    for (const concavity of [-1, -0.4, 1]) {
+      const full = eased({ concavity, easeDistance: 0 });
+      for (const easeDistance of [5, 20, 40]) {
+        const half = eased({ concavity, easeDistance });
+        expectClose(
+          bracketLength(full) - bracketLength(half),
+          half.release.v - half.junction.v,
+          `arc distance ${easeDistance}, concavity ${concavity}`,
+          0.002
+        );
+      }
     }
   });
 
-  // The rounding runs out where the bracket meets the wing, and not before.
-  // The bracket end lands on the top of the tip, having eaten the whole
-  // bracket, and the flank end is the same distance from the junction.
-  it("stops both ends where the bracket meets the wing", () => {
-    const gap = (point, other) => Math.hypot(point.u - other.u, point.v - other.v);
+  it("stops both ends after consuming the full bracket arc", () => {
+    const full = eased({ easeDistance: 0 });
     const far = eased({ easeDistance: 4000 });
     expectClose(far.easeOnBracket.u, far.tipTop.u);
     expectClose(far.easeOnBracket.v, far.tipTop.v);
-    expectClose(far.release.v - far.junction.v, gap(far.tipTop, far.junction));
+    expectClose(far.release.v - far.junction.v, bracketLength(full), "full arc", 0.002);
+    expect(far.easeAtLimit).to.equal(true);
+  });
+
+  it("keeps near-parallel easing handles local and continuous", () => {
+    // A forced vertical axis puts the stroke almost along u. The former
+    // tangent-line intersection sent handles hundreds of units away here.
+    const wall = makeSerifWall([
+      { u: 0, v: 0 },
+      { u: -100, v: 7 },
+      { u: 130, v: 92 },
+      { u: -124, v: 232 },
+    ]);
+    let previous;
+    for (let i = 0; i <= 800; i++) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall,
+        params: {
+          wingLength: 20,
+          tipThickness: 15,
+          reach: 29,
+          concavity: -0.88,
+          tension: 0.48,
+          easeDistance: 40 + i / 100,
+          easeCurvature: 0.6,
+        },
+      });
+      const gap = (a, b) => Math.hypot(a.u - b.u, a.v - b.v);
+      const chord = gap(half.release, half.easeOnBracket);
+      for (const [start, handle] of [
+        [half.release, half.easeFlankHandle],
+        [half.easeOnBracket, half.easeBracketHandle],
+      ])
+        expect(gap(start, handle)).to.be.at.most(2 * chord);
+      if (previous) {
+        expect(gap(half.easeFlankHandle, previous.easeFlankHandle)).to.be.below(1);
+        expect(gap(half.easeBracketHandle, previous.easeBracketHandle)).to.be.below(1);
+      }
+      previous = half;
+    }
   });
 
   // Reported on the `l` of skeletron: easing stopped at the wing slope's value.
