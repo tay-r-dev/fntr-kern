@@ -190,8 +190,19 @@ export class IconButton extends UnlitElement {
 
   constructor(src) {
     super();
-    // A tray pads the host to draw its tile. A click on that padding lands on
-    // the host, not the inner button, so it is handed on.
+    // A tray pads the host to draw its tile, so the whole host is the button:
+    // the press, the right button and a click on that padding all count.
+    this.addEventListener("pointerdown", () => {
+      this._wasOpen = this._card?.matches(":popover-open") ?? false;
+    });
+    // The right button opens the dropdown at once.
+    this.addEventListener("contextmenu", (event) => {
+      if (this.dropdown && !this._buttonDisabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        this._openDropdown();
+      }
+    });
     this.addEventListener("click", (event) => {
       if (event.composedPath()[0] === this) {
         this._button?.click();
@@ -319,17 +330,6 @@ export class IconButton extends UnlitElement {
     this._button = html.button(
       {
         onmousedown: focus.save,
-        onpointerdown: () => {
-          this._wasOpen = this._card?.matches(":popover-open") ?? false;
-        },
-        // The right button opens the dropdown at once.
-        oncontextmenu: (event) => {
-          if (this.dropdown) {
-            event.preventDefault();
-            event.stopPropagation();
-            this._openDropdown();
-          }
-        },
         onclick: (event) => {
           if (this._buttonOnClick) {
             this._buttonOnClick(event);

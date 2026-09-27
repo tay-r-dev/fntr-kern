@@ -116,6 +116,7 @@ import {
   TunniGizmoReveal,
 } from "./tunni-gizmos.js";
 import {
+  equalizeSegmentDistances,
   equalizeSkeletonTunniTensions,
   handleGeneratedTunniCommand,
   handleGeneratedTunniDrag,
@@ -388,6 +389,14 @@ export class PointerTool extends BaseTool {
     }
     if (gizmo.kind === "skeleton" && gizmo.type === "tunni" && equalize) {
       await equalizeSkeletonTunniTensions({ sceneController, tunniHit: gizmo });
+      return;
+    }
+    if (gizmo.kind === "basic" && gizmo.type === "curvature" && equalize) {
+      await equalizeSegmentDistances(
+        gizmo.segment,
+        gizmo.segment.points.map(({ x, y }) => ({ x, y })),
+        sceneController
+      );
       return;
     }
     // A curvature gizmo engages on a drag. A plain click selects its segment,

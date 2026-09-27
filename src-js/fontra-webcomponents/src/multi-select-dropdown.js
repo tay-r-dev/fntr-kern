@@ -131,12 +131,16 @@ export class MultiSelectDropdown extends UnlitElement {
 
   constructor() {
     super();
-    // A tray pads the host to draw its tile. A click on that padding lands on
-    // the host, not the inner button, so it is handed on.
-    this.addEventListener("click", (event) => {
-      if (event.composedPath()[0] === this) {
-        this._button?.click();
-      }
+    // A press on the button toggles, and it has to be mousedown: the menu
+    // closes itself on any window mousedown (menu-panel.js's own listener), so
+    // by the time a click event arrived the menu was already gone and the
+    // button only ever reopened it. Stopping propagation here keeps that
+    // window listener off our own press. It listens on the host, so the
+    // padding a tray draws the tile with presses the button too.
+    this.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleMenu();
     });
     this._label = "";
     this._items = [];
@@ -217,16 +221,6 @@ export class MultiSelectDropdown extends UnlitElement {
         type: "button",
         class: this._icon ? "icon-mode" : "",
         disabled: this._disabled,
-        // A press on the button toggles, and it has to be mousedown: the
-        // menu closes itself on any window mousedown (menu-panel.js's own
-        // listener), so by the time a click event arrived the menu was
-        // already gone and the button only ever reopened it. Stopping
-        // propagation here keeps that window listener off our own press.
-        onmousedown: (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          this.toggleMenu();
-        },
         // mousedown skips the keyboard, so Enter and Space come back here.
         onkeydown: (event) => {
           if (event.key === "Enter" || event.key === " ") {
