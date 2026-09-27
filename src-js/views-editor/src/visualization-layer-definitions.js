@@ -2336,8 +2336,8 @@ export function drawRevealedTunniGizmo(
 ) {
   const reveal = model.tunniGizmoReveal;
   const alpha = reveal?.alpha(key) ?? 0;
-  // An on-curve gizmo leaves a faint ring where it sits while it is hidden, so
-  // the place to hover for it can be found. The ring gives way as it shows.
+  // A hidden gizmo leaves a faint ring where it sits, so the place to hover
+  // for it can be found. The ring gives way as it shows.
   if (hint && alpha < 1) {
     const pixel = parameters.pixel ?? 1;
     context.save();
@@ -2412,7 +2412,8 @@ registerVisualizationLayerDefinition({
         model,
         tunniGizmoKey("basic", "curvature", id),
         point,
-        parameters
+        parameters,
+        { hint: true }
       );
     }
   },

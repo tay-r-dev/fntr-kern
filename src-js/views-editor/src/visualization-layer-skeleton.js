@@ -850,7 +850,8 @@ registerVisualizationLayerDefinition({
             skeletonTunniSegmentId(contour, segment)
           ),
           point,
-          parameters
+          parameters,
+          { hint: true }
         );
       }
     });
@@ -1017,6 +1018,7 @@ registerVisualizationLayerDefinition({
         anchor,
         parameters,
         {
+          hint: true,
           // The axis is the direction the curve swells in; without it the node
           // looks free to go anywhere.
           before: () => {
