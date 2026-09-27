@@ -74,22 +74,27 @@ export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {
   return result.sort((a, b) => a.theta - b.theta);
 }
 
-// The ball has three points after the entry: the bottom, the pre-neck point and
-// the neck attachment. The bottom is the glyph-axis extreme nearest the ball's
-// front (theta 0), with its handles on that axis. It is the only orthogonal
-// point. It changes axis when the ball's front turns past a diagonal. The
-// pre-neck point sits halfway between the bottom and the neck, by angle. A
-// stop past the neck attachment collapses onto it, so the point count holds.
+// The ball has three points after the entry: the bottom, the side apex and the
+// neck attachment. The bottom is the glyph-axis extreme nearest the ball's
+// front (theta 0). The side apex is the next glyph-axis extreme after it, toward
+// the neck, so the segment between them is a true quarter of the ball. Both
+// have their handles on their axis. The bottom changes axis when the ball's
+// front turns past a diagonal. A stop past the neck attachment collapses onto
+// it, so the point count holds; the neck starts after the side apex.
 export function bulbStops(ball, thetaEnd) {
-  const extremes = bulbApexes(ball, -Math.PI, Math.PI);
+  const extremes = bulbApexes(ball, -Math.PI, 2 * Math.PI);
   let bottom = extremes.reduce(
     (best, e) => (!best || Math.abs(e.theta) < Math.abs(best.theta) ? e : best),
     null
   ) ?? { theta: 0, axis: undefined };
-  if (bottom.theta <= -Math.PI / 2 || bottom.theta >= thetaEnd)
-    bottom = { theta: Math.min(Math.max(bottom.theta, -Math.PI / 2), thetaEnd) };
-  const preNeck = { theta: (bottom.theta + thetaEnd) / 2 };
-  return [bottom, preNeck];
+  const clamp = (stop) =>
+    stop.theta <= -Math.PI / 2 || stop.theta >= thetaEnd
+      ? { theta: Math.min(Math.max(stop.theta, -Math.PI / 2), thetaEnd) }
+      : stop;
+  const side = extremes.find((e) => e.theta > bottom.theta + 1e-9) ?? {
+    theta: thetaEnd,
+  };
+  return [clamp(bottom), clamp(side)];
 }
 
 // Each segment is the standard circle-cubic of its piece of the ball. At the
@@ -138,18 +143,30 @@ export function buildBulbArc(ball, thetaEnd) {
   return points;
 }
 
-// Harmonize the ball one join at a time, from the entry toward the neck. Each
-// join moves only the handle that leaves it along the ball, and only in length,
-// so the joins before it stay matched, the wall is untouched and the bottom
-// handles stay on their axis. The neck attachment is its own join and is left
-// to the neck.
-function harmonizeBallJoins(points) {
+// The ball after the bottom point stays an exact piece of the ball. Only the
+// slid segment adjusts, in handle length: its bottom handle meets the ball's
+// quarter at the bottom point and its entry handle meets the wall at the entry.
+// Each changes the other end's bend a little, so the two alternate until both
+// hold. The wall is untouched and the bottom handle stays on its axis.
+const JOIN_ROUNDS = 40;
+function harmonizeSlidSegment(points) {
   const result = points.map((p) => ({ ...p }));
-  for (let join = 3; join + 3 < result.length; join += 3) {
+  const settle = (join, dials, slot) => {
     const stencil = result.slice(join - 3, join + 4);
-    const solved = solveNearestHandleScales(stencil, { dials: [0, 0, 1, 0] });
+    const solved = solveNearestHandleScales(stencil, { dials });
     const placed = applyHandleScales(stencil, solved.scales);
-    result[join + 1] = { ...result[join + 1], x: placed[4].x, y: placed[4].y };
+    result[join - 3 + slot] = {
+      ...result[join - 3 + slot],
+      x: placed[slot].x,
+      y: placed[slot].y,
+    };
+    return solved.status === "skipped";
+  };
+  for (let round = 0; round < JOIN_ROUNDS; round++) {
+    // A round where both joins already hold changes nothing: stop there.
+    const bottomHeld = result.length >= 10 ? settle(6, [0, 1, 0, 0], 2) : true;
+    const entryHeld = settle(3, [0, 0, 1, 0], 4);
+    if (bottomHeld && entryHeld) break;
   }
   return result;
 }
@@ -226,7 +243,7 @@ export function slideBulbEntry(wall, arc) {
       ) ?? samples[i];
   }
   if (!chosen) return null;
-  const points = harmonizeBallJoins([...chosen.points, ...arc.slice(3)]);
+  const points = harmonizeSlidSegment([...chosen.points, ...arc.slice(3)]);
   return {
     wall: points.slice(0, 4),
     arc: points.slice(4),
