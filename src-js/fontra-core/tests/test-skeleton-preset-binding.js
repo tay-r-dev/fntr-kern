@@ -4,6 +4,7 @@ import {
   applySkeletonWidthPreset,
   applyTerminalPreset,
   getSkeletonPointPreset,
+  getSkeletonPointPresetPick,
   getSkeletonPointWidth,
   isSkeletonSideLocked,
   isSkeletonPointPresetStale,
@@ -12,6 +13,7 @@ import {
   normalizeSkeletonPoint,
   setSkeletonCapParameters,
   setSkeletonPointPreset,
+  setSkeletonPointPresetPick,
   setSkeletonPointTotalWidth,
 } from "@fontra/core/skeleton-model.js";
 
@@ -157,6 +159,38 @@ describe("skeleton preset binding", () => {
     expect(getSkeletonPointWidth(point, 40)).to.equal(60);
     setSkeletonPointPreset(point, "width", null);
     expect(isSkeletonSideLocked(point, "left", "width")).to.equal(false);
+  });
+
+  it("keeps a preset pick through a width edit, and it holds nothing", () => {
+    const before = skeletonWithPoint({ presetPick: { width: "Stem" } });
+    expect(getSkeletonPointPresetPick(before.contours[0].points[0], "width")).to.equal(
+      "Stem"
+    );
+    const after = structuredClone(before);
+    const point = after.contours[0].points[0];
+    expect(isSkeletonSideLocked(point, "left", "width")).to.equal(false);
+    setSkeletonPointTotalWidth(point, 40, 90);
+    liftChangedPresetBindings(before, after);
+    expect(getSkeletonPointWidth(point, 40)).to.equal(90);
+    expect(getSkeletonPointPresetPick(point, "width")).to.equal("Stem");
+  });
+
+  it("drops a terminal pick when the terminal kind changes", () => {
+    const before = skeletonWithPoint({ presetPick: { terminal: "Wedge" } });
+    const after = structuredClone(before);
+    setSkeletonCapParameters(after.contours[0].points[0], { capStyle: "round" });
+    liftChangedPresetBindings(before, after);
+    expect(
+      getSkeletonPointPresetPick(after.contours[0].points[0], "terminal")
+    ).to.equal(null);
+  });
+
+  it("sets and clears a pick apart from the bond", () => {
+    const point = normalizeSkeletonPoint({ x: 0, y: 0 });
+    setSkeletonPointPresetPick(point, "width", "Stem");
+    expect(getSkeletonPointPreset(point, "width")).to.equal(null);
+    setSkeletonPointPresetPick(point, "width", null);
+    expect(point).to.not.have.property("presetPick");
   });
 
   it("keeps every bond when nothing it covers changed", () => {

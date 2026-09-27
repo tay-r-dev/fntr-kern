@@ -2,6 +2,7 @@ import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
+import "./indication-badge.js";
 import { themeColorCSS } from "./theme-support.js";
 
 // Ticket 11: the "on" state's background -- same light/dark shade
@@ -11,6 +12,22 @@ import { themeColorCSS } from "./theme-support.js";
 // loaded).
 const colors = {
   "icon-button-on-background-color": ["#ddd", "#555"],
+  // button/icon (Figma 306:1426): the default button's states -- a grey
+  // icon at rest, a light-grey fill with a darker icon on hover, a
+  // near-white fill with a faint border and the lime accent icon while
+  // pressed, and a light-grey icon when disabled. The design's "alert"
+  // state is `badge`: an indication-badge (Figma 287:15770) pinned to the
+  // button's top-right corner, on top of the base or hover look.
+  "icon-button-icon-color": ["#8e8e8e", "#8e8e8e"],
+  "icon-button-icon-hover-color": ["#303030", "#e0e0e0"],
+  "icon-button-icon-press-color": ["#a9c915", "#a9c915"],
+  "icon-button-icon-disabled-color": ["#d9d9d9", "#5a5a5a"],
+  "icon-button-hover-background-color": ["#f7f7f7", "#464646"],
+  "icon-button-press-background-color": ["#fafafa", "#3c3c3c"],
+  "icon-button-press-border-color": [
+    "rgba(224, 224, 224, 0.31)",
+    "rgba(255, 255, 255, 0.14)",
+  ],
   // button/latch (Figma 287:15701): rest/hover/press/active backgrounds and
   // the shared border color, plus the dropdown card's own colors (moved in
   // from overflow-popover.js, which is now a thin subclass of this button).
@@ -29,6 +46,9 @@ export class IconButton extends UnlitElement {
 
     :host {
       line-height: 0;
+      /* For the badge dot at the button's top-right corner. */
+      position: relative;
+      display: inline-block;
     }
 
     button {
@@ -37,46 +57,60 @@ export class IconButton extends UnlitElement {
       justify-content: center;
       gap: 2px;
       background-color: transparent;
-      border: none;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      box-sizing: border-box;
       padding: 0;
       margin: 0;
       width: 100%;
       height: 100%;
       cursor: pointer;
       contain: content;
+      color: var(--icon-button-icon-color);
+      transition:
+        background-color 150ms,
+        color 150ms;
       /* ui/label/S, for a text segment. */
       font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking-label-s);
     }
 
-    /* The icon fills the button's height and keeps its proportions; the
-       button's width does not stretch it. */
+    /* The design's icon is 16px in a 20px button; the icon scales with the
+       host and keeps its proportions, the button's width does not stretch
+       it. */
     button > inline-svg:not(.icon-button-chevron) {
       display: block;
-      height: 100%;
+      height: 80%;
       width: auto;
       aspect-ratio: 1;
     }
 
-    button svg {
-      will-change: transform;
-      transition: 150ms;
+    /* Hover: a light-grey fill and a darker icon. */
+    button:hover:not(:disabled):not(.icon-button-latch) {
+      background-color: var(--icon-button-hover-background-color);
+      color: var(--icon-button-icon-hover-color);
     }
 
-    button:hover svg {
-      transform: scale(1.1, 1.1);
-    }
-
-    button:active svg {
-      transform: scale(1.2, 1.2);
+    /* Press: a near-white fill with a faint border, and the lime accent
+       icon. */
+    button:active:not(:disabled):not(.icon-button-latch) {
+      background-color: var(--icon-button-press-background-color);
+      border-color: var(--icon-button-press-border-color);
+      color: var(--icon-button-icon-press-color);
     }
 
     button:disabled {
-      opacity: 35%;
+      color: var(--icon-button-icon-disabled-color);
+      cursor: default;
     }
 
-    button:disabled svg {
-      transform: none;
+    /* The "alert" state's badge: the design's 6px indication-badge at the
+       top-right corner. */
+    indication-badge {
+      position: absolute;
+      top: 0;
+      right: 0;
+      pointer-events: none;
     }
 
     /* Ticket 11: the on state, off by default -- every existing
@@ -126,11 +160,6 @@ export class IconButton extends UnlitElement {
       border-radius: 6px;
     }
 
-    button.icon-button-latch:hover svg,
-    button.icon-button-latch:active svg {
-      transform: none;
-    }
-
     /* segment/button's 6px chevron (Figma 287:15640's "dropdown" state). */
     inline-svg.icon-button-chevron {
       width: 6px;
@@ -171,6 +200,7 @@ export class IconButton extends UnlitElement {
     src: { type: String },
     label: { type: String },
     latch: { type: Boolean },
+    badge: { type: Boolean },
   };
 
   get disabled() {
@@ -310,11 +340,16 @@ export class IconButton extends UnlitElement {
         ]
           .join(" ")
           .trim(),
-        style: `color: undefined var(--foreground-color);`, // TODO: huh.
       },
       children
     );
-    return this.dropdown ? [this._button, this._card] : this._button;
+    const result = this.dropdown ? [this._button, this._card] : [this._button];
+    if (this.badge) {
+      const badge = html.createDomElement("indication-badge", {});
+      badge.size = "M";
+      result.push(badge);
+    }
+    return result.length > 1 ? result : this._button;
   }
 }
 

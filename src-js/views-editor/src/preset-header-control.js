@@ -22,7 +22,10 @@ import "@fontra/web-components/multi-select-dropdown.js";
 // The caller owns the list, the capture and the writes. Items carry whatever
 // value the caller needs to find the entry again, typically its index in the
 // stored list, and may carry a shorter `name` for the button.
-const TILE = "24px";
+// The design's button/icon tile (Figma 306:1426): 20px square, with the
+// dropdown input at its own 24px (Figma 287:15745).
+const TILE = "20px";
+const DROPDOWN_HEIGHT = "24px";
 
 export class PresetHeaderControl {
   constructor({ onPick, onAdd, onUpdate, onLock, onRefresh, onReset }) {
@@ -32,7 +35,7 @@ export class PresetHeaderControl {
     this.dropdown = html.createDomElement("multi-select-dropdown", {
       label: translate("sidebar.skeleton-parameters.width-preset"),
     });
-    this.dropdown.style.setProperty("--multi-select-dropdown-height", TILE);
+    this.dropdown.style.setProperty("--multi-select-dropdown-height", DROPDOWN_HEIGHT);
     // One fixed width for every preset dropdown, so a longer name does not move
     // the buttons beside it; a name that does not fit ends in an ellipsis. In
     // rem, not em: the Generation dropdown sits in a section heading and the
@@ -69,14 +72,15 @@ export class PresetHeaderControl {
         );
       });
     }
-    // Square tiles, the same size as the tiles in a Generation tray. The glyph
-    // is inset, so it sits centred.
+    // Square tiles, the design's 20px button/icon size. The icon-button
+    // itself insets the glyph to 80%, so no padding here -- the hover fill
+    // covers the whole tile.
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
         "src": src,
         "data-tooltip": translate(tooltipKey),
         "data-tooltipposition": "top",
-        "style": `display: block; box-sizing: border-box; width: ${TILE}; height: ${TILE}; padding: 0.4em;`,
+        "style": `display: block; width: ${TILE}; height: ${TILE};`,
       });
       button.onclick = onclick;
       return button;
@@ -127,7 +131,7 @@ export class PresetHeaderControl {
       : null;
     this.element = html.div(
       {
-        style: "display: flex; gap: 0.1rem; align-items: center; font-weight: normal;",
+        style: "display: flex; gap: 2px; align-items: center; font-weight: normal;",
       },
       [
         this.addButton,
