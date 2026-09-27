@@ -18,6 +18,7 @@ import {
   getSkeletonData,
   getSkeletonGlyphCase,
   getSkeletonPointPreset,
+  getSkeletonPointPresetPick,
   getTerminalPresetFields,
   getTerminalPresetSourceKey,
   isSkeletonPointPresetStale,
@@ -1385,7 +1386,7 @@ export default class SkeletonParametersPanel {
         name: preset.name || "",
       }));
     const captured = this._selectionWidthPreset();
-    this._followSelectionPreset(this.widthPresetControl, items, bond.name, (value) => {
+    this._followSelectionPreset(this.widthPresetControl, items, bond.pick, (value) => {
       const preset = list[value];
       return (
         !!captured &&
@@ -1416,7 +1417,7 @@ export default class SkeletonParametersPanel {
   // ---- Preset bonds ------------------------------------------------------------
 
   // The preset a header dropdown shows follows the selection. In order: the
-  // preset every selected point is bound to; the one picked last, while the
+  // preset every selected point is bound to or was given; the one picked last, while the
   // same points stay selected, so an edit made after picking can still be
   // written back with Update; the one whose values the selection states; none.
   _followSelectionPreset(control, items, bondName, matches) {
@@ -1481,13 +1482,26 @@ export default class SkeletonParametersPanel {
         !!preset && isSkeletonPointPresetStale(entry.point, kind, preset, entry.contour)
       );
     });
+    // The preset each point came from: its bond, else its pick.
+    const picks = points.map((entry, index) =>
+      this._pointPresetName(kind, entry, names[index])
+    );
+    const distinctPicks = new Set(picks);
     return {
       points,
       name: distinct.size === 1 ? names[0] : null,
       mixed: distinct.size > 1,
       any: names.some(Boolean),
       stale,
+      pick: distinctPicks.size === 1 ? picks[0] : null,
+      picksMixed: distinctPicks.size > 1,
     };
+  }
+
+  // The name of the preset one point came from, where that preset still exists.
+  _pointPresetName(kind, entry, bondName = getSkeletonPointPreset(entry.point, kind)) {
+    const name = bondName ?? getSkeletonPointPresetPick(entry.point, kind);
+    return this._presetByName(kind, name) ? name : null;
   }
 
   // The header control's view of a bond: lit when the whole selection is bound
@@ -1498,11 +1512,11 @@ export default class SkeletonParametersPanel {
     const picked = this._pickedPresetName(kind, control.lastPicked);
     const active = this._presetByName(kind, picked);
     // The arrows answer one question: does the selection differ from its
-    // preset? A bound point is measured against the preset it is bound to,
-    // any other point against the preset the dropdown shows.
+    // preset? A point is measured against the preset it is bound to or was
+    // given, any other point against the preset the dropdown shows.
     const differs = bond.points.some((entry) => {
       const preset =
-        this._presetByName(kind, getSkeletonPointPreset(entry.point, kind)) ?? active;
+        this._presetByName(kind, this._pointPresetName(kind, entry)) ?? active;
       return (
         !!preset && isSkeletonPointPresetStale(entry.point, kind, preset, entry.contour)
       );
@@ -1598,10 +1612,10 @@ export default class SkeletonParametersPanel {
     const control =
       kind === "width" ? this.widthPresetControl : this.terminalPresetControl;
     const type = this._terminalPresetType;
-    if (!bond.mixed) {
+    if (!bond.mixed && !bond.picksMixed) {
       const preset = this._presetByName(
         kind,
-        bond.name ?? this._pickedPresetName(kind, control.lastPicked)
+        bond.pick ?? this._pickedPresetName(kind, control.lastPicked)
       );
       if (preset) {
         await (kind === "width"
@@ -1636,10 +1650,7 @@ export default class SkeletonParametersPanel {
   async _refreshBoundProjectionSides(points) {
     const sidesByContour = new Map();
     for (const entry of points) {
-      const preset = this._presetByName(
-        "width",
-        getSkeletonPointPreset(entry.point, "width")
-      );
+      const preset = this._presetByName("width", this._pointPresetName("width", entry));
       if (!preset) {
         continue;
       }
@@ -1780,7 +1791,7 @@ export default class SkeletonParametersPanel {
     this._followSelectionPreset(
       this.terminalPresetControl,
       this._terminalPresetItems(type),
-      bond.name,
+      bond.pick,
       (value) => {
         const preset = this._terminalPresetByValue(type, value);
         return !!preset && !!captured && shapeOf(preset) === shapeOf(captured);

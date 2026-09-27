@@ -35,6 +35,8 @@ import {
   getSkeletonPointPreset,
   getSkeletonPointWidth,
   setSkeletonPointPreset,
+  setSkeletonPointPresetPick,
+  getSkeletonPointPresetPick,
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
@@ -184,7 +186,13 @@ export async function setPanelPointPresetBond(
   return editSelectedSkeletonPoints(
     sceneController,
     pointAddresses,
-    (point) => setSkeletonPointPreset(point, kind, name),
+    (point) => {
+      setSkeletonPointPreset(point, kind, name);
+      // Unlocking keeps the pick: the point still came from that preset.
+      if (name) {
+        setSkeletonPointPresetPick(point, kind, name);
+      }
+    },
     undoLabel,
     { presetWrite: true }
   );
@@ -208,6 +216,7 @@ export async function resetPanelPointPresets(
     pointAddresses,
     (point, _address, context) => {
       setSkeletonPointPreset(point, kind, null);
+      setSkeletonPointPresetPick(point, kind, null);
       applyDefault(point, context);
     },
     undoLabel
@@ -226,13 +235,15 @@ export async function refreshPanelPointPresets(
     sceneController,
     pointAddresses,
     (point, _address, context) => {
-      const name = getSkeletonPointPreset(point, kind);
+      const bound = getSkeletonPointPreset(point, kind);
+      const name = bound ?? getSkeletonPointPresetPick(point, kind);
       const preset = resolvePreset(name);
       if (preset) {
         // The bond steps aside for the preset's own write, as above.
         setSkeletonPointPreset(point, kind, null);
         applyPreset(point, preset, context);
-        setSkeletonPointPreset(point, kind, name);
+        setSkeletonPointPreset(point, kind, bound);
+        setSkeletonPointPresetPick(point, kind, name);
       }
     },
     undoLabel,
@@ -327,6 +338,7 @@ export async function setPanelPointWidthPreset(
       if (bound) {
         setSkeletonPointPreset(point, "width", preset.name || bound);
       }
+      setSkeletonPointPresetPick(point, "width", preset.name);
     },
     undoLabel,
     { presetWrite: true }
@@ -1217,6 +1229,7 @@ export async function setPanelTerminalPreset(
       if (getSkeletonPointPreset(point, "terminal") && preset.name) {
         setSkeletonPointPreset(point, "terminal", preset.name);
       }
+      setSkeletonPointPresetPick(point, "terminal", preset.name);
     },
     undoLabel,
     { presetWrite: true }

@@ -1714,6 +1714,10 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     if (preset) {
       normalized.preset = preset;
     }
+    const presetPick = normalizePointPreset(point?.presetPick);
+    if (presetPick) {
+      normalized.presetPick = presetPick;
+    }
   }
 
   return normalized;
@@ -3462,12 +3466,29 @@ export function getSkeletonPointPreset(point, kind) {
 }
 
 export function setSkeletonPointPreset(point, kind, name) {
-  const preset = { ...(point.preset || {}), [kind]: name || null };
-  const normalized = normalizePointPreset(preset);
+  setPointPresetField(point, "preset", kind, name);
+}
+
+// A pick is the preset a point was last given, by name. Unlike a bond it holds
+// nothing and no edit lifts it: a point edited since, or a preset changed
+// since, reads as differing from its pick, and the panel offers it back.
+export function getSkeletonPointPresetPick(point, kind) {
+  return normalizePointPreset(point?.presetPick)?.[kind] ?? null;
+}
+
+export function setSkeletonPointPresetPick(point, kind, name) {
+  setPointPresetField(point, "presetPick", kind, name);
+}
+
+function setPointPresetField(point, field, kind, name) {
+  const normalized = normalizePointPreset({
+    ...(point[field] || {}),
+    [kind]: name || null,
+  });
   if (normalized) {
-    point.preset = normalized;
+    point[field] = normalized;
   } else {
-    delete point.preset;
+    delete point[field];
   }
 }
 
@@ -3519,12 +3540,16 @@ export function liftChangedPresetBindings(before, after) {
       continue;
     }
     for (const point of contour.points) {
-      if (point.type || !point.preset) {
+      if (point.type || !(point.preset || point.presetPick)) {
         continue;
       }
       const beforePoint = beforeContour.points.find((p) => p.id === point.id);
       if (!beforePoint) {
         continue;
+      }
+      // A terminal pick names a preset of one kind, so it goes with the kind.
+      if ((point.capStyle ?? null) !== (beforePoint.capStyle ?? null)) {
+        setSkeletonPointPresetPick(point, "terminal", null);
       }
       for (const kind of SKELETON_PRESET_KINDS) {
         if (

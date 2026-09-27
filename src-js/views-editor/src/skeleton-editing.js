@@ -323,7 +323,9 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   // preset write says so, because it changes those values on purpose.
   if (
     !options.presetWrite &&
-    original?.contours?.some((contour) => contour.points?.some((point) => point.preset))
+    original?.contours?.some((contour) =>
+      contour.points?.some((point) => point.preset || point.presetPick)
+    )
   ) {
     liftChangedPresetBindings(
       normalizeSkeletonData(structuredClone(original)),
