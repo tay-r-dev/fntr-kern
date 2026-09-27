@@ -10,7 +10,11 @@ import {
   FONTRA_INTERNAL_SECTIONS,
 } from "./fontra-internal-schema.js";
 import { getGlyphInfoFromGlyphName } from "./glyph-data.js";
-import { expandToJoints, harmonizePathInPlace } from "./harmonization.js";
+import {
+  balancePathInPlace,
+  expandToJoints,
+  harmonizePathInPlace,
+} from "./harmonization.js";
 import { buildHandleDomain } from "./natural-handle-solver.js";
 import {
   buildContourSegments,
@@ -1762,6 +1766,13 @@ export function harmonizeSkeletonPoints(skeletonData, pointKeys = null, options 
       roundCoordinates: true,
       ...options,
     })
+  );
+}
+
+// Balance handles on the centerline: the ordinary path's pass, unchanged.
+export function balanceSkeletonPoints(skeletonData, pointKeys = null) {
+  return runSkeletonCenterlinePass(skeletonData, pointKeys, (path, selected) =>
+    balancePathInPlace(path, selected)
   );
 }
 

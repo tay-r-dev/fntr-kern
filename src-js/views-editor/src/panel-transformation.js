@@ -15,7 +15,7 @@ import {
 } from "@fontra/core/path-functions.js";
 import { rectCenter, rectSize, unionRect } from "@fontra/core/rectangle.ts";
 import { balancePathInPlace } from "@fontra/core/harmonization.js";
-import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import { getSkeletonData, parseSkeletonPointKey } from "@fontra/core/skeleton-model.js";
 import { Transform } from "@fontra/core/transform.js";
 import {
   enumerate,
@@ -40,6 +40,7 @@ import {
   getSkeletonSelectionBounds,
   makeSkeletonPointTargetEntry,
 } from "./skeleton-editing.js";
+import { balancePanelSkeletonPoints } from "./skeleton-panel-edits.js";
 
 // Composed into panel-selection.js's Selection panel, not registered as its
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
@@ -1043,9 +1044,22 @@ export default class TransformationPanel {
   }
 
   // Balance the handles of the curves at the selected on-curves: one shared
-  // tension per curve, holding its fullness. Ordinary paths only.
+  // tension per curve, holding its fullness. A skeleton selection balances its
+  // centerline, the way Harmonize does.
   async doBalance() {
-    const pointSelection = parseSelection(this.sceneController.selection).point;
+    const { point: pointSelection, skeletonPoint } = parseSelection(
+      this.sceneController.selection
+    );
+    if (skeletonPoint?.length) {
+      await balancePanelSkeletonPoints(
+        this.sceneController,
+        skeletonPoint
+          .map((item) => parseSkeletonPointKey(`${item}`))
+          .filter((address) => address),
+        translate("sidebar.selection-transformation.harmonize.balance")
+      );
+      return;
+    }
     if (!pointSelection?.length) {
       return;
     }

@@ -30,6 +30,7 @@ import {
   getSkeletonRibSidesForPoint,
   getSkeletonRibTieGroup,
   getTiedRibGroup,
+  balanceSkeletonPoints,
   harmonizeSkeletonPoints,
   joinSkeletonContours,
   makeEmptySkeletonData,
@@ -1686,6 +1687,17 @@ describe("harmonizing a skeleton centerline", () => {
       expect(after[index].x).to.equal(before[index].x);
       expect(after[index].y).to.equal(before[index].y);
     }
+  });
+
+  it("balances a centerline segment's handles and leaves its ends", () => {
+    const skeleton = makeKinkedSkeleton();
+    const before = skeleton.contours[0].points.map((point) => ({ ...point }));
+    balanceSkeletonPoints(skeleton, new Set(["1/8"]));
+    const after = skeleton.contours[0].points;
+    const moved = after.filter(
+      (point, index) => point.x !== before[index].x || point.y !== before[index].y
+    );
+    expect(moved.map((point) => point.id).sort()).to.deep.equal([6, 7]);
   });
 });
 

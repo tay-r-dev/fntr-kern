@@ -37,6 +37,7 @@ import {
   setSkeletonPointPreset,
   setSkeletonPointPresetPick,
   getSkeletonPointPresetPick,
+  balanceSkeletonPoints,
   harmonizeSkeletonPoints,
   isSkeletonSideLocked,
   isSkeletonSideLockedAtAll,
@@ -1094,6 +1095,32 @@ export async function harmonizePanelSkeletonPoints(
     }
   );
   return reports;
+}
+
+// Balance handles on the selected centerline points, written like Harmonize.
+export async function balancePanelSkeletonPoints(
+  sceneController,
+  pointAddresses,
+  undoLabel
+) {
+  if (!pointAddresses.length) {
+    return;
+  }
+  await runSkeletonPanelEdit(sceneController, undoLabel, (working, reference) => {
+    const pointKeys = new Set();
+    for (const address of pointAddresses) {
+      const resolved = resolveSkeletonAddressAcrossLayers(
+        reference,
+        working,
+        address.contourId,
+        address.pointId
+      );
+      if (resolved) {
+        pointKeys.add(`${resolved.contour.id}/${resolved.point.id}`);
+      }
+    }
+    balanceSkeletonPoints(working, pointKeys);
+  });
 }
 
 // Reverse, from the context menu rather than the panel. It goes through this
