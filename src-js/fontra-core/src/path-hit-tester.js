@@ -154,10 +154,16 @@ function findIntersections(bezier, line, direction, info) {
       interTs.push(t);
     }
   } else {
-    const ts = bezier.lineIntersects(line);
-    if (ts) {
-      interTs.push(...ts);
+    // A curve owns its start point and not its end, like a line above: two
+    // segments meeting on the line would otherwise both report the crossing,
+    // or neither, because bezier-js is unreliable at the ends.
+    const ts = (bezier.lineIntersects(line) || []).filter(
+      (t) => t > ENDPOINT_T && t < 1 - ENDPOINT_T
+    );
+    if (pointOnLine(bezier.points[0], line)) {
+      ts.push(0);
     }
+    interTs.push(...ts);
   }
   return interTs.map((t) => {
     let winding = 0;
@@ -168,6 +174,20 @@ function findIntersections(bezier, line, direction, info) {
     const point = bezier.compute(t);
     return { ...info, winding, ...point };
   });
+}
+
+const ENDPOINT_T = 1e-6;
+
+function pointOnLine(point, { p1, p2 }) {
+  const d = vector.subVectors(p2, p1);
+  const lengthSquared = d.x * d.x + d.y * d.y;
+  if (!lengthSquared) {
+    return false;
+  }
+  const v = vector.subVectors(point, p1);
+  const along = (v.x * d.x + v.y * d.y) / lengthSquared;
+  const off = Math.abs(v.x * d.y - v.y * d.x) / Math.sqrt(lengthSquared);
+  return along >= 0 && along < 1 && off < 1e-6;
 }
 
 function lineIntersectsLine(p1, p2, p3, p4) {

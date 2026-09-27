@@ -459,14 +459,16 @@ export function nearestOnCurvePlace(path, at) {
   if (!found) {
     return undefined;
   }
+  // Segment point indices count across the whole path, not within the contour.
+  const pointIndex = path.getAbsolutePointIndex(found.contourIndex, found.pointIndex);
   const segments = [...path.iterContourDecomposedSegments(found.contourIndex)];
   let segmentIndex = segments.findIndex(
-    (segment) => segment.pointIndices[0] === found.pointIndex
+    (segment) => segment.pointIndices[0] === pointIndex
   );
   let t = 0;
   if (segmentIndex < 0) {
     segmentIndex = segments.findIndex(
-      (segment) => segment.pointIndices.at(-1) === found.pointIndex
+      (segment) => segment.pointIndices.at(-1) === pointIndex
     );
     t = 1;
   }

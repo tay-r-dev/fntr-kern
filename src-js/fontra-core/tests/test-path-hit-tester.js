@@ -108,3 +108,25 @@ function filterHit(hit) {
   }
   return newHit;
 }
+
+// Measured on `o.json`: rays from on-curve points came back empty, because a
+// crossing where two curves meet was reported twice or not at all.
+describe("PathHitTester line crossings at curve joints", () => {
+  it("reports one crossing per joint", () => {
+    const p = new VarPackedPath();
+    p.moveTo(0, 50);
+    p.cubicCurveTo(0, 100, 100, 100, 100, 50);
+    p.cubicCurveTo(100, 0, 0, 0, 0, 50);
+    p.closePath();
+    const tester = new PathHitTester(p);
+    const crossings = tester.lineIntersections(
+      { x: -50, y: 50 },
+      { x: 150, y: 50 },
+      { x: 1, y: 0 }
+    );
+    expect(crossings.map(({ x, y, winding }) => ({ x, y, winding }))).to.deep.equal([
+      { x: 0, y: 50, winding: 1 },
+      { x: 100, y: 50, winding: -1 },
+    ]);
+  });
+});

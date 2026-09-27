@@ -336,6 +336,25 @@ describe("marker anchoring — on-curve points", () => {
       y: 0,
     });
   });
+
+  // Measured on `o.json`: the outer contour never took the on-curve pull.
+  it("names an on-curve point on a later contour", () => {
+    const path = squarePath();
+    path.appendUnpackedContour({
+      points: [
+        { x: 200, y: 0 },
+        { x: 300, y: 0 },
+        { x: 300, y: 100 },
+      ],
+      isClosed: true,
+    });
+    const place = nearestOnCurvePlace(path, { x: 298, y: 97 });
+    expect(place.end).to.include({ contourIndex: 1, segmentIndex: 2, t: 0 });
+    expect(resolveAgainst(place.end, path).point).to.deep.include({
+      x: 300,
+      y: 100,
+    });
+  });
 });
 
 // Measured on `D^1.json`: two rays that had ridden the outline for a while, remembering
