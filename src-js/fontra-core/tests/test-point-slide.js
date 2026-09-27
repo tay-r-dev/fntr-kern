@@ -1,7 +1,9 @@
 import { cubicPointAt } from "@fontra/core/offset-contour.js";
 import {
+  canSlideTogether,
   chooseSlideInterval,
   getAdjacentSegments,
+  getSlidableSegments,
   makeSlideCandidate,
   projectPointToSegment,
   roundSlideCandidate,
@@ -12,6 +14,9 @@ import {
 } from "@fontra/core/point-slide.js";
 import { Bezier } from "bezier-js";
 import { expect } from "chai";
+import { VarPackedPath } from "@fontra/core/var-path.js";
+import { createPointSlideTargetEntries } from "../../views-editor/src/point-slide-editing.js";
+import { applyChange } from "@fontra/core/changes.js";
 
 // Plain contour points, exactly as they come out of VarPackedPath's unpacked
 // form: on-curves have no `type`, off-curves carry `type: "cubic"`. A line
@@ -643,5 +648,98 @@ describe("slideInsertions at an open endpoint", () => {
     expect(moved[0]).to.deep.include({ pointId: 1, t: 0 });
     expect(moved[1].pointId).to.equal(1);
     expect(moved[1].t).to.be.closeTo(0.5, 1e-9);
+  });
+});
+
+describe("point slide: which points slide, and where", () => {
+  // Straight (0,0)-(100,0), then a curve on to (200,100). P at (100,0) is a
+  // tension point: smooth, with a handle on the curve side only.
+  const tension = () => ({
+    isClosed: false,
+    points: [
+      onCurve(0, 0),
+      onCurve(100, 0, true),
+      control(150, 0),
+      control(200, 50),
+      onCurve(200, 100),
+    ],
+  });
+
+  it("keeps a tension point on its straight", () => {
+    const adjacent = getSlidableSegments(tension(), 1);
+    expect(adjacent.previous?.kind).to.equal("line");
+    expect(adjacent.next).to.equal(null);
+  });
+
+  it("lets smooth inner points and handle-less corners slide together", () => {
+    expect(canSlideTogether(tension(), 1)).to.equal(true);
+    // An open end is on the edge: smooth or not, it has one segment and a
+    // handle, so it does not join a group.
+    expect(canSlideTogether(tension(), 4)).to.equal(false);
+    // A corner between two straights has no handles.
+    const zigzag = {
+      isClosed: false,
+      points: [onCurve(0, 0), onCurve(100, 50), onCurve(200, 0), onCurve(300, 50)],
+    };
+    expect(canSlideTogether(zigzag, 1)).to.equal(true);
+    expect(canSlideTogether(zigzag, 0)).to.equal(true);
+    // A corner with a handle does not.
+    const cornered = {
+      isClosed: false,
+      points: [
+        onCurve(0, 0),
+        onCurve(100, 0),
+        control(100, 50),
+        control(150, 100),
+        onCurve(200, 100),
+      ],
+    };
+    expect(canSlideTogether(cornered, 1)).to.equal(false);
+  });
+
+  // A point flagged smooth whose handles sit a few degrees off one line
+  // slid as a corner: the far handle held its direction and the point kinked.
+  it("keeps a flagged smooth point smooth when its handles are not quite in line", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        onCurve(0, -50),
+        control(20, -10),
+        control(80, 0),
+        onCurve(100, 0, true),
+        control(120, 1),
+        control(180, 10),
+        onCurve(200, -50),
+      ],
+    };
+    for (const side of ["previous", "next"]) {
+      const points = makeSlideCandidate(contour, 3, side, 0.5).points;
+      const [a, p, b] = [points[2], points[3], points[4]];
+      const cross = (a.x - p.x) * (b.y - p.y) - (a.y - p.y) * (b.x - p.x);
+      expect(Math.abs(cross) / Math.hypot(a.x - p.x, a.y - p.y)).to.be.below(0.01);
+    }
+  });
+
+  it("slides several corners together, each by the pointer's travel", () => {
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      isClosed: false,
+      points: [onCurve(0, 0), onCurve(100, 0), onCurve(200, 0), onCurve(300, 0)],
+    });
+    const layer = { path, components: [], anchors: [], guidelines: [] };
+    const entries = createPointSlideTargetEntries(
+      layer,
+      new Set(["point/1", "point/2"]),
+      { initialPointer: { x: 100, y: 0 }, isPrimary: true, session: {} }
+    );
+    expect(entries).to.have.length(1);
+    applyChange(layer, entries[0].makeChangeForDelta({ x: 30, y: 5 }));
+    const points = layer.path.getUnpackedContour(0).points;
+    expect(points.map(({ x, y }) => [x, y])).to.deep.equal([
+      [0, 0],
+      [130, 0],
+      [230, 0],
+      [300, 0],
+    ]);
   });
 });

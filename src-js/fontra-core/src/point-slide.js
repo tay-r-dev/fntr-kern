@@ -341,9 +341,13 @@ export function slideInsertions(contour, candidate, side, t, insertions) {
 
 // The slid point is a corner when the two segments leave it in directions
 // that are not opposite: read from the geometry, since a drawn contour's
-// `smooth` flag is often unset on points that are smooth in fact.
+// `smooth` flag is often unset on points that are smooth in fact. A point
+// flagged smooth is smooth whatever the geometry says: whole-unit rounding
+// tilts short handles a few degrees apart, and reading that as a corner held
+// the far handle still while the near one turned, which kinked the point.
 function isCornerBetween(traveled, far, side) {
   const point = side === "previous" ? far.points[0] : far.points.at(-1);
+  if (point.smooth === true) return false;
   const alongTraveled =
     side === "previous"
       ? unitToward(point, [...traveled.points].reverse())
@@ -435,6 +439,52 @@ function evaluatePiece(piece, t) {
     };
   }
   return cubicPointAt(piece, t);
+}
+
+// Smooth, flagged or in fact, with a segment on both sides.
+function isSmoothBetween(adjacent) {
+  return (
+    !!adjacent.previous &&
+    !!adjacent.next &&
+    !isCornerBetween(adjacent.previous, adjacent.next, "previous")
+  );
+}
+
+/**
+ * The segments a point may slide along. A tension point, a smooth point
+ * between a straight and a curve, slides along its straight only: sliding it
+ * into the curve would turn the straight off its own line.
+ *
+ * @param {Object} contour - {points, isClosed}
+ * @param {number} pointIndex - array index of the on-curve point
+ * @returns {Object} {previous, next} as getAdjacentSegments, with a tension
+ *   point's curve side removed
+ */
+export function getSlidableSegments(contour, pointIndex) {
+  const adjacent = getAdjacentSegments(contour, pointIndex);
+  if (!isSmoothBetween(adjacent) || adjacent.previous.kind === adjacent.next.kind) {
+    return adjacent;
+  }
+  return adjacent.previous.kind === "line"
+    ? { previous: adjacent.previous, next: null }
+    : { previous: null, next: adjacent.next };
+}
+
+/**
+ * Whether a point may slide together with other selected points: a smooth
+ * point with a segment on both sides, or a corner with no handles at all.
+ *
+ * @param {Object} contour - {points, isClosed}
+ * @param {number} pointIndex - array index of the on-curve point
+ * @returns {boolean}
+ */
+export function canSlideTogether(contour, pointIndex) {
+  const adjacent = getAdjacentSegments(contour, pointIndex);
+  const segments = [adjacent.previous, adjacent.next].filter(Boolean);
+  if (!segments.length) return false;
+  return (
+    isSmoothBetween(adjacent) || segments.every((segment) => segment.kind === "line")
+  );
 }
 
 /**

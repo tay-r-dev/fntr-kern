@@ -1,7 +1,8 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import {
+  canSlideTogether,
   chooseSlideInterval,
-  getAdjacentSegments,
+  getSlidableSegments,
   makeSlideCandidate,
   roundSlideCandidate,
   slideInsertions,
@@ -19,9 +20,11 @@ import {
 export const POINT_SLIDE_BEHAVIOR_NAME = "point-slide";
 
 /**
- * Point slide engages on V-hold with exactly one on-curve point selected: a
- * drawn point or a skeleton centerline point. An open contour's endpoint
- * slides along its one segment. A point on a generated contour does not
+ * Point slide engages on V-hold with on-curve points selected, all drawn or
+ * all on a skeleton centerline. One point slides whatever it is: an open
+ * contour's endpoint slides along its one segment. Several points slide
+ * together when every one of them is a smooth point with a segment on both
+ * sides, or a corner with no handles. A point on a generated contour does not
  * engage (its skeleton owns it).
  * When the slide is not possible the behavior name is null and the drag falls
  * through to the plain move.
@@ -41,20 +44,16 @@ export function getPointSlideBehaviorName(
 ) {
   if (!modifiers?.pointSlideMode) return null;
   if (targetKinds?.has("skeletonRib")) return null;
-  const slideTarget = findSlideTarget(layerGlyph, selection, {
-    isGeneratedContour,
-  });
-  return slideTarget ? POINT_SLIDE_BEHAVIOR_NAME : null;
+  const targets = findSlideTargets(layerGlyph, selection, { isGeneratedContour });
+  return targets ? POINT_SLIDE_BEHAVIOR_NAME : null;
 }
 
 /**
- * Resolve the selection to a slide target: a single on-curve point with a
- * segment on at least one side (an open endpoint slides along its one
- * segment), either on a drawn contour or on a skeleton
- * centerline. A skeleton selection is addressed through the edit layer's
+ * Resolve the selection to slide targets, in selection order, or null when it
+ * cannot slide. A skeleton selection is addressed through the edit layer's
  * skeleton data and resolved into this layer by structural ordinal.
  */
-function findSlideTarget(
+function findSlideTargets(
   layerGlyph,
   selection,
   { isGeneratedContour = null, referenceSkeletonData = null } = {}
@@ -64,10 +63,24 @@ function findSlideTarget(
   );
   const pointCount = pointSelection?.length ?? 0;
   const skeletonCount = skeletonPoint?.length ?? 0;
-  if (pointCount + skeletonCount !== 1) return null;
-  return skeletonCount
-    ? findSkeletonSlideTarget(layerGlyph, skeletonPoint[0], referenceSkeletonData)
-    : findPathSlideTarget(layerGlyph, pointSelection[0], isGeneratedContour);
+  if (!pointCount === !skeletonCount) return null;
+  const targets = skeletonCount
+    ? skeletonPoint.map((key) =>
+        findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData)
+      )
+    : pointSelection.map((pointIndex) =>
+        findPathSlideTarget(layerGlyph, pointIndex, isGeneratedContour)
+      );
+  if (targets.some((target) => !target)) return null;
+  if (
+    targets.length > 1 &&
+    !targets.every((target) =>
+      canSlideTogether(target.contour, target.contourPointIndex)
+    )
+  ) {
+    return null;
+  }
+  return targets;
 }
 
 function findPathSlideTarget(layerGlyph, pointIndex, isGeneratedContour) {
@@ -78,7 +91,7 @@ function findPathSlideTarget(layerGlyph, pointIndex, isGeneratedContour) {
   const [contourIndex, contourPointIndex] = path.getContourAndPointIndex(pointIndex);
   if (isGeneratedContour?.(contourIndex)) return null;
   const contour = path.getUnpackedContour(contourIndex);
-  const adjacent = getAdjacentSegments(contour, contourPointIndex);
+  const adjacent = getSlidableSegments(contour, contourPointIndex);
   if (!adjacent.previous && !adjacent.next) return null;
   return { contourIndex, contourPointIndex, contour, adjacent };
 }
@@ -99,7 +112,7 @@ function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
     points: structuredClone(address.contour.points),
     isClosed: address.contour.closed === true,
   };
-  const adjacent = getAdjacentSegments(contour, address.pointIndex);
+  const adjacent = getSlidableSegments(contour, address.pointIndex);
   if (!adjacent.previous && !adjacent.next) return null;
   return {
     skeleton: true,
@@ -113,12 +126,17 @@ function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
 
 /**
  * One target entry per layer. The edit layer's entry owns the geometry: every
- * frame it projects the pointer onto the contour captured at mouse-down and
- * publishes the chosen side and source parameter to the session. Every other
- * layer's entry applies that same side and parameter to its own captured
- * contour, so all masters share one split location. A layer whose slide
- * interval does not match the edit layer's is left untouched for the whole
- * gesture.
+ * frame it projects each selected point's pointer onto that point's contour
+ * and publishes the chosen side and source parameter to the session, point by
+ * point. Every other layer's entry applies those same sides and parameters to
+ * its own captured contours, so all masters share the split locations. A layer
+ * whose slide intervals do not match the edit layer's is left untouched for
+ * the whole gesture.
+ *
+ * One point follows the pointer itself. Several points each follow their own
+ * position moved by the pointer's travel. Points on one contour slide one
+ * after another on that contour, each from where the ones before it left it,
+ * so two neighbours that share a segment both land on it.
  *
  * A drawn contour is written straight into the path. A skeleton centerline is
  * written into the skeleton data, insertion points carried along, and the
@@ -145,28 +163,31 @@ export function createPointSlideTargetEntries(
     session = null,
   } = {}
 ) {
-  const target = findSlideTarget(layerGlyph, selection, {
+  const targets = findSlideTargets(layerGlyph, selection, {
     isGeneratedContour,
     referenceSkeletonData,
   });
-  if (!target || !initialPointer || !session) return [];
+  if (!targets || !initialPointer || !session) return [];
 
-  // The edit layer publishes the interval every frame. Every other layer is
-  // checked against it once, at construction: a master that offers a different
-  // interval cannot take the shared parameter, so it sits the gesture out.
+  // The edit layer publishes the intervals every frame. Every other layer is
+  // checked against them once, at construction: a master that offers a
+  // different interval cannot take the shared parameter, so it sits the
+  // gesture out.
   if (isPrimary) {
-    session.referenceAdjacent = target.adjacent;
+    session.referenceAdjacents = targets.map((target) => target.adjacent);
   } else if (
-    !session.referenceAdjacent ||
-    !slideIntervalsCompatible(session.referenceAdjacent, target.adjacent)
+    session.referenceAdjacents?.length !== targets.length ||
+    targets.some(
+      (target, i) =>
+        !slideIntervalsCompatible(session.referenceAdjacents[i], target.adjacent)
+    )
   ) {
     return [];
   }
 
-  const { contourIndex, contourPointIndex, contour, adjacent } = target;
-  const write = target.skeleton
-    ? makeSkeletonWriter(layerGlyph, target)
-    : makePathWriter(layerGlyph, contourIndex);
+  const write = targets[0].skeleton
+    ? makeSkeletonWriter(layerGlyph)
+    : makePathWriter(layerGlyph);
 
   let rollbackChange = null;
   return [
@@ -180,30 +201,65 @@ export function createPointSlideTargetEntries(
           x: initialPointer.x + delta.x,
           y: initialPointer.y + delta.y,
         });
-        let side;
-        let t;
+        const travel = vector.subVectors(pointer, initialPointer);
         if (isPrimary) {
-          const destination = chooseSlideInterval(
-            adjacent,
-            pointer,
-            contour.points[contourPointIndex]
-          );
-          if (!destination) return null;
-          side = destination.side;
-          t = destination.t;
-          session.side = side;
-          session.t = t;
-        } else {
-          side = session.side;
-          t = session.t;
-          if (side === undefined || t === undefined) return null;
+          session.moves = [];
+        } else if (session.moves?.length !== targets.length) {
+          return null;
         }
-        const slid = makeSlideCandidate(contour, contourPointIndex, side, t);
-        if (!slid) return null;
-        // The slide lands on whole units, like every other drag, with the
-        // smooth points it touched kept smooth.
-        const candidate = roundSlideCandidate(contour, slid);
-        const changes = write(candidate, side, t);
+        // contourIndex -> {contour, insertions}, the state each slide starts from.
+        const slid = new Map();
+        for (const [i, target] of targets.entries()) {
+          const { contourIndex, contourPointIndex } = target;
+          const state = slid.get(contourIndex) ?? {
+            contour: target.contour,
+            insertions: target.insertions,
+          };
+          let move;
+          if (isPrimary) {
+            const point = state.contour.points[contourPointIndex];
+            const adjacent = getSlidableSegments(state.contour, contourPointIndex);
+            // A tension point keeps to its straight: the side refused at
+            // mouse-down stays refused while its neighbours slide.
+            for (const side of ["previous", "next"]) {
+              if (!target.adjacent[side]) adjacent[side] = null;
+            }
+            const destination = chooseSlideInterval(
+              adjacent,
+              targets.length === 1 ? pointer : vector.addVectors(point, travel),
+              point
+            );
+            move = destination && { side: destination.side, t: destination.t };
+            session.moves.push(move);
+          } else {
+            move = session.moves[i];
+          }
+          if (!move) continue;
+          const candidate = makeSlideCandidate(
+            state.contour,
+            contourPointIndex,
+            move.side,
+            move.t
+          );
+          if (!candidate) continue;
+          // The slide lands on whole units, like every other drag, with the
+          // smooth points it touched kept smooth.
+          const rounded = roundSlideCandidate(state.contour, candidate);
+          slid.set(contourIndex, {
+            contour: { points: rounded.points, isClosed: rounded.isClosed },
+            insertions:
+              target.skeleton &&
+              slideInsertions(
+                state.contour,
+                rounded,
+                move.side,
+                move.t,
+                state.insertions
+              ),
+          });
+        }
+        if (!slid.size) return null;
+        const changes = write(slid);
         rollbackChange = changes.rollbackChange;
         return changes.change;
       },
@@ -214,28 +270,26 @@ export function createPointSlideTargetEntries(
   ];
 }
 
-function makePathWriter(layerGlyph, contourIndex) {
+function makePathWriter(layerGlyph) {
   const originalPath = layerGlyph.path.copy();
-  return (candidate) => {
+  return (slid) => {
     const scratch = { ...layerGlyph, path: originalPath.copy() };
     return recordChanges(scratch, (layerGlyphProxy) => {
-      layerGlyphProxy.path.setUnpackedContour(contourIndex, {
-        points: candidate.points,
-        isClosed: candidate.isClosed,
-      });
+      for (const [contourIndex, { contour }] of slid) {
+        layerGlyphProxy.path.setUnpackedContour(contourIndex, contour);
+      }
     });
   };
 }
 
-function makeSkeletonWriter(layerGlyph, target) {
-  const { contourIndex, contour, insertions } = target;
+function makeSkeletonWriter(layerGlyph) {
   const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layerGlyph);
-  return (candidate, side, t) => {
-    const movedInsertions = slideInsertions(contour, candidate, side, t, insertions);
-    return makeEditSkeletonChange(originalLayerGlyph, (working) => {
-      const workingContour = working.contours[contourIndex];
-      workingContour.points = structuredClone(candidate.points);
-      workingContour.insertions = structuredClone(movedInsertions);
+  return (slid) =>
+    makeEditSkeletonChange(originalLayerGlyph, (working) => {
+      for (const [contourIndex, { contour, insertions }] of slid) {
+        const workingContour = working.contours[contourIndex];
+        workingContour.points = structuredClone(contour.points);
+        workingContour.insertions = structuredClone(insertions);
+      }
     });
-  };
 }
