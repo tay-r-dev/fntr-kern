@@ -6199,15 +6199,22 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
   }
   // No forward intersection means no reach to be a fraction of, so there is no
   // tension to report — and the distance-based formula below would invent one
-  // above 1 rather than say so.
-  if (!hasForwardTangentIntersection(points)) {
+  // above 1 rather than say so. A slid on-curve can lose the intersection in
+  // the construction frame while the drawn curve keeps one (b.json), so the
+  // drawn curve answers then.
+  let tension;
+  if (hasForwardTangentIntersection(points)) {
+    tension = generatedSegmentTension(
+      points,
+      constructionSegmentAxes(segment?.points, segment?.provenance, points),
+      [points[1], points[2]]
+    );
+  } else if (hasForwardTangentIntersection(segment.points)) {
+    const drawn = segment.points;
+    tension = generatedSegmentTension(drawn, null, [drawn[1], drawn[2]]);
+  } else {
     return null;
   }
-  const tension = generatedSegmentTension(
-    points,
-    constructionSegmentAxes(segment?.points, segment?.provenance, points),
-    [points[1], points[2]]
-  );
   if (!Number.isFinite(tension) || tension <= 0) {
     return null;
   }

@@ -628,6 +628,31 @@ describe("generated Tunni segments", () => {
     expect(curvature.tension).to.be.closeTo(0.4, 1e-9);
   });
 
+  // Measured on `b.json`: a slide of 44 put the unslid start behind the end
+  // handle's line, so the construction frame had no Tunni point and the label
+  // went blank while the drawn curve was an ordinary one.
+  it("reports the drawn tension when the slid-back curve has no Tunni point", () => {
+    const curvature = getGeneratedSegmentCurvature(
+      {},
+      {
+        points: [
+          { x: 289, y: 72 },
+          { x: 263, y: 72 },
+          { x: 254, y: 89 },
+          { x: 254, y: 134 },
+        ],
+        provenance: [
+          { role: "onCurve", side: "left", nudge: { x: 44, y: 0 } },
+          { role: "out", side: "left", handleNudge: { x: 23, y: 0 } },
+          { role: "in", side: "left" },
+          { role: "onCurve", side: "left" },
+        ],
+      }
+    );
+
+    expect(curvature.tension).to.be.closeTo(0.7342, 1e-4);
+  });
+
   it("carries each point's own provenance, in segment order", () => {
     const layer = makeGlyph();
     const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
