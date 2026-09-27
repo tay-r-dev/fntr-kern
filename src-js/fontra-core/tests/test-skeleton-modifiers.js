@@ -15,6 +15,7 @@ import {
   setSkeletonData,
   setSkeletonSegmentCurvature,
 } from "@fontra/core/skeleton-model.js";
+import { Transform } from "@fontra/core/transform.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
 import { EditBehaviorFactory } from "../../views-editor/src/edit-behavior.js";
@@ -368,6 +369,37 @@ describe("skeleton modifier target-entry parity fixtures", () => {
     const points = getSkeletonData(layer).contours[0].points;
     expect(points[2]).to.include({ x: 80, y: 0 });
     expect(points[3]).to.include({ x: 20, y: 0 });
+  });
+
+  it("mirrors a one-sided contour's side when all its on-curves are selected", () => {
+    // Double-click on the centerline selects the on-curves only. The handles
+    // still move with them, so the contour counts as whole.
+    const layer = makeLayerGlyph(
+      normalizeSkeletonData({
+        contours: [{ ...makeSmoothHandleContour(), singleSided: "left" }],
+      })
+    );
+    const selection = new Set([
+      "skeletonPoint/40/4",
+      "skeletonPoint/40/1",
+      "skeletonPoint/40/5",
+    ]);
+    const targetEntry = makeSkeletonPointTargetEntry(
+      layer,
+      selection,
+      "default",
+      getSkeletonData(layer)
+    );
+    const behavior = new EditBehaviorFactory(layer, selection, false, {
+      targetEntries: [targetEntry],
+    }).getTransformBehavior("default");
+
+    applyChange(
+      layer,
+      behavior.makeChangeForTransformation(new Transform().scale(1, -1))
+    );
+
+    expect(getSkeletonData(layer).contours[0].singleSided).to.equal("right");
   });
 
   it("bounds editable generated handle equalization through the live target-entry path", () => {

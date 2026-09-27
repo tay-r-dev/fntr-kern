@@ -768,7 +768,9 @@ export function makeSkeletonPointTargetEntry(
               transformSkeletonPointMetadata(pointAddress.point, argument);
             }
           }
-          if (pointIds.size === contour.points.length) {
+          // Whole means every on-curve: a centerline double-click selects no
+          // handles, and the handles move with their on-curves anyway.
+          if (contour.points.every((point) => point.type || pointIds.has(point.id))) {
             transformSkeletonContourMetadata(contour, argument);
           }
         }
