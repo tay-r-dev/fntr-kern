@@ -1401,19 +1401,19 @@ describe("a wing corner past the rib end", () => {
     expectClose(half.corner.v, -10);
   });
 
-  it("continues a leaning edge along its own direction", () => {
-    const leaning = makeSerifWall([
-      { u: 50, v: 20 },
-      { u: 70, v: 1020 },
-    ]);
-    const half = buildHalfSerif({
-      side: 1,
-      wall: leaning,
-      params: { ...params, wingSlope: -30 },
-    });
-    // On the continued edge: 50 less a fiftieth of the depth travelled back.
-    expectClose(half.corner.u, 50 - (half.corner.v - 20) / -50);
-    expect(half.corner.v).to.be.below(0);
+  it("goes straight across from the rib end whichever way the edge leans", () => {
+    for (const farU of [30, 70]) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: makeSerifWall([
+          { u: 50, v: 20 },
+          { u: farU, v: 1020 },
+        ]),
+        params: { ...params, wingSlope: -30 },
+      });
+      expectClose(half.corner.u, 50, `lean to ${farU}`);
+      expectClose(half.corner.v, -30, `lean to ${farU}`);
+    }
   });
 
   it("does not step where the corner crosses the rib end", () => {
@@ -1440,12 +1440,70 @@ describe("a wing corner past the rib end", () => {
     });
     expectClose(half.junction.u, 50);
     expectClose(half.junction.v, -10);
-    expectClose(half.release.v, -10);
-    // The stroke is still cut at the rib end.
+    // The stroke is still cut at the rib end, and the release is that cut.
+    expectClose(half.release.v, 20);
     expect(half.releaseParameter).to.equal(0);
     // A flat bracket keeps its handles collapsed on their own ends.
     expectClose(half.control2.v, half.junction.v);
     expectClose(half.control1.v, half.tipTop.v);
+  });
+
+  it("stays at the wing's own end where the continued edge runs along the axis", () => {
+    // The `m` of skeletron: the stroke leaves nearly along the serif's axis, so
+    // its edge continued reaches the wing's depth thousands of units away.
+    const alongAxis = makeSerifWall([
+      { u: 50, v: 60 },
+      { u: -400, v: 60.2 },
+    ]);
+    const half = buildHalfSerif({
+      side: 1,
+      wall: alongAxis,
+      params: { ...params, tipThickness: 10, wingSlope: 0, easeDistance: 20 },
+    });
+    // Straight across from the rib end, at the depth the slope states.
+    expectClose(half.corner.u, 50);
+    expectClose(half.corner.v, 10);
+    expectClose(half.junction.u, 50);
+    expectClose(half.junction.v, 10);
+    // The stroke is cut at the rib end, so the easing starts there.
+    expectClose(half.release.u, 50);
+    expectClose(half.release.v, 60);
+  });
+
+  it("grows the easing out of the straight run without a step at the rib end", () => {
+    const leaning = makeSerifWall([
+      { u: 50, v: 60 },
+      { u: -400, v: 200 },
+    ]);
+    let previous = null;
+    for (let step = 0; step <= 400; step++) {
+      const half = buildHalfSerif({
+        side: 1,
+        wall: leaning,
+        params: {
+          ...params,
+          tipThickness: 10,
+          wingSlope: 0,
+          easeDistance: step / 4,
+          easeCurvature: 1,
+          concavity: 1,
+          tension: 0.5,
+        },
+      });
+      const points = [half.release, half.easeFlankHandle, half.easeBracketHandle];
+      if (step === 0) {
+        // No easing: the straight run, handles on their own ends.
+        expectClose(half.easeFlankHandle.u, half.release.u);
+        expectClose(half.easeFlankHandle.v, half.release.v);
+      }
+      if (previous) {
+        const moved = Math.max(
+          ...points.map((p, i) => Math.hypot(p.u - previous[i].u, p.v - previous[i].v))
+        );
+        expect(moved, `ease ${step / 4}`).to.be.below(2);
+      }
+      previous = points;
+    }
   });
 
   it("measures the reach up the continued edge and onto the wall", () => {

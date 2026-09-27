@@ -417,49 +417,21 @@ export function makeSerifWall(points) {
     return null;
   };
 
-  // Past the rib end there is no wall: the stroke stops there. A wing whose
-  // surface reaches further out -- a negative slope, or a rib end a forced axis
-  // stands inside the foot line -- meets the stem's edge CONTINUED, straight
-  // along the wall's own direction at the rib end. Only the wing's corner is
-  // read here. The release, the reach and the easing stay on the real wall, so
-  // nothing that works inside the stroke moves, and the wall is never bent onto
-  // this line.
+  // Past the rib end there is no wall: the stroke stops there. What stands in
+  // for it is the line straight across from the rib end to the foot, the same
+  // line the foot is measured from (stemAtDepth below). Not the stem's edge
+  // continued: that edge can run nearly along the axis, and a wing's corner
+  // looked for on it at the slope's depth landed some 900 units down the `m`
+  // of skeletron.
   const start = pointAt(0);
-  const back = (() => {
-    const t = tangentAt(0);
-    return { u: -t.u, v: -t.v };
-  })();
-  const extensionAtDepth = (depth) => {
-    if (!(back.v < -1e-9) || !(depth < start.v)) {
-      return start;
-    }
-    const r = (depth - start.v) / back.v;
-    return { u: start.u + back.u * r, v: start.v + back.v * r };
-  };
-  // Where a segment from `origin` along `direction`, no longer than the
-  // direction itself, crosses the continued edge. Null if it does not.
-  const meetExtension = (origin, direction) => {
-    const denominator = direction.u * back.v - direction.v * back.u;
-    if (Math.abs(denominator) < 1e-12) {
-      return null;
-    }
-    const du = start.u - origin.u;
-    const dv = start.v - origin.v;
-    const s = (du * back.v - dv * back.u) / denominator;
-    const r = (du * direction.v - dv * direction.u) / denominator;
-    if (s < 0 || s > 1 + 1e-9 || r < 0) {
-      return null;
-    }
-    return { u: origin.u + direction.u * s, v: origin.v + direction.v * s };
-  };
 
   // A position along the wall as a signed length from the rib end: positive
-  // runs up the real wall, negative down the continued edge. One measure for
-  // both, so a reach or an easing that starts on the continued edge carries on
-  // up the real wall by the same distance, with no seam at the rib end.
+  // runs up the real wall, negative down the line straight across. One measure
+  // for both, so a reach that starts below the rib end carries on up the real
+  // wall by the same distance.
   const pointAtLength = (length) =>
     length < 0
-      ? { u: start.u - back.u * length, v: start.v - back.v * length }
+      ? { u: start.u, v: start.v + length }
       : pointAt(parameterAtDistance(0, length));
   const parameterAtSignedLength = (length) =>
     length <= 0 ? 0 : parameterAtDistance(0, length);
@@ -479,8 +451,6 @@ export function makeSerifWall(points) {
     stemAtDepth,
     pointAtLength,
     parameterAtSignedLength,
-    extensionAtDepth,
-    meetExtension,
     parameterAtDepth,
     parameterAtDistance,
     lengthAt,
@@ -671,21 +641,22 @@ export function buildHalfSerif({ side, wall, params }) {
   };
   const onWall = stoppedParameter ?? (wingLength > 0 ? meetWingSurface() : null);
   const cornerParameter = onWall ?? wall.parameterAtDepth(tipThickness + wingSlope);
-  // Nothing on the wall, and the corner wanted past the rib end: it goes onto
-  // the stem's edge continued. Both answers meet the wall at the rib end
-  // itself, so the corner does not step as it crosses it.
+  // Nothing on the wall, and the corner wanted past the rib end: it is the
+  // surface's own end, straight across from the rib end at the depth the slope
+  // states, which is where the wall stands in for the stroke there. It meets
+  // the wall at the rib end, so the corner does not step as it crosses it.
   const pastRibEnd = onWall === null && cornerParameter === 0;
-  const corner = pastRibEnd
-    ? ((wingLength > 0 ? wall.meetExtension(tipTop, cornerRay) : null) ??
-      wall.extensionAtDepth(tipThickness + wingSlope))
-    : wall.pointAt(cornerParameter);
-  // The corner as a signed length along the wall. Below the rib end it is on
-  // the continued edge, and the bracket's stem end goes down there with it:
-  // held to the real wall, that end stopped at the rib end while the corner
-  // and the handles went on, so only the handles dipped.
   const ribEnd = wall.pointAt(0);
+  const cornerDepth = Math.min(tipThickness + wingSlope, ribEnd.v);
+  const corner = pastRibEnd
+    ? wall.pointAtLength(cornerDepth - ribEnd.v)
+    : wall.pointAt(cornerParameter);
+  // The corner as a signed length along the wall. Below the rib end the
+  // bracket's stem end goes down with it: held to the real wall, that end
+  // stopped at the rib end while the corner and the handles went on, so only
+  // the handles dipped.
   const cornerLength = pastRibEnd
-    ? -lengthUV(subUV(corner, ribEnd))
+    ? cornerDepth - ribEnd.v
     : wall.lengthAt(cornerParameter);
 
   // Reach and ease distance are LENGTHS ALONG THE WALL above the corner. They
@@ -719,9 +690,18 @@ export function buildHalfSerif({ side, wall, params }) {
   );
   const depthClamped = wantedReach > reach || wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
-  const releaseLength = junctionLength + easeDistance;
+  // The stroke is cut at the rib end at the latest, so that is where the easing
+  // starts while it has not yet eaten the straight run below it. Starting it on
+  // that run instead turned its handle from the stroke's direction to the run's
+  // as it crossed the rib end: 32 units in one step on the `m` of skeletron,
+  // and the outline drew the rib end, not the release, anyway.
+  const releaseLength = Math.max(junctionLength + easeDistance, 0);
   const releaseParameter = wall.parameterAtSignedLength(releaseLength);
   const release = wall.pointAtLength(releaseLength);
+  // The share of that straight run the easing has eaten: none leaves the run
+  // straight, all of it is the ordinary rounding from the rib end.
+  const straightRun = Math.max(-junctionLength, 0);
+  const easeShare = straightRun > 0 ? Math.min(easeDistance / straightRun, 1) : 1;
   const bracket = splitCubic(
     tipTop,
     control1,
@@ -743,7 +723,7 @@ export function buildHalfSerif({ side, wall, params }) {
     flankDirection,
     easeOnBracket,
     bracketDirection,
-    easeCurvature
+    easeCurvature * easeShare
   );
   const easeFlankHandle = alongUV(release, flankDirection, startLen);
   const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, endLen);

@@ -1001,18 +1001,45 @@ ignored the drawing. The axis is vertical and the stroke leans, so the rib ends
 stand 20 units outside and 20 inside the foot line, and the wall has nothing
 past its rib end. At a height of −101, the right corner sat on the rib end at
 slopes 0, −10 and −30 alike, and the left one stopped there at −30. After, the
-corner lands on the stem's edge continued: right 0, −8.5 and −23.2 in depth,
-left 0, −10 and −30. **The fault predates the negative height**, which only made
-the region past the rib end easy to reach.
+corner goes past the rib end to the depth the slope states. **The fault
+predates the negative height**, which only made the region past the rib end
+easy to reach.
 
 **The first fix moved only the corner**, and the designer saw it at once: with
 a flat bracket, the bracket's stem end stayed on the rib end and its handles
 went on alone, so the dip was drawn by handles. The corner is an attractor and
-not a point, so moving it moves nothing an on-curve sits on. The reach and the
-easing are a signed length from the corner now, running down the continued edge
-and up the real wall as one measure. On the `f` at height 0 and slope −25, the
-right bracket's stem end went from the rib end (402, 267) to the corner
-(437, 255), and a flat bracket keeps its handles collapsed.
+not a point, so moving it moves nothing an on-curve sits on. The reach is a
+signed length from the corner now, running below the rib end and up the real
+wall as one measure, and a flat bracket keeps its handles collapsed.
+
+**The edge continued was the wrong line past the rib end** (2026-09-27, the `m`
+of skeletron). That fix put the corner on the stem's edge continued along its
+own direction, at the slope's depth. On the `m` the stroke leaves 19 degrees
+off a vertical axis, so that edge reached the wing's depth about 900 units down
+the glyph and the bracket followed it: a spike longer than the letter. It is
+the fault the foot had already shed (the 1584-unit flight on the `l`), and the
+answer is the foot's: straight across from the rib end. Two things came with it.
+
+- **A crossing with the continued edge is a second event.** Kept as the first
+  answer, with the straight-across point as the fallback, it stepped 181 units
+  in tip height where the tip top rose through the continued edge, because the
+  crossing then appears at the tip's end of the surface, not at the rib end's.
+  The straight-across line meets the surface only at its end, so it has no
+  such event. The continued edge and both of its helpers are gone.
+- **The release stays at the rib end** while the easing eats the straight run,
+  its handles scaled by the share eaten. A release on the run turned its
+  handle through the angle between the stroke and the run as it crossed the
+  rib end, 32 units in one easing step.
+
+Worst single step on the `m`, sweeping each field in fine steps, committed code
+against this: tip height 35.9 to 10.1, wing slope 46.0 to 7.6. Easing went
+25.3 to 27.8. That 27.8 is the easing handle rule's own, below.
+
+**Open: the easing handles step where their two lines cross at the bracket
+end.** On the `m`, easing 79 to 81: the handles go from 63 and 63 to 122 and 8
+in about one unit of easing. The bounded rule blends from equal halves to the
+tangent-crossing lengths over 5 per cent of the chord. That is a threshold with
+a slope, which feature model §9 closes for the offset solver.
 
 ### Gaps, and what is left alone
 

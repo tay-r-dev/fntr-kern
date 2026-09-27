@@ -1143,19 +1143,29 @@ curving wall carries the point further than the number says — by the number ov
 lean — so the rounding was lopsided at exactly the leans a designer notices. Tip thickness stays a
 depth, because the thickness of a tip is measured square to its foot.
 
-**Past the rib end the corner meets the stem's edge continued.** The wall starts
-at the rib end, and a negative slope, or a rib end that a forced axis puts inside
-the foot line, can ask for a corner further out than that. The corner then lands
-on the straight line that continues the wall along its own direction at the rib
-end. The reach and the easing are measured from the corner, so they start on
-that line and carry on up the real wall by the same length, with no seam at the
-rib end. The bracket's stem end goes down with the corner: held to the real
-wall, it stopped at the rib end while the corner and the handles went on, and
-only the handles dipped. The stroke is still cut at the rib end, and the
-straight run from there down to the release is the terminal's first curve, so
-no point is added. The wall is never bent onto the line, so this is not the
-flank line closed in §9. The two answers meet at the rib end, so nothing steps
-as the corner crosses it.
+**Past the rib end the corner is straight across from the rib end.** The wall
+starts at the rib end, and a negative slope, a rib end that a forced axis puts
+inside the foot line, or a stroke that stops short of the wing can ask for a
+corner further out than that. The corner is then the wing surface's own end: the
+rib end's position across the foot, at the depth the slope states. This is the
+same line the foot is measured from (below). The stem's edge continued is not
+used, for the same reason as there: it can run nearly along the axis, and on the
+`m` of skeletron the corner looked for on it landed some 900 units down the
+glyph. The reach is measured from the corner, down that line and up the real
+wall as one length, with no seam at the rib end. The bracket's stem end goes
+down with the corner: held to the real wall, it stopped at the rib end while the
+corner and the handles went on, and only the handles dipped. The wall is never
+bent onto the line, so this is not the flank line closed in §9. The two answers
+meet at the rib end, so nothing steps as the corner crosses it.
+
+**The release is never below the rib end.** The stroke is cut at the rib end,
+and the straight run from there down to the junction is the terminal's first
+curve, so no point is added. An easing that has not yet eaten that run starts at
+the rib end, leaving along the stroke, and its handles grow with the share of
+the run it has eaten: none leaves the run straight, all of it is the ordinary
+rounding. A release placed on the run instead turned its handle from the
+stroke's direction to the run's as it crossed the rib end, 32 units in one step
+on the `m`, and the outline drew the rib end in its place anyway.
 
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
 the wall rather than being handed one beside it.
