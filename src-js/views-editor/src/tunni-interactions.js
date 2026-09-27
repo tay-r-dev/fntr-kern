@@ -95,8 +95,9 @@ export async function handleTunniDrag({
     return;
   }
   const harmonicLead = latchHarmonicLead(originalPoints);
-  // Alt on the on-curve gizmo holds the drag to one axis, latched for the whole
-  // gesture, the same lock the X drag uses.
+  // Alt on the on-curve gizmo moves the two ends unequally, and holds the drag
+  // to one axis, latched for the whole gesture, the same lock the X drag uses,
+  // so the unequal move stays controlled.
   const lockDeltaToAxis = makeAxisLock();
   const [onIndex1, controlIndex1, controlIndex2, onIndex2] = segment.parentPointIndices;
   const startPoint = sceneController.localPoint(initialEvent);
@@ -134,7 +135,8 @@ export async function handleTunniDrag({
         const moved = event.altKey ? lockDeltaToAxis(delta) : delta;
         const endpoints = calculateSkeletonOnCurveFromTunni(
           { x: originalTunniPoint.x + moved.x, y: originalTunniPoint.y + moved.y },
-          tunniSegment
+          tunniSegment,
+          !event.altKey
         );
         writes = endpoints && [
           [onIndex1, endpoints[0]],
@@ -268,7 +270,8 @@ export async function handleSkeletonTunniDrag({
           if (isTrueTunni) {
             const endpoints = calculateSkeletonOnCurveFromTunni(
               nextTrueTunniPoint,
-              target.originalSegment
+              target.originalSegment,
+              !event.altKey
             );
             if (!endpoints) {
               return;
