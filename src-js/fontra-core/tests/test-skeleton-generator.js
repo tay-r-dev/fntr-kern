@@ -4671,7 +4671,8 @@ describe("the wall a serif cuts off", () => {
 // one curve with one hump, and it read better. The option does that.
 describe("simplify and harmonize serif easings", () => {
   // A stem curving into a serif at its start, easing pushed past the bracket.
-  const stem = ({ easeDistance = 200, easeCurvature = 0.8, curved = true } = {}) =>
+  // Three quarters of each wall is about the 200 units the test was written at.
+  const stem = ({ easeDistance = 0.75, easeCurvature = 0.8, curved = true } = {}) =>
     normalizeSkeletonData({
       contours: [
         {
@@ -4816,7 +4817,8 @@ describe("simplify and harmonize serif easings", () => {
                 left: {
                   concavity: 1,
                   easeCurvature: 0.57,
-                  easeDistance: 165,
+                  // As reported, 165 units: past this wall's 150.
+                  easeDistance: 1,
                   tension: 1,
                   tipThickness: 26,
                   wingLength: 27,
@@ -4824,7 +4826,8 @@ describe("simplify and harmonize serif easings", () => {
                 right: {
                   concavity: 1,
                   easeCurvature: 0.81,
-                  easeDistance: 42,
+                  // As reported, 42 units of this wall's 120.
+                  easeDistance: 0.3507,
                   tension: 1,
                   tipThickness: 21,
                   wingLength: 16,
@@ -4886,7 +4889,8 @@ describe("simplify and harmonize serif easings", () => {
                   left: {
                     concavity: 1,
                     easeCurvature: 0.57,
-                    easeDistance: 14,
+                    // As reported, 14 units of this wall's 135.
+                    easeDistance: 0.1036,
                     tension: 1,
                     tipThickness: 26,
                     wingLength: 27,
@@ -4894,7 +4898,8 @@ describe("simplify and harmonize serif easings", () => {
                   right: {
                     concavity: 1,
                     easeCurvature: 0.4,
-                    easeDistance: 50,
+                    // As reported, 50 units of this wall's 92.
+                    easeDistance: 0.5408,
                     tension: 1,
                     tipThickness: 21,
                     wingLength: 16,
@@ -4945,7 +4950,8 @@ describe("simplify and harmonize serif easings", () => {
   });
 
   it("leaves the easing alone below its limit", () => {
-    const data = stem({ easeDistance: 5 });
+    // About 3 units, short of both brackets.
+    const data = stem({ easeDistance: 0.01 });
     expect(onCurves(on(data))).to.equal(onCurves(off(data)));
   });
 

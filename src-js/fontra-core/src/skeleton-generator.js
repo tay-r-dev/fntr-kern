@@ -7032,7 +7032,6 @@ const SERIF_LENGTH_FIELDS = new Set([
   "tipThickness",
   "wingSlope",
   "reach",
-  "easeDistance",
 ]);
 
 function resolveSerifHalf(pointSerif, side, context = {}) {

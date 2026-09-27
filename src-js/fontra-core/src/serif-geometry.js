@@ -681,13 +681,16 @@ export function buildHalfSerif({ side, wall, params }) {
   const control1 = lerpUV(tipTop, attractor, tension);
   const control2 = lerpUV(junction, attractor, tension);
   const bracketLengths = buildLengthTable([junction, control2, control1, tipTop]);
-  const wantedEase = Math.max(params.easeDistance ?? 0, 0);
-  // The two ends of the easing stop at different places. The bracket end stops
-  // at the tip's top, where the bracket runs out; the release runs on up the
-  // wall to the wall's own end, which is the stroke's next on-curve.
-  const easeDistance = Math.min(wantedEase, Math.max(room - reach, 0));
+  // The easing distance is a fraction, 0 to 1, of the wall left above the
+  // junction: at 1 the release sits on the stroke's next on-curve. A length in
+  // units stopped meaning anything once the release could run that far, since
+  // how far that is changes with every edit to the stroke. The two ends stop
+  // at different places: the bracket end at the tip's top, where the bracket
+  // runs out; the release runs on up the wall.
+  const easeFraction = Math.min(Math.max(params.easeDistance ?? 0, 0), 1);
+  const easeDistance = easeFraction * Math.max(room - reach, 0);
   const bracketEase = Math.min(easeDistance, bracketLengths.total);
-  const depthClamped = wantedReach > reach || wantedEase > easeDistance;
+  const depthClamped = wantedReach > reach;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
   // The stroke is cut at the rib end at the latest, so that is where the easing
   // starts while it has not yet eaten the straight run below it. Starting it on

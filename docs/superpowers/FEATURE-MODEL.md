@@ -1009,10 +1009,12 @@ A contour can still hold a serif block in an old file. Nothing reads it. Point n
 materializes a serif on every on-curve point, so a point-level fallthrough can never fire, and a
 fallback that cannot fire is worse than one that is documented.
 
-`SERIF_LENGTH_FIELDS` names the five fields that are distances. They are the only ones the source's
+`SERIF_LENGTH_FIELDS` names the four fields that are distances. They are the only ones the source's
 `serifUnitsMode` scales. That mode is `absolute` or `normalized`, and `normalized` multiplies by
 the stroke width. `tipCutAngle` is in degrees. `tension`, `concavity` and `easeCurvature` are
-dimensionless in every mode, and nothing scales them.
+dimensionless in every mode, and nothing scales them. `easeDistance` is a share, 0 to 1, of the
+wall above the junction, so no units mode touches it and the rounding pass leaves it alone. The
+panel shows it as a percent, like the three ratios.
 
 ### Presets, and what a fresh serif is
 
@@ -1066,10 +1068,12 @@ else the junction is a corner, and that is what contour easing is for. A fresh s
 tension 0 and concavity 0, so it arrives as a flat chamfer and the bracket is something the
 designer asks for.
 
-**Contour easing rounds that junction.** `easeDistance` consumes the same arc length
-on the wall and the bracket until the bracket runs out. From there the bracket end
-stays on the tip's top and the release runs on up the wall alone, to the wall's own
-end, which is the stroke's next on-curve.
+**Contour easing rounds that junction.** `easeDistance` is the share of the wall above
+the junction the release travels: 0 leaves it on the junction, 1 puts it on the
+stroke's next on-curve. The bracket end travels the same arc length until the
+bracket runs out, and from there it stays on the tip's top while the release runs
+on alone. A length in units stopped meaning anything once the release could run
+that far, because how far that is changes with every edit to the stroke.
 The cut is a de Casteljau split, so the surviving bracket keeps its exact shape.
 Both rounding handles follow their own surface tangents.
 

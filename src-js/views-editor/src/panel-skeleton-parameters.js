@@ -199,6 +199,7 @@ export const SERIF_FIELD_GROUPS = [
 export const SERIF_PERCENT_FIELD_BOUNDS = {
   tension: { minValue: 0, maxValue: 100 },
   concavity: { minValue: -100, maxValue: 100 },
+  easeDistance: { minValue: 0, maxValue: 100 },
   easeCurvature: { minValue: 0, maxValue: 100 },
 };
 
@@ -271,7 +272,7 @@ function percentSummary(summary) {
 
 // Slider/number-unit -> model-unit for one serif half field.
 function serifHalfValueFromField(field, value) {
-  if (field === "tension" || field === "concavity" || field === "easeCurvature") {
+  if (field in SERIF_PERCENT_FIELD_BOUNDS) {
     return Number(value) / 100;
   }
   return Number(value);

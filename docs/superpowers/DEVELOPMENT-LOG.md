@@ -1044,6 +1044,14 @@ sides of the cut. The limit is the whole segment now, up to the next on-curve.
 On the `m`, easing swept 0 to 600 held 33 points with no invalid coordinate,
 with and without simplify.
 
+**The easing distance became a share of the wall** the same day, 0 to 100 per
+cent, on the designer's call. Two places had it down as a length and would have
+broken a share silently: the units mode multiplied it by the stroke width, and
+the rounding pass rounded it to whole units, which takes every easing under 50
+per cent to nothing. A test now covers the second. The tests written in units
+were converted at the value typed over the wall above the junction, measured
+per glyph, so each still draws the shape it was written against.
+
 **Open: the easing handles step where their two lines cross at the bracket
 end.** On the `m`, easing 79 to 81: the handles go from 63 and 63 to 122 and 8
 in about one unit of easing. The bounded rule blends from equal halves to the
