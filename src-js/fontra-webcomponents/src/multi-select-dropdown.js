@@ -131,6 +131,13 @@ export class MultiSelectDropdown extends UnlitElement {
 
   constructor() {
     super();
+    // A tray pads the host to draw its tile. A click on that padding lands on
+    // the host, not the inner button, so it is handed on.
+    this.addEventListener("click", (event) => {
+      if (event.composedPath()[0] === this) {
+        this._button?.click();
+      }
+    });
     this._label = "";
     this._items = [];
     this._singleChoice = false;
