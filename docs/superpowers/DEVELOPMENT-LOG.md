@@ -1035,6 +1035,15 @@ Worst single step on the `m`, sweeping each field in fine steps, committed code
 against this: tip height 35.9 to 10.1, wing slope 46.0 to 7.6. Easing went
 25.3 to 27.8. That 27.8 is the easing handle rule's own, below.
 
+**The easing stopped at the wing's end again** (2026-09-27). The arc-length
+rework capped the one ease distance at the bracket's length, so the release on
+the wall stopped the moment the other end reached the tip's top. The two ends
+now stop apart: the bracket end at the tip's top, the release at the wall's own
+end. That end was 95 per cent of the segment, so a splice kept curve on both
+sides of the cut. The limit is the whole segment now, up to the next on-curve.
+On the `m`, easing swept 0 to 600 held 33 points with no invalid coordinate,
+with and without simplify.
+
 **Open: the easing handles step where their two lines cross at the bracket
 end.** On the `m`, easing 79 to 81: the handles go from 63 and 63 to 122 and 8
 in about one unit of easing. The bounded rule blends from equal halves to the

@@ -193,9 +193,6 @@ const SCAN_SAMPLES = 256;
 // Bisection steps. 40 halvings take a bracket of one parameter unit below
 // 1e-12, which is far under the grid the result is rounded onto.
 const BISECT_STEPS = 40;
-// A terminal may consume its own segment and no more. The wall stops short of
-// its own far end so a splice always has curve left on both sides of the cut.
-const MAX_CONSUMED_FRACTION = 0.95;
 // Samples in the arc-length table that resolves that fraction.
 const LENGTH_SAMPLES = 256;
 
@@ -307,10 +304,12 @@ function bisect(signAt, low, high) {
  */
 export function makeSerifWall(points) {
   const table = buildLengthTable(points);
-  const maxParameter =
-    table.total > 0
-      ? parameterAtLength(table, table.total * MAX_CONSUMED_FRACTION)
-      : MAX_CONSUMED_FRACTION;
+  // A terminal may consume its own segment and no more: up to the next
+  // on-curve. It used to stop at 95 per cent, so a splice kept curve on both
+  // sides of the cut, and the easing then stopped short of the on-curve the
+  // designer was dragging toward. A cut at the far end leaves the stroke a
+  // zero-length piece, which is a collapse, not a loss: the count holds.
+  const maxParameter = 1;
   // The deepest the wall gets, and where it gets there. NOT the depth of its
   // far end. A wall whose depth only rises makes the two the same point, which
   // is every straight stem and every gently curved one — so nothing already
@@ -683,11 +682,11 @@ export function buildHalfSerif({ side, wall, params }) {
   const control2 = lerpUV(junction, attractor, tension);
   const bracketLengths = buildLengthTable([junction, control2, control1, tipTop]);
   const wantedEase = Math.max(params.easeDistance ?? 0, 0);
-  const easeDistance = Math.min(
-    wantedEase,
-    bracketLengths.total,
-    Math.max(room - reach, 0)
-  );
+  // The two ends of the easing stop at different places. The bracket end stops
+  // at the tip's top, where the bracket runs out; the release runs on up the
+  // wall to the wall's own end, which is the stroke's next on-curve.
+  const easeDistance = Math.min(wantedEase, Math.max(room - reach, 0));
+  const bracketEase = Math.min(easeDistance, bracketLengths.total);
   const depthClamped = wantedReach > reach || wantedEase > easeDistance;
   const easeCurvature = Math.min(Math.max(params.easeCurvature ?? 0, 0), 1);
   // The stroke is cut at the rib end at the latest, so that is where the easing
@@ -707,7 +706,7 @@ export function buildHalfSerif({ side, wall, params }) {
     control1,
     control2,
     junction,
-    1 - parameterAtLength(bracketLengths, easeDistance)
+    1 - parameterAtLength(bracketLengths, bracketEase)
   );
   const easeOnBracket = bracket.first[3];
   const wallOut = wall.tangentAt(releaseParameter);
@@ -747,7 +746,7 @@ export function buildHalfSerif({ side, wall, params }) {
     easeAtLimit:
       easeDistance > 0 &&
       easeCurvature > 0 &&
-      easeDistance >= bracketLengths.total - 1e-9,
+      bracketEase >= bracketLengths.total - 1e-9,
   };
 }
 

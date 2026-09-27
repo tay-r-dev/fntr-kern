@@ -1067,7 +1067,9 @@ tension 0 and concavity 0, so it arrives as a flat chamfer and the bracket is so
 designer asks for.
 
 **Contour easing rounds that junction.** `easeDistance` consumes the same arc length
-on the wall and the bracket, limited by the available wall and the full bracket arc.
+on the wall and the bracket until the bracket runs out. From there the bracket end
+stays on the tip's top and the release runs on up the wall alone, to the wall's own
+end, which is the stroke's next on-curve.
 The cut is a de Casteljau split, so the surviving bracket keeps its exact shape.
 Both rounding handles follow their own surface tangents.
 
@@ -1168,7 +1170,8 @@ stroke's direction to the run's as it crossed the rib end, 32 units in one step
 on the `m`, and the outline drew the rib end in its place anyway.
 
 A wall states how far it may be consumed, in its own length, and the half serif reads that limit off
-the wall rather than being handed one beside it.
+the wall rather than being handed one beside it. The limit is the whole segment, up to the next
+on-curve. A cut there leaves the stroke a zero-length piece, which is a collapse and keeps the count.
 
 **Wing slope is the incline of the wing's top surface**, whose run is decided by where the wall is,
 rather than a rise measured on an assumed line. The two agree on a straight stem.

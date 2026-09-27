@@ -577,13 +577,22 @@ describe("half serif in frame coordinates", () => {
     }
   });
 
-  it("stops both ends after consuming the full bracket arc", () => {
+  it("stops the bracket end at the tip top and runs the release on up the wall", () => {
     const full = eased({ easeDistance: 0 });
+    const past = eased({ easeDistance: bracketLength(full) + 100 });
+    expectClose(past.easeOnBracket.u, past.tipTop.u);
+    expectClose(past.easeOnBracket.v, past.tipTop.v);
+    expectClose(
+      past.release.v - past.junction.v,
+      bracketLength(full) + 100,
+      "past the arc",
+      0.002
+    );
+    expect(past.easeAtLimit).to.equal(true);
+    // The wall is the limit: the release stops where the wall does.
     const far = eased({ easeDistance: 4000 });
-    expectClose(far.easeOnBracket.u, far.tipTop.u);
-    expectClose(far.easeOnBracket.v, far.tipTop.v);
-    expectClose(far.release.v - far.junction.v, bracketLength(full), "full arc", 0.002);
-    expect(far.easeAtLimit).to.equal(true);
+    expectClose(far.release.v, 1000, "the wall's end", 1e-3);
+    expect(far.depthClamped).to.equal(true);
   });
 
   it("keeps near-parallel easing handles local and continuous", () => {
@@ -1559,10 +1568,10 @@ describe("serif wall", () => {
     expect(wall.tangentAt(0.3).v).to.be.greaterThan(0);
   });
 
-  it("stops short of consuming its whole segment", () => {
+  it("may be consumed up to its own far end", () => {
     const wall = straightWallSample();
-    expect(wall.maxParameter).to.be.lessThan(1);
-    expect(wall.maxDepth).to.be.lessThan(400);
+    expect(wall.maxParameter).to.equal(1);
+    expectClose(wall.maxDepth, 400, undefined, 1e-3);
   });
 });
 
@@ -1593,7 +1602,7 @@ describe("serif wall arc length", () => {
 
   it("reports the length it may be consumed for", () => {
     const wall = straightWallSample();
-    expectClose(wall.maxLength, 380, undefined, 1e-3);
+    expectClose(wall.maxLength, 400, undefined, 1e-3);
     expectClose(wall.lengthAt(wall.parameterAtDepth(100)), 100, undefined, 1e-3);
   });
 });
