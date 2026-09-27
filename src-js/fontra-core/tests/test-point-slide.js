@@ -743,3 +743,24 @@ describe("point slide: which points slide, and where", () => {
     ]);
   });
 });
+
+// Measured on `U^1.json`: two neighbours slid one after the other, and the one
+// that went first ran into the other's old place and stopped there.
+describe("point slide: a group slides in travel order", () => {
+  it("lets a point pass its neighbour's old place", () => {
+    const path = new VarPackedPath();
+    path.appendUnpackedContour({
+      isClosed: false,
+      points: [onCurve(0, 0), onCurve(100, 0), onCurve(200, 0), onCurve(400, 0)],
+    });
+    const layer = { path, components: [], anchors: [], guidelines: [] };
+    const entries = createPointSlideTargetEntries(
+      layer,
+      new Set(["point/1", "point/2"]),
+      { initialPointer: { x: 100, y: 0 }, isPrimary: true, session: {} }
+    );
+    applyChange(layer, entries[0].makeChangeForDelta({ x: 150, y: 0 }));
+    const points = layer.path.getUnpackedContour(0).points;
+    expect(points.map(({ x }) => x)).to.deep.equal([0, 250, 350, 400]);
+  });
+});

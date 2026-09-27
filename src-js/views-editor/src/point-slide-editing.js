@@ -202,14 +202,34 @@ export function createPointSlideTargetEntries(
           y: initialPointer.y + delta.y,
         });
         const travel = vector.subVectors(pointer, initialPointer);
+        const pointerFor = (point) =>
+          targets.length === 1 ? pointer : vector.addVectors(point, travel);
         if (isPrimary) {
+          // The point ahead in the travel slides first, so the points behind
+          // it find their way clear. Taken the other way round, a point sliding
+          // toward its neighbour stopped at the neighbour's old place.
+          const ahead = targets.map((target) => {
+            const point = target.contour.points[target.contourPointIndex];
+            const side = chooseSlideInterval(
+              target.adjacent,
+              pointerFor(point),
+              point
+            )?.side;
+            return side === "previous"
+              ? -target.contourPointIndex
+              : target.contourPointIndex;
+          });
+          // ponytail: array order, so a group across a closed contour's seam
+          // can still meet itself there; order along the contour if it matters.
+          session.order = targets.map((_, i) => i).sort((a, b) => ahead[b] - ahead[a]);
           session.moves = [];
-        } else if (session.moves?.length !== targets.length) {
+        } else if (session.order?.length !== targets.length) {
           return null;
         }
         // contourIndex -> {contour, insertions}, the state each slide starts from.
         const slid = new Map();
-        for (const [i, target] of targets.entries()) {
+        for (const i of session.order) {
+          const target = targets[i];
           const { contourIndex, contourPointIndex } = target;
           const state = slid.get(contourIndex) ?? {
             contour: target.contour,
@@ -224,13 +244,9 @@ export function createPointSlideTargetEntries(
             for (const side of ["previous", "next"]) {
               if (!target.adjacent[side]) adjacent[side] = null;
             }
-            const destination = chooseSlideInterval(
-              adjacent,
-              targets.length === 1 ? pointer : vector.addVectors(point, travel),
-              point
-            );
+            const destination = chooseSlideInterval(adjacent, pointerFor(point), point);
             move = destination && { side: destination.side, t: destination.t };
-            session.moves.push(move);
+            session.moves[i] = move;
           } else {
             move = session.moves[i];
           }
