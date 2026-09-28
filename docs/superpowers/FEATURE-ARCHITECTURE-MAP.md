@@ -372,17 +372,18 @@ point count under it changes.
 | File                                              | +/−      | Role                                                                                                        |
 | ------------------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
 | `fontra-core/src/marker-model.js`                 | +190     | **NEW** — the stored section, non-reusing ids, the count signature, the stale rule, anchor resolution       |
-| `fontra-core/src/marker-measure.js`               | +230     | **NEW** — the winding walk (shared with the Power Ruler), ray and dimension measurement, on-screen geometry |
+| `fontra-core/src/marker-measure.js`               | +230     | **NEW** — the winding walk, ray, dimension, ruler and curvature measurement, on-screen geometry              |
 | `views-editor/src/marker-editing.js`              | +390     | **NEW** — the ONLY write path, plus the drag and the reverse-contour break                                  |
-| `views-editor/src/visualization-layer-markers.js` | +215     | **NEW** — two layers, rays and dimensions                                                                   |
+| `views-editor/src/visualization-layer-markers.js` | +215     | **NEW** — rays, dimensions and curvature layers, and the placement preview                                  |
 | `views-editor/src/edit-tools-marker.js`           | +185     | **NEW** — the narrow tool, delegating to the pointer tool                                                   |
 | `views-editor/src/panel-markers.js`               | +225     | **NEW** — the right-sidebar list, targets and group visibility                                              |
 | `views-editor/src/scene-model.js`                 | (shared) | `markerAtPoint`, `markerGrips`, and the place in the cascade                                                |
 | `views-editor/src/edit-tools-pointer.js`          | (shared) | Drag hook and double-click delete. Dispatcher only (R-A)                                                    |
 | `views-editor/src/scene-controller.js`            | (shared) | Reverse contour breaks the markers on it                                                                    |
-| `views-editor/src/edit-tools-power-ruler.js`      | +2/−20   | Its winding walk moved out; it imports it now                                                               |
+| `views-editor/src/edit-tools-power-ruler.js`      | +2/−20   | Places and moves ruler markers, draws them, and owns `rulerExtraLines`                                      |
 | `fontra-core/tests/test-marker-model.js`          | +190     | tests                                                                                                       |
 | `fontra-core/tests/test-marker-anchor.js`         | +80      | tests                                                                                                       |
+| `fontra-core/tests/test-marker-kinds.js`          | +150     | tests — the ruler and the curvature marker                                                                  |
 | `fontra-core/tests/test-marker-measure.js`        | +255     | tests, including three sweeps                                                                               |
 
 Three claims matter here; feature model §13 holds the rest.

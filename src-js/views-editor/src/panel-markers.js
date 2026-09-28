@@ -1,7 +1,7 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { markerGeometry } from "@fontra/core/marker-measure.js";
-import { getMarkerGroups, getMarkers } from "@fontra/core/marker-model.js";
+import { getMarkerGroups, getMarkers, markerKind } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { round, throttleCalls } from "@fontra/core/utils.ts";
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
@@ -25,6 +25,7 @@ import {
   setMarkerVisible,
   setMarkersVisible,
 } from "./marker-editing.js";
+import { rulerExtraLines } from "./edit-tools-power-ruler.js";
 import Panel from "./panel.js";
 
 // The panel reads; every write goes through marker-editing.js. It never touches the
@@ -108,7 +109,7 @@ export default class MarkersPanel extends Panel {
     this.sceneSettingsController = this.editorController.sceneSettingsController;
     this._appendStyle(MARKERS_PANEL_STYLES);
 
-    // Which section trash is armed ("rays" or "dimensions"), its lapse timer and the
+    // Which section trash is armed (a section name), its lapse timer and the
     // tooltip it shows.
     this._eraseArmed = null;
     this._eraseTimer = null;
@@ -122,6 +123,25 @@ export default class MarkersPanel extends Panel {
       "dimensions",
       "sidebar.markers.dimensions"
     );
+    this.rulers = this._buildMarkerSection("rulers", "sidebar.markers.rulers", [
+      { label: translate("sidebar.markers.column.id") },
+      { label: translate("sidebar.markers.column.spans"), align: "right" },
+      { label: translate("sidebar.markers.column.angle"), align: "right" },
+      { label: translate("sidebar.markers.column.group") },
+      { label: translate("sidebar.markers.column.action") },
+    ]);
+    this.curvatures = this._buildMarkerSection(
+      "curvatures",
+      "sidebar.markers.curvatures",
+      [
+        { label: translate("sidebar.markers.column.id") },
+        { label: translate("sidebar.markers.column.nodes") },
+        { label: translate("sidebar.markers.column.radius"), align: "right" },
+        { label: translate("sidebar.markers.column.curvature"), align: "right" },
+        { label: translate("sidebar.markers.column.group") },
+        { label: translate("sidebar.markers.column.action") },
+      ]
+    );
     this.groups = this._buildGroupSection();
     this.contentElement.appendChild(
       html.div(
@@ -130,6 +150,8 @@ export default class MarkersPanel extends Panel {
           this.noGlyphNote,
           this.rays.element,
           this.dimensions.element,
+          this.rulers.element,
+          this.curvatures.element,
           this.groups.element,
         ]
       )
@@ -165,7 +187,7 @@ export default class MarkersPanel extends Panel {
   }
 
   // A section: heading with its eye and trash, a note when empty, and the table.
-  _buildMarkerSection(kind, labelKey) {
+  _buildMarkerSection(kind, labelKey, columns = undefined) {
     const eye = html.createDomElement("icon-button", {
       "src": "/tabler-icons/eye.svg",
       "data-tooltipposition": "left",
@@ -179,7 +201,7 @@ export default class MarkersPanel extends Panel {
     trash.onclick = (event) => this.pressEraseSection(kind, event.currentTarget);
     const table = html.createDomElement("data-table");
     table.tableClassName = "markers-table";
-    table.columns = [
+    table.columns = columns || [
       { label: translate("sidebar.markers.column.id") },
       { label: translate("sidebar.markers.column.nodes") },
       { label: translate("sidebar.markers.column.value"), align: "right" },
@@ -248,7 +270,13 @@ export default class MarkersPanel extends Panel {
   async update() {
     const positionedGlyph = this._getPositionedGlyph();
     this.noGlyphNote.hidden = !!positionedGlyph;
-    for (const section of [this.rays, this.dimensions, this.groups]) {
+    for (const section of [
+      this.rays,
+      this.dimensions,
+      this.rulers,
+      this.curvatures,
+      this.groups,
+    ]) {
       section.element.hidden = !positionedGlyph;
     }
     if (!positionedGlyph) {
@@ -283,16 +311,19 @@ export default class MarkersPanel extends Panel {
     }
 
     const context = { positionedGlyph, skeletonData, groupOptions, labels };
-    this._renderMarkerSection(this.rays, markers.filter(isRay), context);
-    this._renderMarkerSection(
-      this.dimensions,
-      markers.filter((marker) => !isRay(marker)),
-      context
+    const ofKind = (kind) => markers.filter((marker) => markerKind(marker) === kind);
+    this._renderMarkerSection(this.rays, ofKind("ray"), context);
+    this._renderMarkerSection(this.dimensions, ofKind("dimension"), context);
+    this._renderMarkerSection(this.rulers, ofKind("ruler"), context, (marker) =>
+      this._rulerRow(marker, context)
+    );
+    this._renderMarkerSection(this.curvatures, ofKind("curvature"), context, (marker) =>
+      this._curvatureRow(marker, context)
     );
     this._renderGroupSection(groups, markers);
   }
 
-  _renderMarkerSection(section, markers, context) {
+  _renderMarkerSection(section, markers, context, makeRow = undefined) {
     section.markers = markers;
     section.empty.hidden = markers.length > 0;
     // Not `hidden`: the table's own display rule outranks the hidden attribute.
@@ -311,7 +342,8 @@ export default class MarkersPanel extends Panel {
     );
     section.eye.disabled = markers.length === 0;
     section.trash.disabled = markers.length === 0;
-    section.table.setRows(markers, (marker) => this._markerRow(marker, context), {
+    const row = makeRow || ((marker) => this._markerRow(marker, context));
+    section.table.setRows(markers, row, {
       rowId: (marker) => marker.id,
     });
   }
@@ -357,34 +389,7 @@ export default class MarkersPanel extends Panel {
             : html.span({ class: "markers-delta" }, [signed(delta)]),
         ])
       ),
-      tableCell(
-        selectCell({
-          value: marker.groupId || "",
-          options: groupOptions,
-          className: "markers-group-select",
-          onChange: (groupId) => this.assignGroup(marker.id, groupId || undefined),
-        })
-      ),
-      actionsCell([
-        rowAction({
-          src: marker.hidden ? "/tabler-icons/eye-closed.svg" : "/tabler-icons/eye.svg",
-          tooltip: translate(
-            marker.hidden
-              ? "sidebar.markers.show-marker"
-              : "sidebar.markers.hide-marker"
-          ),
-          tooltipPosition: "left",
-          // A hidden marker's closed eye is a state, so it stays readable.
-          reveal: marker.hidden ? "always" : "dim",
-          onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
-        }),
-        rowAction({
-          src: "/tabler-icons/trash.svg",
-          tooltip: translate("sidebar.markers.delete-marker"),
-          tooltipPosition: "left",
-          onClick: () => this.deleteMarker(marker.id),
-        }),
-      ]),
+      ...this._groupAndActionCells(marker, groupOptions),
     ]);
   }
 
@@ -441,7 +446,78 @@ export default class MarkersPanel extends Panel {
   }
 
   _section(kind) {
-    return kind === "rays" ? this.rays : this.dimensions;
+    return this[kind];
+  }
+
+  // ID, the spans the ruler crosses in order along its line, its angle, Group, and the
+  // eye and trash. The spans are read with the side-bearing lines the canvas draws, so
+  // the table and the canvas give the same numbers.
+  _rulerRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
+    const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData, {
+      extraLines: rulerExtraLines(this.editorController, positionedGlyph.glyph),
+    });
+    const spans = geometry.measurePoints
+      .filter((span) => span.distance >= 0.1)
+      .map((span) => String(round(span.distance, 1)));
+    return tableRow(marker.id, [
+      tableCell(labels.get(marker.id)),
+      tableCell(spans.length ? spans.join(" · ") : "—", { align: "right" }),
+      tableCell(`${round(geometry.angle, 1)}°`, { align: "right" }),
+      ...this._groupAndActionCells(marker, groupOptions),
+    ]);
+  }
+
+  // ID, Nodes, Radius, Curvature, Group, and the eye and trash. A straight reads an
+  // endless radius and no curvature.
+  _curvatureRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
+    const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
+    const broken = html.span({ class: "markers-broken" }, [
+      translate("sidebar.markers.broken"),
+    ]);
+    return tableRow(marker.id, [
+      tableCell(labels.get(marker.id)),
+      tableCell(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
+      tableCell(geometry.stale ? broken : formatRadius(geometry.radius), {
+        align: "right",
+      }),
+      tableCell(geometry.stale ? "—" : formatCurvature(geometry.curvature), {
+        align: "right",
+      }),
+      ...this._groupAndActionCells(marker, groupOptions),
+    ]);
+  }
+
+  _groupAndActionCells(marker, groupOptions) {
+    return [
+      tableCell(
+        selectCell({
+          value: marker.groupId || "",
+          options: groupOptions,
+          className: "markers-group-select",
+          onChange: (groupId) => this.assignGroup(marker.id, groupId || undefined),
+        })
+      ),
+      actionsCell([
+        rowAction({
+          src: marker.hidden ? "/tabler-icons/eye-closed.svg" : "/tabler-icons/eye.svg",
+          tooltip: translate(
+            marker.hidden
+              ? "sidebar.markers.show-marker"
+              : "sidebar.markers.hide-marker"
+          ),
+          tooltipPosition: "left",
+          // A hidden marker's closed eye is a state, so it stays readable.
+          reveal: marker.hidden ? "always" : "dim",
+          onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
+        }),
+        rowAction({
+          src: "/tabler-icons/trash.svg",
+          tooltip: translate("sidebar.markers.delete-marker"),
+          tooltipPosition: "left",
+          onClick: () => this.deleteMarker(marker.id),
+        }),
+      ]),
+    ];
   }
 
   // Panel-side commands, for whatever calls them: the context menu, a button row, or a
@@ -494,7 +570,7 @@ export default class MarkersPanel extends Panel {
     await deleteMarkers(
       this.sceneController,
       markers.map((marker) => marker.id),
-      kind === "rays" ? "Delete Rays" : "Delete Dimensions"
+      ERASE_UNDO_LABELS[kind]
     );
   }
 
@@ -529,8 +605,22 @@ export default class MarkersPanel extends Panel {
   }
 }
 
-function isRay(marker) {
-  return (marker.ends || []).some((end) => end.kind === "cast");
+const ERASE_UNDO_LABELS = {
+  rays: "Delete Rays",
+  dimensions: "Delete Dimensions",
+  rulers: "Delete Rulers",
+  curvatures: "Delete Curvature Markers",
+};
+
+// A radius is a length and reads in font units; a straight has none.
+export function formatRadius(radius) {
+  return Number.isFinite(radius) ? String(round(radius, 1)) : "∞";
+}
+
+// A curvature is one over a length, so in font units it is a small number: four
+// significant digits say what a designer can act on.
+export function formatCurvature(curvature) {
+  return curvature ? curvature.toPrecision(4) : "0";
 }
 
 // What the marker is holding on to, named by the POINT it sits on. A segment number is

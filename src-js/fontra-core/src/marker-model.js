@@ -446,7 +446,7 @@ function signedCurvatureAt(bezier, t) {
   return Math.sign(d1.x * d2.y - d1.y * d2.x) * size;
 }
 
-// The same quarter turn the Power Ruler takes at recalcRulerFromPoint.
+// The same quarter turn a ruler takes at rulerPlacement.
 function normalAt(bezier, t) {
   const derivative = bezier.derivative(t);
   return vector.normalizeVector({ x: -derivative.y, y: derivative.x });

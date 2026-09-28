@@ -348,6 +348,12 @@ where the outline leaves the black.
 is in glyph space and is stored on the ray's cast end. Drag its arrow to aim it again. Ctrl-click
 it to return it to the normal.
 
+**Ruler** — a marker that keeps the Power Ruler's line: a place and an angle, attached to nothing,
+measuring every span it crosses in the black and in the white.
+
+**Curvature marker** — a marker on the outline that reads the curvature there and the radius of
+the circle that fits the curve. Placed with C and a click in the marker tool.
+
 **Dimension** — a marker placed between two points, measuring the distance between them and moving
 with both.
 

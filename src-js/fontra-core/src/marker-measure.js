@@ -15,7 +15,7 @@ import {
 import { round } from "./utils.ts";
 import * as vector from "./vector.js";
 
-// The winding walk, lifted out of the Power Ruler's recalcRulerFromLine so there is one
+// The winding walk, lifted out of the old Power Ruler so there is one
 // copy of it (rail R-B). It is a pure function of a crossing list: accumulate winding
 // across the crossings, and a span is inside the black wherever the running total is
 // non-zero.

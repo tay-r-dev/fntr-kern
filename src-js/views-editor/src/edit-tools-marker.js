@@ -39,6 +39,9 @@ export class MarkerTool extends BaseTool {
   constructor(editor) {
     super(editor);
     this.pendingDimensionEnd = null;
+    // C held: a click places a curvature marker instead of a ray.
+    this.curvatureKeyDown = false;
+    this.lastHoverEvent = null;
   }
 
   get pointerTool() {
@@ -49,6 +52,7 @@ export class MarkerTool extends BaseTool {
   // contour previews the ray that would be placed there, cast and measured exactly as
   // the placement would cast it. Without this the tool aims blind.
   handleHover(event) {
+    this.lastHoverEvent = event;
     if (!this.sceneModel.selectedGlyph?.isEditing) {
       setMarkerPlacementPreview(null);
       this.pointerTool.handleHover(event);
@@ -66,7 +70,11 @@ export class MarkerTool extends BaseTool {
       : new Set();
 
     setMarkerPlacementPreview(
-      markerTarget ? null : this.previewAt(point, event.altKey)
+      markerTarget
+        ? null
+        : this.curvatureKeyDown
+          ? this.curvaturePreviewAt(point)
+          : this.previewAt(point, event.altKey)
     );
     this.canvasController.requestUpdate();
     this.setCursor();
@@ -149,9 +157,81 @@ export class MarkerTool extends BaseTool {
     };
   }
 
+  // What a C-click would place: the curvature marker, read exactly as the placed one is.
+  curvaturePreviewAt(point) {
+    const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return null;
+    }
+    const glyphController = positionedGlyph.glyph;
+    const end = this.anchorageAt(positionedGlyph, point);
+    if (!end) {
+      return null;
+    }
+    const geometry = markerGeometry(
+      glyphController,
+      this.curvatureMarker(glyphController, end),
+      this.skeletonData
+    );
+    return geometry.stale ? null : { point: geometry.point, curvature: geometry };
+  }
+
+  curvatureMarker(glyphController, end) {
+    return {
+      kind: "curvature",
+      ends: [end],
+      signature: computeMarkerSignature(glyphController.flattenedPath),
+    };
+  }
+
+  anchorageAt(positionedGlyph, point) {
+    const glyphController = positionedGlyph.glyph;
+    return nearestMarkerAnchorage(
+      glyphController.flattenedPathHitTester,
+      glyphController.flattenedPath,
+      { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+      this.skeletonData
+    );
+  }
+
   deactivate() {
     setMarkerPlacementPreview(null);
+    this.releaseCurvatureKey();
     super.deactivate();
+  }
+
+  // C is held, not toggled. Its release is watched on the window, so a release outside
+  // the canvas or a lost focus still ends it.
+  holdCurvatureKey() {
+    if (this.curvatureKeyDown) {
+      return;
+    }
+    this.curvatureKeyDown = true;
+    this._curvatureKeyUp = (event) => {
+      if (event.type === "blur" || isCurvatureKey(event)) {
+        this.releaseCurvatureKey();
+      }
+    };
+    window.addEventListener("keyup", this._curvatureKeyUp);
+    window.addEventListener("blur", this._curvatureKeyUp);
+    this.refreshHover();
+  }
+
+  releaseCurvatureKey() {
+    if (!this.curvatureKeyDown) {
+      return;
+    }
+    this.curvatureKeyDown = false;
+    window.removeEventListener("keyup", this._curvatureKeyUp);
+    window.removeEventListener("blur", this._curvatureKeyUp);
+    this._curvatureKeyUp = null;
+    this.refreshHover();
+  }
+
+  refreshHover() {
+    if (this.lastHoverEvent) {
+      this.handleHover(this.lastHoverEvent);
+    }
   }
 
   setCursor() {
@@ -163,6 +243,11 @@ export class MarkerTool extends BaseTool {
   }
 
   handleKeyDown(event) {
+    if (isCurvatureKey(event)) {
+      event.stopImmediatePropagation();
+      this.holdCurvatureKey();
+      return;
+    }
     if (event.key !== "Backspace") {
       return super.handleKeyDown(event);
     }
@@ -229,6 +314,22 @@ export class MarkerTool extends BaseTool {
       x: point.x - positionedGlyph.x,
       y: point.y - positionedGlyph.y,
     };
+    // C held places a curvature marker on the outline or centerline under the cursor.
+    if (this.curvatureKeyDown) {
+      const end = this.anchorageAt(positionedGlyph, point);
+      if (!end) {
+        await this.pointerTool.handleDrag(eventStream, initialEvent);
+        return;
+      }
+      eventStream.done();
+      const glyphController = positionedGlyph.glyph;
+      await placeMarker(
+        this.sceneController,
+        () => this.curvatureMarker(glyphController, end),
+        "Place Curvature Marker"
+      );
+      return;
+    }
     if (initialEvent.altKey) {
       if (!(await this.placeDimensionEnd(positionedGlyph, local))) {
         await this.pointerTool.handleDrag(eventStream, initialEvent);
@@ -357,6 +458,16 @@ function nearestPathPointEnd(path, local) {
       pointIndex: best.pointIndex,
     },
     path
+  );
+}
+
+// C with no modifier. Ctrl+C and friends stay the editor's.
+function isCurvatureKey(event) {
+  return (
+    (event.key === "c" || event.key === "C" || event.code === "KeyC") &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey
   );
 }
 

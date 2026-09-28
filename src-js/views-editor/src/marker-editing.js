@@ -20,6 +20,7 @@ import {
   getMarkerGroups,
   getMarkers,
   markerIndicesChanged,
+  markerKind,
   nearestOnCurvePlace,
   nearestOnCurvePoint,
   nearestPlaceOnSkeleton,
@@ -340,6 +341,7 @@ export async function handleMarkerDrag({
   initialEvent,
   markerId,
   endIndex,
+  extraLines = undefined,
 }) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   if (!positionedGlyph) {
@@ -352,15 +354,40 @@ export async function handleMarkerDrag({
   if (!startMarker) {
     return;
   }
+  const kind = markerKind(startMarker);
+  const hitTester = glyphController.flattenedPathHitTester;
+
+  // A ruler is attached to nothing: it goes wherever it is dragged and takes the normal
+  // of the outline nearest to it, as it did when it was placed.
+  if (kind === "ruler") {
+    await dragMarkerFrames({
+      sceneController,
+      eventStream,
+      markerId,
+      undoLabel: "Move Ruler",
+      frameMarker: (point, event) => {
+        const placement = rulerPlacement(
+          hitTester,
+          { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+          extraLines,
+          event.shiftKey
+        );
+        return placement ? { ...startMarker, ...placement } : undefined;
+      },
+    });
+    return;
+  }
+
   const draggedEndIndex =
     endIndex ?? startMarker.ends.findIndex((end) => end.kind !== "cast");
-  const isRay = startMarker.ends.some((end) => end.kind === "cast");
+  const isRay = kind === "ray";
+  // A curvature marker's one end rides the outline the way a ray's anchor does.
+  const ridesOutline = isRay || kind === "curvature";
   const skeletonData = getSkeletonData(
     sceneController.sceneModel._getEditLayerGlyph(positionedGlyph)
   );
 
   const signature = computeMarkerSignature(glyphController.flattenedPath);
-  const hitTester = glyphController.flattenedPathHitTester;
   const path = glyphController.flattenedPath;
 
   // The arrow of an aimed ray re-aims it: the anchor stays, and the cast end takes the
@@ -402,7 +429,7 @@ export async function handleMarkerDrag({
     // altogether. The magnet does the resisting, not a restriction: a marker held to
     // the contour it happened to start on is one that cannot be moved somewhere more
     // useful, and a broken one has to be movable to be repairable at all.
-    const newEnd = isRay
+    const newEnd = ridesOutline
       ? nearestEndOnContour(hitTester, path, point, positionedGlyph, skeletonData)
       : nearestPointEnd(glyphController, point, positionedGlyph);
     if (!newEnd) {
@@ -424,6 +451,25 @@ export async function handleMarkerDrag({
     return { ...moved, ends: aimed || aimedRayOnPoint(moved.ends, path) };
   };
 
+  await dragMarkerFrames({
+    sceneController,
+    eventStream,
+    markerId,
+    undoLabel: aiming ? "Aim Marker" : "Move Marker",
+    frameMarker: draggedMarker,
+  });
+}
+
+// The frame loop every marker drag shares. `frameMarker(point, event)` says what the
+// marker becomes at this frame, derived from the marker as it stood at mouse-down, or
+// undefined to leave the frame out.
+export async function dragMarkerFrames({
+  sceneController,
+  eventStream,
+  markerId,
+  undoLabel,
+  frameMarker,
+}) {
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const layerInfo = Object.entries(
       sceneController.getEditingLayerFromGlyphLayers(glyph.layers)
@@ -445,7 +491,7 @@ export async function handleMarkerDrag({
       if (event.type !== "mousemove") {
         continue;
       }
-      const next = draggedMarker(sceneController.localPoint(event), event);
+      const next = frameMarker(sceneController.localPoint(event), event);
       if (!next) {
         continue;
       }
@@ -469,12 +515,28 @@ export async function handleMarkerDrag({
     if (!dragged || !accumulated.hasChange) {
       return;
     }
-    return {
-      changes: accumulated,
-      undoLabel: aiming ? "Aim Marker" : "Move Marker",
-      broadcast: true,
-    };
+    return { changes: accumulated, undoLabel, broadcast: true };
   }, MARKER_EDIT_SENDER);
+}
+
+// Where a ruler through `local` sits and which way it runs: square to the outline
+// nearest to it, as the Power Ruler always placed it. The side-bearing lines count as
+// outline here when they are passed. Shift holds it to the horizontal, the vertical and
+// the diagonals. Null where there is no outline to be square to.
+export function rulerPlacement(pathHitTester, local, extraLines, constrain) {
+  const nearest = pathHitTester.findNearest(local, extraLines);
+  if (!nearest) {
+    return null;
+  }
+  const derivative = nearest.segment.bezier.derivative(nearest.t);
+  let direction = { x: -derivative.y, y: derivative.x };
+  if (constrain) {
+    direction = constrainHorVerDiag(direction);
+  }
+  if (!(Math.hypot(direction.x, direction.y) > 1e-9)) {
+    return null;
+  }
+  return { at: { x: local.x, y: local.y }, angle: aimedCast(direction).angle };
 }
 
 // The direction from an anchor to the cursor, in glyph space. Shift holds it to the

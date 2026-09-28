@@ -1786,9 +1786,29 @@ contour, measures across the black, and stays where it was put while the drawing
 edited. It is saved per layer in the project file, and it never reaches a compiled
 font: it lives in customData, which no compiler reads.
 
-Two shapes of one object. A **ray** is placed on a contour, points inward along that
-contour's normal and stops where the outline leaves the black. A **dimension** is placed
-between two points and measures the distance between them.
+Four kinds of one object (`markerKind`). A **ray** is placed on a contour, points inward
+along that contour's normal and stops where the outline leaves the black. A
+**dimension** is placed between two points and measures the distance between them. A
+**ruler** is the Power Ruler kept, and a **curvature marker** reads how hard the outline
+bends. Each kind has its own table in the Markers panel and its own layer.
+
+**A ruler is attached to nothing.** It stores a place (`at`) and an angle and no end, so
+it cannot go stale. It is a line through the whole glyph, and it measures every span it
+crosses, in the black on a light pill and in the white on a dark one, against the
+side-bearing lines as well as the outline (`rulerExtraLines`). The Power Ruler tool
+places one with a click away from the glyph's neighbours: it runs square to the outline
+nearest to the click (`rulerPlacement`), and follows the cursor until the button comes
+up. Drag its dot to move it, double-click the dot to delete it, and Shift holds it to
+the horizontal, the vertical and the diagonals. The angle reads 0 to 180, because a
+ruler is a line.
+
+**A curvature marker** is placed with C held and a click in the marker tool. C is free
+there; in the pointer tool it is the power tension-aware drag. It sits on the outline
+or a centerline like a ray's anchor and rides it the same way. It reads the curvature
+and the radius of the circle that fits the curve at that place, and draws the radius to
+the centre and the circle faintly. A straight reads an endless radius and no curvature.
+On an on-curve point it reads the segment its address names, which is the one leaving
+the point: the two sides of a joint can bend differently, and it shows one.
 
 **A marker stores an address and nothing else** — no coordinates, no curve snapshot, no
 measured distance. The number is derived on every frame, the way a rib is. A stored

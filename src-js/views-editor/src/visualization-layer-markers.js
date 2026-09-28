@@ -1,4 +1,5 @@
 import { markerGeometry } from "@fontra/core/marker-measure.js";
+import { markerKind } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { parseSelection, round } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
@@ -39,17 +40,26 @@ function markerIdsIn(selection) {
   return ids;
 }
 
-// Every marker of the current glyph, with its geometry already derived and its state
-// known. Both layers walk this and draw only their own kind.
-function* eachMarker(positionedGlyph, model) {
+// Every marker of one kind in the current glyph, with its geometry already derived and
+// its state known. Each layer walks this for its own kind. A ruler's layer passes the
+// side-bearing lines its spans are measured against.
+export function* eachMarker(positionedGlyph, model, kind, geometryOptions = {}) {
   const layerGlyph = getEditLayerGlyph(positionedGlyph, model);
   const skeletonData = getSkeletonData(layerGlyph);
   const selected = markerIdsIn(model.selection);
   const hovered = markerIdsIn(model.hoverSelection);
   for (const marker of getVisibleMarkers(layerGlyph)) {
+    if (markerKind(marker) !== kind) {
+      continue;
+    }
     yield {
       marker,
-      geometry: markerGeometry(positionedGlyph.glyph, marker, skeletonData),
+      geometry: markerGeometry(
+        positionedGlyph.glyph,
+        marker,
+        skeletonData,
+        geometryOptions
+      ),
       isSelected: selected.has(String(marker.id)),
       isHovered: hovered.has(String(marker.id)),
     };
@@ -59,7 +69,7 @@ function* eachMarker(positionedGlyph, model) {
 // The grip a hand can find. Hover puts a ring around it, selection fills it: a marker
 // that gives no sign of being under the cursor cannot be aimed at, and a marker that
 // gives no sign of being selected cannot be deleted with any confidence.
-function drawGrips(context, parameters, grips, isSelected, isHovered, color) {
+export function drawGrips(context, parameters, grips, isSelected, isHovered, color) {
   for (const grip of grips) {
     if (isHovered) {
       context.strokeStyle = color;
@@ -103,8 +113,11 @@ function drawReadout(context, parameters, at, geometry, marker, greyed) {
   if (!parts.length) {
     return;
   }
-  const text = parts.join("  ");
+  drawPill(context, parameters, at, parts.join("  "), greyed);
+}
 
+// A number on a pill, centred on `at`. Every marker readout draws through this one.
+export function drawPill(context, parameters, at, text, greyed = false) {
   context.font = `bold ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
   context.textAlign = "center";
   context.scale(1, -1);
@@ -136,11 +149,9 @@ function drawArrowHead(context, at, direction, size) {
 function drawMarkerRays(context, positionedGlyph, parameters, model, controller) {
   for (const { marker, geometry, isSelected, isHovered } of eachMarker(
     positionedGlyph,
-    model
+    model,
+    "ray"
   )) {
-    if (!geometry.isRay) {
-      continue;
-    }
     // A stale ray is a plain dot and no arrow: there is no direction to believe in and
     // no number to report. It is still grabbable, and dragging it onto a segment is
     // what repairs it.
@@ -196,11 +207,9 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
 function drawMarkerDimensions(context, positionedGlyph, parameters, model, controller) {
   for (const { marker, geometry, isSelected, isHovered } of eachMarker(
     positionedGlyph,
-    model
+    model,
+    "dimension"
   )) {
-    if (geometry.isRay) {
-      continue;
-    }
     if (geometry.stale) {
       // A faint line between the two ends, which is what tells a broken dimension apart
       // from a broken ray on sight: a ray is one dot and nothing else, a dimension is
@@ -250,6 +259,78 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
     drawReadout(context, parameters, midpoint, geometry, marker, false);
   }
 }
+
+// A curvature marker: a dot on the outline, the radius drawn to the centre of the circle
+// that fits the curve there, that circle faintly, and the radius and curvature on a
+// pill. A straight has no centre, so it draws its dot and reads an endless radius.
+function drawMarkerCurvatures(context, positionedGlyph, parameters, model, controller) {
+  for (const { marker, geometry, isSelected, isHovered } of eachMarker(
+    positionedGlyph,
+    model,
+    "curvature"
+  )) {
+    if (geometry.stale) {
+      drawGrips(
+        context,
+        parameters,
+        geometry.grips,
+        isSelected,
+        isHovered,
+        parameters.staleColor
+      );
+      continue;
+    }
+    const color = isSelected ? parameters.selectedColor : parameters.strokeColor;
+    drawCurvatureGeometry(context, parameters, geometry, color, isSelected);
+    drawGrips(context, parameters, geometry.grips, isSelected, isHovered, color);
+    drawPill(
+      context,
+      parameters,
+      curvatureReadoutPlace(geometry, parameters),
+      curvatureReadout(geometry)
+    );
+  }
+}
+
+export function drawCurvatureGeometry(context, parameters, geometry, color, bold) {
+  context.lineWidth = bold ? parameters.strokeWidth * 2 : parameters.strokeWidth;
+  context.strokeStyle = color;
+  const { point, center, radius } = geometry;
+  if (!center || radius > CURVATURE_CIRCLE_LIMIT) {
+    return;
+  }
+  strokeLine(context, point.x, point.y, center.x, center.y);
+  context.save();
+  context.globalAlpha *= 0.35;
+  context.beginPath();
+  context.arc(center.x, center.y, radius, 0, 2 * Math.PI);
+  context.stroke();
+  context.restore();
+}
+
+// The pill sits beside the dot on the far side from the centre, so it covers neither
+// the radius line nor the curve's inside.
+export function curvatureReadoutPlace(geometry, parameters) {
+  const { point, center } = geometry;
+  if (!center) {
+    return { x: point.x, y: point.y + parameters.fontSize * 2 };
+  }
+  const away = vector.normalizeVector(vector.subVectors(point, center));
+  return vector.addVectors(
+    point,
+    vector.mulVectorScalar(away, parameters.fontSize * 2)
+  );
+}
+
+export function curvatureReadout(geometry) {
+  const radius = Number.isFinite(geometry.radius) ? round(geometry.radius, 1) : "∞";
+  const curvature = geometry.curvature ? geometry.curvature.toPrecision(4) : "0";
+  return `r ${radius}  κ ${curvature}`;
+}
+
+// Past this radius, in font units, the circle is drawn no more: it runs off far beyond
+// the glyph and says nothing a nearly straight line does not.
+const CURVATURE_CIRCLE_LIMIT = 3000;
 
 const MARKER_COLORS = {
   colors: {
@@ -310,6 +391,23 @@ registerVisualizationLayerDefinition({
   draw: drawMarkerDimensions,
 });
 
+registerVisualizationLayerDefinition({
+  identifier: "fontra.markers.curvature",
+  name: "sidebar.user-settings.glyph.markers.curvature",
+  selectionFunc: glyphSelector("editing"),
+  userSwitchable: true,
+  defaultOn: true,
+  zIndex: 611,
+  screenParameters: {
+    strokeWidth: 1,
+    fontSize: 12,
+    gripRadius: 4,
+    hoverRingGap: 3,
+  },
+  ...MARKER_COLORS,
+  draw: drawMarkerCurvatures,
+});
+
 // What a click would place, drawn while the marker tool hovers a contour. Without it the
 // tool gives no sign of what it is aiming at, and a placement is a guess.
 const PLACEMENT_PREVIEW_IDENTIFIER = "fontra.markers.placement";
@@ -339,6 +437,20 @@ function drawPlacementPreview(context, positionedGlyph, parameters, model, contr
       parameters.arrowSize
     );
   }
+  if (preview.curvature) {
+    drawCurvatureGeometry(
+      context,
+      parameters,
+      preview.curvature,
+      parameters.previewColor
+    );
+    drawPill(
+      context,
+      parameters,
+      curvatureReadoutPlace(preview.curvature, parameters),
+      curvatureReadout(preview.curvature)
+    );
+  }
   fillCircle(context, preview.point.x, preview.point.y, parameters.gripRadius);
 }
 
@@ -349,8 +461,8 @@ registerVisualizationLayerDefinition({
   userSwitchable: false,
   defaultOn: true,
   zIndex: 612,
-  screenParameters: { strokeWidth: 1, gripRadius: 4, arrowSize: 7 },
-  colors: { previewColor: "#08A8" },
-  colorsDarkMode: { previewColor: "#6BFA" },
+  screenParameters: { strokeWidth: 1, gripRadius: 4, arrowSize: 7, fontSize: 12 },
+  colors: { previewColor: "#08A8", blobColor: "#FFFB", textColor: "#000B" },
+  colorsDarkMode: { previewColor: "#6BFA", blobColor: "#444B", textColor: "#FFFB" },
   draw: drawPlacementPreview,
 });

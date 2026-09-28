@@ -1,16 +1,31 @@
-import { translate } from "@fontra/core/localization.js";
-import { walkRayIntersections } from "@fontra/core/marker-measure.js";
-import { throttleCalls } from "@fontra/core/utils.ts";
-import * as vector from "@fontra/core/vector.js";
-import { constrainHorVerDiag } from "./edit-behavior.js";
-import { BaseTool } from "./edit-tools-base.js";
+import { measureRuler } from "@fontra/core/marker-measure.js";
+import { aimedDirection, getMarkers, markerKind } from "@fontra/core/marker-model.js";
+import { parseSelection } from "@fontra/core/utils.ts";
+import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
+import {
+  deleteMarkers,
+  handleMarkerDrag,
+  placeMarker,
+  rulerPlacement,
+} from "./marker-editing.js";
+import { drawGrips, drawPill, eachMarker } from "./visualization-layer-markers.js";
 import {
   fillCircle,
-  fillPill,
   glyphSelector,
   registerVisualizationLayerDefinition,
   strokeLine,
 } from "./visualization-layer-definitions.js";
+
+// The Power Ruler, kept. A ruler is a marker (kind "ruler"): a line through a place at
+// an angle, measuring every span it crosses in the black and in the white. It is saved
+// with the glyph like every other marker, a glyph holds as many as the designer places,
+// and the Markers panel lists them in their own table.
+//
+// Click on the canvas away from the glyph's neighbours to place one: it runs square to
+// the outline nearest to the click, and while the button is down it follows the cursor.
+// Drag a ruler's dot to move it, double-click the dot to delete it, and Backspace
+// deletes the selected ones. Shift holds a ruler to the horizontal, the vertical and the
+// diagonals.
 
 let thePowerRulerTool; // singleton
 
@@ -23,7 +38,13 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: true,
   zIndex: 600,
-  screenParameters: { strokeWidth: 1, fontSize: 12, intersectionRadius: 4 },
+  screenParameters: {
+    strokeWidth: 1,
+    fontSize: 12,
+    intersectionRadius: 4,
+    gripRadius: 4,
+    hoverRingGap: 3,
+  },
   colors: {
     strokeColor: "#0004",
     insideBlobColor: "#FFFB",
@@ -31,6 +52,8 @@ registerVisualizationLayerDefinition({
     outsideBlobColor: "#000B",
     outsideTextColor: "#FFFB",
     intersectionColor: "#F085",
+    gripColor: "#08AD",
+    selectedGripColor: "#06CF",
   },
   colorsDarkMode: {
     strokeColor: "#FFF6",
@@ -39,10 +62,46 @@ registerVisualizationLayerDefinition({
     outsideBlobColor: "#FFFB",
     outsideTextColor: "#444B",
     intersectionColor: "#F696",
+    gripColor: "#6BFD",
+    selectedGripColor: "#9EFF",
   },
   draw: (context, positionedGlyph, parameters, model, controller) =>
     thePowerRulerTool?.draw(context, positionedGlyph, parameters, model, controller),
 });
+
+// The side-bearing lines a ruler measures against, as well as the outline: the two
+// side bearings, and with the CJK design frame on, its four sides instead. The layer and
+// the Markers panel both read spans through this, so they give the same numbers.
+export function rulerExtraLines(editor, glyphController) {
+  const extraLines = [];
+  let doTopAndBottom = false;
+  let left, right, top, bottom;
+  if (editor.visualizationLayersSettings.model["fontra.cjk.design.frame"]) {
+    doTopAndBottom = true;
+    const { frameBottomLeft, frameHeight } =
+      editor.cjkDesignFrame.cjkDesignFrameParameters;
+    left = frameBottomLeft.x;
+    right = glyphController.xAdvance - frameBottomLeft.x;
+    bottom = frameBottomLeft.y;
+    top = bottom + frameHeight;
+  } else {
+    left = 0;
+    right = glyphController.xAdvance;
+    top = editor.fontController.unitsPerEm;
+    bottom = -editor.fontController.unitsPerEm;
+  }
+
+  for (const x of [left, right]) {
+    extraLines.push({ p1: { x: x, y: bottom }, p2: { x: x, y: top } });
+  }
+
+  if (doTopAndBottom) {
+    for (const y of [bottom, top]) {
+      extraLines.push({ p1: { x: left, y: y }, p2: { x: right, y: y } });
+    }
+  }
+  return extraLines;
+}
 
 export class PowerRulerTool extends BaseTool {
   iconPath = "/images/ruler.svg";
@@ -51,201 +110,39 @@ export class PowerRulerTool extends BaseTool {
   constructor(editor) {
     super(editor);
     thePowerRulerTool = this;
-    this.fontController = editor.fontController;
-    this.glyphRulers = {};
-    this.active = editor.visualizationLayersSettings.model[POWER_RULER_IDENTIFIER];
-
-    editor.sceneSettingsController.addKeyListener(
-      ["fontLocationSourceMapped", "glyphLocation"],
-      throttleCalls(() => setTimeout(() => this.locationChanged(), 0), 20)
-    );
-
-    editor.visualizationLayersSettings.addKeyListener(
-      POWER_RULER_IDENTIFIER,
-      (event) => {
-        this.active = event.newValue;
-        if (event.newValue) {
-          this.recalc();
-        }
-      }
-    );
-
-    editor.visualizationLayersSettings.addKeyListener(
-      "fontra.cjk.design.frame",
-      (event) => this.recalc()
-    );
-
-    this.sceneController.addCurrentGlyphChangeListener((event) => {
-      this.recalc();
-    });
-  }
-
-  get currentGlyphName() {
-    return this.sceneSettings.selectedGlyphName;
+    // The ruler being placed, before the button comes up and it is written.
+    this.placing = null;
   }
 
   draw(context, positionedGlyph, parameters, model, controller) {
-    if (!this.currentGlyphName) {
-      return; // Shouldn't happen
-    }
-    const rulerData = this.glyphRulers[this.currentGlyphName];
-    if (!rulerData) {
-      return;
-    }
-    const { intersections, measurePoints } = rulerData;
-    if (intersections?.length < 2) {
-      return;
-    }
-    const p1 = intersections[0];
-    const p2 = intersections.at(-1);
-
-    context.lineWidth = parameters.strokeWidth;
-    context.strokeStyle = parameters.strokeColor;
-    strokeLine(context, p1.x, p1.y, p2.x, p2.y);
-
-    context.fillStyle = parameters.intersectionColor;
-    for (const intersection of intersections) {
-      fillCircle(
+    const extraLines = rulerExtraLines(this.editor, positionedGlyph.glyph);
+    for (const { geometry, isSelected, isHovered } of eachMarker(
+      positionedGlyph,
+      model,
+      "ruler",
+      { extraLines }
+    )) {
+      drawRuler(context, parameters, geometry);
+      drawGrips(
         context,
-        intersection.x,
-        intersection.y,
-        parameters.intersectionRadius
+        parameters,
+        geometry.grips,
+        isSelected,
+        isHovered,
+        isSelected ? parameters.selectedGripColor : parameters.gripColor
       );
     }
-
-    context.font = `bold ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-    context.textAlign = "center";
-
-    context.scale(1, -1);
-    for (const measurePoint of measurePoints) {
-      if (measurePoint.distance < 0.1) {
-        continue;
-      }
-      const distance = measurePoint.distance.toString();
-      context.fillStyle = measurePoint.inside
-        ? parameters.insideBlobColor
-        : parameters.outsideBlobColor;
-      const width = context.measureText(distance).width;
-      fillPill(
-        context,
-        measurePoint.x,
-        -measurePoint.y,
-        width + parameters.fontSize,
-        parameters.fontSize * 1.3
-      );
-      context.fillStyle = measurePoint.inside
-        ? parameters.insideTextColor
-        : parameters.outsideTextColor;
-      context.fillText(
-        distance,
-        measurePoint.x,
-        -measurePoint.y + parameters.fontSize * 0.33
-      );
-    }
-  }
-
-  glyphChanged(glyphName) {
-    this.recalc();
-  }
-
-  locationChanged() {
-    this.recalc();
-  }
-
-  async recalc() {
-    if (!this.active || !this.currentGlyphName) {
-      return;
-    }
-    const ruler = this.glyphRulers[this.currentGlyphName];
-    if (!ruler) {
-      return;
-    }
-    const glyphController = await this.sceneModel.getSelectedStaticGlyphController();
-    const extraLines = this.computeSideBearingLines(glyphController);
-
-    this.glyphRulers[this.currentGlyphName] = this.recalcRulerFromLine(
-      glyphController,
-      ruler.basePoint,
-      ruler.directionVector,
-      extraLines
-    );
-    this.canvasController.requestUpdate();
-  }
-
-  recalcRulerFromPoint(glyphController, point, shiftConstrain) {
-    delete this.glyphRulers[this.currentGlyphName];
-
-    const extraLines = this.computeSideBearingLines(glyphController);
-
-    const pathHitTester = glyphController.flattenedPathHitTester;
-    const nearestHit = pathHitTester.findNearest(point, extraLines);
-    if (nearestHit) {
-      const derivative = nearestHit.segment.bezier.derivative(nearestHit.t);
-      let directionVector = vector.normalizeVector({
-        x: -derivative.y,
-        y: derivative.x,
+    if (this.placing) {
+      const direction = aimedDirection({ angle: this.placing.angle });
+      drawRuler(context, parameters, {
+        ...measureRuler(
+          positionedGlyph.glyph.flattenedPathHitTester,
+          this.placing.at,
+          direction,
+          extraLines
+        ),
       });
-
-      if (shiftConstrain) {
-        directionVector = constrainHorVerDiag(directionVector);
-      }
-
-      this.glyphRulers[this.currentGlyphName] = this.recalcRulerFromLine(
-        glyphController,
-        point,
-        directionVector,
-        extraLines
-      );
     }
-    this.canvasController.requestUpdate();
-  }
-
-  recalcRulerFromLine(glyphController, basePoint, directionVector, extraLines) {
-    const pathHitTester = glyphController.flattenedPathHitTester;
-
-    const intersections = pathHitTester.rayIntersections(
-      basePoint,
-      directionVector,
-      extraLines
-    );
-    const measurePoints = walkRayIntersections(intersections);
-    return {
-      basePoint,
-      directionVector,
-      intersections,
-      measurePoints,
-    };
-  }
-
-  computeSideBearingLines(glyphController) {
-    const extraLines = [];
-    let doTopAndBottom = false;
-    let left, right, top, bottom;
-    if (this.editor.visualizationLayersSettings.model["fontra.cjk.design.frame"]) {
-      doTopAndBottom = true;
-      const { frameBottomLeft, frameHeight } =
-        this.editor.cjkDesignFrame.cjkDesignFrameParameters;
-      left = frameBottomLeft.x;
-      right = glyphController.xAdvance - frameBottomLeft.x;
-      bottom = frameBottomLeft.y;
-      top = bottom + frameHeight;
-    } else {
-      left = 0;
-      right = glyphController.xAdvance;
-      top = this.fontController.unitsPerEm;
-      bottom = -this.fontController.unitsPerEm;
-    }
-
-    for (const x of [left, right]) {
-      extraLines.push({ p1: { x: x, y: bottom }, p2: { x: x, y: top } });
-    }
-
-    if (doTopAndBottom) {
-      for (const y of [bottom, top]) {
-        extraLines.push({ p1: { x: left, y: y }, p2: { x: right, y: y } });
-      }
-    }
-    return extraLines;
   }
 
   haveHoveredGlyph(event) {
@@ -253,11 +150,42 @@ export class PowerRulerTool extends BaseTool {
     return !!this.sceneModel.glyphAtPoint(point);
   }
 
+  // The ruler whose dot is under the cursor. Only rulers: this tool places and moves
+  // rulers, and the marker tool is for the others.
+  rulerAtPoint(event) {
+    const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
+    if (!positionedGlyph) {
+      return undefined;
+    }
+    const point = this.sceneController.localPoint(event);
+    const target = this.sceneModel.markerAtPoint(
+      point,
+      this.sceneController.mouseClickMargin,
+      positionedGlyph
+    );
+    if (!target) {
+      return undefined;
+    }
+    const marker = getMarkers(this.sceneModel._getEditLayerGlyph(positionedGlyph)).find(
+      (candidate) => candidate.id === target.markerId
+    );
+    return marker && markerKind(marker) === "ruler" ? marker : undefined;
+  }
+
   handleHover(event) {
-    if (!this.sceneModel.selectedGlyph?.isEditing || this.haveHoveredGlyph(event)) {
+    if (!this.sceneModel.selectedGlyph?.isEditing) {
       this.editor.tools["pointer-tool"].handleHover(event);
       return;
     }
+    const ruler = this.rulerAtPoint(event);
+    this.sceneController.hoverSelection = ruler
+      ? new Set([`marker/${ruler.id}`])
+      : new Set();
+    if (!ruler && this.haveHoveredGlyph(event)) {
+      this.editor.tools["pointer-tool"].handleHover(event);
+      return;
+    }
+    this.canvasController.requestUpdate();
     this.setCursor();
   }
 
@@ -270,52 +198,132 @@ export class PowerRulerTool extends BaseTool {
   }
 
   async handleDrag(eventStream, initialEvent) {
-    if (
-      !this.sceneModel.selectedGlyph?.isEditing ||
-      this.haveHoveredGlyph(initialEvent)
-    ) {
+    if (!this.sceneModel.selectedGlyph?.isEditing) {
       await this.editor.tools["pointer-tool"].handleDrag(eventStream, initialEvent);
       return;
     }
-    if (!this.currentGlyphName) {
-      return;
-    }
-    const isDoubleClick = initialEvent.detail == 2;
-    this.editor.visualizationLayersSettings.model[POWER_RULER_IDENTIFIER] =
-      !isDoubleClick;
-    if (isDoubleClick) {
-      return;
-    }
-
     const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
-    const point = this.sceneController.localPoint(initialEvent);
-    point.x -= positionedGlyph.x;
-    point.y -= positionedGlyph.y;
-    this.recalcRulerFromPoint(positionedGlyph.glyph, point, initialEvent.shiftKey);
-
-    let lastPoint = point;
-    for await (const event of eventStream) {
-      let point;
-      if (event.x === undefined) {
-        // Possibly modifier key changed event
-        point = lastPoint;
-      } else {
-        point = this.sceneController.localPoint(event);
-        point.x -= positionedGlyph.x;
-        point.y -= positionedGlyph.y;
-        lastPoint = point;
-      }
-      this.recalcRulerFromPoint(positionedGlyph.glyph, point, event.shiftKey);
+    if (!positionedGlyph) {
+      return;
     }
+
+    const ruler = this.rulerAtPoint(initialEvent);
+    if (ruler) {
+      if (initialEvent.detail == 2 || initialEvent.myTapCount == 2) {
+        eventStream.done();
+        await deleteMarkers(this.sceneController, [ruler.id], "Delete Ruler");
+        this.sceneController.selection = new Set();
+        return;
+      }
+      this.sceneController.selection = new Set([`marker/${ruler.id}`]);
+      if (await shouldInitiateDrag(eventStream, initialEvent)) {
+        await handleMarkerDrag({
+          sceneController: this.sceneController,
+          eventStream,
+          initialEvent,
+          markerId: ruler.id,
+          extraLines: rulerExtraLines(this.editor, positionedGlyph.glyph),
+        });
+      }
+      return;
+    }
+
+    if (this.haveHoveredGlyph(initialEvent)) {
+      await this.editor.tools["pointer-tool"].handleDrag(eventStream, initialEvent);
+      return;
+    }
+    await this.placeRuler(eventStream, initialEvent, positionedGlyph);
+  }
+
+  // A new ruler follows the cursor while the button is down, and is written once, on
+  // release, so placing one is one undo step.
+  async placeRuler(eventStream, initialEvent, positionedGlyph) {
+    const glyphController = positionedGlyph.glyph;
+    const extraLines = rulerExtraLines(this.editor, glyphController);
+    const placementAt = (event) => {
+      const point = this.sceneController.localPoint(event);
+      return rulerPlacement(
+        glyphController.flattenedPathHitTester,
+        { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+        extraLines,
+        event.shiftKey
+      );
+    };
+
+    this.placing = placementAt(initialEvent);
+    this.canvasController.requestUpdate();
+    for await (const event of eventStream) {
+      if (event.type === "mousemove" || event.type === "mouseup") {
+        this.placing = placementAt(event) || this.placing;
+        this.canvasController.requestUpdate();
+      }
+    }
+    const placed = this.placing;
+    this.placing = null;
+    this.canvasController.requestUpdate();
+    if (!placed) {
+      return;
+    }
+    await placeMarker(
+      this.sceneController,
+      () => ({ kind: "ruler", ends: [], at: placed.at, angle: placed.angle }),
+      "Place Ruler"
+    );
   }
 
   handleKeyDown(event) {
-    if (event.key === "Backspace" && this.currentGlyphName) {
-      event.stopImmediatePropagation();
-      delete this.glyphRulers[this.currentGlyphName];
-      this.canvasController.requestUpdate();
-      return true;
+    if (event.key === "Backspace") {
+      const doomed = rulerIdsIn(this.sceneController.selection);
+      if (doomed.length) {
+        event.stopImmediatePropagation();
+        deleteMarkers(this.sceneController, doomed, "Delete Ruler");
+        this.sceneController.selection = new Set();
+        return true;
+      }
     }
     return super.handleKeyDown(event);
+  }
+}
+
+function rulerIdsIn(selection) {
+  return (parseSelection(selection || []).marker || []).map(String);
+}
+
+// One ruler's line, its crossings and its spans, in the look the Power Ruler always had:
+// a span in the black on a light pill, a span in the white on a dark one.
+function drawRuler(context, parameters, { intersections, measurePoints }) {
+  if (!intersections || intersections.length < 2) {
+    return;
+  }
+  const p1 = intersections[0];
+  const p2 = intersections.at(-1);
+
+  context.lineWidth = parameters.strokeWidth;
+  context.strokeStyle = parameters.strokeColor;
+  strokeLine(context, p1.x, p1.y, p2.x, p2.y);
+
+  context.fillStyle = parameters.intersectionColor;
+  for (const intersection of intersections) {
+    fillCircle(context, intersection.x, intersection.y, parameters.intersectionRadius);
+  }
+
+  for (const measurePoint of measurePoints) {
+    if (measurePoint.distance < 0.1) {
+      continue;
+    }
+    drawPill(
+      context,
+      {
+        ...parameters,
+        blobColor: measurePoint.inside
+          ? parameters.insideBlobColor
+          : parameters.outsideBlobColor,
+        textColor: measurePoint.inside
+          ? parameters.insideTextColor
+          : parameters.outsideTextColor,
+      },
+      measurePoint,
+      measurePoint.distance.toString()
+    );
   }
 }
