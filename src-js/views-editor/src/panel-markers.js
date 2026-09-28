@@ -579,6 +579,15 @@ function pointNameOfSegment(path, end) {
   // names points the way the canvas does, counted within their own contour.
   const first = path.getContourAndPointIndex(segment.pointIndices[0])[1];
   const last = path.getContourAndPointIndex(segment.pointIndices.at(-1))[1];
+  // A ray on an on-curve point is stored as a segment's end, but it sits on the point,
+  // so it is named by the point. Named by the segment, a ray moved onto a corner read as
+  // though it had gone to some segment instead.
+  if (end.t === 0) {
+    return `${end.contourIndex}.${first}`;
+  }
+  if (end.t === 1) {
+    return `${end.contourIndex}.${last}`;
+  }
   return `${end.contourIndex}.${first}-${last}`;
 }
 
