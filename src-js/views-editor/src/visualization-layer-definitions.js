@@ -1,4 +1,5 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
+import { PLAQUE_SCREEN_PARAMETERS } from "@fontra/core/canvas-labels.js";
 import { computeSpeedPunkSamples } from "@fontra/core/curvature.js";
 import {
   calculateBadgeDimensions,
@@ -2620,6 +2621,7 @@ registerVisualizationLayerDefinition({
     strokeWidth: 1,
     fontSize: 14,
     dashPattern: [4, 4],
+    ...PLAQUE_SCREEN_PARAMETERS,
   },
   colors: {
     textColor: "#333",

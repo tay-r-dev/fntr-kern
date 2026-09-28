@@ -3,6 +3,7 @@
 
 // Import necessary functions from vector.js for the new functions
 import { applicationSettingsController } from "./application-settings.js";
+import { drawPlaque } from "./canvas-labels.js";
 import {
   calculateControlHandlePoint,
   calculateTunniPoint,
@@ -1426,26 +1427,50 @@ export function drawMeasureOverlay(
     const angle = handleMeasure?.angle ?? fallbackMeasure.angle;
     const tension = handleMeasure?.tension ?? null;
     const tensionText = tension == null ? "n/a" : tension.toFixed(2);
-    const label = `${dist.toFixed(1)}\n${tensionText}\n${angle.toFixed(1)}°`;
     drawMeasureGuideLine(context, p2, p1, segmentColor, parameters);
-    drawMeasureLabel(context, p1.x, p1.y, label, segmentColor, parameters, {
-      offsetY: 8,
-      alignBottom: true,
-    });
+    // label/Q, type=handle: which handle and where, then its length, tension and angle.
+    drawPlaque(
+      context,
+      parameters,
+      p1,
+      {
+        header: {
+          left: String(measureHoverHandle.pointNumber ?? ""),
+          right: [Math.round(p1.x), Math.round(p1.y)],
+        },
+        rows: [
+          { icon: "distance", value: dist.toFixed(1) },
+          { icon: "tension", value: tensionText },
+          { icon: "angle", value: `${angle.toFixed(1)}°`, tracking: true },
+        ],
+      },
+      { onIconLoad: () => controller?.requestUpdate?.() }
+    );
     return;
   }
 
   if (measureHoverSkeletonRib) {
-    const { p1, p2, width, sideWidths } = measureHoverSkeletonRib;
+    const { p1, p2, width, sideWidths, tangentialShift } = measureHoverSkeletonRib;
     const segmentColor = parameters.skeletonColor;
-    const label = `${width.toFixed(1)}\nL ${sideWidths.left.toFixed(
-      1
-    )}  R ${sideWidths.right.toFixed(1)}`;
     drawMeasureGuideLine(context, p1, p2, segmentColor, parameters);
-    drawMeasureLabel(context, p2.x, p2.y, label, segmentColor, parameters, {
-      offsetY: 8,
-      alignBottom: true,
-    });
+    // label/Q, type=rib: the stroke's width with its left/right distribution under it,
+    // then how far the rib end slides along the stroke.
+    drawPlaque(
+      context,
+      parameters,
+      p2,
+      {
+        rows: [
+          {
+            icon: "width",
+            value: width.toFixed(1),
+            sub: [sideWidths.left.toFixed(1), sideWidths.right.toFixed(1)],
+          },
+          { icon: "tangentialShift", value: (tangentialShift ?? 0).toFixed(2) },
+        ],
+      },
+      { onIconLoad: () => controller?.requestUpdate?.() }
+    );
     return;
   }
 

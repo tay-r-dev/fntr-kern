@@ -5,6 +5,7 @@ import {
 import { centeredRect } from "@fontra/core/rectangle.ts";
 import {
   getSkeletonPointHalfWidth,
+  getSkeletonPointNudge,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
   getSkeletonData,
@@ -133,6 +134,8 @@ export class MeasureInteraction {
       }),
       width: getSkeletonPointWidth(skeletonPoint, defaultWidth),
       sideWidths,
+      // The rib end's slide along the stroke on the hovered side.
+      tangentialShift: getSkeletonPointNudge(skeletonPoint, side, defaultWidth),
       side,
       type: "skeletonRib",
     };
@@ -264,6 +267,8 @@ export class MeasureInteraction {
       p1: { x: handlePos.x, y: handlePos.y },
       p2: { x: anchorPos.x, y: anchorPos.y },
       tensionContext: this._buildPathTensionContext(path, contourIndex, pointIndex),
+      // The handle's number in its contour, as the point labels count it.
+      pointNumber: contourPointIndex,
       type: "path",
     };
   }

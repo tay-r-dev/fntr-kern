@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="9" height="9" viewBox="0 0 9 9" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="icon" clip-path="url(#clip0_0_10)">
+<rect width="9" height="9" fill="white"/>
+<path id="Union" d="M9 4.5L7.38633 2.88633L2.88633 7.38633L4.5 9H0V4.5L1.61367 6.11367L6.11367 1.61367L4.5 0H9V4.5Z" fill="#565656"/>
+</g>
+<defs>
+<clipPath id="clip0_0_10">
+<rect width="9" height="9" fill="white"/>
+</clipPath>
+</defs>
+</svg>

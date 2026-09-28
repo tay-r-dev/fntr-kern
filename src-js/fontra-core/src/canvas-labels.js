@@ -1,0 +1,365 @@
+// The canvas labels, drawn from the typeCAD Figma file: label/simple, the pill every
+// marker and ruler readout sits on, and label/Q, the Q-measure plaque. Both are cards
+// with the same outline, drop shadow and background blur (drawCardBackground), set in
+// Martian Mono, the app's fontra-ui-mono face.
+//
+// Every measurement here is in screen pixels. A layer passes them as screen parameters,
+// which the layer machinery turns into glyph units at the current zoom, so the labels
+// keep their size on screen at every zoom.
+
+const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
+const LABEL_SEPARATOR = "•";
+const LABEL_SHADOW_COLOR = "rgba(0, 0, 0, 0.2)";
+// Figma's background blur, in CSS pixels.
+const LABEL_BACKDROP_BLUR = 2;
+
+// label/simple (node 333:17292). A fully rounded pill 18 high with 8 of padding each
+// side; its values in Martian Mono at 9, the heading/h5 face, separated by a small grey
+// bullet with 3 either side.
+//
+// `parts` is one value or several. `inverse` swaps fill and text, which is how a ruler
+// tells a span in the white from a span in the black.
+export function drawLabel(context, parameters, at, parts, { inverse = false } = {}) {
+  const values = (Array.isArray(parts) ? parts : [parts]).filter(
+    (part) => part !== undefined && part !== null && part !== ""
+  );
+  if (!values.length) {
+    return;
+  }
+  context.save();
+  context.scale(1, -1);
+  context.textBaseline = "middle";
+  context.textAlign = "left";
+
+  const items = [];
+  values.forEach((value, i) => {
+    if (i) {
+      items.push({ text: LABEL_SEPARATOR, size: parameters.labelSeparatorSize });
+    }
+    items.push({ text: String(value), size: parameters.labelFontSize, value: true });
+  });
+  for (const item of items) {
+    setLabelFont(context, item.size, TRACKING);
+    item.width = context.measureText(item.text).width;
+  }
+  const gap = parameters.labelGap;
+  const contentWidth =
+    items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1);
+  const width = contentWidth + 2 * parameters.labelPaddingX;
+  const height = parameters.labelHeight;
+  const left = at.x - width / 2;
+  const top = -at.y - height / 2;
+
+  const fill = inverse ? parameters.labelTextColor : parameters.labelFillColor;
+  const ink = inverse ? parameters.labelFillColor : parameters.labelTextColor;
+  drawCardBackground(context, left, top, width, height, height / 2, {
+    fill,
+    border: parameters.labelBorderWidth,
+    borderColor: parameters.labelBorderColor,
+  });
+
+  let x = left + parameters.labelPaddingX;
+  for (const item of items) {
+    setLabelFont(context, item.size, TRACKING);
+    context.fillStyle = item.value ? ink : parameters.labelSeparatorColor;
+    context.fillText(item.text, x, -at.y);
+    x += item.width + gap;
+  }
+  context.restore();
+}
+
+export const LABEL_SCREEN_PARAMETERS = {
+  labelFontSize: 9,
+  labelSeparatorSize: 7,
+  labelGap: 3,
+  labelPaddingX: 8,
+  labelHeight: 18,
+  labelBorderWidth: 1,
+};
+
+export const LABEL_COLORS = {
+  labelFillColor: "#FFFFFF",
+  labelTextColor: "#303030",
+  labelSeparatorColor: "#B4B4B4",
+  labelBorderColor: "#1515150D",
+};
+
+export const LABEL_COLORS_DARK_MODE = {
+  labelFillColor: "#303030",
+  labelTextColor: "#F7F7F7",
+  labelSeparatorColor: "#B4B4B4",
+  labelBorderColor: "#1515150D",
+};
+
+const LABEL_BORDER_COLOR = "#1515150D";
+
+// The card every label stands on: the background blur, then the fill with its drop
+// shadow, then the outline, which runs outside the card so that it adds to the card's
+// size rather than eating into its fill. The context is in screen orientation (y down).
+function drawCardBackground(
+  context,
+  left,
+  top,
+  width,
+  height,
+  radius,
+  { fill, border, borderColor = LABEL_BORDER_COLOR }
+) {
+  // A shadow is set in device pixels and ignores the transform, so it is one device
+  // pixel's worth of the screen at every zoom.
+  const pixel = globalThis.devicePixelRatio || 1;
+  blurBehind(context, left, top, width, height, radius, LABEL_BACKDROP_BLUR * pixel);
+  context.save();
+  context.shadowColor = LABEL_SHADOW_COLOR;
+  context.shadowOffsetY = pixel;
+  context.shadowBlur = pixel;
+  context.fillStyle = fill;
+  context.beginPath();
+  context.roundRect(left, top, width, height, radius);
+  context.fill();
+  context.restore();
+
+  context.lineWidth = border;
+  context.strokeStyle = borderColor;
+  context.beginPath();
+  context.roundRect(
+    left - border / 2,
+    top - border / 2,
+    width + border,
+    height + border,
+    radius + border / 2
+  );
+  context.stroke();
+}
+
+// Figma's background blur: whatever is already drawn under the card, blurred, inside
+// the card's shape. A canvas cannot blur what lies behind a shape, so the pixels under
+// it are copied back onto themselves through a blur filter, clipped to the card. The
+// copy is only of the card's own box, in device pixels, with room for the blur to reach
+// in from outside it. `blur` is in device pixels.
+function blurBehind(context, left, top, width, height, radius, blur) {
+  if (!("filter" in context)) {
+    return;
+  }
+  const m = context.getTransform();
+  const corners = [
+    [left, top],
+    [left + width, top],
+    [left, top + height],
+    [left + width, top + height],
+  ].map(([x, y]) => ({ x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }));
+  const reach = Math.ceil(blur * 3);
+  const canvas = context.canvas;
+  const x0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.x))) - reach);
+  const y0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.y))) - reach);
+  const x1 = Math.min(
+    canvas.width,
+    Math.ceil(Math.max(...corners.map((c) => c.x))) + reach
+  );
+  const y1 = Math.min(
+    canvas.height,
+    Math.ceil(Math.max(...corners.map((c) => c.y))) + reach
+  );
+  if (x1 <= x0 || y1 <= y0) {
+    return;
+  }
+  context.save();
+  context.beginPath();
+  context.roundRect(left, top, width, height, radius);
+  context.clip();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.filter = `blur(${blur}px)`;
+  context.drawImage(canvas, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+  context.restore();
+}
+
+// Figma's label/Q (typeCAD, node 333:17339): the Q-measure plaque. A white card with a
+// 6 radius and 6 of padding, rows 5 apart; each row an icon and a value 6 apart. The
+// value is Martian Mono at 9 in #303030; small print -- a header, or the distribution
+// under a width -- is 7 in #8E8E8E. It carries the label's outline, shadow and
+// background blur. The design has one variant, light, so the plaque is light in both
+// themes.
+//
+//   plaque = {
+//     header?: {left, right: [a, b]},   // small print across the top, a • b at right
+//     rows: [{icon, value, sub?: [a, b]}],  // sub is small print under the value, a/b
+//   }
+//
+// The plaque stands above `at`, centred on it, `offset` screen pixels clear.
+export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {}) {
+  const s = parameters.plaqueScale;
+  const padding = PLAQUE.padding * s;
+  const rowGap = PLAQUE.rowGap * s;
+  const iconGap = PLAQUE.iconGap * s;
+  const valueSize = PLAQUE.valueSize * s;
+  const smallSize = PLAQUE.smallSize * s;
+  const valueLine = PLAQUE.valueLine * s;
+  const smallLine = PLAQUE.smallLine * s;
+
+  context.save();
+  context.scale(1, -1);
+  context.textBaseline = "middle";
+  context.textAlign = "left";
+
+  const measure = (text, size, tracking) => {
+    setLabelFont(context, size, tracking);
+    return context.measureText(text).width;
+  };
+
+  // Lay the plaque out first, then draw it: its width is the widest row.
+  const header = plaque.header;
+  let headerWidth = 0;
+  if (header) {
+    const right = header.right.join(PLAQUE.headerSeparator);
+    headerWidth = Math.max(
+      PLAQUE.minHeaderWidth * s,
+      measure(header.left, smallSize, TRACKING) +
+        iconGap +
+        measure(right, smallSize, TRACKING)
+    );
+  }
+  const rows = plaque.rows.map((row) => {
+    const icon = PLAQUE_ICONS[row.icon];
+    const iconWidth = icon.width * s;
+    const iconHeight = icon.height * s;
+    const valueWidth = measure(row.value, valueSize, row.tracking ? TRACKING : 0);
+    const sub = row.sub ? row.sub.join(PLAQUE.subSeparator) : null;
+    const subWidth = sub ? measure(sub, smallSize, TRACKING) : 0;
+    const textHeight = valueLine + (sub ? smallLine : 0);
+    return {
+      ...row,
+      icon,
+      iconWidth,
+      iconHeight,
+      sub,
+      width: iconWidth + iconGap + Math.max(valueWidth, subWidth),
+      height: Math.max(iconHeight, textHeight),
+    };
+  });
+  const contentWidth = Math.max(headerWidth, ...rows.map((row) => row.width));
+  const contentHeight =
+    (header ? smallLine + rowGap : 0) +
+    rows.reduce((sum, row) => sum + row.height, 0) +
+    rowGap * (rows.length - 1);
+  const width = contentWidth + 2 * padding;
+  const height = contentHeight + 2 * padding;
+  const left = at.x - width / 2;
+  const top = -at.y - parameters.plaqueOffset - height;
+
+  drawCardBackground(context, left, top, width, height, PLAQUE.radius * s, {
+    fill: PLAQUE_COLORS.fill,
+    border: parameters.labelBorderWidth,
+  });
+
+  let y = top + padding;
+  if (header) {
+    context.fillStyle = PLAQUE_COLORS.small;
+    setLabelFont(context, smallSize, TRACKING);
+    context.fillText(header.left, left + padding, y + smallLine / 2);
+    const right = header.right.join(PLAQUE.headerSeparator);
+    const rightWidth = context.measureText(right).width;
+    context.fillText(
+      right,
+      left + padding + contentWidth - rightWidth,
+      y + smallLine / 2
+    );
+    y += smallLine + rowGap;
+  }
+  for (const row of rows) {
+    const x = left + padding;
+    // A one-line row centres its icon on the value; a row with small print under it
+    // aligns the icon with the top, as the width row does.
+    const iconTop = row.sub ? y : y + (row.height - row.iconHeight) / 2;
+    drawPlaqueIcon(
+      context,
+      row.icon,
+      x,
+      iconTop,
+      row.iconWidth,
+      row.iconHeight,
+      onIconLoad
+    );
+    const textX = x + row.iconWidth + iconGap;
+    const valueTop = row.sub ? y : y + (row.height - valueLine) / 2;
+    context.fillStyle = PLAQUE_COLORS.value;
+    setLabelFont(context, valueSize, row.tracking ? TRACKING : 0);
+    context.fillText(row.value, textX, valueTop + valueLine / 2);
+    if (row.sub) {
+      context.fillStyle = PLAQUE_COLORS.small;
+      setLabelFont(context, smallSize, TRACKING);
+      context.fillText(row.sub, textX, valueTop + valueLine + smallLine / 2);
+    }
+    y += row.height + rowGap;
+  }
+  context.restore();
+}
+
+// The plaque's measurements in screen pixels, straight from the frame. They are
+// multiplied by the layer's `plaqueScale`, which is one screen pixel in glyph units.
+const PLAQUE = {
+  padding: 6,
+  rowGap: 5,
+  iconGap: 6,
+  radius: 6,
+  valueSize: 9,
+  smallSize: 7,
+  valueLine: 12,
+  smallLine: 10,
+  minHeaderWidth: 46,
+  headerSeparator: " • ",
+  subSeparator: "/",
+};
+
+const PLAQUE_COLORS = {
+  fill: "#FFFFFF",
+  value: "#303030",
+  small: "#8E8E8E",
+};
+
+export const PLAQUE_SCREEN_PARAMETERS = {
+  plaqueScale: 1,
+  plaqueOffset: 8,
+  labelBorderWidth: 1,
+};
+
+// Martian Mono's tracking is -3 per cent.
+const TRACKING = -0.03;
+
+function setLabelFont(context, size, tracking) {
+  context.font = `400 ${size}px ${LABEL_FONT_FAMILY}`;
+  context.fontStretch = "semi-condensed";
+  context.letterSpacing = `${tracking * size}px`;
+}
+
+// The five icons, exported from the frame as they are, served from /images.
+const PLAQUE_ICONS = {
+  distance: { src: "/images/measure-distance.svg", width: 9, height: 9 },
+  tension: { src: "/images/measure-tension.svg", width: 9, height: 9 },
+  angle: { src: "/images/measure-angle.svg", width: 9, height: 9 },
+  width: { src: "/images/measure-width.svg", width: 9, height: 11 },
+  tangentialShift: {
+    src: "/images/measure-tangential-shift.svg",
+    width: 9,
+    height: 9,
+  },
+};
+
+const iconImages = new Map();
+
+// An icon draws once its image has loaded. The first frame that asks for it starts the
+// load and draws without it; `onLoad` asks for the frame again.
+function drawPlaqueIcon(context, icon, x, top, width, height, onLoad) {
+  if (typeof Image === "undefined") {
+    return;
+  }
+  let image = iconImages.get(icon.src);
+  if (!image) {
+    image = new Image();
+    image.onload = () => onLoad?.();
+    image.src = icon.src;
+    iconImages.set(icon.src, image);
+  }
+  if (image.complete && image.naturalWidth) {
+    context.drawImage(image, x, top, width, height);
+  }
+}

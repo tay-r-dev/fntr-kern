@@ -540,6 +540,7 @@ Small shared edits worth knowing about:
 | `fontra-core/src/utils.ts`          | +14/−6  | `parseSelection` keeps any non-integer remainder raw — compound skeleton keys and string marker ids |
 | `fontra-core/src/var-glyph.js`      | +3      | `customData` survives glyph copy — skeleton persistence depends on it                               |
 | `fontra-core/src/var-path.js`       | +8/−2   | `copy()` tolerates a Proxy-wrapped `coordinates`                                                    |
+| `fontra-core/src/canvas-labels.js`  | NEW     | **Markers + Q-measure** — the Figma labels: `drawLabel` (label/simple) and `drawPlaque` (label/Q), with their shared outline, shadow and background blur. Icons in `assets/images/measure-*.svg` |
 | `fontra-core/src/path-functions.js` | +45/−12 | quad handles + corner-overlap entry                                                                 |
 | `fontra-core/src/mouse-tracker.js`  | +2/−1   | —                                                                                                   |
 | `fontra-core/src/kerning-controller.js` | +15/−0 | **Kerning view** — `ensureKerningData` before a class edit on an unkerned font; clear the pair-function cache on `delete()`, matching `editContinuous` |

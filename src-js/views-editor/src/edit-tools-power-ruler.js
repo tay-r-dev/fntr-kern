@@ -12,10 +12,9 @@ import {
   LABEL_COLORS,
   LABEL_COLORS_DARK_MODE,
   LABEL_SCREEN_PARAMETERS,
-  drawGrips,
-  drawPill,
-  eachMarker,
-} from "./visualization-layer-markers.js";
+  drawLabel,
+} from "@fontra/core/canvas-labels.js";
+import { drawGrips, eachMarker } from "./visualization-layer-markers.js";
 import {
   fillCircle,
   glyphSelector,
@@ -312,7 +311,7 @@ function drawRuler(context, parameters, { intersections, measurePoints }) {
     if (measurePoint.distance < 0.1) {
       continue;
     }
-    drawPill(context, parameters, measurePoint, measurePoint.distance.toString(), {
+    drawLabel(context, parameters, measurePoint, measurePoint.distance.toString(), {
       inverse: !measurePoint.inside,
     });
   }
