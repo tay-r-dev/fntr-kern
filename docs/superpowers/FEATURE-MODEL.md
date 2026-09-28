@@ -1876,11 +1876,6 @@ them in its own order, which the ruler never noticed because it always measures 
 line across the glyph; measuring outward from a point inside the black ran the walk
 backwards and reported zero.
 
-**A ray on a corner leaves along the miter**, the average of the two arms' normals. The
-normal of one arm alone points outside the black wherever the corner is under 90
-degrees, so the ray would leave the outline where it starts. At a smooth point the two
-normals agree, and the miter changes nothing.
-
 **Null is the honest answer** where a ray never leaves the black, and every reader must
 handle it. A marker with no measurement draws its anchor and no number. It is not stale
 and must not be greyed as though it were.
