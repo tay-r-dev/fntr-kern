@@ -334,6 +334,7 @@ export class TunniGizmoReveal {
     this._contourTimer = null;
     this._contourHoveredThisPass = false;
     this._hotKey = null;
+    this._draggedKey = null;
     this._pendingKey = null;
     this._timer = null;
     this._tweens = new Map();
@@ -446,18 +447,30 @@ export class TunniGizmoReveal {
     return this._value("hot", key, now);
   }
 
-  // Every key whose hover emphasis shows, growing in or fading out: the gizmo under
-  // the cursor, the one held through a drag, and the one just let go.
-  hotKeys(now = performance.now()) {
+  // The gizmo a drag holds, or none. Its handles show through the drag and fade after.
+  setDragged(key) {
+    if (key === this._draggedKey) {
+      return;
+    }
+    if (this._draggedKey) {
+      this._tweenTo("drag", this._draggedKey, 0);
+    }
+    this._draggedKey = key;
+    if (key) {
+      this._tweenTo("drag", key, 1);
+    }
+  }
+
+  // Every key a drag shows, growing in or fading out, with its opacity.
+  draggedKeys(now = performance.now()) {
     const keys = [];
     for (const tween of this._tweens.values()) {
-      if (tween.channel !== "hot") {
+      if (tween.channel !== "drag") {
         continue;
       }
-      const key = tween.key;
-      const hotness = this._value("hot", key, now);
-      if (hotness > 0) {
-        keys.push({ key, hotness });
+      const alpha = this._value("drag", tween.key, now);
+      if (alpha > 0) {
+        keys.push({ key: tween.key, alpha });
       }
     }
     return keys;

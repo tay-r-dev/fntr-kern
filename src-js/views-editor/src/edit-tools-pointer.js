@@ -417,6 +417,8 @@ export class PointerTool extends BaseTool {
       }
       return;
     }
+    // The held gizmo shows its handles and their plaques until the drag ends.
+    this.tunniGizmoReveal.setDragged(gizmo.key);
     if (gizmo.kind === "generated") {
       // The readout layer re-reads the segment from live geometry each frame,
       // so it shows the curvature the drag is arriving at even when the label
@@ -434,6 +436,7 @@ export class PointerTool extends BaseTool {
         });
       } finally {
         this.sceneModel.generatedCurvatureDragTarget = null;
+        this.tunniGizmoReveal.setDragged(null);
       }
       return;
     }
@@ -449,6 +452,7 @@ export class PointerTool extends BaseTool {
         });
       } finally {
         this.sceneModel.tunniDragTarget = null;
+        this.tunniGizmoReveal.setDragged(null);
       }
       return;
     }
@@ -458,6 +462,7 @@ export class PointerTool extends BaseTool {
       await handleTunniDrag({ sceneController, eventStream, initialEvent, gizmo });
     } finally {
       this.sceneModel.tunniDragTarget = null;
+      this.tunniGizmoReveal.setDragged(null);
     }
   }
 

@@ -1405,8 +1405,8 @@ export class SceneModel {
     if (this.visualizationLayersSettings?.model?.["fontra.point.labels"]) {
       return [];
     }
-    // A curvature gizmo shows its handles' plaques itself, through the drag as on
-    // hover (the handle highlight layer).
+    // A curvature gizmo shows its handles' plaques itself through the drag (the
+    // handle highlight layer).
     if (this.tunniDragTarget.gizmoKey?.split(":")[1] === "curvature") {
       return [];
     }

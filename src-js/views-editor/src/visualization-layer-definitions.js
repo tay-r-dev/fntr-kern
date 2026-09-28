@@ -2499,11 +2499,10 @@ registerVisualizationLayerDefinition({
   },
 });
 
-// The curvature gizmo under the cursor, or held in a drag, brings its two handles up:
+// The curvature gizmo held in a drag brings its two handles up:
 // the handle lines and their nodes, drawn even where gizmo mode hides them, and on
 // each handle label/Q in its gizmo state -- the handle's length and tension. All of
-// it eases in and out with the gizmo's hover emphasis, so it arrives and leaves with
-// the gizmo rather than blinking.
+// it eases in as the drag starts and out after it ends, rather than blinking.
 registerVisualizationLayerDefinition({
   identifier: "fontra.tunni.handle-highlight",
   name: "Tunni curvature handle highlight",
@@ -2513,8 +2512,8 @@ registerVisualizationLayerDefinition({
   colors: TUNNI_GIZMO_COLORS,
   colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
   draw: (context, positionedGlyph, parameters, model, controller) => {
-    const hot = model.tunniGizmoReveal?.hotKeys() || [];
-    for (const { key, hotness } of hot) {
+    const dragged = model.tunniGizmoReveal?.draggedKeys() || [];
+    for (const { key, alpha } of dragged) {
       if (key.split(":")[1] !== "curvature") {
         continue;
       }
@@ -2525,7 +2524,7 @@ registerVisualizationLayerDefinition({
       if (points?.length !== 4 || points.some((point) => !point)) {
         continue;
       }
-      drawGizmoHandles(context, points, hotness, parameters, controller);
+      drawGizmoHandles(context, points, alpha, parameters, controller);
     }
   },
 });

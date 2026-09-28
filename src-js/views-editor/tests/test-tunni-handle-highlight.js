@@ -72,15 +72,19 @@ describe("the segment a curvature gizmo stands for", () => {
   });
 });
 
-describe("the hot gizmos", () => {
-  it("lists the keys whose hover emphasis is showing, with how far it is in", () => {
+describe("the dragged gizmo", () => {
+  it("eases in while its drag lasts and out after it, and hovering alone does not", () => {
     globalThis.requestAnimationFrame ??= () => 0;
     const reveal = new TunniGizmoReveal(() => {});
     const key = tunniGizmoKey("basic", "curvature", "0/0");
     reveal._setHot(key);
-    const later = performance.now() + 10000;
-    expect(reveal.hotKeys(later)).to.deep.equal([{ key, hotness: 1 }]);
-    reveal._setHot(null);
-    expect(reveal.hotKeys(performance.now() + 20000)).to.deep.equal([]);
+    expect(reveal.draggedKeys(performance.now() + 10000)).to.deep.equal([]);
+    reveal.setDragged(key);
+    const start = performance.now();
+    const early = reveal.draggedKeys(start + 20)[0]?.alpha ?? 0;
+    expect(early).to.be.above(0).and.below(1);
+    expect(reveal.draggedKeys(start + 10000)).to.deep.equal([{ key, alpha: 1 }]);
+    reveal.setDragged(null);
+    expect(reveal.draggedKeys(performance.now() + 10000)).to.deep.equal([]);
   });
 });
