@@ -2,7 +2,7 @@ import {
   pointInConvexPolygon,
   rectIntersectsPolygon,
 } from "@fontra/core/convex-hull.js";
-import { calculateHandleMeasure } from "@fontra/core/distance-angle.js";
+import { calculateHandleMeasure, ribPlaque } from "@fontra/core/distance-angle.js";
 import {
   getSuggestedGlyphName,
   guessDirectionFromCodePoints,
@@ -32,6 +32,7 @@ import {
   getSkeletonData,
   getSkeletonInsertionPosition,
   getSkeletonPointHalfWidth,
+  getSkeletonPointNudge,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
   iterSkeletonRibTargets,
@@ -1334,11 +1335,12 @@ export class SceneModel {
     if (!this.initialClickedSkeletonRibKey) {
       return null;
     }
-    // The plaque reports a width. Alt and Z move the rib end without editing
-    // it, so during them it would be quoting a number nothing is editing.
-    if (!skeletonRibBehaviorShowsWidth(this.skeletonDragBehaviorName)) {
-      return null;
-    }
+    // A drag that changes the width reads the width (label/Q, "adjusting width").
+    // Alt and Z slide the rib end instead and change no width, so they read the
+    // slide ("shifting"): a width there would quote a number nothing is editing.
+    const state = skeletonRibBehaviorShowsWidth(this.skeletonDragBehaviorName)
+      ? "adjusting width"
+      : "shifting";
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
     if (!skeletonData) {
       return null;
@@ -1360,14 +1362,21 @@ export class SceneModel {
         return null;
       }
       const { point, defaultWidth } = address;
-      const left = getSkeletonPointHalfWidth(point, defaultWidth, "left");
-      const right = getSkeletonPointHalfWidth(point, defaultWidth, "right");
       return {
         x: target.position.x,
         y: target.position.y,
         kind: "skeleton",
-        label: `${getSkeletonPointWidth(point, defaultWidth).toFixed(1)}
-L ${left.toFixed(1)}  R ${right.toFixed(1)}`,
+        plaque: ribPlaque(
+          {
+            width: getSkeletonPointWidth(point, defaultWidth),
+            sideWidths: {
+              left: getSkeletonPointHalfWidth(point, defaultWidth, "left"),
+              right: getSkeletonPointHalfWidth(point, defaultWidth, "right"),
+            },
+            tangentialShift: getSkeletonPointNudge(point, target.side, defaultWidth),
+          },
+          state
+        ),
       };
     }
     return null;

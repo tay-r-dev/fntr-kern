@@ -210,12 +210,12 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   const header = plaque.header;
   let headerWidth = 0;
   if (header) {
-    const right = header.right.join(PLAQUE.headerSeparator);
+    setLabelFont(context, smallSize, TRACKING);
     headerWidth = Math.max(
       PLAQUE.minHeaderWidth * s,
       measure(header.left, smallSize, TRACKING) +
         iconGap +
-        measure(right, smallSize, TRACKING)
+        joinedWidth(context, header.right, "•", PLAQUE.headerSeparatorGap * s)
     );
   }
   const rows = plaque.rows.map((row) => {
@@ -223,15 +223,16 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     const iconWidth = icon.width * s;
     const iconHeight = icon.height * s;
     const valueWidth = measure(row.value, valueSize, row.tracking ? TRACKING : 0);
-    const sub = row.sub ? row.sub.join(PLAQUE.subSeparator) : null;
-    const subWidth = sub ? measure(sub, smallSize, TRACKING) : 0;
-    const textHeight = valueLine + (sub ? smallLine : 0);
+    setLabelFont(context, smallSize, TRACKING);
+    const subWidth = row.sub
+      ? joinedWidth(context, row.sub, "/", PLAQUE.subSeparatorGap * s)
+      : 0;
+    const textHeight = valueLine + (row.sub ? smallLine : 0);
     return {
       ...row,
       icon,
       iconWidth,
       iconHeight,
-      sub,
       width: iconWidth + iconGap + Math.max(valueWidth, subWidth),
       height: Math.max(iconHeight, textHeight),
     };
@@ -256,10 +257,13 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     context.fillStyle = PLAQUE_COLORS.small;
     setLabelFont(context, smallSize, TRACKING);
     context.fillText(header.left, left + padding, y + smallLine / 2);
-    const right = header.right.join(PLAQUE.headerSeparator);
-    const rightWidth = context.measureText(right).width;
-    context.fillText(
-      right,
+    const gap = PLAQUE.headerSeparatorGap * s;
+    const rightWidth = joinedWidth(context, header.right, "•", gap);
+    fillJoined(
+      context,
+      header.right,
+      "•",
+      gap,
       left + padding + contentWidth - rightWidth,
       y + smallLine / 2
     );
@@ -287,7 +291,14 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     if (row.sub) {
       context.fillStyle = PLAQUE_COLORS.small;
       setLabelFont(context, smallSize, TRACKING);
-      context.fillText(row.sub, textX, valueTop + valueLine + smallLine / 2);
+      fillJoined(
+        context,
+        row.sub,
+        "/",
+        PLAQUE.subSeparatorGap * s,
+        textX,
+        valueTop + valueLine + smallLine / 2
+      );
     }
     y += row.height + rowGap;
   }
@@ -306,9 +317,39 @@ const PLAQUE = {
   valueLine: 12,
   smallLine: 10,
   minHeaderWidth: 46,
-  headerSeparator: " • ",
-  subSeparator: "/",
+  // The room either side of the bullet between the header's two coordinates, and of
+  // the slash in a width's left/right distribution. The frame sets both at none; the
+  // slash reads cramped at none, so it is given two.
+  headerSeparatorGap: 0,
+  subSeparatorGap: 2,
 };
+
+// Values joined by a separator with `gap` either side of it, in the current font.
+function joinedWidth(context, parts, separator, gap) {
+  const items = joinedItems(parts, separator);
+  return (
+    items.reduce((sum, text) => sum + context.measureText(text).width, 0) +
+    gap * (items.length - 1)
+  );
+}
+
+function fillJoined(context, parts, separator, gap, x, y) {
+  for (const text of joinedItems(parts, separator)) {
+    context.fillText(text, x, y);
+    x += context.measureText(text).width + gap;
+  }
+}
+
+function joinedItems(parts, separator) {
+  const items = [];
+  parts.forEach((part, i) => {
+    if (i) {
+      items.push(separator);
+    }
+    items.push(String(part));
+  });
+  return items;
+}
 
 const PLAQUE_COLORS = {
   fill: "#FFFFFF",

@@ -1459,16 +1459,7 @@ export function drawMeasureOverlay(
       context,
       parameters,
       p2,
-      {
-        rows: [
-          {
-            icon: "width",
-            value: width.toFixed(1),
-            sub: [sideWidths.left.toFixed(1), sideWidths.right.toFixed(1)],
-          },
-          { icon: "tangentialShift", value: (tangentialShift ?? 0).toFixed(2) },
-        ],
-      },
+      ribPlaque({ width, sideWidths, tangentialShift }),
       { onIconLoad: () => controller?.requestUpdate?.() }
     );
     return;
@@ -1552,11 +1543,48 @@ function drawMeasureGuideLine(context, p1, p2, color, parameters) {
   context.setLineDash([]);
 }
 
+// label/Q, type=rib, in its three states. Default, on hover: the stroke's width with
+// its left/right distribution under it, then how far the rib end slides along the
+// stroke. "adjusting width", while a drag changes the width: the width alone.
+// "shifting", while a drag slides the rib end: the shift alone. The hover plaque and
+// the drag plaques are built here and nowhere else, so they cannot read differently.
+export function ribPlaque({ width, sideWidths, tangentialShift }, state = "default") {
+  const widthRow = {
+    icon: "width",
+    value: width.toFixed(1),
+    sub: [sideWidths.left.toFixed(1), sideWidths.right.toFixed(1)],
+  };
+  const shiftRow = {
+    icon: "tangentialShift",
+    value: (tangentialShift ?? 0).toFixed(2),
+  };
+  const rows =
+    state === "adjusting width"
+      ? [widthRow]
+      : state === "shifting"
+        ? [shiftRow]
+        : [widthRow, shiftRow];
+  return { rows };
+}
+
 // Transient readout drawn while a rib or Tunni control is being adjusted. The
 // scene model decides whether anything applies (including suppressing the Tunni
 // readout when the native point labels are on); this is render-only.
-export function drawDragReadout(context, positionedGlyph, parameters, model) {
+export function drawDragReadout(
+  context,
+  positionedGlyph,
+  parameters,
+  model,
+  controller
+) {
   for (const readout of model.getDragReadouts?.(positionedGlyph) || []) {
+    // A readout that carries a plaque draws label/Q; the rest keep the plain box.
+    if (readout.plaque) {
+      drawPlaque(context, parameters, readout, readout.plaque, {
+        onIconLoad: () => controller?.requestUpdate?.(),
+      });
+      continue;
+    }
     const color =
       readout.kind === "skeleton" ? parameters.skeletonColor : parameters.pathColor;
     drawMeasureLabel(context, readout.x, readout.y, readout.label, color, parameters, {

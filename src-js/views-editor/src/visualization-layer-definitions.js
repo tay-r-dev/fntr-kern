@@ -2592,7 +2592,7 @@ registerVisualizationLayerDefinition({
   userSwitchable: true,
   defaultOn: true,
   zIndex: 650,
-  screenParameters: { fontSize: 14 },
+  screenParameters: { fontSize: 14, ...PLAQUE_SCREEN_PARAMETERS },
   colors: {
     textColor: "#333",
     textBgColor: "#FFFFFF",
