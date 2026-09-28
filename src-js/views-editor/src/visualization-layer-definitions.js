@@ -6,7 +6,7 @@ import {
   LABEL_SCREEN_PARAMETERS,
   PLAQUE_SCREEN_PARAMETERS,
 } from "@fontra/core/canvas-labels.js";
-import { computeSpeedPunkSamples } from "@fontra/core/curvature.js";
+import { cachedSpeedPunkSamples } from "@fontra/core/curvature.js";
 import {
   calculateBadgeDimensions,
   calculateBadgePosition,
@@ -1991,8 +1991,7 @@ registerVisualizationLayerDefinition({
     adaptStepsToCurveLength: false,
   },
   draw: (context, positionedGlyph, parameters, model, controller) => {
-    const path = speedPunkPath(positionedGlyph, model);
-    if (!path) return;
+    if (!positionedGlyph.glyph?.path) return;
 
     const peakHeightGlyphUnits = model.sceneSettings?.speedPunkPeakHeightUpm ?? 24;
     const referenceTurnDegrees =
@@ -2007,19 +2006,31 @@ registerVisualizationLayerDefinition({
       Math.min(1, model.sceneSettings?.speedPunkOpacity ?? 0.5)
     );
 
-    const quads = computeSpeedPunkSamples(path, {
-      peakHeightGlyphUnits,
-      referenceTurnDegrees,
-      colorFlatTurnDegrees,
-      colorTightTurnDegrees,
-      sharpness,
-      illustrationPosition: parameters.illustrationPosition,
-      colorStops: parameters.colorStops,
-      baseSegmentBudget: parameters.baseSegmentBudget,
-      minSegmentsPerCurve: parameters.minSegmentsPerCurve,
-      zoomFactor: controller.magnification || 1.0,
-      adaptStepsToCurveLength: parameters.adaptStepsToCurveLength,
-    });
+    // The comb is kept per glyph and step rung (cachedSpeedPunkSamples): a zoom
+    // step redraws it rather than recomputing it. The path depends on two settings,
+    // which name the cached variant.
+    const variant = [
+      applicationSettingsController.model.skeletonShowGeneratedGeometry !== false,
+      !!applicationSettingsController.model.skeletonSpeedPunk,
+    ].join("/");
+    const quads = cachedSpeedPunkSamples(
+      positionedGlyph.glyph,
+      () => speedPunkPath(positionedGlyph, model),
+      {
+        peakHeightGlyphUnits,
+        referenceTurnDegrees,
+        colorFlatTurnDegrees,
+        colorTightTurnDegrees,
+        sharpness,
+        illustrationPosition: parameters.illustrationPosition,
+        colorStops: parameters.colorStops,
+        baseSegmentBudget: parameters.baseSegmentBudget,
+        minSegmentsPerCurve: parameters.minSegmentsPerCurve,
+        zoomFactor: controller.magnification || 1.0,
+        adaptStepsToCurveLength: parameters.adaptStepsToCurveLength,
+      },
+      variant
+    );
     if (!quads.length) return;
 
     context.save();
@@ -2027,18 +2038,24 @@ registerVisualizationLayerDefinition({
     context.lineJoin = "round";
     context.globalAlpha = opacity;
     for (const quad of quads) {
-      const p = new Path2D();
-      p.moveTo(quad.points[0][0], quad.points[0][1]);
-      for (let i = 1; i < quad.points.length; i++) {
-        p.lineTo(quad.points[i][0], quad.points[i][1]);
-      }
-      p.closePath();
+      // Built once and kept with the cached sample.
+      quad.path2d ??= quadPath2d(quad.points);
       context.fillStyle = quad.color;
-      context.fill(p);
+      context.fill(quad.path2d);
     }
     context.restore();
   },
 });
+
+function quadPath2d(points) {
+  const p = new Path2D();
+  p.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) {
+    p.lineTo(points[i][0], points[i][1]);
+  }
+  p.closePath();
+  return p;
+}
 
 // Ticket 30: with the generated outline hidden, SpeedPunk leaves it out, and
 // draws on the skeleton centerline when SpeedPunk on skeleton is on.

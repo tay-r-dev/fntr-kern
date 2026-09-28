@@ -354,6 +354,65 @@ export function softCeilingRatio(ratio, ceiling) {
   return 1 + room * (1 - Math.exp(-(ratio - 1) / room));
 }
 
+// The step counts SpeedPunk samples at: a square root of two apart, 4, 6, 8, 11, 16,
+// 23, 32 and on. The zoom sets a step count (calculateSegmentBudget), and a count
+// that moved with every zoom step would make every zoom step a new comb to compute.
+// On rungs, a whole range of zooms shares one comb. Rounded up, so the comb is never
+// coarser than the zoom asked for.
+export function speedPunkStepRung(steps) {
+  let k = 4;
+  while (Math.round(2 ** (k / 2)) < steps) {
+    k++;
+  }
+  return Math.round(2 ** (k / 2));
+}
+
+const speedPunkCache = new WeakMap();
+const SPEEDPUNK_RESULTS_PER_OWNER = 6;
+
+// The comb for `owner` (the glyph as drawn), computed once per step rung and kept
+// until the owner goes, which an edit does. `makePath` builds the path to comb; it
+// is asked once per owner and `variant`, a key for any setting the path depends on.
+// The last few rungs are kept, so zooming back and forth does not recompute.
+export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "") {
+  let entry = speedPunkCache.get(owner);
+  if (!entry || entry.variant !== variant) {
+    const path = makePath();
+    entry = {
+      variant,
+      path,
+      curveCount: path?.numContours ? countCurveSegments(path) : 0,
+      results: new Map(),
+    };
+    speedPunkCache.set(owner, entry);
+  }
+  if (!entry.curveCount) {
+    return [];
+  }
+  const stepsPerSegment = speedPunkStepRung(
+    calculateSegmentBudget(
+      entry.curveCount,
+      params.zoomFactor ?? 1,
+      params.baseSegmentBudget ?? 600,
+      params.minSegmentsPerCurve ?? 5
+    )
+  );
+  const { zoomFactor, ...rest } = params;
+  const key = JSON.stringify({ ...rest, stepsPerSegment });
+  let samples = entry.results.get(key);
+  if (samples) {
+    // Most recent last, so the oldest is the one let go.
+    entry.results.delete(key);
+  } else {
+    samples = computeSpeedPunkSamples(entry.path, { ...params, stepsPerSegment });
+    if (entry.results.size >= SPEEDPUNK_RESULTS_PER_OWNER) {
+      entry.results.delete(entry.results.keys().next().value);
+    }
+  }
+  entry.results.set(key, samples);
+  return samples;
+}
+
 export function computeSpeedPunkSamples(path, params = {}) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The anchor the height scale is stated in: a stretch of outline that turns
@@ -384,12 +443,15 @@ export function computeSpeedPunkSamples(path, params = {}) {
     return [];
   }
 
-  const stepsPerSegment = calculateSegmentBudget(
-    totalCurveCount,
-    zoomFactor,
-    baseSegmentBudget,
-    minSegmentsPerCurve
-  );
+  // A caller that has settled the step count already (cachedSpeedPunkSamples) passes it.
+  const stepsPerSegment =
+    params.stepsPerSegment ??
+    calculateSegmentBudget(
+      totalCurveCount,
+      zoomFactor,
+      baseSegmentBudget,
+      minSegmentsPerCurve
+    );
 
   let averageCurveLength = 0;
   if (adaptToCurveLength) {
