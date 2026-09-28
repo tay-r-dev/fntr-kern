@@ -354,11 +354,14 @@ export class MeasureInteraction {
     );
   }
 
-  _findPathSegmentNear(path, point, margin) {
+  _findPathSegmentNear(path, point, margin, skipContours = undefined) {
     const contourInfo = path.contourInfo;
     if (!contourInfo?.length) return null;
 
     for (let contourIdx = 0; contourIdx < contourInfo.length; contourIdx++) {
+      if (skipContours?.has(contourIdx)) {
+        continue;
+      }
       const info = contourInfo[contourIdx];
       const startPoint =
         contourIdx === 0 ? 0 : contourInfo[contourIdx - 1].endPoint + 1;
@@ -580,7 +583,20 @@ export class MeasureInteraction {
       }
     }
 
-    const segment = this._findPathSegmentNear(path, local, size * 1.5);
+    // A contour the selection has points on is not a target: its box holds the
+    // selection, and the gaps would measure the selection against itself. Its points
+    // still are, one by one, above.
+    const selectedContours = new Set(
+      (parseSelection(selection).point || []).map(
+        (index) => path.getContourAndPointIndex(index)[0]
+      )
+    );
+    const segment = this._findPathSegmentNear(
+      path,
+      local,
+      size * 1.5,
+      selectedContours
+    );
     if (segment && segment.contourIndex !== undefined) {
       const contour = path.getUnpackedContour(segment.contourIndex);
       const bounds = VarPackedPath.fromUnpackedContours([contour]).getBounds();
