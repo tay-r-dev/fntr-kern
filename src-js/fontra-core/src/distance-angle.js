@@ -1527,6 +1527,21 @@ export function drawMeasureOverlay(
   if (measureHoverSelectionDistance) {
     const color = parameters.pathColor;
     const { selectionBox, hoveredBox, direct } = measureHoverSelectionDistance;
+    // A contour or a component is measured by its box, which is nowhere on screen,
+    // so the box is drawn thin. A point is its own box and needs none.
+    if (hoveredBox.xMax > hoveredBox.xMin || hoveredBox.yMax > hoveredBox.yMin) {
+      context.save();
+      context.strokeStyle = color;
+      context.lineWidth = parameters.strokeWidth;
+      context.setLineDash([]);
+      context.strokeRect(
+        hoveredBox.xMin,
+        hoveredBox.yMin,
+        hoveredBox.xMax - hoveredBox.xMin,
+        hoveredBox.yMax - hoveredBox.yMin
+      );
+      context.restore();
+    }
     if (measureShowDirect && direct) {
       const { distance: dist, angle } = calculateDistanceAndAngle(direct.p1, direct.p2);
       drawMeasureLine(
