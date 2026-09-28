@@ -63,7 +63,11 @@ export class MarkerTool extends BaseTool {
     }
     const point = this.sceneController.localPoint(event);
     const size = this.sceneController.mouseClickMargin;
-    const markerTarget = this.sceneModel.markerAtPoint(point, size);
+    // Alt is for placing a dimension, so it looks past placed markers: their grips
+    // crowd the points a dimension is aimed at.
+    const markerTarget = event.altKey
+      ? undefined
+      : this.sceneModel.markerAtPoint(point, size);
     this.sceneController.hoverSelection = markerTarget
       ? new Set([
           markerTarget.endIndex === undefined
@@ -294,7 +298,9 @@ export class MarkerTool extends BaseTool {
 
     const point = this.sceneController.localPoint(initialEvent);
     const size = this.sceneController.mouseClickMargin;
-    const markerTarget = this.sceneModel.markerAtPoint(point, size, positionedGlyph);
+    const markerTarget = initialEvent.altKey
+      ? undefined
+      : this.sceneModel.markerAtPoint(point, size, positionedGlyph);
 
     if (markerTarget) {
       if (initialEvent.detail == 2 || initialEvent.myTapCount == 2) {
