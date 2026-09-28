@@ -186,17 +186,6 @@ export class CompactScrubField extends UnlitElement {
       color: #151515;
     }
 
-    /* Up/down steppers, visible only in manual input (per the Figma design).
-       They live inside the value element, so the input's removal on edit end
-       takes them along. */
-    .steppers {
-      display: flex;
-      flex-direction: column;
-      align-self: stretch;
-      justify-content: center;
-      margin-left: 0.15em;
-    }
-
     .stepper {
       display: grid;
       place-items: center;
@@ -231,12 +220,12 @@ export class CompactScrubField extends UnlitElement {
     }
 
     /* Ticket (coordinator addendum): button/icon/increment, node 287:15519 --
-       the same up/down stepper as the manual-input one above, but present in
-       every state (including the plain "input/string" mode) rather than only
-       while editing. Invisible at rest; a hover, a drag or the keyboard focus
-       the editing input already gets reveals it. Hidden again while editing
-       itself, where the value element grows its own copy (_startEdit below)
-       wired to the live text instead of a bare click. */
+       the up/down stepper, present in every state (including the plain
+       "input/string" mode) rather than only while editing. Invisible at rest;
+       a hover, a drag or the keyboard focus the editing input already gets
+       reveals it. One instance serves both rest and editing: while the value
+       is being edited its clicks press the input's arrow keys, so they step
+       the live edit instead of committing over it. */
     .hover-steppers {
       display: flex;
       flex-direction: column;
@@ -251,10 +240,6 @@ export class CompactScrubField extends UnlitElement {
     .box:focus-within .hover-steppers {
       opacity: 1;
     }
-
-    .box.editing .hover-steppers {
-      opacity: 0;
-    }
   `;
 
   constructor() {
@@ -268,6 +253,7 @@ export class CompactScrubField extends UnlitElement {
     this._step = undefined;
     this._integer = false;
     this._editing = false;
+    this._editInput = null;
     this._icon = undefined;
     this._iconTooltip = "";
     this._dragValueStream = null;
@@ -514,19 +500,32 @@ export class CompactScrubField extends UnlitElement {
       "onpointerdown": (event) => event.preventDefault(),
       "onclick": (event) => {
         event.stopPropagation();
-        this._stepByClick(direction);
+        this._stepByClick(direction, event.shiftKey);
       },
     });
   }
 
-  _stepByClick(direction) {
+  _stepByClick(direction, shiftKey) {
     if (this._disabled) {
+      return;
+    }
+    // An edit in progress owns the value: press its arrow key, so the click
+    // steps the live edit through the same stream the arrow keys use rather
+    // than committing behind the open input's back.
+    if (this._editing && this._editInput) {
+      this._editInput.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: direction > 0 ? "ArrowUp" : "ArrowDown",
+          shiftKey: !!shiftKey,
+          cancelable: true,
+        })
+      );
       return;
     }
     const current = Number.isFinite(this._value) ? this._value : 0;
     const value = keyStepScrubValue(current, direction, {
       ...this._boundsFieldItem,
-      shiftKey: false,
+      shiftKey: !!shiftKey,
     });
     this._commit(value);
     // Mirrors the Enter-key path in _startEdit: the value is already
@@ -573,6 +572,7 @@ export class CompactScrubField extends UnlitElement {
     this._valueElement.appendChild(input);
     input.focus();
     input.select();
+    this._editInput = input;
 
     // Arrow keys step the value live, as a drag does: the first press opens one
     // stream for the edit, so a caller applying drags live applies these too and
@@ -614,6 +614,7 @@ export class CompactScrubField extends UnlitElement {
         return;
       }
       this._editing = false;
+      this._editInput = null;
       this._box.classList.remove("editing");
       if (!commit && steppedLive) {
         // Escape takes back what the arrows applied.
@@ -667,23 +668,6 @@ export class CompactScrubField extends UnlitElement {
         finishEdit(false);
       }
     });
-    // The design's own up/down steppers (the native spin buttons are hidden
-    // by the CSS above). They step the value live like the arrow keys, and
-    // their pointerdown is cancelled so the input keeps focus.
-    const makeStepper = (direction, label) =>
-      html.createDomElement("button", {
-        "class": `stepper ${direction > 0 ? "up" : "down"}`,
-        "type": "button",
-        "tabindex": -1,
-        "aria-label": label,
-        "onpointerdown": (event) => event.preventDefault(),
-        "onclick": (event) => stepLive(direction, event.shiftKey),
-      });
-    const steppers = html.div({ class: "steppers" }, [
-      makeStepper(1, "Increase"),
-      makeStepper(-1, "Decrease"),
-    ]);
-    this._valueElement.appendChild(steppers);
     input.addEventListener("blur", () => finishEdit(true), { once: true });
   }
 

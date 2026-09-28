@@ -39,6 +39,7 @@ import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-fi
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
 import "@fontra/web-components/overflow-popover.js"; // for the Rib card
+import "@fontra/web-components/scrub-slider.js"; // for <scrub-slider>
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
@@ -202,6 +203,23 @@ export const SERIF_PERCENT_FIELD_BOUNDS = {
   concavity: { minValue: -100, maxValue: 100 },
   easeDistance: { minValue: 0, maxValue: 100 },
   easeCurvature: { minValue: 0, maxValue: 100 },
+};
+// What a double-click on the scrub area puts back, in the field's own units.
+export const SERIF_FIELD_DEFAULT_VALUES = {
+  wingLength: 0,
+  tipThickness: 0,
+  wingSlope: 0,
+  tipCutAngle: 0,
+  reach: 0,
+  tension: 56,
+  concavity: 100,
+  easeDistance: 0,
+  easeCurvature: 56,
+};
+export const SERIF_CUP_FIELD_DEFAULT_VALUES = {
+  cup: 0,
+  cupbalance: 0,
+  cuptension: 100,
 };
 
 // A compact scrub field streams the value under the hand. The width writers
@@ -1045,9 +1063,10 @@ export default class SkeletonParametersPanel {
   // `defaultValue`, in the field's own units, is what a double-click on the
   // scrub area puts back. Leave it out where a parameter has no default.
   // `label`, where given, is the text in the box itself, for a field whose row
-  // already carries the name.
-  _makeCompactField(key, labelKey, { scrub, commit, defaultValue, label }) {
-    const field = html.createDomElement("compact-scrub-field", {
+  // already carries the name. `slider` draws the field as a scrub-slider: the
+  // same control with a fill showing the value's place in its range.
+  _makeCompactField(key, labelKey, { scrub, commit, defaultValue, label, slider }) {
+    const field = html.createDomElement(slider ? "scrub-slider" : "compact-scrub-field", {
       label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
       integer: true,
     });
@@ -1144,6 +1163,8 @@ export default class SkeletonParametersPanel {
     const name = `${side}-${field}`;
     const element = this._makeCompactField(`serif:${name}`, `serif-field.${field}`, {
       label: translate(`sidebar.skeleton-parameters.projection.${side}`),
+      defaultValue: SERIF_FIELD_DEFAULT_VALUES[field],
+      slider: field === "concavity",
       scrub: (valueStream, startValue) =>
         field in SERIF_PERCENT_FIELD_BOUNDS
           ? setPanelSerifParametersStream(
@@ -1192,6 +1213,8 @@ export default class SkeletonParametersPanel {
   _makeSerifCupField(name, labelKey) {
     return this._makeCompactField(`serif:${name}`, labelKey, {
       label: "",
+      defaultValue: SERIF_CUP_FIELD_DEFAULT_VALUES[name],
+      slider: name === "cuptension",
       scrub: (valueStream, startValue) =>
         name === "cup"
           ? nudgePanelSerifValueStream(
@@ -1291,6 +1314,9 @@ export default class SkeletonParametersPanel {
     };
     return this._makeCompactField(`cap:${name}`, labelKey, {
       defaultValue: capDefaults[name],
+      // The ranged fields read as sliders: radius its 20 positions, roundness
+      // and the ball easing their percent runs.
+      slider: ["radius", "tension", "balleasing"].includes(name),
       scrub: (valueStream, startValue) =>
         name === "distance"
           ? nudgePanelCapParameterStream(
