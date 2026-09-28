@@ -23,11 +23,14 @@ const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
 //     grow on zoom in like the drawing does.
 //   measureMinScreenSize: the smallest those labels get on screen, in screen pixels, so
 //     they stay readable zoomed out.
+//   measureMaxFade: how far, in per cent, those labels fade when held at the minimum
+//     far out. The fade starts where the minimum takes over (measureLabelAlpha).
 export const LABEL_TUNING_DEFAULTS = Object.freeze({
   valueSize: 9,
   smallSize: 7,
   measureSize: 6,
   measureMinScreenSize: 7,
+  measureMaxFade: 60,
 });
 
 export const LABEL_TUNING = { ...LABEL_TUNING_DEFAULTS };
@@ -125,6 +128,20 @@ export function measureLabelFontSize(context) {
   const floor =
     screenPerUnit > 0 ? LABEL_TUNING.measureMinScreenSize / screenPerUnit : 0;
   return Math.max(LABEL_TUNING.measureSize, floor);
+}
+
+// The measurement labels' opacity. Opaque while they zoom; once the screen minimum
+// holds them up, they fade as the zoom would have shrunk them: at half their zoomed
+// size, half the tuned maximum fade, and towards the whole of it far out.
+export function measureLabelAlpha(context) {
+  const m = context.getTransform();
+  const pixel = globalThis.devicePixelRatio || 1;
+  const zoomedSize = (LABEL_TUNING.measureSize * Math.hypot(m.a, m.b)) / pixel;
+  const minimum = LABEL_TUNING.measureMinScreenSize;
+  if (!(minimum > 0) || zoomedSize >= minimum) {
+    return 1;
+  }
+  return 1 - (LABEL_TUNING.measureMaxFade / 100) * (1 - zoomedSize / minimum);
 }
 
 export const LABEL_COLORS = {

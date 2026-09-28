@@ -2,6 +2,8 @@ import {
   drawLabel,
   drawPlaque,
   LABEL_COLORS,
+  LABEL_TUNING,
+  measureLabelAlpha,
   LABEL_SCREEN_PARAMETERS,
   PLAQUE_SCREEN_PARAMETERS,
 } from "@fontra/core/canvas-labels.js";
@@ -84,5 +86,24 @@ describe("canvas labels keep one font across zoom", () => {
     };
     // Zoomed far out, where the minimum screen size holds the label up.
     expect(fontAt(0.05)).to.deep.equal(fontAt(0.08));
+  });
+});
+
+describe("measurement labels fade below the screen minimum", () => {
+  const at = (scale) => ({ getTransform: () => ({ a: scale, b: 0 }) });
+  // measureSize 6 units, minimum 7 px: the cutoff is at 7/6 px per unit.
+  const cutoff = LABEL_TUNING.measureMinScreenSize / LABEL_TUNING.measureSize;
+
+  it("is opaque where the label still zooms", () => {
+    expect(measureLabelAlpha(at(cutoff))).to.equal(1);
+    expect(measureLabelAlpha(at(cutoff * 3))).to.equal(1);
+  });
+
+  it("fades gradually past the cutoff, towards the maximum transparency", () => {
+    const max = LABEL_TUNING.measureMaxFade / 100;
+    const half = measureLabelAlpha(at(cutoff / 2));
+    expect(half).to.be.closeTo(1 - max / 2, 1e-9);
+    expect(measureLabelAlpha(at(cutoff / 1000))).to.be.closeTo(1 - max, 1e-3);
+    expect(measureLabelAlpha(at(cutoff * 0.9))).to.be.above(half);
   });
 });

@@ -7,6 +7,7 @@ import {
   drawLabel,
   drawPlaque,
   LABEL_TUNING,
+  measureLabelAlpha,
   measureLabelFontSize,
   setLabelFont,
   setMeasureLabelFont,
@@ -1083,6 +1084,7 @@ function drawRoundRect(context, x, y, width, height, radii) {
 export function drawPointStyleLabel(context, x, y, text, color) {
   const size = measureLabelFontSize(context);
   context.save();
+  context.globalAlpha *= measureLabelAlpha(context);
   context.scale(1, -1);
   const k = setMeasureLabelFont(context, size);
   context.textAlign = "left";
@@ -1164,6 +1166,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
 
   // Draw text for p2 with distance, tension, angle (top to bottom)
   context.save();
+  context.globalAlpha *= measureLabelAlpha(context);
   context.fillStyle = "rgba(4, 28, 44, 1)"; // New text color
   const k = setMeasureLabelFont(context, size);
   context.textAlign = "left";
@@ -1187,6 +1190,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
 
   // Draw text for p3 with distance, tension, angle (top to bottom)
   context.save();
+  context.globalAlpha *= measureLabelAlpha(context);
   context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
   setMeasureLabelFont(context, size);
   context.textAlign = "left";
@@ -1389,6 +1393,7 @@ export function drawPointLabels(
 
           // Draw text with distance, angle (top to bottom)
           context.save();
+          context.globalAlpha *= measureLabelAlpha(context);
           context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
           const k = setMeasureLabelFont(context, sizeOff);
           context.textAlign = "left";

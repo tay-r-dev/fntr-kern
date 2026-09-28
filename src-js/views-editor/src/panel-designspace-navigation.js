@@ -163,6 +163,14 @@ const LABEL_DEBUG_CONTROLS = [
     step: 0.5,
     unit: "px",
   },
+  {
+    key: "measureMaxFade",
+    label: "Measure max fade",
+    min: 0,
+    max: 100,
+    step: 5,
+    unit: "%",
+  },
 ];
 
 // A debug accordion's body: one slider and readout per control, and a reset. The
