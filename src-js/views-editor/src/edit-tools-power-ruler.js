@@ -8,7 +8,14 @@ import {
   placeMarker,
   rulerPlacement,
 } from "./marker-editing.js";
-import { drawGrips, drawPill, eachMarker } from "./visualization-layer-markers.js";
+import {
+  LABEL_COLORS,
+  LABEL_COLORS_DARK_MODE,
+  LABEL_SCREEN_PARAMETERS,
+  drawGrips,
+  drawPill,
+  eachMarker,
+} from "./visualization-layer-markers.js";
 import {
   fillCircle,
   glyphSelector,
@@ -40,27 +47,21 @@ registerVisualizationLayerDefinition({
   zIndex: 600,
   screenParameters: {
     strokeWidth: 1,
-    fontSize: 12,
     intersectionRadius: 4,
     gripRadius: 4,
     hoverRingGap: 3,
+    ...LABEL_SCREEN_PARAMETERS,
   },
   colors: {
     strokeColor: "#0004",
-    insideBlobColor: "#FFFB",
-    insideTextColor: "#000B",
-    outsideBlobColor: "#000B",
-    outsideTextColor: "#FFFB",
+    ...LABEL_COLORS,
     intersectionColor: "#F085",
     gripColor: "#08AD",
     selectedGripColor: "#06CF",
   },
   colorsDarkMode: {
     strokeColor: "#FFF6",
-    insideBlobColor: "#444B",
-    insideTextColor: "#FFFB",
-    outsideBlobColor: "#FFFB",
-    outsideTextColor: "#444B",
+    ...LABEL_COLORS_DARK_MODE,
     intersectionColor: "#F696",
     gripColor: "#6BFD",
     selectedGripColor: "#9EFF",
@@ -289,8 +290,8 @@ function rulerIdsIn(selection) {
   return (parseSelection(selection || []).marker || []).map(String);
 }
 
-// One ruler's line, its crossings and its spans, in the look the Power Ruler always had:
-// a span in the black on a light pill, a span in the white on a dark one.
+// One ruler's line, its crossings and its spans. A span in the black reads on the
+// label as it is; a span in the white reads on the label inverted.
 function drawRuler(context, parameters, { intersections, measurePoints }) {
   if (!intersections || intersections.length < 2) {
     return;
@@ -311,19 +312,8 @@ function drawRuler(context, parameters, { intersections, measurePoints }) {
     if (measurePoint.distance < 0.1) {
       continue;
     }
-    drawPill(
-      context,
-      {
-        ...parameters,
-        blobColor: measurePoint.inside
-          ? parameters.insideBlobColor
-          : parameters.outsideBlobColor,
-        textColor: measurePoint.inside
-          ? parameters.insideTextColor
-          : parameters.outsideTextColor,
-      },
-      measurePoint,
-      measurePoint.distance.toString()
-    );
+    drawPill(context, parameters, measurePoint, measurePoint.distance.toString(), {
+      inverse: !measurePoint.inside,
+    });
   }
 }

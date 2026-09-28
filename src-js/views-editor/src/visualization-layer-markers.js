@@ -6,7 +6,6 @@ import * as vector from "@fontra/core/vector.js";
 import { getVisibleMarkers } from "./marker-editing.js";
 import {
   fillCircle,
-  fillPill,
   glyphSelector,
   registerVisualizationLayerDefinition,
   strokeLine,
@@ -98,7 +97,7 @@ export function drawGrips(context, parameters, grips, isSelected, isHovered, col
 // measures in. A ray with no measurement draws no number and still reads its angle:
 // the ray never left the black, which is not staleness and must not be greyed as though
 // it were.
-function drawReadout(context, parameters, at, geometry, marker, greyed) {
+function drawReadout(context, parameters, at, geometry, marker) {
   const parts = [];
   if (geometry.distance !== null) {
     parts.push(String(round(geometry.distance, 1)));
@@ -113,27 +112,178 @@ function drawReadout(context, parameters, at, geometry, marker, greyed) {
   if (!parts.length) {
     return;
   }
-  drawPill(context, parameters, at, parts.join("  "), greyed);
+  drawPill(context, parameters, at, parts);
 }
 
-// A number on a pill, centred on `at`. Every marker readout draws through this one.
-export function drawPill(context, parameters, at, text, greyed = false) {
-  context.font = `bold ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-  context.textAlign = "center";
-  context.scale(1, -1);
-  const width = context.measureText(text).width;
-  context.fillStyle = greyed ? parameters.staleBlobColor : parameters.blobColor;
-  fillPill(
-    context,
-    at.x,
-    -at.y,
-    width + parameters.fontSize,
-    parameters.fontSize * 1.3
+// The label every marker and ruler readout draws through: Figma's label/simple
+// (typeCAD, node 333:17292). A fully rounded pill 18 high with 8 of padding each side,
+// a hairline border and a one-pixel drop shadow; its values in Martian Mono at 9, the
+// heading/h5 face, separated by a small grey bullet with 3 either side. All of these
+// are screen pixels: the layer's screen parameters scale them to the zoom.
+//
+// `parts` is one value or several. `inverse` swaps fill and text, which is how a ruler
+// tells a span in the white from a span in the black.
+export function drawPill(context, parameters, at, parts, { inverse = false } = {}) {
+  const values = (Array.isArray(parts) ? parts : [parts]).filter(
+    (part) => part !== undefined && part !== null && part !== ""
   );
-  context.fillStyle = greyed ? parameters.staleTextColor : parameters.textColor;
-  context.fillText(text, at.x, -at.y + parameters.fontSize * 0.33);
+  if (!values.length) {
+    return;
+  }
+  const valueFont = `400 ${parameters.labelFontSize}px ${LABEL_FONT_FAMILY}`;
+  const separatorFont = `400 ${parameters.labelSeparatorSize}px ${LABEL_FONT_FAMILY}`;
+
+  context.save();
   context.scale(1, -1);
+  context.textBaseline = "middle";
+  context.textAlign = "left";
+
+  // Martian Mono's tracking is -3 per cent, in both sizes.
+  const setFont = (font, size) => {
+    context.font = font;
+    context.fontStretch = "semi-condensed";
+    context.letterSpacing = `${-0.03 * size}px`;
+  };
+  const items = [];
+  values.forEach((value, i) => {
+    if (i) {
+      items.push({ text: LABEL_SEPARATOR, separator: true });
+    }
+    items.push({ text: String(value), separator: false });
+  });
+  for (const item of items) {
+    if (item.separator) {
+      setFont(separatorFont, parameters.labelSeparatorSize);
+    } else {
+      setFont(valueFont, parameters.labelFontSize);
+    }
+    item.width = context.measureText(item.text).width;
+  }
+  const gap = parameters.labelGap;
+  const contentWidth =
+    items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1);
+  const width = contentWidth + 2 * parameters.labelPaddingX;
+  const height = parameters.labelHeight;
+  const left = at.x - width / 2;
+  const top = -at.y - height / 2;
+
+  const fill = inverse ? parameters.labelTextColor : parameters.labelFillColor;
+  const ink = inverse ? parameters.labelFillColor : parameters.labelTextColor;
+
+  // A shadow is set in device pixels and ignores the transform, so it is one device
+  // pixel's worth of the screen at every zoom.
+  const pixel = window.devicePixelRatio || 1;
+  blurBehind(context, left, top, width, height, LABEL_BACKDROP_BLUR * pixel);
+  context.shadowColor = LABEL_SHADOW_COLOR;
+  context.shadowOffsetY = pixel;
+  context.shadowBlur = pixel;
+  context.fillStyle = fill;
+  context.beginPath();
+  context.roundRect(left, top, width, height, height / 2);
+  context.fill();
+  context.shadowColor = "transparent";
+
+  // The outline runs outside the pill, so it adds to the pill's size rather than
+  // eating into its fill.
+  const border = parameters.labelBorderWidth;
+  context.lineWidth = border;
+  context.strokeStyle = parameters.labelBorderColor;
+  context.beginPath();
+  context.roundRect(
+    left - border / 2,
+    top - border / 2,
+    width + border,
+    height + border,
+    (height + border) / 2
+  );
+  context.stroke();
+
+  let x = left + parameters.labelPaddingX;
+  for (const item of items) {
+    if (item.separator) {
+      setFont(separatorFont, parameters.labelSeparatorSize);
+      context.fillStyle = parameters.labelSeparatorColor;
+    } else {
+      setFont(valueFont, parameters.labelFontSize);
+      context.fillStyle = ink;
+    }
+    context.fillText(item.text, x, -at.y);
+    x += item.width + gap;
+  }
+  context.restore();
 }
+
+// Figma's background blur: whatever is already drawn under the pill, blurred, inside
+// the pill's shape. A canvas cannot blur what lies behind a shape, so the pixels under
+// it are copied back onto themselves through a blur filter, clipped to the pill. The
+// copy is only of the pill's own box, in device pixels, with room for the blur to reach
+// in from outside it. `radius` is in device pixels.
+function blurBehind(context, left, top, width, height, radius) {
+  if (!("filter" in context)) {
+    return;
+  }
+  const m = context.getTransform();
+  const corners = [
+    [left, top],
+    [left + width, top],
+    [left, top + height],
+    [left + width, top + height],
+  ].map(([x, y]) => ({ x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }));
+  const reach = Math.ceil(radius * 3);
+  const canvas = context.canvas;
+  const x0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.x))) - reach);
+  const y0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.y))) - reach);
+  const x1 = Math.min(
+    canvas.width,
+    Math.ceil(Math.max(...corners.map((c) => c.x))) + reach
+  );
+  const y1 = Math.min(
+    canvas.height,
+    Math.ceil(Math.max(...corners.map((c) => c.y))) + reach
+  );
+  if (x1 <= x0 || y1 <= y0) {
+    return;
+  }
+  context.save();
+  context.beginPath();
+  context.roundRect(left, top, width, height, height / 2);
+  context.clip();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.filter = `blur(${radius}px)`;
+  context.drawImage(canvas, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
+  context.restore();
+}
+
+// The label's measurements, in screen pixels, and its colours. Every layer that draws a
+// label spreads these into its own definition.
+const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
+const LABEL_SEPARATOR = "•";
+const LABEL_SHADOW_COLOR = "rgba(0, 0, 0, 0.2)";
+// Figma's background blur, in CSS pixels.
+const LABEL_BACKDROP_BLUR = 2;
+
+export const LABEL_SCREEN_PARAMETERS = {
+  labelFontSize: 9,
+  labelSeparatorSize: 7,
+  labelGap: 3,
+  labelPaddingX: 8,
+  labelHeight: 18,
+  labelBorderWidth: 1,
+};
+
+export const LABEL_COLORS = {
+  labelFillColor: "#FFFFFF",
+  labelTextColor: "#303030",
+  labelSeparatorColor: "#B4B4B4",
+  labelBorderColor: "#1515150D",
+};
+
+export const LABEL_COLORS_DARK_MODE = {
+  labelFillColor: "#303030",
+  labelTextColor: "#F7F7F7",
+  labelSeparatorColor: "#B4B4B4",
+  labelBorderColor: "#1515150D",
+};
 
 function drawArrowHead(context, at, direction, size) {
   const back = vector.mulVectorScalar(direction, -size);
@@ -200,7 +350,7 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
           vector.mulVectorScalar(vector.subVectors(tips[0], anchorPoint), 0.5)
         )
       : anchorPoint;
-    drawReadout(context, parameters, midpoint, geometry, marker, false);
+    drawReadout(context, parameters, midpoint, geometry, marker);
   }
 }
 
@@ -256,7 +406,7 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
       q1,
       vector.mulVectorScalar(vector.subVectors(q2, q1), 0.5)
     );
-    drawReadout(context, parameters, midpoint, geometry, marker, false);
+    drawReadout(context, parameters, midpoint, geometry, marker);
   }
 }
 
@@ -312,20 +462,18 @@ export function drawCurvatureGeometry(context, parameters, geometry, color, bold
 // the radius line nor the curve's inside.
 export function curvatureReadoutPlace(geometry, parameters) {
   const { point, center } = geometry;
+  const clearance = parameters.labelHeight * 1.5;
   if (!center) {
-    return { x: point.x, y: point.y + parameters.fontSize * 2 };
+    return { x: point.x, y: point.y + clearance };
   }
   const away = vector.normalizeVector(vector.subVectors(point, center));
-  return vector.addVectors(
-    point,
-    vector.mulVectorScalar(away, parameters.fontSize * 2)
-  );
+  return vector.addVectors(point, vector.mulVectorScalar(away, clearance));
 }
 
 export function curvatureReadout(geometry) {
   const radius = Number.isFinite(geometry.radius) ? round(geometry.radius, 1) : "∞";
   const curvature = geometry.curvature ? geometry.curvature.toPrecision(4) : "0";
-  return `r ${radius}  κ ${curvature}`;
+  return [`r ${radius}`, `κ ${curvature}`];
 }
 
 // Past this radius, in font units, the circle is drawn no more: it runs off far beyond
@@ -338,20 +486,14 @@ const MARKER_COLORS = {
     selectedColor: "#06CF",
     staleColor: "#0BBC",
     staleLinkColor: "#0BB6",
-    blobColor: "#FFFB",
-    textColor: "#000B",
-    staleBlobColor: "#8888",
-    staleTextColor: "#000B",
+    ...LABEL_COLORS,
   },
   colorsDarkMode: {
     strokeColor: "#6BFD",
     selectedColor: "#9EFF",
     staleColor: "#4CCC",
     staleLinkColor: "#4CC6",
-    blobColor: "#444B",
-    textColor: "#FFFB",
-    staleBlobColor: "#8888",
-    staleTextColor: "#FFFB",
+    ...LABEL_COLORS_DARK_MODE,
   },
 };
 
@@ -364,10 +506,10 @@ registerVisualizationLayerDefinition({
   zIndex: 610,
   screenParameters: {
     strokeWidth: 1,
-    fontSize: 12,
     gripRadius: 4,
     hoverRingGap: 3,
     arrowSize: 7,
+    ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
   draw: drawMarkerRays,
@@ -382,10 +524,10 @@ registerVisualizationLayerDefinition({
   zIndex: 611,
   screenParameters: {
     strokeWidth: 1,
-    fontSize: 12,
     gripRadius: 4,
     hoverRingGap: 3,
     arrowSize: 7,
+    ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
   draw: drawMarkerDimensions,
@@ -400,9 +542,9 @@ registerVisualizationLayerDefinition({
   zIndex: 611,
   screenParameters: {
     strokeWidth: 1,
-    fontSize: 12,
     gripRadius: 4,
     hoverRingGap: 3,
+    ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
   draw: drawMarkerCurvatures,
@@ -461,8 +603,13 @@ registerVisualizationLayerDefinition({
   userSwitchable: false,
   defaultOn: true,
   zIndex: 612,
-  screenParameters: { strokeWidth: 1, gripRadius: 4, arrowSize: 7, fontSize: 12 },
-  colors: { previewColor: "#08A8", blobColor: "#FFFB", textColor: "#000B" },
-  colorsDarkMode: { previewColor: "#6BFA", blobColor: "#444B", textColor: "#FFFB" },
+  screenParameters: {
+    strokeWidth: 1,
+    gripRadius: 4,
+    arrowSize: 7,
+    ...LABEL_SCREEN_PARAMETERS,
+  },
+  colors: { previewColor: "#08A8", ...LABEL_COLORS },
+  colorsDarkMode: { previewColor: "#6BFA", ...LABEL_COLORS_DARK_MODE },
   draw: drawPlacementPreview,
 });
