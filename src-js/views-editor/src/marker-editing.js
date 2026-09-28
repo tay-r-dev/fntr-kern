@@ -10,7 +10,11 @@
 
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { ChangeCollector } from "@fontra/core/changes.js";
-import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
+import {
+  DIMENSION_LABEL_GRIP,
+  aimCollapsedRay,
+  markerGeometry,
+} from "@fontra/core/marker-measure.js";
 import {
   aimedCast,
   aimedRayOnPoint,
@@ -382,6 +386,31 @@ export async function handleMarkerDrag({
     return;
   }
 
+  // A dimension's label moves its measure line: nearer to or further from the
+  // geometry, the ends staying where they are.
+  if (kind === "dimension" && endIndex === DIMENSION_LABEL_GRIP) {
+    const geometry = markerGeometry(
+      glyphController,
+      startMarker,
+      getSkeletonData(sceneController.sceneModel._getEditLayerGlyph(positionedGlyph))
+    );
+    if (geometry.stale) {
+      return;
+    }
+    await dragMarkerFrames({
+      sceneController,
+      eventStream,
+      markerId,
+      undoLabel: "Move Dimension Line",
+      frameMarker: (point) =>
+        withDimensionLine(startMarker, geometry, {
+          x: point.x - positionedGlyph.x,
+          y: point.y - positionedGlyph.y,
+        }),
+    });
+    return;
+  }
+
   const draggedEndIndex =
     endIndex ?? startMarker.ends.findIndex((end) => end.kind !== "cast");
   const isRay = kind === "ray";
@@ -531,6 +560,22 @@ export async function dragMarkerFrames({
     }
     return { changes: accumulated, undoLabel, broadcast: true };
   }, MARKER_EDIT_SENDER);
+}
+
+// A dimension with its measure line through `local`. An axis dimension takes the
+// cursor's coordinate across its axis as its `line`; a direct one the cursor's signed
+// distance from its points, square to them, as its `offset`.
+function withDimensionLine(marker, geometry, local) {
+  if (marker.axis === "x") {
+    return { ...marker, line: Math.round(local.y) };
+  }
+  if (marker.axis === "y") {
+    return { ...marker, line: Math.round(local.x) };
+  }
+  const [p1] = geometry.points;
+  const { along } = geometry;
+  const offset = (local.x - p1.x) * -along.y + (local.y - p1.y) * along.x;
+  return { ...marker, offset: Math.round(offset) };
 }
 
 // Where a ruler through `local` sits and which way it runs: square to the outline

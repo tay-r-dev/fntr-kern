@@ -627,7 +627,11 @@ export class PointerTool extends BaseTool {
           eventStream,
           initialEvent,
           markerId,
-          endIndex: endIndex === undefined ? undefined : parseInt(endIndex, 10),
+          // An end is a number; the dimension label's grip is named.
+          endIndex:
+            endIndex === undefined || isNaN(Number(endIndex))
+              ? endIndex
+              : parseInt(endIndex, 10),
           // A ruler moved here takes its angle the way the ruler tool gives it,
           // side bearings included, or it cannot stand square to an em edge.
           extraLines: rulerExtraLinesFor(this.editor, sceneController),

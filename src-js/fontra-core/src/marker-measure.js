@@ -281,15 +281,17 @@ export function markerGeometry(
     return axisDimensionGeometry(points, marker);
   }
   const along = vector.normalizeVector(vector.subVectors(points[1], points[0]));
+  // The measure line stands `offset` from the points, square to them; the label is
+  // its handle.
   const out = vector.mulVectorScalar(
     { x: -along.y, y: along.x },
-    DIMENSION_WITNESS_GAP
+    marker.offset ?? DIMENSION_WITNESS_GAP
   );
   const arrows = points.map((point) => vector.addVectors(point, out));
   return {
     stale: false,
     isRay: false,
-    grips: arrows.map((point, i) => ({ point, endIndex: i })),
+    grips: dimensionGrips(arrows),
     points,
     arrows,
     along,
@@ -297,6 +299,22 @@ export function markerGeometry(
     distance: measureDimension(points[0], points[1]),
   };
 }
+
+// A dimension's grips: its label, which moves the measure line nearer to or further
+// from the geometry, then one arrow per end, which re-anchors that end. The label comes
+// first so that where an arrow and the label overlap, the arrow is the one grabbed.
+function dimensionGrips(arrows) {
+  const label = vector.addVectors(
+    arrows[0],
+    vector.mulVectorScalar(vector.subVectors(arrows[1], arrows[0]), 0.5)
+  );
+  return [
+    { point: label, endIndex: DIMENSION_LABEL_GRIP },
+    ...arrows.map((point, i) => ({ point, endIndex: i })),
+  ];
+}
+
+export const DIMENSION_LABEL_GRIP = "label";
 
 // An axis dimension, the way a CAD linear dimension reads: only across (`axis` "x") or
 // only up ("y"), on a measure line at `line` -- a y for an across dimension, an x for an
@@ -318,7 +336,7 @@ function axisDimensionGeometry(points, marker) {
   return {
     stale: false,
     isRay: false,
-    grips: arrows.map((point, i) => ({ point, endIndex: i })),
+    grips: dimensionGrips(arrows),
     points,
     arrows,
     along: across ? { x: sign, y: 0 } : { x: 0, y: sign },

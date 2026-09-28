@@ -262,3 +262,66 @@ describe("marker kinds — an axis dimension", () => {
     expect(geometry.distance).to.be.closeTo(50, 1e-9);
   });
 });
+
+// A dimension's label is the handle of its measure line: dragging it sets how far the
+// line stands from the geometry. A direct dimension keeps that as `offset`, a signed
+// distance square to the line; an axis dimension as `line`.
+describe("marker kinds — a dimension's line handle", () => {
+  function level() {
+    return pathOf({
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+        { x: 50, y: 80 },
+      ],
+      isClosed: true,
+    });
+  }
+  function dimension(path, extra) {
+    return {
+      id: "m1",
+      ends: [
+        { kind: "pathPoint", contourIndex: 0, pointIndex: 0 },
+        { kind: "pathPoint", contourIndex: 0, pointIndex: 1 },
+      ],
+      signature: computeMarkerSignature(path),
+      ...extra,
+    };
+  }
+
+  it("stands a direct dimension at its offset", () => {
+    const path = level();
+    const geometry = markerGeometry(
+      glyphFor(path),
+      dimension(path, { offset: -25 }),
+      null
+    );
+    expect(geometry.arrows).to.deep.equal([
+      { x: 0, y: -25 },
+      { x: 100, y: -25 },
+    ]);
+  });
+
+  it("offers its label as a grip, before the arrows", () => {
+    const path = level();
+    const geometry = markerGeometry(glyphFor(path), dimension(path, {}), null);
+    expect(geometry.grips[0]).to.deep.equal({
+      point: { x: 50, y: 40 },
+      endIndex: "label",
+    });
+    expect(geometry.grips.slice(1).map((grip) => grip.endIndex)).to.deep.equal([0, 1]);
+  });
+
+  it("offers the label of an axis dimension on its line", () => {
+    const path = level();
+    const geometry = markerGeometry(
+      glyphFor(path),
+      dimension(path, { axis: "x", line: -30 }),
+      null
+    );
+    expect(geometry.grips[0]).to.deep.equal({
+      point: { x: 50, y: -30 },
+      endIndex: "label",
+    });
+  });
+});

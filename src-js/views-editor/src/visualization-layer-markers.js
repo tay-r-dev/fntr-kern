@@ -5,7 +5,7 @@ import {
   drawLabel,
   labelMetrics,
 } from "@fontra/core/canvas-labels.js";
-import { markerGeometry } from "@fontra/core/marker-measure.js";
+import { DIMENSION_LABEL_GRIP, markerGeometry } from "@fontra/core/marker-measure.js";
 import { markerKind } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { parseSelection, round } from "@fontra/core/utils.ts";
@@ -220,7 +220,15 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
     }
     const color = isSelected ? parameters.selectedColor : parameters.strokeColor;
     drawDimension(context, parameters, geometry, marker, color, isSelected);
-    drawGrips(context, parameters, geometry.grips, isSelected, isHovered, color);
+    // The label is a grip too, and its pill is what shows it: no dot on top of it.
+    drawGrips(
+      context,
+      parameters,
+      geometry.grips.filter((grip) => grip.endIndex !== DIMENSION_LABEL_GRIP),
+      isSelected,
+      isHovered,
+      color
+    );
   }
 }
 
