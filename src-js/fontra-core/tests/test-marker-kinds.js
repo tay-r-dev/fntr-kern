@@ -199,3 +199,66 @@ describe("marker kinds — the curvature apex", () => {
     );
   });
 });
+
+// An axis dimension measures only across or only up, the way a CAD linear dimension
+// does: `axis` names which, and `line` is where its measure line runs, a y for an x
+// dimension and an x for a y dimension.
+describe("marker kinds — an axis dimension", () => {
+  function twoPoints() {
+    return pathOf({
+      points: [
+        { x: 0, y: 0 },
+        { x: 30, y: 40 },
+        { x: 60, y: 0 },
+      ],
+      isClosed: true,
+    });
+  }
+  function dimension(path, extra) {
+    return {
+      id: "m1",
+      ends: [
+        { kind: "pathPoint", contourIndex: 0, pointIndex: 0 },
+        { kind: "pathPoint", contourIndex: 0, pointIndex: 1 },
+      ],
+      signature: computeMarkerSignature(path),
+      ...extra,
+    };
+  }
+
+  it("measures across on a horizontal line where it was put", () => {
+    const path = twoPoints();
+    const geometry = markerGeometry(
+      glyphFor(path),
+      dimension(path, { axis: "x", line: 60 }),
+      null
+    );
+    expect(geometry.distance).to.equal(30);
+    expect(geometry.arrows).to.deep.equal([
+      { x: 0, y: 60 },
+      { x: 30, y: 60 },
+    ]);
+    expect(geometry.angle).to.equal(0);
+  });
+
+  it("measures up on a vertical line where it was put", () => {
+    const path = twoPoints();
+    const geometry = markerGeometry(
+      glyphFor(path),
+      dimension(path, { axis: "y", line: -10 }),
+      null
+    );
+    expect(geometry.distance).to.equal(40);
+    expect(geometry.arrows).to.deep.equal([
+      { x: -10, y: 0 },
+      { x: -10, y: 40 },
+    ]);
+    expect(geometry.angle).to.equal(90);
+  });
+
+  it("stays direct with no axis", () => {
+    const path = twoPoints();
+    const geometry = markerGeometry(glyphFor(path), dimension(path, {}), null);
+    expect(geometry.distance).to.be.closeTo(50, 1e-9);
+  });
+});

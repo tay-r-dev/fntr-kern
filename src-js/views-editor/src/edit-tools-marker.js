@@ -351,12 +351,11 @@ export class MarkerTool extends BaseTool {
       );
       return;
     }
+    // Alt places a dimension. A click on a point takes it as one end, and the next
+    // click the other: a direct dimension. Dragging from the second point instead, or
+    // from a segment, draws an axis dimension -- across or up, by the drag.
     if (initialEvent.altKey) {
-      if (!(await this.placeDimensionEnd(positionedGlyph, local))) {
-        await this.pointerTool.handleDrag(eventStream, initialEvent);
-        return;
-      }
-      eventStream.done();
+      await this.handleDimensionDrag(eventStream, initialEvent, positionedGlyph, local);
       return;
     }
 
@@ -441,12 +440,82 @@ export class MarkerTool extends BaseTool {
   // A dimension takes two clicks. The first is remembered on the tool and nothing is
   // written; the second writes the whole marker, so a half-placed dimension never
   // reaches the file.
-  async placeDimensionEnd(positionedGlyph, local) {
+  async handleDimensionDrag(eventStream, initialEvent, positionedGlyph, local) {
     const glyphController = positionedGlyph.glyph;
-    const end = nearestPathPointEnd(glyphController.flattenedPath, local);
-    if (!end) {
-      return false;
+    const path = glyphController.flattenedPath;
+    const margin = this.sceneController.mouseClickMargin;
+    // A point right under the cursor wins; then a segment under it; then the nearest
+    // point within the placement radius, as a plain click always found.
+    const pointEnd = nearestPathPointEnd(path, local, margin);
+    const segmentEnds = pointEnd ? null : segmentEndsAt(glyphController, local, margin);
+    const end = pointEnd || (segmentEnds ? null : nearestPathPointEnd(path, local));
+    if (!end && !segmentEnds) {
+      await this.pointerTool.handleDrag(eventStream, initialEvent);
+      return;
     }
+    const dragging = await shouldInitiateDrag(eventStream, initialEvent);
+    if (segmentEnds) {
+      if (dragging) {
+        await this.dragAxisDimension(eventStream, positionedGlyph, segmentEnds, local);
+      }
+      return;
+    }
+    if (dragging && this.pendingDimensionEnd) {
+      const first = this.pendingDimensionEnd;
+      this.pendingDimensionEnd = null;
+      await this.dragAxisDimension(eventStream, positionedGlyph, [first, end], local);
+      return;
+    }
+    await this.placeDimensionEnd(glyphController, end);
+  }
+
+  // The drag that makes an axis dimension. It measures across when the drag runs
+  // mostly up or down, and up when it runs mostly sideways, the way a CAD linear
+  // dimension follows the cursor; its measure line sits where the cursor is.
+  async dragAxisDimension(eventStream, positionedGlyph, ends, startLocal) {
+    const glyphController = positionedGlyph.glyph;
+    const signature = computeMarkerSignature(glyphController.flattenedPath);
+    let placed = null;
+    for await (const event of eventStream) {
+      if (event.type !== "mousemove" && event.type !== "mouseup") {
+        continue;
+      }
+      const point = this.sceneController.localPoint(event);
+      const local = { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y };
+      const dx = local.x - startLocal.x;
+      const dy = local.y - startLocal.y;
+      if (Math.hypot(dx, dy) > 0) {
+        const axis = Math.abs(dy) >= Math.abs(dx) ? "x" : "y";
+        placed = { axis, line: Math.round(axis === "x" ? local.y : local.x) };
+      }
+      if (event.type === "mouseup") {
+        break;
+      }
+      if (placed) {
+        const geometry = markerGeometry(
+          glyphController,
+          { id: "preview", ends, signature, ...placed },
+          this.skeletonData
+        );
+        setMarkerPlacementPreview(
+          geometry.stale ? null : { point: geometry.points[0], dimension: geometry }
+        );
+        this.canvasController.requestUpdate();
+      }
+    }
+    setMarkerPlacementPreview(null);
+    this.canvasController.requestUpdate();
+    if (!placed) {
+      return;
+    }
+    await placeMarker(
+      this.sceneController,
+      () => ({ ends, signature, ...placed }),
+      "Place Dimension"
+    );
+  }
+
+  async placeDimensionEnd(glyphController, end) {
     if (!this.pendingDimensionEnd) {
       this.pendingDimensionEnd = end;
       return true;
@@ -467,9 +536,9 @@ const PLACE_DIMENSION_RADIUS = 30;
 
 // A dimension runs between points a designer placed. An off-curve is a handle that
 // shapes a curve, not a place on the drawing, so it is not offered.
-function nearestPathPointEnd(path, local) {
+function nearestPathPointEnd(path, local, radius = PLACE_DIMENSION_RADIUS) {
   const best = nearestOnCurvePoint(path, local);
-  if (!best || best.distance > PLACE_DIMENSION_RADIUS) {
+  if (!best || best.distance > radius) {
     return undefined;
   }
   return withAnchorPosition(
@@ -480,6 +549,21 @@ function nearestPathPointEnd(path, local) {
     },
     path
   );
+}
+
+// The two on-curve points of the segment under the cursor, as dimension ends, or null
+// where no segment is within `margin`.
+function segmentEndsAt(glyphController, local, margin) {
+  const hit = glyphController.flattenedPathHitTester.findNearest(local);
+  if (!hit?.segment || Math.hypot(hit.x - local.x, hit.y - local.y) > margin) {
+    return null;
+  }
+  const path = glyphController.flattenedPath;
+  const indices = hit.segment.pointIndices;
+  return [indices[0], indices.at(-1)].map((absolute) => {
+    const [contourIndex, pointIndex] = path.getContourAndPointIndex(absolute);
+    return withAnchorPosition({ kind: "pathPoint", contourIndex, pointIndex }, path);
+  });
 }
 
 // C with no modifier. Ctrl+C and friends stay the editor's.

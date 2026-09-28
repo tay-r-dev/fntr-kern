@@ -1792,6 +1792,13 @@ along that contour's normal and stops where the outline leaves the black. A
 **ruler** is the Power Ruler kept, and a **curvature marker** reads how hard the outline
 bends. Each kind has its own table in the Markers panel and its own layer.
 
+**A dimension can measure along an axis.** Alt-click a point, then Alt-click another: a
+direct dimension. Alt-press the second point and drag instead, or Alt-press a segment
+and drag: an axis dimension, which measures only across (`axis: "x"`) or only up
+(`"y"`), as a CAD linear dimension does. A drag running mostly up or down makes an across
+dimension, a drag running mostly sideways an up one, and the measure line sits where the
+cursor is released (`line`). A dimension with no axis stays direct.
+
 **A ruler is attached to nothing.** It stores a place (`at`) and an angle and no end, so
 it cannot go stale. It is a line through the whole glyph, and it measures every span it
 crosses, in the black on a light pill and in the white on a dark one, against the

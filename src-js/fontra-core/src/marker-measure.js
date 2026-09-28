@@ -277,6 +277,9 @@ export function markerGeometry(
   // are the marker's own, and they sit clear of the geometry where there is room to
   // aim at them.
   const points = anchors.map((anchor) => anchor.point);
+  if (marker.axis === "x" || marker.axis === "y") {
+    return axisDimensionGeometry(points, marker);
+  }
   const along = vector.normalizeVector(vector.subVectors(points[1], points[0]));
   const out = vector.mulVectorScalar(
     { x: -along.y, y: along.x },
@@ -292,6 +295,35 @@ export function markerGeometry(
     along,
     angle: directionAngle(along, 180),
     distance: measureDimension(points[0], points[1]),
+  };
+}
+
+// An axis dimension, the way a CAD linear dimension reads: only across (`axis` "x") or
+// only up ("y"), on a measure line at `line` -- a y for an across dimension, an x for an
+// up one. The arrows are the two points carried square onto that line, and the
+// extension lines run from the points to them. With no `line` it stands clear of the
+// farther point by the witness gap.
+function axisDimensionGeometry(points, marker) {
+  const across = marker.axis === "x";
+  const line =
+    marker.line ??
+    (across
+      ? Math.max(points[0].y, points[1].y) + DIMENSION_WITNESS_GAP
+      : Math.max(points[0].x, points[1].x) + DIMENSION_WITNESS_GAP);
+  const arrows = points.map((point) =>
+    across ? { x: point.x, y: line } : { x: line, y: point.y }
+  );
+  const run = across ? arrows[1].x - arrows[0].x : arrows[1].y - arrows[0].y;
+  const sign = Math.sign(run) || 1;
+  return {
+    stale: false,
+    isRay: false,
+    grips: arrows.map((point, i) => ({ point, endIndex: i })),
+    points,
+    arrows,
+    along: across ? { x: sign, y: 0 } : { x: 0, y: sign },
+    angle: across ? 0 : 90,
+    distance: Math.abs(run),
   };
 }
 

@@ -218,33 +218,33 @@ function drawMarkerDimensions(context, positionedGlyph, parameters, model, contr
       );
       continue;
     }
-    const [p1, p2] = geometry.points;
-    const [q1, q2] = geometry.arrows;
-    const along = geometry.along;
     const color = isSelected ? parameters.selectedColor : parameters.strokeColor;
-
-    context.lineWidth = isSelected
-      ? parameters.strokeWidth * 2
-      : parameters.strokeWidth;
-    context.strokeStyle = color;
-    context.fillStyle = color;
-
-    // Extension lines out to the measured line, then the measured line itself, in the
-    // AutoCAD idiom: the number sits clear of the geometry it measures. The arrows are
-    // where the grips are, which is why the offset is derived once, in the geometry.
-    strokeLine(context, p1.x, p1.y, q1.x, q1.y);
-    strokeLine(context, p2.x, p2.y, q2.x, q2.y);
-    strokeLine(context, q1.x, q1.y, q2.x, q2.y);
-    drawArrowHead(context, q1, vector.mulVectorScalar(along, -1), parameters.arrowSize);
-    drawArrowHead(context, q2, along, parameters.arrowSize);
+    drawDimension(context, parameters, geometry, marker, color, isSelected);
     drawGrips(context, parameters, geometry.grips, isSelected, isHovered, color);
-
-    const midpoint = vector.addVectors(
-      q1,
-      vector.mulVectorScalar(vector.subVectors(q2, q1), 0.5)
-    );
-    drawReadout(context, parameters, midpoint, geometry, marker);
   }
+}
+
+// One dimension's lines, arrows and readout. Extension lines out to the measured line,
+// then the measured line itself, in the AutoCAD idiom: the number sits clear of the
+// geometry it measures. The arrows are where the grips are, which is why the offset is
+// derived once, in the geometry. The placement preview draws through this too.
+function drawDimension(context, parameters, geometry, marker, color, bold = false) {
+  const [p1, p2] = geometry.points;
+  const [q1, q2] = geometry.arrows;
+  const along = geometry.along;
+  context.lineWidth = bold ? parameters.strokeWidth * 2 : parameters.strokeWidth;
+  context.strokeStyle = color;
+  context.fillStyle = color;
+  strokeLine(context, p1.x, p1.y, q1.x, q1.y);
+  strokeLine(context, p2.x, p2.y, q2.x, q2.y);
+  strokeLine(context, q1.x, q1.y, q2.x, q2.y);
+  drawArrowHead(context, q1, vector.mulVectorScalar(along, -1), parameters.arrowSize);
+  drawArrowHead(context, q2, along, parameters.arrowSize);
+  const midpoint = vector.addVectors(
+    q1,
+    vector.mulVectorScalar(vector.subVectors(q2, q1), 0.5)
+  );
+  drawReadout(context, parameters, midpoint, geometry, marker);
 }
 
 // A curvature marker: a dot on the outline, the radius drawn to the centre of the circle
@@ -415,6 +415,9 @@ function drawPlacementPreview(context, positionedGlyph, parameters, model, contr
       vector.normalizeVector(vector.subVectors(tip, preview.point)),
       parameters.arrowSize
     );
+  }
+  if (preview.dimension) {
+    drawDimension(context, parameters, preview.dimension, {}, parameters.previewColor);
   }
   if (preview.curvature) {
     drawCurvatureGeometry(
