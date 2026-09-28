@@ -365,7 +365,7 @@ describe("marker-measure — a collapsed ray", () => {
     });
   }
 
-  it("becomes an aimed ray on the nearest on-curve point, and measures", () => {
+  it("is aimed at the nearest on-curve point, and measures to it", () => {
     const path = acuteCornerPath();
     const hitTester = hitTesterFor(path);
     const ends = [
@@ -387,9 +387,14 @@ describe("marker-measure — a collapsed ray", () => {
       { id: "m1", ends: aimed, signature: computeMarkerSignature(path) },
       null
     );
+    // The anchor stays on the corner, and the arrow points at (1, -26), the nearest
+    // other on-curve point. That aim runs along the terminal's own edge, so what it
+    // measures is the edge: 26.02, the stroke's thickness there.
     expect(geometry.anchorPoint.x).to.be.closeTo(0, 1e-9);
     expect(geometry.anchorPoint.y).to.be.closeTo(0, 1e-9);
-    expect(geometry.distance).to.be.greaterThan(10);
+    expect(geometry.farPoint.x).to.be.closeTo(1, 1e-6);
+    expect(geometry.farPoint.y).to.be.closeTo(-26, 1e-6);
+    expect(geometry.distance).to.be.closeTo(Math.hypot(1, 26), 1e-6);
   });
 
   it("leaves a ray that measures alone", () => {
@@ -555,5 +560,56 @@ describe("marker-model — a ray returned to the normal", () => {
         path
       )
     ).to.equal(null);
+  });
+});
+
+// A ray aimed along a straight edge of the outline runs on the edge of the black, where
+// the hit test finds no crossing. It measures to where the edge turns away, which is the
+// length of the black along that line.
+describe("marker-measure — a ray along an edge", () => {
+  function geometryOf(path, cast) {
+    return markerGeometry(
+      { flattenedPath: path, flattenedPathHitTester: hitTesterFor(path) },
+      {
+        id: "m1",
+        ends: [{ kind: "pathPoint", contourIndex: 0, pointIndex: 0 }, cast],
+        signature: computeMarkerSignature(path),
+      },
+      null
+    );
+  }
+
+  it("measures to where the edge turns", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = geometryOf(path, aimedCast({ x: 1, y: 0 }));
+    expect(geometry.distance).to.be.closeTo(100, 1e-6);
+    expect(geometry.farPoint.x).to.be.closeTo(100, 1e-6);
+  });
+
+  it("holds within the rounding of a stored angle", () => {
+    // A stored angle keeps two decimals, so an aim at a point is off by up to 0.005
+    // degrees either way, which is outside the black half the time.
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    for (const angle of [-0.005, 0.005]) {
+      const geometry = geometryOf(path, { kind: "cast", angle });
+      expect(geometry.distance).to.be.closeTo(100, 1e-3);
+    }
+  });
+
+  it("runs on across two straights that continue each other", () => {
+    const path = pathOf({
+      points: [
+        { x: 0, y: 0 },
+        { x: 40, y: 0 },
+        { x: 100, y: 0 },
+        { x: 100, y: 100 },
+        { x: 0, y: 100 },
+      ],
+      isClosed: true,
+    });
+    expect(geometryOf(path, aimedCast({ x: 1, y: 0 })).distance).to.be.closeTo(
+      100,
+      1e-6
+    );
   });
 });

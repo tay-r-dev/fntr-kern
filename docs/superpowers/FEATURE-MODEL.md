@@ -1895,9 +1895,15 @@ nothing. A dimension is a line with no direction and reads 0 to 180.
 
 **A plain ray the normal cannot measure is aimed instead** (`aimCollapsedRay`). This is
 the corner under 90 degrees: the normal of either arm points outside the black, and the
-ray leaves the outline where it starts. On a click or an anchor drag, the ray moves to
-the nearest on-curve point and takes the miter as its first aim. The designer then aims
-it. The miter is only a start: across a terminal corner it measures a diagonal.
+ray leaves the outline where it starts. On a click or an anchor drag, the anchor stays
+where it was put and the ray is aimed at the nearest other on-curve point. Across a
+terminal that is the far corner of the same end, so the ray measures the stroke there.
+
+**A ray aimed along a straight edge measures the edge** (`measureAlongEdge`). It runs on
+the boundary of the black, where the hit test finds no crossing, so it measures to where
+the outline turns away from its line, across straights that continue one another. An
+edge counts as along the ray within a hundredth of a degree, because a stored aim keeps
+two decimals of a degree and an aim at a point lands just off it.
 
 **An aimed ray on an on-curve point is addressed as that point** (`pathPoint`), so the
 file says what it sits on. A plain ray stays addressed on a segment even at its end,

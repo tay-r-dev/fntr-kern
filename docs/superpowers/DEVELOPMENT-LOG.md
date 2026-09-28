@@ -2401,14 +2401,19 @@ the outline against where the anchor last stood.
 - **The miter was built as the answer and withdrawn the same day.** A ray on a
   corner took the average of the two normals. It measured 38.5, which is the
   diagonal across the terminal; the stroke there is 26. A corner has no one
-  direction to measure in, so the designer aims the ray. The miter survives
-  only as the first aim of a collapsed ray.
-- **"It goes to some segment" was the address, not the place.** Reported twice.
-  A simulated press at every whole unit of `b.json` landed every collapsed ray
-  on the corner under its own anchor. The file wrote that corner as the start of
-  a segment, and the panel named the segment. An aimed ray on a point is
-  addressed as the point now. **Read the report as what the designer sees in
-  the file, not only on the canvas.**
+  direction to measure in, so the designer aims the ray.
+- **"To the nearest on-curve" was read as the anchor for three rounds.** It
+  meant the aim. The anchor was moved to a point and aimed along the miter; the
+  report then came back twice as "not the nearest on-curve", and the second
+  round readdressed the file, which was not the fault either. **When a report
+  repeats, re-read the original request before the code.** Now the anchor
+  stays and the arrow points at the nearest other on-curve point. On `b.json`
+  every collapsing corner points across its terminal: 26.02 and three of 22.00.
+- **That aim runs along the terminal's own edge, and the hit test cannot see
+  it.** An edge lying on the ray gives no crossing, so the ray measured nothing.
+  It measures to where the edge turns now, within 0.01 degrees, because a
+  stored aim is rounded to 0.01 degrees and lands outside the black half the
+  time.
 
 Three sweeps: a moving neighbour over 200 steps and an anchor dragged along a
 straight edge over 260 both report 0, and an anchor on a wedge of slope 1-in-2

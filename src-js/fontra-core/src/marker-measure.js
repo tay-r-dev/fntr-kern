@@ -3,7 +3,6 @@ import {
   aimedDirection,
   aimedRayOnPoint,
   markerIndicesChanged,
-  nearestOnCurvePlace,
   resolveMarkerAnchor,
   resolveMarkerEnd,
 } from "./marker-model.js";
@@ -124,7 +123,11 @@ export function measureSkeletonAnchor(
     return null;
   }
   if (end.kind !== "skeletonPoint") {
-    return measureRay(pathHitTester, anchor.point, direction || anchor.normal);
+    const along = direction || anchor.normal;
+    return (
+      measureRay(pathHitTester, anchor.point, along) ||
+      measureAlongEdge(path, anchor.point, along)
+    );
   }
 
   const contour = getSkeletonContour(skeletonData, end.contourId);
@@ -296,10 +299,9 @@ export const AIM_FALLBACK_LENGTH = 60;
 
 // A plain ray the normal cannot measure, turned into an aimed one. This is the corner
 // under 90 degrees, where the normal of either arm points outside the black and the ray
-// leaves the outline where it starts. The ray moves to the nearest on-curve point, which
-// is the corner it was trying to measure, and takes the miter as its first aim: the
-// average of the two arms' normals, which lies inside the corner at every turn. The
-// designer then drags the arrow to aim it where it was meant.
+// leaves the outline where it starts. The anchor stays where it was put, and the ray is
+// aimed at the nearest other on-curve point: across a terminal that is the far corner
+// of the same end, so the ray measures the stroke. The designer can then re-aim it.
 //
 // Returns the new ends, or null where there is nothing to turn: a ray that measures, a
 // ray already aimed, or an anchor that is not on an outline.
@@ -321,43 +323,90 @@ export function aimCollapsedRay(ends, path, pathHitTester) {
   if (measureRay(pathHitTester, resolved.point, resolved.normal)) {
     return null;
   }
-  const place = nearestOnCurvePlace(path, resolved.point);
-  if (!place) {
-    return null;
-  }
-  const aim = cornerMiter(path, place.end);
-  if (!aim) {
+  const target = nearestOtherOnCurve(path, resolved.point);
+  if (!target) {
     return null;
   }
   const next = [...ends];
-  next[anchorIndex] = place.end;
-  next[castIndex] = aimedCast(aim);
+  next[castIndex] = aimedCast(vector.subVectors(target, resolved.point));
   return aimedRayOnPoint(next, path);
 }
 
-// The average of the normals of the two segments meeting at an on-curve place. At an
-// open contour's end there is one segment, and its normal is the answer. A cusp folds
-// the two arms onto each other, the normals cancel, and there is no miter.
-function cornerMiter(path, end) {
-  const own = resolveMarkerAnchor(end, { path });
-  if (own.verdict !== "ok" || !own.normal) {
+// The on-curve point nearest to a place, leaving out any that stands on the place
+// itself: an anchor on a corner is that corner, and aiming at it states no direction.
+function nearestOtherOnCurve(path, at) {
+  let best;
+  for (let contourIndex = 0; contourIndex < path.contourInfo.length; contourIndex++) {
+    const numPoints = path.getNumPointsOfContour(contourIndex);
+    for (let pointIndex = 0; pointIndex < numPoints; pointIndex++) {
+      const point = path.getContourPoint(contourIndex, pointIndex);
+      if (point.type) {
+        continue;
+      }
+      const distance = Math.hypot(point.x - at.x, point.y - at.y);
+      if (distance > ON_PLACE_EPSILON && (!best || distance < best.distance)) {
+        best = { distance, point };
+      }
+    }
+  }
+  return best?.point;
+}
+
+const ON_PLACE_EPSILON = 1e-6;
+
+// A ray aimed along a straight edge of the outline runs on the edge of the black, and
+// the hit test finds no crossing on a line that lies along the ray. What such a ray
+// measures is the edge: it runs on until the outline turns away from its line, across
+// any straights that continue one another. Null where no straight runs along the ray
+// from the anchor.
+//
+// An edge counts as along the ray within a hundredth of a degree, because a stored aim
+// keeps two decimals of a degree: an aim at a point lands up to 0.005 degrees off it,
+// on the outside of the black half the time.
+export function measureAlongEdge(path, origin, direction) {
+  if (!path) {
     return null;
   }
-  const count = [...path.iterContourDecomposedSegments(end.contourIndex)].length;
-  let index = end.segmentIndex + (end.t === 0 ? -1 : 1);
-  if (index < 0 || index >= count) {
-    if (!path.contourInfo[end.contourIndex].isClosed) {
-      return own.normal;
+  const straights = [];
+  for (let contourIndex = 0; contourIndex < path.contourInfo.length; contourIndex++) {
+    for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
+      if (segment.points.length === 2) {
+        straights.push(segment.points);
+      }
     }
-    index = (index + count) % count;
   }
-  const other = resolveMarkerAnchor(
-    { ...end, segmentIndex: index, t: end.t === 0 ? 1 : 0 },
-    { path }
-  );
-  if (other.verdict !== "ok" || !other.normal) {
-    return own.normal;
+  let reach = 0;
+  let farPoint;
+  for (let found = true; found;) {
+    found = false;
+    for (const points of straights) {
+      const along = points.map((point) =>
+        vector.dotVector(vector.subVectors(point, origin), direction)
+      );
+      const near = Math.min(...along);
+      const far = Math.max(...along);
+      if (near > reach + ON_PLACE_EPSILON || far <= reach + ON_PLACE_EPSILON) {
+        continue;
+      }
+      const onLine = points.every((point, i) => {
+        const off = Math.abs(
+          (point.x - origin.x) * direction.y - (point.y - origin.y) * direction.x
+        );
+        return off <= ON_PLACE_EPSILON + Math.abs(along[i]) * EDGE_ANGLE_TOLERANCE;
+      });
+      if (onLine) {
+        reach = far;
+        // The vertex itself, not its projection: the ray ends where the outline turns.
+        farPoint = points[along.indexOf(far)];
+        found = true;
+      }
+    }
   }
-  const sum = vector.addVectors(own.normal, other.normal);
-  return Math.hypot(sum.x, sum.y) > 1e-9 ? vector.normalizeVector(sum) : null;
+  if (!farPoint) {
+    return null;
+  }
+  const v = vector.subVectors(farPoint, origin);
+  return { farPoint: { x: farPoint.x, y: farPoint.y }, distance: Math.hypot(v.x, v.y) };
 }
+
+const EDGE_ANGLE_TOLERANCE = Math.tan((0.01 * Math.PI) / 180);
