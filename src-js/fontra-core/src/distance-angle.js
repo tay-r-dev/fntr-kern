@@ -3,7 +3,7 @@
 
 // Import necessary functions from vector.js for the new functions
 import { applicationSettingsController } from "./application-settings.js";
-import { drawPlaque } from "./canvas-labels.js";
+import { drawLabel, drawPlaque } from "./canvas-labels.js";
 import {
   calculateControlHandlePoint,
   calculateTunniPoint,
@@ -1471,8 +1471,14 @@ export function drawMeasureOverlay(
       type === "skeleton" ? parameters.skeletonColor : parameters.pathColor;
     if (measureShowDirect) {
       const { distance: dist, angle } = calculateDistanceAndAngle(p1, p2);
-      const label = `${dist.toFixed(1)}  ${angle.toFixed(1)}°`;
-      drawMeasureLine(context, p1, p2, label, segmentColor, parameters);
+      drawMeasureLine(
+        context,
+        p1,
+        p2,
+        [dist.toFixed(1), `${angle.toFixed(1)}°`],
+        segmentColor,
+        parameters
+      );
     } else {
       const { dx, dy } = calculateProjectedDistanceComponents(p1, p2);
       const cornerPoint = { x: p2.x, y: p1.y };
@@ -1507,32 +1513,9 @@ function drawMeasureLine(context, p1, p2, label, color, parameters) {
   strokeLine(context, p1.x, p1.y, p2.x, p2.y);
   context.setLineDash([]);
 
-  const midX = (p1.x + p2.x) / 2;
-  const midY = (p1.y + p2.y) / 2;
-
-  context.save();
-  context.scale(1, -1);
-  context.font = `500 ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-
-  const textWidth = context.measureText(label).width;
-  const padding = 4;
-  const bgX = midX - textWidth / 2 - padding;
-  const bgY = -midY - parameters.fontSize / 2 - padding;
-  const bgW = textWidth + padding * 2;
-  const bgH = parameters.fontSize + padding * 2;
-
-  context.beginPath();
-  context.roundRect(bgX, bgY, bgW, bgH, 3);
-  context.fillStyle = parameters.textBgColor;
-  context.fill();
-  context.strokeStyle = parameters.textBorderColor;
-  context.lineWidth = 1;
-  context.stroke();
-  context.fillStyle = parameters.textColor;
-  context.fillText(label, midX, -midY);
-  context.restore();
+  // The number sits on label/simple, the pill every marker reads on, at the middle of
+  // its line. `label` is one value or several (distance and angle under Alt).
+  drawLabel(context, parameters, { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }, label);
 }
 
 function drawMeasureGuideLine(context, p1, p2, color, parameters) {

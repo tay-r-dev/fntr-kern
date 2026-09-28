@@ -1,5 +1,10 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
-import { PLAQUE_SCREEN_PARAMETERS } from "@fontra/core/canvas-labels.js";
+import {
+  LABEL_COLORS,
+  LABEL_COLORS_DARK_MODE,
+  LABEL_SCREEN_PARAMETERS,
+  PLAQUE_SCREEN_PARAMETERS,
+} from "@fontra/core/canvas-labels.js";
 import { computeSpeedPunkSamples } from "@fontra/core/curvature.js";
 import {
   calculateBadgeDimensions,
@@ -2622,20 +2627,17 @@ registerVisualizationLayerDefinition({
     fontSize: 14,
     dashPattern: [4, 4],
     ...PLAQUE_SCREEN_PARAMETERS,
+    ...LABEL_SCREEN_PARAMETERS,
   },
   colors: {
-    textColor: "#333",
-    textBgColor: "#FFFFFF",
-    textBorderColor: "rgba(0, 0, 0, 0.25)",
     skeletonColor: "#0066FF",
     pathColor: "#22AA44",
+    ...LABEL_COLORS,
   },
   colorsDarkMode: {
-    textColor: "#EEE",
-    textBgColor: "#333333",
-    textBorderColor: "rgba(255, 255, 255, 0.25)",
     skeletonColor: "#4499FF",
     pathColor: "#44CC66",
+    ...LABEL_COLORS_DARK_MODE,
   },
   draw: drawMeasureOverlay,
 });
