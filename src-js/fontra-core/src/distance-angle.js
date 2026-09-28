@@ -6,8 +6,10 @@ import { applicationSettingsController } from "./application-settings.js";
 import {
   drawLabel,
   drawPlaque,
+  LABEL_TUNING,
   measureLabelFontSize,
   setLabelFont,
+  setMeasureLabelFont,
 } from "./canvas-labels.js";
 
 // The measurement labels' face: Martian Mono, the pill's (canvas-labels.js). A name
@@ -94,13 +96,18 @@ export function calculateProjectedDistanceComponents(point1, point2) {
   };
 }
 
-// Calculate the dimensions needed for the info badge
+let measuringContext = null;
+
+// Calculate the dimensions needed for the info badge. One canvas measures them all.
+// The measurement labels are measured at the tuned measure size and scaled, which is
+// how they are drawn (setMeasureLabelFont): one font string at every zoom.
 export function calculateBadgeDimensions(text, fontSize, fontFamily = "sans-serif") {
-  // Create a temporary canvas to measure text
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
+  measuringContext ??= document.createElement("canvas").getContext("2d");
+  const context = measuringContext;
+  let widthScale = 1;
   if (fontFamily === LABEL_MEASURE_FAMILY) {
-    setLabelFont(context, fontSize);
+    setLabelFont(context, LABEL_TUNING.measureSize);
+    widthScale = fontSize / LABEL_TUNING.measureSize;
   } else {
     context.font = `${fontSize}px ${fontFamily}`;
   }
@@ -110,7 +117,7 @@ export function calculateBadgeDimensions(text, fontSize, fontFamily = "sans-seri
 
   for (const line of lines) {
     const metrics = context.measureText(line);
-    maxWidth = Math.max(maxWidth, metrics.width);
+    maxWidth = Math.max(maxWidth, metrics.width * widthScale);
   }
 
   const width = maxWidth + DISTANCE_ANGLE_BADGE_PADDING * 2;
@@ -1077,11 +1084,11 @@ export function drawPointStyleLabel(context, x, y, text, color) {
   const size = measureLabelFontSize(context);
   context.save();
   context.scale(1, -1);
-  setLabelFont(context, size);
+  const k = setMeasureLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.fillStyle = color;
-  context.fillText(String(text), x, -y);
+  context.fillText(String(text), x / k, -y / k);
   context.restore();
 }
 
@@ -1158,7 +1165,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   // Draw text for p2 with distance, tension, angle (top to bottom)
   context.save();
   context.fillStyle = "rgba(4, 28, 44, 1)"; // New text color
-  setLabelFont(context, size);
+  const k = setMeasureLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.scale(1, -1);
@@ -1173,7 +1180,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
     lineHeight / 2;
 
   for (let i = 0; i < lines1.length; i++) {
-    context.fillText(lines1[i], badgePosition1.x, startY + i * lineHeight);
+    context.fillText(lines1[i], badgePosition1.x / k, (startY + i * lineHeight) / k);
   }
 
   context.restore();
@@ -1181,7 +1188,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   // Draw text for p3 with distance, tension, angle (top to bottom)
   context.save();
   context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
-  setLabelFont(context, size);
+  setMeasureLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.scale(1, -1);
@@ -1195,7 +1202,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
     lineHeight / 2;
 
   for (let i = 0; i < lines2.length; i++) {
-    context.fillText(lines2[i], badgePosition2.x, startY2 + i * lineHeight);
+    context.fillText(lines2[i], badgePosition2.x / k, (startY2 + i * lineHeight) / k);
   }
 
   context.restore();
@@ -1383,7 +1390,7 @@ export function drawPointLabels(
           // Draw text with distance, angle (top to bottom)
           context.save();
           context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
-          setLabelFont(context, sizeOff);
+          const k = setMeasureLabelFont(context, sizeOff);
           context.textAlign = "left";
           context.textBaseline = "middle";
           context.scale(1, -1);
@@ -1400,8 +1407,8 @@ export function drawPointLabels(
           for (let i = 0; i < linesOff.length; i++) {
             context.fillText(
               linesOff[i],
-              badgePositionOff.x,
-              startYOff + i * lineHeightOff
+              badgePositionOff.x / k,
+              (startYOff + i * lineHeightOff) / k
             );
           }
 

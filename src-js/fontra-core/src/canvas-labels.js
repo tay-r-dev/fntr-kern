@@ -6,6 +6,11 @@
 // Every measurement here is in screen pixels. A layer passes them as screen parameters,
 // which the layer machinery turns into glyph units at the current zoom, so the labels
 // keep their size on screen at every zoom.
+//
+// The text is set in screen pixels too: a card scales the context to one screen pixel
+// and sets its fonts at their screen sizes. A font size in glyph units would be a new
+// font string at every zoom step, and the browser resolves, shapes and rasterises each
+// new font afresh -- the lag on the first pass through a range of zooms.
 
 const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
 
@@ -44,12 +49,14 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
   if (!values.length) {
     return;
   }
+  const px = parameters.labelPixel;
   context.save();
-  context.scale(1, -1);
+  context.translate(at.x, at.y);
+  context.scale(px, -px);
   context.textBaseline = "middle";
   context.textAlign = "left";
 
-  const metrics = labelMetrics(parameters);
+  const metrics = labelMetrics({ labelPixel: 1 });
   const items = [];
   values.forEach((value, i) => {
     if (i) {
@@ -66,14 +73,14 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
     items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1);
   const width = contentWidth + 2 * metrics.paddingX;
   const height = metrics.height;
-  const left = at.x - width / 2;
-  const top = -at.y - height / 2;
+  const left = -width / 2;
+  const top = -height / 2;
 
   const fill = inverse ? parameters.labelTextColor : parameters.labelFillColor;
   const ink = inverse ? parameters.labelFillColor : parameters.labelTextColor;
   drawCardBackground(context, left, top, width, height, height / 2, {
     fill,
-    border: parameters.labelBorderWidth,
+    border: parameters.labelBorderWidth / px,
     borderColor: parameters.labelBorderColor,
   });
 
@@ -81,7 +88,7 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
   for (const item of items) {
     setLabelFont(context, item.size, TRACKING);
     context.fillStyle = item.value ? ink : parameters.labelSeparatorColor;
-    context.fillText(item.text, x, -at.y);
+    context.fillText(item.text, x, 0);
     x += item.width + gap;
   }
   context.restore();
@@ -230,18 +237,20 @@ function blurBehind(context, left, top, width, height, radius, blur) {
 //
 // The plaque stands above `at`, centred on it, `offset` screen pixels clear.
 export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {}) {
-  const s = parameters.plaqueScale;
-  const padding = PLAQUE.padding * s;
-  const rowGap = PLAQUE.rowGap * s;
-  const iconGap = PLAQUE.iconGap * s;
+  // Laid out in screen pixels, in a context scaled to one screen pixel at `at`.
+  const px = parameters.plaqueScale;
+  const padding = PLAQUE.padding;
+  const rowGap = PLAQUE.rowGap;
+  const iconGap = PLAQUE.iconGap;
   // The two sizes are tuned; each line keeps the frame's proportion to its size.
-  const valueSize = LABEL_TUNING.valueSize * s;
-  const smallSize = LABEL_TUNING.smallSize * s;
+  const valueSize = LABEL_TUNING.valueSize;
+  const smallSize = LABEL_TUNING.smallSize;
   const valueLine = valueSize * PLAQUE.valueLineRatio;
   const smallLine = smallSize * PLAQUE.smallLineRatio;
 
   context.save();
-  context.scale(1, -1);
+  context.translate(at.x, at.y);
+  context.scale(px, -px);
   context.textBaseline = "middle";
   context.textAlign = "left";
 
@@ -256,20 +265,20 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   if (header) {
     setLabelFont(context, smallSize, TRACKING);
     headerWidth = Math.max(
-      PLAQUE.minHeaderWidth * s,
+      PLAQUE.minHeaderWidth,
       measure(header.left, smallSize, TRACKING) +
         iconGap +
-        joinedWidth(context, header.right, "•", PLAQUE.headerSeparatorGap * s)
+        joinedWidth(context, header.right, "•", PLAQUE.headerSeparatorGap)
     );
   }
   const rows = plaque.rows.map((row) => {
     const icon = PLAQUE_ICONS[row.icon];
-    const iconWidth = icon.width * s;
-    const iconHeight = icon.height * s;
+    const iconWidth = icon.width;
+    const iconHeight = icon.height;
     const valueWidth = measure(row.value, valueSize, row.tracking ? TRACKING : 0);
     setLabelFont(context, smallSize, TRACKING);
     const subWidth = row.sub
-      ? joinedWidth(context, row.sub, "/", PLAQUE.subSeparatorGap * s)
+      ? joinedWidth(context, row.sub, "/", PLAQUE.subSeparatorGap)
       : 0;
     const textHeight = valueLine + (row.sub ? smallLine : 0);
     return {
@@ -288,12 +297,12 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     rowGap * (rows.length - 1);
   const width = contentWidth + 2 * padding;
   const height = contentHeight + 2 * padding;
-  const left = at.x - width / 2;
-  const top = -at.y - parameters.plaqueOffset - height;
+  const left = -width / 2;
+  const top = -parameters.plaqueOffset / px - height;
 
-  drawCardBackground(context, left, top, width, height, PLAQUE.radius * s, {
+  drawCardBackground(context, left, top, width, height, PLAQUE.radius, {
     fill: PLAQUE_COLORS.fill,
-    border: parameters.labelBorderWidth,
+    border: parameters.labelBorderWidth / px,
   });
 
   let y = top + padding;
@@ -301,7 +310,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     context.fillStyle = PLAQUE_COLORS.small;
     setLabelFont(context, smallSize, TRACKING);
     context.fillText(header.left, left + padding, y + smallLine / 2);
-    const gap = PLAQUE.headerSeparatorGap * s;
+    const gap = PLAQUE.headerSeparatorGap;
     const rightWidth = joinedWidth(context, header.right, "•", gap);
     fillJoined(
       context,
@@ -339,7 +348,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
         context,
         row.sub,
         "/",
-        PLAQUE.subSeparatorGap * s,
+        PLAQUE.subSeparatorGap,
         textX,
         valueTop + valueLine + smallLine / 2
       );
@@ -349,8 +358,8 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   context.restore();
 }
 
-// The plaque's measurements in screen pixels, straight from the frame. They are
-// multiplied by the layer's `plaqueScale`, which is one screen pixel in glyph units.
+// The plaque's measurements in screen pixels, straight from the frame. The layer's
+// `plaqueScale` is one screen pixel in glyph units; the plaque scales the context by it.
 const PLAQUE = {
   padding: 6,
   rowGap: 5,
@@ -408,6 +417,18 @@ export const PLAQUE_SCREEN_PARAMETERS = {
 
 // Martian Mono's tracking is -3 per cent.
 const TRACKING = -0.03;
+
+// The measurement labels' font at `size` glyph units, set at the tuned measure size
+// with the context scaled to make up the difference, so that zooming out past the
+// screen minimum does not make a new font string at every step. Returns the scale;
+// the caller divides its coordinates by it. Call it inside save and restore.
+export function setMeasureLabelFont(context, size) {
+  const base = LABEL_TUNING.measureSize;
+  const scale = size / base;
+  context.scale(scale, scale);
+  setLabelFont(context, base);
+  return scale;
+}
 
 export function setLabelFont(context, size, tracking = TRACKING) {
   context.font = `400 ${size}px ${LABEL_FONT_FAMILY}`;
