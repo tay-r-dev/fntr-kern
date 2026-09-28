@@ -334,7 +334,43 @@ function resolvePathSegment(end, path) {
   if (!bezier) {
     return STALE;
   }
-  return { verdict: "ok", point: bezier.get(end.t), normal: normalAt(bezier, end.t) };
+  return {
+    verdict: "ok",
+    point: bezier.get(end.t),
+    normal: pathSegmentNormal(path, end, bezier),
+  };
+}
+
+// At a segment's end the anchor is an on-curve point that two segments share, and the
+// normal of one arm alone points outside the black wherever the corner is under 90
+// degrees. The ray then leaves the outline where it starts and measures nothing. So an
+// end takes the miter, the average of both arms' normals, which lies inside the corner
+// at every turn. At a smooth point the two normals agree and the miter changes nothing.
+function pathSegmentNormal(path, end, bezier) {
+  const normal = normalAt(bezier, end.t);
+  if (end.t !== 0 && end.t !== 1) {
+    return normal;
+  }
+  const neighbour = neighbourSegmentBezier(path, end, end.t === 0 ? -1 : 1);
+  if (!neighbour) {
+    return normal;
+  }
+  const other = normalAt(neighbour, end.t === 0 ? 1 : 0);
+  const sum = vector.addVectors(normal, other);
+  // A cusp folds the two arms back onto each other and the normals cancel.
+  return Math.hypot(sum.x, sum.y) > 1e-9 ? vector.normalizeVector(sum) : normal;
+}
+
+function neighbourSegmentBezier(path, end, step) {
+  const count = [...path.iterContourDecomposedSegments(end.contourIndex)].length;
+  let index = end.segmentIndex + step;
+  if (index < 0 || index >= count) {
+    if (!path.contourInfo[end.contourIndex].isClosed) {
+      return undefined;
+    }
+    index = (index + count) % count;
+  }
+  return pathSegmentBezier(path, end.contourIndex, index);
 }
 
 function resolvePathPoint(end, path) {

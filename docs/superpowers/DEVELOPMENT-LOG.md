@@ -2394,6 +2394,13 @@ the outline against where the anchor last stood.
   from a point **inside** the black picked the span behind the anchor. The Power
   Ruler never hit this because it measures a whole line across the glyph, where
   the total winding is zero and either direction marks the same spans.
+- **Rays from on-curve points collapsed twice, for two causes.** First, a
+  crossing where two curves meet was reported twice or not at all, which broke
+  the winding walk. Then, on `b.json` of skeletron-test, a ray on an 89-degree
+  corner took the normal of one arm alone. That normal points 0.9 degrees
+  outside the black, so the ray found no span and measured nothing. On the
+  miter it measures 38.5. A ray 0.03 units along the arm still reads 1.5,
+  because it really does cross the other arm there.
 
 Three sweeps: a moving neighbour over 200 steps and an anchor dragged along a
 straight edge over 260 both report 0, and an anchor on a wedge of slope 1-in-2
