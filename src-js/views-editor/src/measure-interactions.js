@@ -12,6 +12,7 @@ import {
   getSkeletonRibPosition,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import * as vector from "@fontra/core/vector.js";
 
 const REALTIME_MEASURE_ACTION = "action.realtime.measure";
@@ -80,6 +81,10 @@ export class MeasureInteraction {
     if (!target) {
       const rib = this._findSkeletonRibForMeasure(point, size, positionedGlyph);
       if (rib) target = { kind: "skeletonRib", payload: rib };
+    }
+    if (!target) {
+      const distance = this._findSelectionDistance(point, size, positionedGlyph);
+      if (distance) target = { kind: "selectionDistance", payload: distance };
     }
     if (!target) {
       const segment = this._findSegmentForMeasure(point, size, positionedGlyph);
@@ -377,6 +382,7 @@ export class MeasureInteraction {
           return {
             p1: { x: p1.x, y: p1.y },
             p2: { x: p2.x, y: p2.y },
+            contourIndex: contourIdx,
             type: "path",
           };
         }
@@ -480,10 +486,95 @@ export class MeasureInteraction {
     return Math.hypot(point.x - projX, point.y - projY);
   }
 
+  // Figma's measure: with something selected, Q over something else reads the
+  // distance between the two. The selection's box to the hovered object's box --
+  // a point (a box of no size), a contour, or a component -- and under Alt, from a
+  // single selected point to a hovered point, the direct distance and angle.
+  // Anything the selection already holds is not a target: it would measure
+  // itself.
+  //
+  // The direct pair is found whether or not Alt is down, so pressing Alt without
+  // moving the mouse switches the reading; the overlay decides which to draw.
+  _findSelectionDistance(point, size, positionedGlyph) {
+    const selection = this.sceneController.selection;
+    const glyph = positionedGlyph?.glyph;
+    if (!selection?.size || !glyph) {
+      return null;
+    }
+    const selectionBox = glyph.getSelectionBounds(selection);
+    if (!selectionBox) {
+      return null;
+    }
+    const hovered = this._hoveredObject(point, size, positionedGlyph, selection);
+    if (!hovered) {
+      return null;
+    }
+    let directPoints = null;
+    if (hovered.point) {
+      const { point: selectedPoints, ...others } = parseSelection(selection);
+      const onlyOnePoint =
+        selectedPoints?.length === 1 &&
+        Object.values(others).every((keys) => !keys?.length);
+      if (onlyOnePoint) {
+        const from = glyph.path.getPoint(selectedPoints[0]);
+        directPoints = { p1: { x: from.x, y: from.y }, p2: hovered.point };
+      }
+    }
+    return {
+      selectionBox,
+      hoveredBox: hovered.box,
+      direct: directPoints,
+      type: "selectionDistance",
+      // What _targetsEqual compares: both boxes, and whether it reads direct.
+      key: JSON.stringify([selectionBox, hovered.box, !!directPoints]),
+    };
+  }
+
+  // The object under the cursor, most specific first: a point, then a component,
+  // then the contour whose outline passes under the cursor.
+  _hoveredObject(point, size, positionedGlyph, selection) {
+    const glyph = positionedGlyph.glyph;
+    const path = glyph.path;
+    const local = { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y };
+
+    const pointIndex = path.pointIndexNearPoint(local, size);
+    if (pointIndex !== undefined && !selection.has(`point/${pointIndex}`)) {
+      const hit = path.getPoint(pointIndex);
+      return {
+        point: { x: hit.x, y: hit.y },
+        box: { xMin: hit.x, yMin: hit.y, xMax: hit.x, yMax: hit.y },
+      };
+    }
+
+    for (const key of this.sceneModel.componentSelectionAtPoint(point, size)) {
+      if (selection.has(key)) {
+        continue;
+      }
+      const index = parseSelection(new Set([key])).component?.[0];
+      const bounds = glyph.components[index]?.bounds;
+      if (bounds) {
+        return { box: bounds };
+      }
+    }
+
+    const segment = this._findPathSegmentNear(path, local, size * 1.5);
+    if (segment && segment.contourIndex !== undefined) {
+      const contour = path.getUnpackedContour(segment.contourIndex);
+      const bounds = VarPackedPath.fromUnpackedContours([contour]).getBounds();
+      if (bounds) {
+        return { box: bounds };
+      }
+    }
+    return null;
+  }
+
   _targetsEqual(a, b) {
     if (a === b) return true;
     if (!a || !b) return false;
     if (a.kind !== b.kind) return false;
+    if (a.payload?.key !== undefined || b.payload?.key !== undefined) {
+      return a.payload?.key === b.payload?.key;
+    }
     return this._measurePointsEqual(a.payload, b.payload);
   }
 

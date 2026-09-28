@@ -95,6 +95,7 @@ export class SceneModel {
     this.measureHoverPoints = null;
     this.measureHoverHandle = null;
     this.measureHoverSkeletonRib = null;
+    this.measureHoverSelectionDistance = null;
 
     // The snap candidates the current gesture holds, for the snapping layer to draw.
     this.snapHeldCandidates = [];
@@ -221,6 +222,7 @@ export class SceneModel {
     this.measureHoverPoints = null;
     this.measureHoverHandle = null;
     this.measureHoverSkeletonRib = null;
+    this.measureHoverSelectionDistance = null;
   }
 
   setMeasureHoverTarget(kind, payload = null) {
@@ -238,6 +240,9 @@ export class SceneModel {
       case "skeletonRib":
         this.measureHoverSkeletonRib = payload;
         break;
+      case "selectionDistance":
+        this.measureHoverSelectionDistance = payload;
+        break;
     }
   }
 
@@ -253,6 +258,9 @@ export class SceneModel {
     }
     if (this.measureHoverSkeletonRib) {
       return { kind: "skeletonRib", payload: this.measureHoverSkeletonRib };
+    }
+    if (this.measureHoverSelectionDistance) {
+      return { kind: "selectionDistance", payload: this.measureHoverSelectionDistance };
     }
     return null;
   }

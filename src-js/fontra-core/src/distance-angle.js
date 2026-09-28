@@ -1418,6 +1418,90 @@ export function drawPointLabels(
   context.restore();
 }
 
+// The distances Q reads from a selection's box `a` to a hovered box `b`, the way Figma
+// measures between two layers. A point is a box of no size.
+//
+//   Apart along x, overlapping along y (side by side): the one gap across, drawn
+//     through the middle of the height they share.
+//   Apart along both: the gap across and the gap up, drawn from the middle of the
+//     selection, each with a guide running on to the hovered box's edge.
+//   Overlapping along both (one inside the other, or crossing): the distance from
+//     each of the selection's edges to the hovered box's same edge, leaving out an
+//     edge they share.
+//
+// Each measure is {p1, p2, value, guide?}.
+export function boxDistanceMeasures(a, b) {
+  const overlapsX = Math.max(a.xMin, b.xMin) <= Math.min(a.xMax, b.xMax);
+  const overlapsY = Math.max(a.yMin, b.yMin) <= Math.min(a.yMax, b.yMax);
+  const centerX = (a.xMin + a.xMax) / 2;
+  const centerY = (a.yMin + a.yMax) / 2;
+  const measures = [];
+
+  if (overlapsX && overlapsY) {
+    const edge = (p1, p2, value) => {
+      if (value > BOX_EDGE_EPSILON) {
+        measures.push({ p1, p2, value });
+      }
+    };
+    for (const key of ["xMin", "xMax"]) {
+      const [x1, x2] = [Math.min(a[key], b[key]), Math.max(a[key], b[key])];
+      edge({ x: x1, y: centerY }, { x: x2, y: centerY }, x2 - x1);
+    }
+    for (const key of ["yMin", "yMax"]) {
+      const [y1, y2] = [Math.min(a[key], b[key]), Math.max(a[key], b[key])];
+      edge({ x: centerX, y: y1 }, { x: centerX, y: y2 }, y2 - y1);
+    }
+    return measures;
+  }
+
+  if (!overlapsX) {
+    const bIsRight = b.xMin >= a.xMax;
+    const [x1, x2] = bIsRight ? [a.xMax, b.xMin] : [b.xMax, a.xMin];
+    const edgeX = bIsRight ? b.xMin : b.xMax;
+    const measure = {
+      p1: { x: x1, y: 0 },
+      p2: { x: x2, y: 0 },
+      value: x2 - x1,
+    };
+    if (overlapsY) {
+      const y = (Math.max(a.yMin, b.yMin) + Math.min(a.yMax, b.yMax)) / 2;
+      measure.p1.y = measure.p2.y = y;
+    } else {
+      measure.p1.y = measure.p2.y = centerY;
+      measure.guide = {
+        p1: { x: edgeX, y: centerY },
+        p2: { x: edgeX, y: b.yMin > centerY ? b.yMin : b.yMax },
+      };
+    }
+    measures.push(measure);
+  }
+
+  if (!overlapsY) {
+    const bIsAbove = b.yMin >= a.yMax;
+    const [y1, y2] = bIsAbove ? [a.yMax, b.yMin] : [b.yMax, a.yMin];
+    const edgeY = bIsAbove ? b.yMin : b.yMax;
+    const measure = {
+      p1: { x: 0, y: y1 },
+      p2: { x: 0, y: y2 },
+      value: y2 - y1,
+    };
+    if (overlapsX) {
+      const x = (Math.max(a.xMin, b.xMin) + Math.min(a.xMax, b.xMax)) / 2;
+      measure.p1.x = measure.p2.x = x;
+    } else {
+      measure.p1.x = measure.p2.x = centerX;
+      measure.guide = {
+        p1: { x: centerX, y: edgeY },
+        p2: { x: b.xMin > centerX ? b.xMin : b.xMax, y: edgeY },
+      };
+    }
+    measures.push(measure);
+  }
+  return measures;
+}
+
+const BOX_EDGE_EPSILON = 0.05;
+
 export function drawMeasureOverlay(
   context,
   positionedGlyph,
@@ -1432,8 +1516,50 @@ export function drawMeasureOverlay(
     measureHoverHandle,
     measureHoverPoints,
     measureHoverSkeletonRib,
+    measureHoverSelectionDistance,
     measureShowDirect,
   } = model;
+
+  // Figma's measure: from the selection to what is hovered. Under Alt, from one
+  // selected point to a hovered point, direct with its angle; otherwise the gaps
+  // between the two boxes, each on its pill, with a guide where a gap is measured
+  // beside the hovered box rather than against it.
+  if (measureHoverSelectionDistance) {
+    const color = parameters.pathColor;
+    const { selectionBox, hoveredBox, direct } = measureHoverSelectionDistance;
+    if (measureShowDirect && direct) {
+      const { distance: dist, angle } = calculateDistanceAndAngle(direct.p1, direct.p2);
+      drawMeasureLine(
+        context,
+        direct.p1,
+        direct.p2,
+        [dist.toFixed(1), `${angle.toFixed(1)}°`],
+        color,
+        parameters
+      );
+      return;
+    }
+    for (const measure of boxDistanceMeasures(selectionBox, hoveredBox)) {
+      if (measure.guide) {
+        drawMeasureGuideLine(
+          context,
+          measure.guide.p1,
+          measure.guide.p2,
+          color,
+          parameters
+        );
+      }
+      drawMeasureLine(
+        context,
+        measure.p1,
+        measure.p2,
+        measure.value.toFixed(1),
+        color,
+        parameters
+      );
+    }
+    return;
+  }
 
   if (measureHoverHandle) {
     const { p1, p2, type } = measureHoverHandle;

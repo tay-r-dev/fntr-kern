@@ -1,4 +1,5 @@
 import {
+  boxDistanceMeasures,
   calculateHandleMeasure,
   calculateProjectedDistanceComponents,
 } from "@fontra/core/distance-angle.js";
@@ -80,5 +81,72 @@ describe("distance-angle measure helpers", () => {
         "middle"
       )
     ).to.equal(null);
+  });
+});
+
+// Q with a selection, hovering something else: the gaps between the two boxes, the way
+// Figma measures between two layers. A point is a box of no size.
+describe("distance-angle — the distance from a selection to what is hovered", () => {
+  const box = (xMin, yMin, xMax, yMax) => ({ xMin, yMin, xMax, yMax });
+  const plain = (measures) =>
+    measures.map(({ p1, p2, value, guide }) =>
+      guide ? { p1, p2, value, guide } : { p1, p2, value }
+    );
+
+  it("measures one gap between boxes side by side, across their shared height", () => {
+    expect(
+      plain(boxDistanceMeasures(box(0, 0, 10, 10), box(30, 5, 40, 20)))
+    ).to.deep.equal([{ p1: { x: 10, y: 7.5 }, p2: { x: 30, y: 7.5 }, value: 20 }]);
+  });
+
+  it("measures both gaps between diagonal boxes, with guides to the far box", () => {
+    expect(
+      plain(boxDistanceMeasures(box(0, 0, 10, 10), box(30, 40, 40, 50)))
+    ).to.deep.equal([
+      {
+        p1: { x: 10, y: 5 },
+        p2: { x: 30, y: 5 },
+        value: 20,
+        guide: { p1: { x: 30, y: 5 }, p2: { x: 30, y: 40 } },
+      },
+      {
+        p1: { x: 5, y: 10 },
+        p2: { x: 5, y: 40 },
+        value: 30,
+        guide: { p1: { x: 5, y: 40 }, p2: { x: 30, y: 40 } },
+      },
+    ]);
+  });
+
+  it("measures to each edge of a box the selection sits inside", () => {
+    expect(
+      plain(boxDistanceMeasures(box(10, 10, 20, 20), box(0, 0, 40, 40))).map(
+        (measure) => measure.value
+      )
+    ).to.deep.equal([10, 20, 10, 20]);
+  });
+
+  it("leaves out an edge the two boxes share", () => {
+    expect(
+      plain(boxDistanceMeasures(box(0, 10, 20, 20), box(0, 0, 40, 40))).map(
+        (measure) => measure.value
+      )
+    ).to.deep.equal([20, 10, 20]);
+  });
+
+  it("measures point to point as x and y", () => {
+    expect(
+      plain(boxDistanceMeasures(box(0, 0, 0, 0), box(30, 40, 30, 40))).map(
+        (measure) => measure.value
+      )
+    ).to.deep.equal([30, 40]);
+  });
+
+  it("measures the same whichever way round the boxes are", () => {
+    const a = box(0, 0, 10, 10);
+    const b = box(30, 40, 40, 50);
+    expect(boxDistanceMeasures(b, a).map((measure) => measure.value)).to.deep.equal(
+      boxDistanceMeasures(a, b).map((measure) => measure.value)
+    );
   });
 });
