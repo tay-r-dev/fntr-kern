@@ -3,6 +3,7 @@ import {
   aimedDirection,
   aimedRayOnPoint,
   markerIndicesChanged,
+  markerKind,
   resolveMarkerAnchor,
   resolveMarkerEnd,
 } from "./marker-model.js";
@@ -165,8 +166,21 @@ export function measureSkeletonAnchor(
 // `distance` is null where the ray never leaves the black. That is not staleness and
 // must not be drawn as though it were.
 
-export function markerGeometry(glyphController, marker, skeletonData) {
+//
+// A ruler reads its extra lines -- the side bearings, which the ruler's own layer knows
+// and the core does not -- from `extraLines`. Without them it measures the outline alone.
+
+export function markerGeometry(
+  glyphController,
+  marker,
+  skeletonData,
+  { extraLines = undefined } = {}
+) {
   const path = glyphController.flattenedPath;
+  const kind = markerKind(marker);
+  if (kind === "ruler") {
+    return rulerGeometry(glyphController.flattenedPathHitTester, marker, extraLines);
+  }
   const anchors = marker.ends.map((end) =>
     end.kind === "cast"
       ? null
@@ -191,6 +205,7 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     return {
       stale: true,
       isRay,
+      isCurvature: kind === "curvature",
       grips: points.map((point, i) => ({ point, endIndex: isRay ? undefined : i })),
       points,
       distance: null,
@@ -201,6 +216,10 @@ export function markerGeometry(glyphController, marker, skeletonData) {
   // stored on the marker. Everything downstream measures against these.
   const resolvedEnds = marker.ends.map((end, i) => anchors[i]?.end || end);
   const hitTester = glyphController.flattenedPathHitTester;
+
+  if (kind === "curvature") {
+    return curvatureGeometry(resolvedEnds[0], path, skeletonData);
+  }
 
   if (isRay) {
     // A ray has ONE grip whichever end is grabbed: the far end is a cast and owns
@@ -273,6 +292,66 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     along,
     angle: directionAngle(along, 180),
     distance: measureDimension(points[0], points[1]),
+  };
+}
+
+// A ruler: the Power Ruler kept. A line through its place at its angle, across the whole
+// glyph, measuring every span it crosses in the black and in the white. It is a line,
+// not a ray, so its angle reads 0 to 180.
+function rulerGeometry(pathHitTester, marker, extraLines) {
+  const basePoint = { x: marker.at.x, y: marker.at.y };
+  const direction = aimedDirection({ angle: marker.angle || 0 });
+  const { intersections, measurePoints } = measureRuler(
+    pathHitTester,
+    basePoint,
+    direction,
+    extraLines
+  );
+  return {
+    stale: false,
+    isRuler: true,
+    grips: [{ point: basePoint }],
+    basePoint,
+    direction,
+    angle: directionAngle(direction, 180),
+    intersections,
+    measurePoints,
+    distance: null,
+  };
+}
+
+export function measureRuler(pathHitTester, basePoint, direction, extraLines) {
+  const intersections = pathHitTester.rayIntersections(
+    basePoint,
+    direction,
+    extraLines
+  );
+  return { intersections, measurePoints: walkRayIntersections(intersections) };
+}
+
+// A curvature marker: how hard the outline bends where it sits, as the curvature and as
+// the radius of the circle that fits the curve there. A straight has no curvature, an
+// endless radius and no centre.
+function curvatureGeometry(end, path, skeletonData) {
+  const anchor = resolveMarkerAnchor(end, { path, skeletonData });
+  const signed = anchor.curvature || 0;
+  const center =
+    signed && anchor.normal
+      ? vector.addVectors(
+          anchor.point,
+          vector.mulVectorScalar(anchor.normal, 1 / signed)
+        )
+      : null;
+  return {
+    stale: false,
+    isCurvature: true,
+    grips: [{ point: anchor.point }],
+    point: anchor.point,
+    curvature: Math.abs(signed),
+    radius: signed ? 1 / Math.abs(signed) : Infinity,
+    center,
+    distance: null,
+    angle: null,
   };
 }
 

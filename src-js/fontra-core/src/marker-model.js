@@ -9,6 +9,7 @@ import {
   getSkeletonContour,
   getSkeletonPoint,
 } from "./skeleton-model.js";
+import { solveCubicBezierCurvature } from "./curvature.js";
 import * as vector from "./vector.js";
 
 // A marker is a measurement the designer places on a contour and keeps. It stores an
@@ -17,10 +18,26 @@ import * as vector from "./vector.js";
 //   marker = {id, ends: [End, End], signature, target?, groupId?}
 //   group  = {id, name, visible}
 //
+// Four kinds (markerKind). A ray and a dimension are told apart by their ends. A ruler
+// and a curvature marker say so in `kind`:
+//
+//   ruler     = {id, kind: "ruler", ends: [], at: {x, y}, angle}
+//   curvature = {id, kind: "curvature", ends: [End], signature}
+//
+// A ruler is attached to nothing: it has no end that can go stale, and its place and
+// angle are the only coordinates it keeps.
+//
 // Ids are allocated once and never reused, so the copies of one marker that land in
 // several sources are recognisably one marker. That is why the next id is held in the
 // section rather than derived from the list: deleting a marker must not free its id
 // while a twin in another source still carries it.
+
+export function markerKind(marker) {
+  if (marker.kind === "ruler" || marker.kind === "curvature") {
+    return marker.kind;
+  }
+  return (marker.ends || []).some((end) => end.kind === "cast") ? "ray" : "dimension";
+}
 
 export function getMarkerData(layerGlyph) {
   return getFontraInternalSection(layerGlyph, FONTRA_INTERNAL_SECTIONS.MARKERS);
@@ -334,7 +351,12 @@ function resolvePathSegment(end, path) {
   if (!bezier) {
     return STALE;
   }
-  return { verdict: "ok", point: bezier.get(end.t), normal: normalAt(bezier, end.t) };
+  return {
+    verdict: "ok",
+    point: bezier.get(end.t),
+    normal: normalAt(bezier, end.t),
+    curvature: signedCurvatureAt(bezier, end.t),
+  };
 }
 
 function resolvePathPoint(end, path) {
@@ -370,7 +392,12 @@ function resolveSkeletonPoint(end, skeletonData) {
       y: point.y,
     }))
   );
-  return { verdict: "ok", point: bezier.get(end.t), normal: normalAt(bezier, end.t) };
+  return {
+    verdict: "ok",
+    point: bezier.get(end.t),
+    normal: normalAt(bezier, end.t),
+    curvature: signedCurvatureAt(bezier, end.t),
+  };
 }
 
 function pathSegmentBezier(path, contourIndex, segmentIndex) {
@@ -404,6 +431,19 @@ export function aimedDirection(castEnd) {
   }
   const radians = (castEnd.angle * Math.PI) / 180;
   return { x: Math.cos(radians), y: Math.sin(radians) };
+}
+
+// The curvature at t, signed so that the centre of the circle that fits the curve there
+// lies at point + normal / curvature, with normalAt's normal. Its size is SpeedPunk's
+// (solveCubicBezierCurvature, one copy of the formula); the sign is the turn.
+function signedCurvatureAt(bezier, t) {
+  if (bezier.points.length < 3) {
+    return 0;
+  }
+  const d1 = bezier.derivative(t);
+  const d2 = bezier.dderivative(t);
+  const size = solveCubicBezierCurvature([d1.x, d1.y], [d2.x, d2.y]);
+  return Math.sign(d1.x * d2.y - d1.y * d2.x) * size;
 }
 
 // The same quarter turn the Power Ruler takes at recalcRulerFromPoint.
