@@ -77,14 +77,26 @@ export class MeasureInteraction {
     const positionedGlyph = this.sceneModel.getSelectedPositionedGlyph();
 
     const handle = this._findControlPointForMeasure(point, size, positionedGlyph);
-    let target = handle ? { kind: "handle", payload: handle } : null;
-    if (!target) {
-      const rib = this._findSkeletonRibForMeasure(point, size, positionedGlyph);
-      if (rib) target = { kind: "skeletonRib", payload: rib };
+    const rib = handle
+      ? null
+      : this._findSkeletonRibForMeasure(point, size, positionedGlyph);
+
+    // With something selected, the distance to what is hovered comes first, over the
+    // handle and rib plaques: the selection is what the designer is asking about. A
+    // skeleton handle or a rib end is not a point of the outline, so it is handed
+    // over as the point to measure to.
+    const distance = this._findSelectionDistance(
+      point,
+      size,
+      positionedGlyph,
+      handle?.type === "skeleton" ? handle.p1 : rib?.p2
+    );
+    let target = distance ? { kind: "selectionDistance", payload: distance } : null;
+    if (!target && handle) {
+      target = { kind: "handle", payload: handle };
     }
-    if (!target) {
-      const distance = this._findSelectionDistance(point, size, positionedGlyph);
-      if (distance) target = { kind: "selectionDistance", payload: distance };
+    if (!target && rib) {
+      target = { kind: "skeletonRib", payload: rib };
     }
     if (!target) {
       const segment = this._findSegmentForMeasure(point, size, positionedGlyph);
@@ -495,7 +507,7 @@ export class MeasureInteraction {
   //
   // The direct pair is found whether or not Alt is down, so pressing Alt without
   // moving the mouse switches the reading; the overlay decides which to draw.
-  _findSelectionDistance(point, size, positionedGlyph) {
+  _findSelectionDistance(point, size, positionedGlyph, skeletonPoint = undefined) {
     const selection = this.sceneController.selection;
     const glyph = positionedGlyph?.glyph;
     if (!selection?.size || !glyph) {
@@ -505,7 +517,13 @@ export class MeasureInteraction {
     if (!selectionBox) {
       return null;
     }
-    const hovered = this._hoveredObject(point, size, positionedGlyph, selection);
+    const hovered = this._hoveredObject(
+      point,
+      size,
+      positionedGlyph,
+      selection,
+      skeletonPoint
+    );
     if (!hovered) {
       return null;
     }
@@ -532,7 +550,7 @@ export class MeasureInteraction {
 
   // The object under the cursor, most specific first: a point, then a component,
   // then the contour whose outline passes under the cursor.
-  _hoveredObject(point, size, positionedGlyph, selection) {
+  _hoveredObject(point, size, positionedGlyph, selection, skeletonPoint) {
     const glyph = positionedGlyph.glyph;
     const path = glyph.path;
     const local = { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y };
@@ -544,6 +562,11 @@ export class MeasureInteraction {
         point: { x: hit.x, y: hit.y },
         box: { xMin: hit.x, yMin: hit.y, xMax: hit.x, yMax: hit.y },
       };
+    }
+
+    if (skeletonPoint) {
+      const { x, y } = skeletonPoint;
+      return { point: { x, y }, box: { xMin: x, yMin: y, xMax: x, yMax: y } };
     }
 
     for (const key of this.sceneModel.componentSelectionAtPoint(point, size)) {
