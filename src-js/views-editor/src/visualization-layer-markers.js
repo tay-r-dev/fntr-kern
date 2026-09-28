@@ -84,18 +84,26 @@ function drawGrips(context, parameters, grips, isSelected, isHovered, color) {
   }
 }
 
-// The number, and beside it the delta from a target where one is set. A marker with no
-// measurement draws its anchor and no number: the ray never left the black, which is not
-// staleness and must not be greyed as though it were.
+// The number, the delta from a target where one is set, and the angle the marker
+// measures in. A ray with no measurement draws no number and still reads its angle:
+// the ray never left the black, which is not staleness and must not be greyed as though
+// it were.
 function drawReadout(context, parameters, at, geometry, marker, greyed) {
-  if (geometry.distance === null) {
+  const parts = [];
+  if (geometry.distance !== null) {
+    parts.push(String(round(geometry.distance, 1)));
+    if (marker.target !== undefined && marker.target !== null) {
+      const delta = round(geometry.distance - marker.target, 1);
+      parts.push(`${delta >= 0 ? "+" : ""}${delta}`);
+    }
+  }
+  if (geometry.angle !== null && geometry.angle !== undefined) {
+    parts.push(`${round(geometry.angle, 1)}°`);
+  }
+  if (!parts.length) {
     return;
   }
-  let text = String(round(geometry.distance, 1));
-  if (marker.target !== undefined && marker.target !== null) {
-    const delta = round(geometry.distance - marker.target, 1);
-    text += `  ${delta >= 0 ? "+" : ""}${delta}`;
-  }
+  const text = parts.join("  ");
 
   context.font = `bold ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
   context.textAlign = "center";

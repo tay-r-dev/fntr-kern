@@ -1876,13 +1876,22 @@ them in its own order, which the ruler never noticed because it always measures 
 line across the glyph; measuring outward from a point inside the black ran the walk
 backwards and reported zero.
 
-**A ray can be aimed.** Press on a contour and drag: the ray leaves the anchor toward
-the cursor, and Shift holds it to the horizontal, the vertical and the diagonals. A
-click with no drag places a plain ray along the normal. The aim is an angle in glyph
+**A ray can be aimed.** Press on a contour and hold the button for half a second: from
+then on the ray leaves the anchor toward the cursor, and it is placed where the button
+is released. A quicker press places a plain ray along the normal, however the mouse
+moved, because an ordinary click always moves it a little. Shift holds the aim to the
+horizontal, the vertical and the diagonals. Without Shift the arrow snaps to an
+on-curve point within reach of the cursor. The same hold, Shift and snap apply when an
+aimed ray's arrow is dragged. The aim is an angle in glyph
 space on the cast end, which owns nothing else. It is not stated against the normal,
 because the aim exists for the places where the normal says nothing useful. An aimed
 ray's arrow is a grip on the cast end, and dragging it re-aims the ray. Where the aim
 measures nothing, the arrow stands at a fixed length so that it can still be grabbed.
+
+**Every marker reads its angle beside its distance**, on the canvas and in the panel.
+The angle is the direction the marker measures in, in glyph space: 0 to the right,
+counter-clockwise. A ray reads 0 to 360, and reads its angle even where it measures
+nothing. A dimension is a line with no direction and reads 0 to 180.
 
 **A plain ray the normal cannot measure is aimed instead** (`aimCollapsedRay`). This is
 the corner under 90 degrees: the normal of either arm points outside the black, and the

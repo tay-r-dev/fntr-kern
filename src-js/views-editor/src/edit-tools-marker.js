@@ -11,6 +11,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import {
+  aimHoldElapsed,
   aimTowards,
   deleteMarkers,
   handleMarkerDrag,
@@ -237,16 +238,14 @@ export class MarkerTool extends BaseTool {
       await this.pointerTool.handleDrag(eventStream, initialEvent);
       return;
     }
-    // A click places a plain ray along the normal. A drag aims it: the ray leaves the
-    // anchor toward wherever the button is released.
-    if (!(await shouldInitiateDrag(eventStream, initialEvent))) {
-      await this.placeRay(glyphController, this.rayEnds(glyphController, end));
-      return;
-    }
-    await this.aimAndPlaceRay(eventStream, positionedGlyph, end);
+    await this.aimAndPlaceRay(eventStream, initialEvent, positionedGlyph, end);
   }
 
-  async aimAndPlaceRay(eventStream, positionedGlyph, end) {
+  // A quick press places a plain ray along the normal. Holding the button for the hold
+  // time aims it: from then on the ray leaves the anchor toward the cursor, and it is
+  // placed where the button is released. The hold keeps an ordinary click, which always
+  // moves the mouse a little, from turning the ray by accident.
+  async aimAndPlaceRay(eventStream, initialEvent, positionedGlyph, end) {
     const glyphController = positionedGlyph.glyph;
     const anchor = resolveMarkerEnd(end, {
       path: glyphController.flattenedPath,
@@ -265,17 +264,22 @@ export class MarkerTool extends BaseTool {
         x: point.x - positionedGlyph.x,
         y: point.y - positionedGlyph.y,
       };
-      direction = aimTowards(anchor.point, local, event.shiftKey) || direction;
+      if (aimHoldElapsed(initialEvent, event)) {
+        direction =
+          aimTowards(anchor.point, local, {
+            constrain: event.shiftKey,
+            path: glyphController.flattenedPath,
+            snapRadius: this.sceneController.mouseClickMargin,
+          }) || direction;
+      }
       if (event.type === "mouseup") {
         break;
       }
+      if (!direction) {
+        continue;
+      }
       setMarkerPlacementPreview(
-        direction
-          ? this.rayPreview(
-              glyphController,
-              this.rayEnds(glyphController, end, direction)
-            )
-          : null
+        this.rayPreview(glyphController, this.rayEnds(glyphController, end, direction))
       );
       this.canvasController.requestUpdate();
     }

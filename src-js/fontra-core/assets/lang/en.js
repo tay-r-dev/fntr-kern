@@ -598,6 +598,7 @@ export const strings = {
   "sidebar.markers.delete-group": "Delete group",
   "sidebar.markers.delete-marker": "Delete marker",
   "sidebar.markers.column.action": "",
+  "sidebar.markers.column.angle": "Angle",
   "sidebar.markers.column.goal": "Goal",
   "sidebar.markers.column.group": "Group",
   "sidebar.markers.column.id": "ID",

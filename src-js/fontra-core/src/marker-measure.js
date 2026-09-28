@@ -231,10 +231,16 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     if (measured?.secondFarPoint) {
       grips.push({ point: measured.secondFarPoint, endIndex: tipIndex });
     }
+    // The direction the ray is drawn in, which is the one it measures in. Where it
+    // measures nothing a plain ray still has its normal.
+    const direction = farPoint
+      ? vector.subVectors(farPoint, anchor.point)
+      : resolveMarkerAnchor(resolvedEnds[anchorIndex], { path, skeletonData }).normal;
     return {
       stale: false,
       isRay: true,
       isAimed: !!aim,
+      angle: direction ? directionAngle(direction, 360) : null,
       grips,
       anchorPoint: anchor.point,
       farPoint,
@@ -261,8 +267,21 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     points,
     arrows,
     along,
+    angle: directionAngle(along, 180),
     distance: measureDimension(points[0], points[1]),
   };
+}
+
+// A direction's angle in glyph space, in degrees: 0 to the right, counter-clockwise,
+// folded into [0, period). A ray has a direction and reads 0 to 360; a dimension is a
+// line with no direction and reads 0 to 180. Null where there is no direction at all.
+function directionAngle(direction, period) {
+  if (!(Math.hypot(direction.x, direction.y) > 1e-9)) {
+    return null;
+  }
+  const degrees = (Math.atan2(direction.y, direction.x) * 180) / Math.PI;
+  const folded = ((degrees % period) + period) % period;
+  return folded > period - 1e-9 ? 0 : folded;
 }
 
 // How far a dimension's arrows sit off the line it measures, in font units. It is a font

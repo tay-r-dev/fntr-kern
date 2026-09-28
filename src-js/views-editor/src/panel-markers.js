@@ -183,6 +183,7 @@ export default class MarkersPanel extends Panel {
       { label: translate("sidebar.markers.column.id") },
       { label: translate("sidebar.markers.column.nodes") },
       { label: translate("sidebar.markers.column.value"), align: "right" },
+      { label: translate("sidebar.markers.column.angle"), align: "right" },
       { label: translate("sidebar.markers.column.goal") },
       { label: translate("sidebar.markers.column.group") },
       { label: translate("sidebar.markers.column.action") },
@@ -315,7 +316,7 @@ export default class MarkersPanel extends Panel {
     });
   }
 
-  // ID, Nodes, Value, Goal with the delta after it, Group, and the eye and trash.
+  // ID, Nodes, Value, Angle, Goal with the delta after it, Group, and the eye and trash.
   _markerRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
     const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
     const hasTarget = marker.target !== undefined && marker.target !== null;
@@ -325,6 +326,11 @@ export default class MarkersPanel extends Panel {
       : geometry.distance === null
         ? "—"
         : String(round(geometry.distance, 1));
+    // The angle the marker measures in. A ray that measures nothing still has one.
+    const angle =
+      geometry.stale || geometry.angle === null || geometry.angle === undefined
+        ? "—"
+        : `${round(geometry.angle, 1)}°`;
     const delta =
       !geometry.stale && geometry.distance !== null && hasTarget
         ? round(geometry.distance - marker.target, 1)
@@ -334,6 +340,7 @@ export default class MarkersPanel extends Panel {
       tableCell(labels.get(marker.id)),
       tableCell(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
       tableCell(value, { align: "right" }),
+      tableCell(angle, { align: "right" }),
       tableCell(
         html.div({ class: "markers-goal-cell" }, [
           editableCell({

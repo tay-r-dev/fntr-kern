@@ -399,3 +399,73 @@ describe("marker-measure — a collapsed ray", () => {
     expect(aimCollapsedRay(ends, path, hitTesterFor(path))).to.equal(null);
   });
 });
+
+// Every marker reads its angle beside its distance: the direction it measures in, in
+// glyph space, 0 to the right and counter-clockwise. A dimension has no direction, only
+// a line, so it reads 0 to 180.
+describe("marker-measure — the angle", () => {
+  function glyphFor(path) {
+    return { flattenedPath: path, flattenedPathHitTester: hitTesterFor(path) };
+  }
+
+  function rayOn(path, cast) {
+    return {
+      id: "m1",
+      ends: [{ kind: "pathSegment", contourIndex: 0, segmentIndex: 3, t: 0.5 }, cast],
+      signature: computeMarkerSignature(path),
+    };
+  }
+
+  it("reads a plain ray's normal", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, { kind: "cast" }),
+      null
+    );
+    expect(geometry.angle).to.be.closeTo(0, 1e-9);
+  });
+
+  it("reads an aimed ray's aim, from 0 to 360", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const at = (direction) =>
+      markerGeometry(glyphFor(path), rayOn(path, aimedCast(direction)), null).angle;
+    expect(at({ x: 1, y: 1 })).to.be.closeTo(45, 1e-9);
+    expect(at({ x: 0, y: -1 })).to.be.closeTo(270, 1e-9);
+  });
+
+  it("reads the angle where the ray measures nothing", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, aimedCast({ x: -1, y: 0 })),
+      null
+    );
+    expect(geometry.distance).to.equal(null);
+    expect(geometry.angle).to.be.closeTo(180, 1e-9);
+  });
+
+  it("reads a dimension's line, from 0 to 180", () => {
+    const path = pathOf({
+      points: [
+        { x: 30, y: 40 },
+        { x: 0, y: 0 },
+        { x: 100, y: 0 },
+      ],
+      isClosed: true,
+    });
+    const geometry = markerGeometry(
+      glyphFor(path),
+      {
+        id: "m1",
+        ends: [
+          { kind: "pathPoint", contourIndex: 0, pointIndex: 0 },
+          { kind: "pathPoint", contourIndex: 0, pointIndex: 1 },
+        ],
+        signature: computeMarkerSignature(path),
+      },
+      null
+    );
+    expect(geometry.angle).to.be.closeTo((Math.atan2(4, 3) * 180) / Math.PI, 1e-9);
+  });
+});

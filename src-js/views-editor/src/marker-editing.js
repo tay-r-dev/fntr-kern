@@ -360,7 +360,16 @@ export async function handleMarkerDrag({
       y: point.y - positionedGlyph.y,
     };
     if (aiming) {
-      const direction = aimTowards(anchorPoint, local, event.shiftKey);
+      // The arrow holds still until the button has been down for the hold time, so a
+      // grab that only meant to select the marker does not turn it.
+      if (!aimHoldElapsed(initialEvent, event)) {
+        return undefined;
+      }
+      const direction = aimTowards(anchorPoint, local, {
+        constrain: event.shiftKey,
+        path,
+        snapRadius: sceneController.mouseClickMargin,
+      });
       return direction
         ? withEnd(startMarker, draggedEndIndex, aimedCast(direction), signature, {
             path,
@@ -444,15 +453,37 @@ export async function handleMarkerDrag({
 }
 
 // The direction from an anchor to the cursor, in glyph space. Shift holds it to the
-// horizontal, the vertical and the diagonals, as it holds every other drag. Null where
-// the cursor sits on the anchor, which states no direction at all.
-export function aimTowards(anchorPoint, local, constrain) {
-  let delta = { x: local.x - anchorPoint.x, y: local.y - anchorPoint.y };
+// horizontal, the vertical and the diagonals, as it holds every other drag. Without
+// Shift the arrow snaps to an on-curve point within reach of the cursor, so the ray can
+// be aimed exactly at a point the designer drew. Null where the cursor sits on the
+// anchor, which states no direction at all.
+export function aimTowards(anchorPoint, local, { constrain, path, snapRadius } = {}) {
+  let target = local;
+  if (!constrain && path && snapRadius) {
+    const nearest = nearestOnCurvePoint(path, local);
+    if (
+      nearest &&
+      nearest.distance <= snapRadius &&
+      Math.hypot(nearest.point.x - anchorPoint.x, nearest.point.y - anchorPoint.y) >
+        1e-9
+    ) {
+      target = nearest.point;
+    }
+  }
+  let delta = { x: target.x - anchorPoint.x, y: target.y - anchorPoint.y };
   if (constrain) {
     delta = constrainHorVerDiag(delta);
   }
   const length = Math.hypot(delta.x, delta.y);
   return length > 1e-9 ? { x: delta.x / length, y: delta.y / length } : null;
+}
+
+// How long the button must be held before a drag aims a ray, in milliseconds. A quick
+// press places or grabs; only a held one turns the ray.
+export const AIM_HOLD_MS = 500;
+
+export function aimHoldElapsed(initialEvent, event) {
+  return event.timeStamp - initialEvent.timeStamp >= AIM_HOLD_MS;
 }
 
 // Re-anchoring repairs a marker, so it clears the declared break as well as writing the
