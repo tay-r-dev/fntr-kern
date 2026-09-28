@@ -4,6 +4,7 @@ import {
   markerIsStale,
   markerKind,
   refreshedMarkers,
+  snapToCurvatureApex,
 } from "@fontra/core/marker-model.js";
 import { PathHitTester } from "@fontra/core/path-hit-tester.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -152,5 +153,49 @@ describe("marker kinds — a curvature marker", () => {
     const path = quarterDisc();
     const marker = curvatureMarker(path, 7, 0.5);
     expect(markerGeometry(glyphFor(path), marker, null).stale).to.equal(true);
+  });
+});
+
+// A curvature marker snaps to the apex of its curve: the place it bends hardest, a
+// local maximum of the curvature inside the segment.
+describe("marker kinds — the curvature apex", () => {
+  // A symmetric arch from (0, 0) to (100, 0): its apex is its middle, (50, 75).
+  function arch() {
+    return pathOf({
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 100, type: "cubic" },
+        { x: 50, y: 100, type: "cubic" },
+        { x: 100, y: 0 },
+      ],
+      isClosed: true,
+    });
+  }
+  const onArch = (t) => ({ kind: "pathSegment", contourIndex: 0, segmentIndex: 0, t });
+
+  it("moves an end near the apex onto it", () => {
+    const snapped = snapToCurvatureApex(
+      onArch(0.46),
+      { path: arch() },
+      { x: 48, y: 75 },
+      10
+    );
+    expect(snapped.t).to.be.closeTo(0.5, 1e-4);
+    expect(snapped.at.x).to.be.closeTo(50, 1e-3);
+    expect(snapped.at.y).to.be.closeTo(75, 1e-3);
+  });
+
+  it("leaves an end the cursor holds away from the apex", () => {
+    const end = onArch(0.2);
+    expect(snapToCurvatureApex(end, { path: arch() }, { x: 20, y: 40 }, 10)).to.equal(
+      end
+    );
+  });
+
+  it("leaves an end on a straight, which has no apex", () => {
+    const end = { kind: "pathSegment", contourIndex: 0, segmentIndex: 1, t: 0.5 };
+    expect(snapToCurvatureApex(end, { path: arch() }, { x: 50, y: 0 }, 10)).to.equal(
+      end
+    );
   });
 });

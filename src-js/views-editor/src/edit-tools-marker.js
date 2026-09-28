@@ -5,6 +5,7 @@ import {
   computeMarkerSignature,
   nearestOnCurvePoint,
   resolveMarkerEnd,
+  snapToCurvatureApex,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
@@ -12,6 +13,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import {
+  CURVATURE_APEX_REACH,
   aimHoldElapsed,
   aimTowards,
   deleteMarkers,
@@ -165,7 +167,7 @@ export class MarkerTool extends BaseTool {
       return null;
     }
     const glyphController = positionedGlyph.glyph;
-    const end = this.anchorageAt(positionedGlyph, point);
+    const end = this.curvatureEndAt(positionedGlyph, point);
     if (!end) {
       return null;
     }
@@ -183,6 +185,23 @@ export class MarkerTool extends BaseTool {
       ends: [end],
       signature: computeMarkerSignature(glyphController.flattenedPath),
     };
+  }
+
+  // Where a curvature marker placed at `point` sits: the outline or centerline under
+  // the cursor, snapped onto the apex of its curve when the cursor is near it.
+  curvatureEndAt(positionedGlyph, point) {
+    const end = this.anchorageAt(positionedGlyph, point);
+    return end
+      ? snapToCurvatureApex(
+          end,
+          {
+            path: positionedGlyph.glyph.flattenedPath,
+            skeletonData: this.skeletonData,
+          },
+          { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+          this.sceneController.mouseClickMargin * CURVATURE_APEX_REACH
+        )
+      : end;
   }
 
   anchorageAt(positionedGlyph, point) {
@@ -318,7 +337,7 @@ export class MarkerTool extends BaseTool {
     };
     // C held places a curvature marker on the outline or centerline under the cursor.
     if (this.curvatureKeyDown) {
-      const end = this.anchorageAt(positionedGlyph, point);
+      const end = this.curvatureEndAt(positionedGlyph, point);
       if (!end) {
         await this.pointerTool.handleDrag(eventStream, initialEvent);
         return;

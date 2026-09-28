@@ -27,11 +27,15 @@ import {
   refreshedMarkers,
   resolveMarkerEnd,
   setMarkerData,
+  snapToCurvatureApex,
   unaimedRay,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { constrainHorVerDiag } from "./edit-behavior.js";
+
+// How far the apex of a curve pulls a curvature marker, in click margins.
+export const CURVATURE_APEX_REACH = 2;
 
 export const MARKER_EDIT_SENDER = { senderID: "marker-editing" };
 
@@ -437,7 +441,17 @@ export async function handleMarkerDrag({
       // points, and one dropped on empty space would name nothing.
       return undefined;
     }
-    const moved = withEnd(startMarker, draggedEndIndex, newEnd, signature, {
+    // A curvature marker snaps onto the apex of its curve, as it does when placed.
+    const placedEnd =
+      kind === "curvature"
+        ? snapToCurvatureApex(
+            newEnd,
+            { path, skeletonData },
+            { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
+            sceneController.mouseClickMargin * CURVATURE_APEX_REACH
+          )
+        : newEnd;
+    const moved = withEnd(startMarker, draggedEndIndex, placedEnd, signature, {
       path,
       skeletonData,
     });

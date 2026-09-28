@@ -374,24 +374,10 @@ function resolvePathPoint(end, path) {
 }
 
 function resolveSkeletonPoint(end, skeletonData) {
-  const contour = skeletonData
-    ? getSkeletonContour(skeletonData, end.contourId)
-    : undefined;
-  if (!contour || !getSkeletonPoint(skeletonData, end.contourId, end.pointId)) {
+  const bezier = skeletonSegmentBezier(end, skeletonData);
+  if (!bezier) {
     return STALE;
   }
-  const segment = buildSkeletonTunniSegments(contour).find(
-    (segment) => segment.startPointId === end.pointId
-  );
-  if (!segment) {
-    return STALE;
-  }
-  const bezier = new Bezier(
-    [segment.startPoint, ...segment.controlPoints, segment.endPoint].map((point) => ({
-      x: point.x,
-      y: point.y,
-    }))
-  );
   return {
     verdict: "ok",
     point: bezier.get(end.t),
@@ -399,6 +385,89 @@ function resolveSkeletonPoint(end, skeletonData) {
     curvature: signedCurvatureAt(bezier, end.t),
   };
 }
+
+// The centerline segment a skeleton end sits on, leaving its point.
+function skeletonSegmentBezier(end, skeletonData) {
+  const contour = skeletonData
+    ? getSkeletonContour(skeletonData, end.contourId)
+    : undefined;
+  if (!contour || !getSkeletonPoint(skeletonData, end.contourId, end.pointId)) {
+    return undefined;
+  }
+  const segment = buildSkeletonTunniSegments(contour).find(
+    (segment) => segment.startPointId === end.pointId
+  );
+  if (!segment) {
+    return undefined;
+  }
+  return new Bezier(
+    [segment.startPoint, ...segment.controlPoints, segment.endPoint].map((point) => ({
+      x: point.x,
+      y: point.y,
+    }))
+  );
+}
+
+// A curvature marker's end moved onto the apex of its curve when the cursor is within
+// `reach` of it: the place the curve bends hardest, a local maximum of the curvature
+// inside the segment. The nearest apex in reach wins. The end is returned unchanged
+// where there is none -- a straight, or a cursor held away from every apex.
+export function snapToCurvatureApex(end, { path, skeletonData } = {}, cursor, reach) {
+  const bezier =
+    end?.kind === "pathSegment"
+      ? pathSegmentBezier(path, end.contourIndex, end.segmentIndex)
+      : end?.kind === "skeletonPoint"
+        ? skeletonSegmentBezier(end, skeletonData)
+        : undefined;
+  if (!bezier || bezier.points.length < 3) {
+    return end;
+  }
+  let best;
+  for (const t of curvatureApexes(bezier)) {
+    const at = bezier.get(t);
+    const distance = Math.hypot(at.x - cursor.x, at.y - cursor.y);
+    if (distance <= reach && (!best || distance < best.distance)) {
+      best = { t, distance };
+    }
+  }
+  if (!best) {
+    return end;
+  }
+  return withAnchorPosition({ ...end, t: best.t }, path, skeletonData);
+}
+
+// The parameters where the curvature's size peaks inside the segment. Sampled, then
+// each peak narrowed by golden-section search between its two neighbouring samples.
+// A peak on an end is not an apex: it belongs to the joint, not to the curve.
+function curvatureApexes(bezier) {
+  const size = (t) => Math.abs(signedCurvatureAt(bezier, t));
+  const values = [];
+  for (let i = 0; i <= APEX_SAMPLES; i++) {
+    values.push(size(i / APEX_SAMPLES));
+  }
+  const apexes = [];
+  for (let i = 1; i < APEX_SAMPLES; i++) {
+    if (!(values[i] > values[i - 1] && values[i] >= values[i + 1])) {
+      continue;
+    }
+    let lo = (i - 1) / APEX_SAMPLES;
+    let hi = (i + 1) / APEX_SAMPLES;
+    for (let step = 0; step < 50; step++) {
+      const a = hi - (hi - lo) * GOLDEN;
+      const b = lo + (hi - lo) * GOLDEN;
+      if (size(a) < size(b)) {
+        lo = a;
+      } else {
+        hi = b;
+      }
+    }
+    apexes.push((lo + hi) / 2);
+  }
+  return apexes;
+}
+
+const APEX_SAMPLES = 64;
+const GOLDEN = (Math.sqrt(5) - 1) / 2;
 
 function pathSegmentBezier(path, contourIndex, segmentIndex) {
   if (!path || contourIndex < 0 || contourIndex >= path.contourInfo.length) {
