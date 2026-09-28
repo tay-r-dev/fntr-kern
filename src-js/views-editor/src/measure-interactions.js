@@ -10,6 +10,7 @@ import {
   getSkeletonRibAddress,
   generatedPathContourIndices,
   getSkeletonData,
+  getSkeletonPoint,
   getSkeletonRibPosition,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -533,13 +534,9 @@ export class MeasureInteraction {
     }
     let directPoints = null;
     if (hovered.point) {
-      const { point: selectedPoints, ...others } = parseSelection(selection);
-      const onlyOnePoint =
-        selectedPoints?.length === 1 &&
-        Object.values(others).every((keys) => !keys?.length);
-      if (onlyOnePoint) {
-        const from = glyph.path.getPoint(selectedPoints[0]);
-        directPoints = { p1: { x: from.x, y: from.y }, p2: hovered.point };
+      const from = this._singleSelectedPoint(selection, glyph.path, positionedGlyph);
+      if (from) {
+        directPoints = { p1: from, p2: hovered.point };
       }
     }
     return {
@@ -566,6 +563,21 @@ export class MeasureInteraction {
         point: { x: hit.x, y: hit.y },
         box: { xMin: hit.x, yMin: hit.y, xMax: hit.x, yMax: hit.y },
       };
+    }
+
+    // A skeleton point is not a point of the outline, so the outline's hit test
+    // cannot see it; the centerline's can.
+    for (const key of this.sceneModel.skeletonPointAtPoint(point, size)) {
+      if (selection.has(key)) {
+        continue;
+      }
+      const hit = this._skeletonPointPosition(key, positionedGlyph);
+      if (hit) {
+        return {
+          point: hit,
+          box: { xMin: hit.x, yMin: hit.y, xMax: hit.x, yMax: hit.y },
+        };
+      }
     }
 
     if (skeletonPoint) {
@@ -606,6 +618,39 @@ export class MeasureInteraction {
       }
     }
     return null;
+  }
+
+  // The one point the selection holds, outline or skeleton, or null where it holds
+  // more than one thing or anything that is not a point. Alt-Q measures direct from
+  // it.
+  _singleSelectedPoint(selection, path, positionedGlyph) {
+    if (selection.size !== 1) {
+      return null;
+    }
+    const [key] = selection;
+    const { point: outlinePoints, skeletonPoint: skeletonPoints } =
+      parseSelection(selection);
+    if (outlinePoints?.length === 1) {
+      const from = path.getPoint(outlinePoints[0]);
+      return from ? { x: from.x, y: from.y } : null;
+    }
+    if (skeletonPoints?.length === 1) {
+      return this._skeletonPointPosition(key, positionedGlyph);
+    }
+    return null;
+  }
+
+  // Where a skeleton point stands, from its selection key.
+  _skeletonPointPosition(key, positionedGlyph) {
+    const [contourId, pointId] = String(key)
+      .replace("skeletonPoint/", "")
+      .split("/")
+      .map(Number);
+    const skeletonData = getSkeletonData(
+      this.sceneModel._getEditLayerGlyph(positionedGlyph)
+    );
+    const found = getSkeletonPoint(skeletonData, contourId, pointId);
+    return found ? { x: found.x, y: found.y } : null;
   }
 
   // The path contours the selection is on: those of its outline points, and those a
