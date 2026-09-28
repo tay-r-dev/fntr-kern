@@ -1,11 +1,13 @@
 import {
+  AIM_FALLBACK_LENGTH,
+  aimCollapsedRay,
   markerGeometry,
   measureDimension,
   measureRay,
   measureSkeletonAnchor,
   walkRayIntersections,
 } from "@fontra/core/marker-measure.js";
-import { computeMarkerSignature } from "@fontra/core/marker-model.js";
+import { aimedCast, computeMarkerSignature } from "@fontra/core/marker-model.js";
 import { PathHitTester } from "@fontra/core/path-hit-tester.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -269,5 +271,131 @@ describe("marker-measure — a freshly placed marker", () => {
     const geometry = markerGeometry(glyphController, marker, null);
     expect(geometry.stale).to.equal(true);
     expect(geometry.distance).to.equal(null);
+  });
+});
+
+// An aimed ray leaves its anchor at an angle the designer set by dragging, not along the
+// normal. It exists for the places the normal cannot measure: a corner under 90 degrees,
+// where the normal of either arm points outside the black.
+describe("marker-measure — an aimed ray", () => {
+  function glyphFor(path) {
+    return { flattenedPath: path, flattenedPathHitTester: hitTesterFor(path) };
+  }
+
+  function rayOn(path, segmentIndex, t, cast) {
+    return {
+      id: "m1",
+      ends: [{ kind: "pathSegment", contourIndex: 0, segmentIndex, t }, cast],
+      signature: computeMarkerSignature(path),
+    };
+  }
+
+  it("measures along its angle, not along the normal", () => {
+    // The left edge of a square, 0..100, runs down from (0, 100) to (0, 0) as the
+    // fourth segment. Aimed at 45 degrees from its middle it meets the top at (50, 100).
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, 3, 0.5, aimedCast({ x: 1, y: 1 })),
+      null
+    );
+    expect(geometry.distance).to.be.closeTo(Math.hypot(50, 50), 1e-6);
+    expect(geometry.farPoint.x).to.be.closeTo(50, 1e-6);
+    expect(geometry.farPoint.y).to.be.closeTo(100, 1e-6);
+  });
+
+  it("offers its arrow as a grip on the cast end", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, 3, 0.5, aimedCast({ x: 1, y: 0 })),
+      null
+    );
+    expect(geometry.grips).to.have.length(2);
+    expect(geometry.grips[0].endIndex).to.equal(undefined);
+    expect(geometry.grips[1]).to.deep.include({ endIndex: 1 });
+    expect(geometry.grips[1].point.x).to.be.closeTo(100, 1e-6);
+  });
+
+  it("keeps a grabbable arrow where it measures nothing", () => {
+    // Aimed straight out of the square: the ray never enters the black.
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, 3, 0.5, aimedCast({ x: -1, y: 0 })),
+      null
+    );
+    expect(geometry.stale).to.equal(false);
+    expect(geometry.distance).to.equal(null);
+    expect(geometry.grips[1].endIndex).to.equal(1);
+    expect(geometry.grips[1].point.x).to.be.closeTo(-AIM_FALLBACK_LENGTH, 1e-6);
+  });
+
+  it("leaves a plain ray with no grip on its cast end", () => {
+    const path = pathOf(rectContour(0, 0, 100, 100));
+    const geometry = markerGeometry(
+      glyphFor(path),
+      rayOn(path, 3, 0.5, { kind: "cast" }),
+      null
+    );
+    expect(geometry.grips.every((grip) => grip.endIndex === undefined)).to.equal(true);
+  });
+});
+
+// Measured on `b.json` of skeletron-test: a ray on the corner at (12, 364) measured
+// nothing. The corner is 89 degrees, so the normal of either arm points 0.9 degrees
+// outside the black. A ray the normal cannot measure becomes an aimed ray on the
+// nearest on-curve point, which the designer then aims.
+describe("marker-measure — a collapsed ray", () => {
+  // The corner at the origin: one arm runs out to (100, 2), the other down to (1, -26).
+  function acuteCornerPath() {
+    return pathOf({
+      points: [
+        { x: 100, y: 2 },
+        { x: 0, y: 0 },
+        { x: 1, y: -26 },
+        { x: 100, y: -26 },
+      ],
+      isClosed: true,
+    });
+  }
+
+  it("becomes an aimed ray on the nearest on-curve point, and measures", () => {
+    const path = acuteCornerPath();
+    const hitTester = hitTesterFor(path);
+    const ends = [
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 1, t: 0 },
+      { kind: "cast" },
+    ];
+    const aimed = aimCollapsedRay(ends, path, hitTester);
+    expect(aimed).to.not.equal(null);
+    expect(aimed[1].kind).to.equal("cast");
+    expect(aimed[1].angle).to.be.a("number");
+    const geometry = markerGeometry(
+      { flattenedPath: path, flattenedPathHitTester: hitTester },
+      { id: "m1", ends: aimed, signature: computeMarkerSignature(path) },
+      null
+    );
+    expect(geometry.anchorPoint.x).to.be.closeTo(0, 1e-9);
+    expect(geometry.anchorPoint.y).to.be.closeTo(0, 1e-9);
+    expect(geometry.distance).to.be.greaterThan(10);
+  });
+
+  it("leaves a ray that measures alone", () => {
+    const path = acuteCornerPath();
+    const ends = [
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 0.5 },
+      { kind: "cast" },
+    ];
+    expect(aimCollapsedRay(ends, path, hitTesterFor(path))).to.equal(null);
+  });
+
+  it("leaves an aimed ray alone, whatever it measures", () => {
+    const path = acuteCornerPath();
+    const ends = [
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 1, t: 0 },
+      aimedCast({ x: -1, y: 0 }),
+    ];
+    expect(aimCollapsedRay(ends, path, hitTesterFor(path))).to.equal(null);
   });
 });

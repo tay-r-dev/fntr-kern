@@ -386,6 +386,26 @@ function pathSegmentBezier(path, contourIndex, segmentIndex) {
   return undefined;
 }
 
+// An aimed ray. A ray's cast end owns nothing, so it is where the aim lives: an angle in
+// degrees, in glyph space, set by the designer's drag. A cast end with no angle is a
+// plain ray and runs along the normal at its anchor.
+//
+// The angle is in glyph space rather than against the normal, because the aim exists
+// for the places where the normal says nothing useful: a corner, where it belongs to
+// neither arm.
+export function aimedCast(direction) {
+  const degrees = (Math.atan2(direction.y, direction.x) * 180) / Math.PI;
+  return { kind: "cast", angle: Math.round(degrees * 100) / 100 };
+}
+
+export function aimedDirection(castEnd) {
+  if (typeof castEnd?.angle !== "number") {
+    return null;
+  }
+  const radians = (castEnd.angle * Math.PI) / 180;
+  return { x: Math.cos(radians), y: Math.sin(radians) };
+}
+
 // The same quarter turn the Power Ruler takes at recalcRulerFromPoint.
 function normalAt(bezier, t) {
   const derivative = bezier.derivative(t);

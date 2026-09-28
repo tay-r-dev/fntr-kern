@@ -1,5 +1,6 @@
-import { measureSkeletonAnchor } from "@fontra/core/marker-measure.js";
+import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
 import {
+  aimedCast,
   computeMarkerSignature,
   nearestOnCurvePoint,
   resolveMarkerEnd,
@@ -10,6 +11,7 @@ import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import {
+  aimTowards,
   deleteMarkers,
   handleMarkerDrag,
   nearestMarkerAnchorage,
@@ -91,34 +93,53 @@ export class MarkerTool extends BaseTool {
     }
     // The preview is the placement: same anchorage, same cast, same measurement. Two
     // routines answering "where would this go" is two answers waiting to disagree.
-    const hitTester = glyphController.flattenedPathHitTester;
-    const skeletonData = this.skeletonData;
     const end = nearestMarkerAnchorage(
-      hitTester,
+      glyphController.flattenedPathHitTester,
       glyphController.flattenedPath,
       local,
-      skeletonData
+      this.skeletonData
     );
     if (!end) {
       return null;
     }
-    const resolved = resolveMarkerEnd(end, {
-      path: glyphController.flattenedPath,
-      skeletonData,
-    });
-    if (resolved.verdict !== "ok") {
+    return this.rayPreview(glyphController, this.rayEnds(glyphController, end));
+  }
+
+  // The ends a ray placed on `end` is written with. Aimed where the designer dragged a
+  // direction; otherwise a plain ray, unless the normal measures nothing there, and then
+  // it is aimed at the nearest on-curve point instead (aimCollapsedRay).
+  rayEnds(glyphController, end, direction = undefined) {
+    if (direction) {
+      return [end, aimedCast(direction)];
+    }
+    const ends = [end, { kind: "cast" }];
+    return (
+      aimCollapsedRay(
+        ends,
+        glyphController.flattenedPath,
+        glyphController.flattenedPathHitTester
+      ) || ends
+    );
+  }
+
+  // The ray those ends draw, derived exactly as a placed marker is derived.
+  rayPreview(glyphController, ends) {
+    const geometry = markerGeometry(
+      glyphController,
+      {
+        id: "preview",
+        ends,
+        signature: computeMarkerSignature(glyphController.flattenedPath),
+      },
+      this.skeletonData
+    );
+    if (geometry.stale) {
       return null;
     }
-    const measured = measureSkeletonAnchor(
-      hitTester,
-      end,
-      skeletonData,
-      glyphController.flattenedPath
-    );
     return {
-      point: resolved.point,
-      farPoint: measured?.farPoint || null,
-      secondFarPoint: measured?.secondFarPoint || null,
+      point: geometry.anchorPoint,
+      farPoint: geometry.farPoint,
+      secondFarPoint: geometry.secondFarPoint,
     };
   }
 
@@ -193,20 +214,18 @@ export class MarkerTool extends BaseTool {
       x: point.x - positionedGlyph.x,
       y: point.y - positionedGlyph.y,
     };
-    const placed = initialEvent.altKey
-      ? await this.placeDimensionEnd(positionedGlyph, local)
-      : await this.placeRay(positionedGlyph, local);
-    if (!placed) {
-      await this.pointerTool.handleDrag(eventStream, initialEvent);
+    if (initialEvent.altKey) {
+      if (!(await this.placeDimensionEnd(positionedGlyph, local))) {
+        await this.pointerTool.handleDrag(eventStream, initialEvent);
+        return;
+      }
+      eventStream.done();
       return;
     }
-    eventStream.done();
-  }
 
-  // A ray takes hold of whatever is nearest and within reach — an outline, or the
-  // centerline of a stroke. The centerline is not outline geometry, so asking only the
-  // path leaves the skeleton invisible to this tool.
-  async placeRay(positionedGlyph, local) {
+    // A ray takes hold of whatever is nearest and within reach — an outline, or the
+    // centerline of a stroke. The centerline is not outline geometry, so asking only the
+    // path leaves the skeleton invisible to this tool.
     const glyphController = positionedGlyph.glyph;
     const end = nearestMarkerAnchorage(
       glyphController.flattenedPathHitTester,
@@ -215,14 +234,61 @@ export class MarkerTool extends BaseTool {
       this.skeletonData
     );
     if (!end) {
-      return false;
+      await this.pointerTool.handleDrag(eventStream, initialEvent);
+      return;
     }
+    // A click places a plain ray along the normal. A drag aims it: the ray leaves the
+    // anchor toward wherever the button is released.
+    if (!(await shouldInitiateDrag(eventStream, initialEvent))) {
+      await this.placeRay(glyphController, this.rayEnds(glyphController, end));
+      return;
+    }
+    await this.aimAndPlaceRay(eventStream, positionedGlyph, end);
+  }
+
+  async aimAndPlaceRay(eventStream, positionedGlyph, end) {
+    const glyphController = positionedGlyph.glyph;
+    const anchor = resolveMarkerEnd(end, {
+      path: glyphController.flattenedPath,
+      skeletonData: this.skeletonData,
+    });
+    if (anchor.verdict !== "ok") {
+      return;
+    }
+    let direction = null;
+    for await (const event of eventStream) {
+      if (event.type !== "mousemove" && event.type !== "mouseup") {
+        continue;
+      }
+      const point = this.sceneController.localPoint(event);
+      const local = {
+        x: point.x - positionedGlyph.x,
+        y: point.y - positionedGlyph.y,
+      };
+      direction = aimTowards(anchor.point, local, event.shiftKey) || direction;
+      if (event.type === "mouseup") {
+        break;
+      }
+      setMarkerPlacementPreview(
+        direction
+          ? this.rayPreview(
+              glyphController,
+              this.rayEnds(glyphController, end, direction)
+            )
+          : null
+      );
+      this.canvasController.requestUpdate();
+    }
+    setMarkerPlacementPreview(null);
+    await this.placeRay(
+      glyphController,
+      this.rayEnds(glyphController, end, direction || undefined)
+    );
+  }
+
+  async placeRay(glyphController, ends) {
     const signature = computeMarkerSignature(glyphController.flattenedPath);
-    await placeMarker(this.sceneController, () => ({
-      ends: [end, { kind: "cast" }],
-      signature,
-    }));
-    return true;
+    await placeMarker(this.sceneController, () => ({ ends, signature }));
   }
 
   get skeletonData() {

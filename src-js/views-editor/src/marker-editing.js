@@ -10,7 +10,9 @@
 
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { ChangeCollector } from "@fontra/core/changes.js";
+import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
 import {
+  aimedCast,
   allocateMarkerId,
   computeMarkerSignature,
   getMarkerData,
@@ -26,6 +28,7 @@ import {
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
+import { constrainHorVerDiag } from "./edit-behavior.js";
 
 export const MARKER_EDIT_SENDER = { senderID: "marker-editing" };
 
@@ -337,6 +340,55 @@ export async function handleMarkerDrag({
 
   const signature = computeMarkerSignature(glyphController.flattenedPath);
   const hitTester = glyphController.flattenedPathHitTester;
+  const path = glyphController.flattenedPath;
+
+  // The arrow of an aimed ray re-aims it: the anchor stays, and the cast end takes the
+  // direction from the anchor to the cursor.
+  const aiming = isRay && startMarker.ends[draggedEndIndex]?.kind === "cast";
+  const anchorPoint = aiming
+    ? markerGeometry(glyphController, startMarker, skeletonData).anchorPoint
+    : undefined;
+  if (aiming && !anchorPoint) {
+    return;
+  }
+
+  // What one frame of the drag writes, always derived from the marker as it stood at
+  // mouse-down.
+  const draggedMarker = (point, event) => {
+    const local = {
+      x: point.x - positionedGlyph.x,
+      y: point.y - positionedGlyph.y,
+    };
+    if (aiming) {
+      const direction = aimTowards(anchorPoint, local, event.shiftKey);
+      return direction
+        ? withEnd(startMarker, draggedEndIndex, aimedCast(direction), signature, {
+            path,
+            skeletonData,
+          })
+        : undefined;
+    }
+    // A ray goes wherever it is dragged — onto another contour, or off the outline
+    // altogether. The magnet does the resisting, not a restriction: a marker held to
+    // the contour it happened to start on is one that cannot be moved somewhere more
+    // useful, and a broken one has to be movable to be repairable at all.
+    const newEnd = isRay
+      ? nearestEndOnContour(hitTester, path, point, positionedGlyph, skeletonData)
+      : nearestPointEnd(glyphController, point, positionedGlyph);
+    if (!newEnd) {
+      // A dimension end released on nothing stays where it was: both its ends name
+      // points, and one dropped on empty space would name nothing.
+      return undefined;
+    }
+    const moved = withEnd(startMarker, draggedEndIndex, newEnd, signature, {
+      path,
+      skeletonData,
+    });
+    // A plain ray dropped where the normal measures nothing is aimed instead, the same
+    // way a placement is.
+    const aimed = isRay ? aimCollapsedRay(moved.ends, path, hitTester) : null;
+    return aimed ? { ...moved, ends: aimed } : moved;
+  };
 
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const layerInfo = Object.entries(
@@ -359,23 +411,8 @@ export async function handleMarkerDrag({
       if (event.type !== "mousemove") {
         continue;
       }
-      const point = sceneController.localPoint(event);
-      // A ray goes wherever it is dragged — onto another contour, or off the outline
-      // altogether. The magnet does the resisting, not a restriction: a marker held to
-      // the contour it happened to start on is one that cannot be moved somewhere more
-      // useful, and a broken one has to be movable to be repairable at all.
-      const newEnd = isRay
-        ? nearestEndOnContour(
-            hitTester,
-            glyphController.flattenedPath,
-            point,
-            positionedGlyph,
-            skeletonData
-          )
-        : nearestPointEnd(glyphController, point, positionedGlyph);
-      if (!newEnd) {
-        // A dimension end released on nothing stays where it was: both its ends name
-        // points, and one dropped on empty space would name nothing.
+      const next = draggedMarker(sceneController.localPoint(event), event);
+      if (!next) {
         continue;
       }
       dragged = true;
@@ -385,12 +422,7 @@ export async function handleMarkerDrag({
         const layerChanges = recordChanges(layerGlyph, (proxy) => {
           mutateMarkerData(proxy, (data) => {
             data.markers = data.markers.map((marker) =>
-              marker.id === markerId
-                ? withEnd(startMarker, draggedEndIndex, newEnd, signature, {
-                    path: glyphController.flattenedPath,
-                    skeletonData,
-                  })
-                : marker
+              marker.id === markerId ? next : marker
             );
           });
         });
@@ -403,8 +435,24 @@ export async function handleMarkerDrag({
     if (!dragged || !accumulated.hasChange) {
       return;
     }
-    return { changes: accumulated, undoLabel: "Move Marker", broadcast: true };
+    return {
+      changes: accumulated,
+      undoLabel: aiming ? "Aim Marker" : "Move Marker",
+      broadcast: true,
+    };
   }, MARKER_EDIT_SENDER);
+}
+
+// The direction from an anchor to the cursor, in glyph space. Shift holds it to the
+// horizontal, the vertical and the diagonals, as it holds every other drag. Null where
+// the cursor sits on the anchor, which states no direction at all.
+export function aimTowards(anchorPoint, local, constrain) {
+  let delta = { x: local.x - anchorPoint.x, y: local.y - anchorPoint.y };
+  if (constrain) {
+    delta = constrainHorVerDiag(delta);
+  }
+  const length = Math.hypot(delta.x, delta.y);
+  return length > 1e-9 ? { x: delta.x / length, y: delta.y / length } : null;
 }
 
 // Re-anchoring repairs a marker, so it clears the declared break as well as writing the

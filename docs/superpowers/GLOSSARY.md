@@ -344,6 +344,9 @@ layer; it never reaches a compiled font.
 **Ray** — a marker placed on a contour. It points inward along that contour's normal and stops
 where the outline leaves the black.
 
+**Aimed ray** — a ray that points where the designer dragged it, not along the normal. The angle
+is in glyph space and is stored on the ray's cast end. Drag its arrow to aim it again.
+
 **Dimension** — a marker placed between two points, measuring the distance between them and moving
 with both.
 

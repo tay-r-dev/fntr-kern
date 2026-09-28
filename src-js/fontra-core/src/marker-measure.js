@@ -1,5 +1,8 @@
 import {
+  aimedCast,
+  aimedDirection,
   markerIndicesChanged,
+  nearestOnCurvePlace,
   resolveMarkerAnchor,
   resolveMarkerEnd,
 } from "./marker-model.js";
@@ -102,23 +105,37 @@ function spanAtOrigin(intersections) {
 // Which way is "left" is the skeleton generator's convention: the travel direction
 // turned a quarter clockwise. The anchor normal is turned the other way, so left is its
 // negation.
+//
+// An aimed ray passes its own `direction` and the normal is not read. On a single-sided
+// centerline it runs the way it was aimed, because the designer chose that way. On a
+// double-sided one it runs both ways along the aimed line, as a plain ray does along the
+// normal, so it still measures the whole stroke.
 
-export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
+export function measureSkeletonAnchor(
+  pathHitTester,
+  end,
+  skeletonData,
+  path,
+  direction = undefined
+) {
   const anchor = resolveMarkerAnchor(end, { path, skeletonData });
-  if (anchor.verdict !== "ok" || !anchor.normal) {
+  if (anchor.verdict !== "ok" || !(direction || anchor.normal)) {
     return null;
   }
   if (end.kind !== "skeletonPoint") {
-    return measureRay(pathHitTester, anchor.point, anchor.normal);
+    return measureRay(pathHitTester, anchor.point, direction || anchor.normal);
   }
 
   const contour = getSkeletonContour(skeletonData, end.contourId);
   const point = getSkeletonPoint(skeletonData, end.contourId, end.pointId);
   const sides = getSkeletonRibSidesForPoint(contour, point);
-  const left = vector.mulVectorScalar(anchor.normal, -1);
-  const right = anchor.normal;
+  const right = direction || anchor.normal;
+  const left = vector.mulVectorScalar(right, -1);
 
   if (sides.length === 1) {
+    if (direction) {
+      return measureRay(pathHitTester, anchor.point, direction);
+    }
     return measureRay(pathHitTester, anchor.point, sides[0] === "left" ? left : right);
   }
 
@@ -137,8 +154,9 @@ export function measureSkeletonAnchor(pathHitTester, end, skeletonData, path) {
 // One derivation of what a marker looks like on screen, shared by the hit test and the
 // drawing so the two can never disagree about where a marker is (rail R-B).
 //
-// A ray has one grip: the arrowhead and the tail are the same handle, because the far
-// end is a cast and owns nothing. A dimension has one grip per end.
+// A plain ray has one grip: the arrowhead and the tail are the same handle, because the
+// far end is a cast and owns nothing. An aimed ray's arrow is a second grip, on the cast
+// end, because there the cast owns the aim. A dimension has one grip per end.
 //
 // `distance` is null where the ray never leaves the black. That is not staleness and
 // must not be drawn as though it were.
@@ -185,25 +203,41 @@ export function markerGeometry(glyphController, marker, skeletonData) {
     // nothing, so there is only one thing to drag.
     const anchorIndex = anchors.findIndex((anchor) => anchor);
     const anchor = anchors[anchorIndex];
+    const castIndex = marker.ends.findIndex((end) => end.kind === "cast");
+    const aim = aimedDirection(marker.ends[castIndex]);
     const measured = measureSkeletonAnchor(
       hitTester,
       resolvedEnds[anchorIndex],
       skeletonData,
-      path
+      path,
+      aim || undefined
     );
+    // An aimed ray's arrow is a grip of its own, on the cast end: dragging it re-aims
+    // the ray. Where the aim measures nothing the arrow still stands, at a fixed length,
+    // because a ray that cannot be re-aimed from where it points cannot be repaired.
+    const tipIndex = aim ? castIndex : undefined;
+    const farPoint =
+      measured?.farPoint ||
+      (aim
+        ? vector.addVectors(
+            anchor.point,
+            vector.mulVectorScalar(aim, AIM_FALLBACK_LENGTH)
+          )
+        : null);
     const grips = [{ point: anchor.point }];
-    if (measured?.farPoint) {
-      grips.push({ point: measured.farPoint });
+    if (farPoint) {
+      grips.push({ point: farPoint, endIndex: tipIndex });
     }
     if (measured?.secondFarPoint) {
-      grips.push({ point: measured.secondFarPoint });
+      grips.push({ point: measured.secondFarPoint, endIndex: tipIndex });
     }
     return {
       stale: false,
       isRay: true,
+      isAimed: !!aim,
       grips,
       anchorPoint: anchor.point,
-      farPoint: measured?.farPoint || null,
+      farPoint,
       secondFarPoint: measured?.secondFarPoint || null,
       distance: measured ? measured.distance : null,
     };
@@ -235,3 +269,75 @@ export function markerGeometry(glyphController, marker, skeletonData) {
 // unit and not a screen parameter because the grip and the drawing must agree at every
 // zoom: a grip that drifts from what is drawn is a grip you cannot hit.
 export const DIMENSION_WITNESS_GAP = 40;
+
+// How far out an aimed ray's arrow stands where the aim measures nothing, in font units.
+// A font unit and not a screen length, for the same reason as the witness gap above.
+export const AIM_FALLBACK_LENGTH = 60;
+
+// A plain ray the normal cannot measure, turned into an aimed one. This is the corner
+// under 90 degrees, where the normal of either arm points outside the black and the ray
+// leaves the outline where it starts. The ray moves to the nearest on-curve point, which
+// is the corner it was trying to measure, and takes the miter as its first aim: the
+// average of the two arms' normals, which lies inside the corner at every turn. The
+// designer then drags the arrow to aim it where it was meant.
+//
+// Returns the new ends, or null where there is nothing to turn: a ray that measures, a
+// ray already aimed, or an anchor that is not on an outline.
+export function aimCollapsedRay(ends, path, pathHitTester) {
+  const anchorIndex = ends.findIndex((end) => end.kind !== "cast");
+  const castIndex = ends.findIndex((end) => end.kind === "cast");
+  const anchor = ends[anchorIndex];
+  if (
+    anchor?.kind !== "pathSegment" ||
+    castIndex < 0 ||
+    aimedDirection(ends[castIndex])
+  ) {
+    return null;
+  }
+  const resolved = resolveMarkerAnchor(anchor, { path });
+  if (resolved.verdict !== "ok" || !resolved.normal) {
+    return null;
+  }
+  if (measureRay(pathHitTester, resolved.point, resolved.normal)) {
+    return null;
+  }
+  const place = nearestOnCurvePlace(path, resolved.point);
+  if (!place) {
+    return null;
+  }
+  const aim = cornerMiter(path, place.end);
+  if (!aim) {
+    return null;
+  }
+  const next = [...ends];
+  next[anchorIndex] = place.end;
+  next[castIndex] = aimedCast(aim);
+  return next;
+}
+
+// The average of the normals of the two segments meeting at an on-curve place. At an
+// open contour's end there is one segment, and its normal is the answer. A cusp folds
+// the two arms onto each other, the normals cancel, and there is no miter.
+function cornerMiter(path, end) {
+  const own = resolveMarkerAnchor(end, { path });
+  if (own.verdict !== "ok" || !own.normal) {
+    return null;
+  }
+  const count = [...path.iterContourDecomposedSegments(end.contourIndex)].length;
+  let index = end.segmentIndex + (end.t === 0 ? -1 : 1);
+  if (index < 0 || index >= count) {
+    if (!path.contourInfo[end.contourIndex].isClosed) {
+      return own.normal;
+    }
+    index = (index + count) % count;
+  }
+  const other = resolveMarkerAnchor(
+    { ...end, segmentIndex: index, t: end.t === 0 ? 1 : 0 },
+    { path }
+  );
+  if (other.verdict !== "ok" || !other.normal) {
+    return own.normal;
+  }
+  const sum = vector.addVectors(own.normal, other.normal);
+  return Math.hypot(sum.x, sum.y) > 1e-9 ? vector.normalizeVector(sum) : null;
+}

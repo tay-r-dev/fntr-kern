@@ -1876,6 +1876,20 @@ them in its own order, which the ruler never noticed because it always measures 
 line across the glyph; measuring outward from a point inside the black ran the walk
 backwards and reported zero.
 
+**A ray can be aimed.** Press on a contour and drag: the ray leaves the anchor toward
+the cursor, and Shift holds it to the horizontal, the vertical and the diagonals. A
+click with no drag places a plain ray along the normal. The aim is an angle in glyph
+space on the cast end, which owns nothing else. It is not stated against the normal,
+because the aim exists for the places where the normal says nothing useful. An aimed
+ray's arrow is a grip on the cast end, and dragging it re-aims the ray. Where the aim
+measures nothing, the arrow stands at a fixed length so that it can still be grabbed.
+
+**A plain ray the normal cannot measure is aimed instead** (`aimCollapsedRay`). This is
+the corner under 90 degrees: the normal of either arm points outside the black, and the
+ray leaves the outline where it starts. On a click or an anchor drag, the ray moves to
+the nearest on-curve point and takes the miter as its first aim. The designer then aims
+it. The miter is only a start: across a terminal corner it measures a diagonal.
+
 **Null is the honest answer** where a ray never leaves the black, and every reader must
 handle it. A marker with no measurement draws its anchor and no number. It is not stale
 and must not be greyed as though it were.
