@@ -103,6 +103,13 @@ export function rulerExtraLines(editor, glyphController) {
   return extraLines;
 }
 
+// The same lines for the selected glyph, for a tool that moves a ruler without being
+// the ruler tool: the pointer and the marker tool. Undefined with no glyph.
+export function rulerExtraLinesFor(editor, sceneController) {
+  const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+  return positionedGlyph ? rulerExtraLines(editor, positionedGlyph.glyph) : undefined;
+}
+
 export class PowerRulerTool extends BaseTool {
   iconPath = "/images/ruler.svg";
   identifier = "power-ruler-tool";

@@ -55,6 +55,7 @@ import {
   createHandleLengthTargetEntries,
   getHandleLengthBehaviorName,
 } from "./handle-length-editing.js";
+import { rulerExtraLinesFor } from "./edit-tools-power-ruler.js";
 import { deleteMarkers, handleMarkerDrag, unaimMarker } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
@@ -627,6 +628,9 @@ export class PointerTool extends BaseTool {
           initialEvent,
           markerId,
           endIndex: endIndex === undefined ? undefined : parseInt(endIndex, 10),
+          // A ruler moved here takes its angle the way the ruler tool gives it,
+          // side bearings included, or it cannot stand square to an em edge.
+          extraLines: rulerExtraLinesFor(this.editor, sceneController),
         });
       }
       return;

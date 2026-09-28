@@ -20,6 +20,7 @@ import {
   placeMarker,
   unaimMarker,
 } from "./marker-editing.js";
+import { rulerExtraLinesFor } from "./edit-tools-power-ruler.js";
 import { setMarkerPlacementPreview } from "./visualization-layer-markers.js";
 
 // The escape hatch, and deliberately narrow: this tool places, moves and deletes
@@ -303,6 +304,7 @@ export class MarkerTool extends BaseTool {
           initialEvent,
           markerId: markerTarget.markerId,
           endIndex: markerTarget.endIndex,
+          extraLines: rulerExtraLinesFor(this.editor, this.sceneController),
         });
       }
       return;
