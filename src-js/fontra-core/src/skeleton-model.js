@@ -2634,6 +2634,15 @@ export function measureGeneratedHalfWidths(
   return left === null || right === null ? null : { left, right };
 }
 
+// The path contours a skeleton contour generated, read off the record the generator
+// keeps (rail R-D): no geometric matching.
+export function generatedPathContourIndices(skeletonData, contourId) {
+  return (skeletonData?.generated || [])
+    .filter((entry) => entry.skeletonContourId === contourId)
+    .map((entry) => entry.pathContourIndex)
+    .filter((contourIndex) => Number.isInteger(contourIndex));
+}
+
 // Just the contours this skeleton contour generated, so the ray cannot stop on some
 // other stroke that happens to lie across it.
 function generatedOutlineSubPath(skeletonData, contourId, path) {
@@ -2641,12 +2650,8 @@ function generatedOutlineSubPath(skeletonData, contourId, path) {
     return null;
   }
   const outline = new VarPackedPath();
-  for (const entry of skeletonData?.generated || []) {
-    if (entry.skeletonContourId !== contourId) {
-      continue;
-    }
-    const contourIndex = entry.pathContourIndex;
-    if (!Number.isInteger(contourIndex) || contourIndex >= path.numContours) {
+  for (const contourIndex of generatedPathContourIndices(skeletonData, contourId)) {
+    if (contourIndex >= path.numContours) {
       continue;
     }
     outline.appendUnpackedContour(path.getUnpackedContour(contourIndex));

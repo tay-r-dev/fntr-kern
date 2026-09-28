@@ -8,6 +8,7 @@ import {
   getSkeletonPointNudge,
   getSkeletonPointWidth,
   getSkeletonRibAddress,
+  generatedPathContourIndices,
   getSkeletonData,
   getSkeletonRibPosition,
 } from "@fontra/core/skeleton-model.js";
@@ -586,10 +587,10 @@ export class MeasureInteraction {
     // A contour the selection has points on is not a target: its box holds the
     // selection, and the gaps would measure the selection against itself. Its points
     // still are, one by one, above.
-    const selectedContours = new Set(
-      (parseSelection(selection).point || []).map(
-        (index) => path.getContourAndPointIndex(index)[0]
-      )
+    const selectedContours = this._selectedPathContours(
+      selection,
+      path,
+      positionedGlyph
     );
     const segment = this._findPathSegmentNear(
       path,
@@ -605,6 +606,33 @@ export class MeasureInteraction {
       }
     }
     return null;
+  }
+
+  // The path contours the selection is on: those of its outline points, and those a
+  // selected skeleton contour generated -- a skeleton selection names no outline
+  // point, yet its box sits inside its stroke all the same.
+  _selectedPathContours(selection, path, positionedGlyph) {
+    const parsed = parseSelection(selection);
+    const contours = new Set(
+      (parsed.point || []).map((index) => path.getContourAndPointIndex(index)[0])
+    );
+    const skeletonData = getSkeletonData(
+      this.sceneModel._getEditLayerGlyph(positionedGlyph)
+    );
+    for (const kind of [
+      "skeletonPoint",
+      "skeletonRib",
+      "editableGeneratedPoint",
+      "editableGeneratedHandle",
+    ]) {
+      for (const key of parsed[kind] || []) {
+        const contourId = Number(String(key).split("/")[0]);
+        for (const index of generatedPathContourIndices(skeletonData, contourId)) {
+          contours.add(index);
+        }
+      }
+    }
+    return contours;
   }
 
   _targetsEqual(a, b) {
