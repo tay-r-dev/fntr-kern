@@ -115,6 +115,20 @@ export const SELECTION_ROW_GROUP_STYLES = `
     --segmented-control-button-height: 100%;
   }
 
+  /* Latch buttons stand alone, each with its own face (the design's
+     button/latch, Figma 287:15701): three separate toggles in the Rib group,
+     not segments of one plate. */
+  .selection-row-group-icons.latches {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .selection-row-group-icons.latches latch-button {
+    flex: 1 1 0;
+    min-width: 0;
+    height: 24px;
+  }
+
   /* A labeled group over its tray, and two such groups sharing a row half
      and half (the Transform and Skeleton panels). */
   .row-group {

@@ -38,6 +38,7 @@ import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
+import "@fontra/web-components/latch-button.js"; // for the Rib group's latch buttons
 import "@fontra/web-components/overflow-popover.js"; // for the Rib card
 import "@fontra/web-components/scrub-slider.js"; // for <scrub-slider>
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
@@ -550,10 +551,11 @@ export default class SkeletonParametersPanel {
       this.insertionFields["easing-right"],
     ]);
 
-    // Ticket 47: under Generation, one row of labeled icon groups. Lock holds
-    // the three lock kinds, Link holds Linked and Tied ribs, Reset holds the
-    // three resets. Built once with its row, for the same reason as the width
-    // fields; each update sets the buttons' state from the selection.
+    // Ticket 47 (amended by 77, Figma 309:1617): under Generation, one row of
+    // labeled icon groups. Reset holds the three resets, in a tray; Rib holds
+    // Tied ribs, Detach and the lock with its card, as three latch buttons.
+    // Built once with its row, for the same reason as the width fields; each
+    // update sets the buttons' state from the selection.
     this.infoForm.appendStyle(SELECTION_ROW_GROUP_STYLES);
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
@@ -570,6 +572,17 @@ export default class SkeletonParametersPanel {
       const button = iconButton(src, tooltipKey, () =>
         this._runOwnEdit(() => write(!button.on))
       );
+      return button;
+    };
+    // The same toggle as the design's latch button (Figma 287:15701), not the
+    // icon tray's segment: a face of its own with the latched look while on.
+    const latchButton = (src, tooltipKey, write) => {
+      const button = html.createDomElement("latch-button", {
+        "src": src,
+        "data-tooltip": translate(`sidebar.skeleton-parameters.${tooltipKey}`),
+        "data-tooltipposition": "top",
+      });
+      button.onclick = () => this._runOwnEdit(() => write(!button.on));
       return button;
     };
     // An insertion point's width reads as a share of the stroke or as a distance
@@ -597,12 +610,12 @@ export default class SkeletonParametersPanel {
 
     // Tied ribs reflects the selection: greyed where no point has a straight
     // to tie across, and on, off or mixed over the points that do.
-    this.tiedButton = toggleButton("/tabler-icons/link-plus.svg", "tied", (value) =>
+    this.tiedButton = latchButton("/tabler-icons/link-plus.svg", "tied", (value) =>
       this._onWidthChange("tied", value)
     );
     // Detach sits beside it: it frees the selected ribs' generated handles from
     // the construction, holding each where it stands.
-    this.detachButton = toggleButton("/tabler-icons/unlink.svg", "detached", (value) =>
+    this.detachButton = latchButton("/tabler-icons/unlink.svg", "detached", (value) =>
       this._onRibChange("detached", value)
     );
     // Reset is three parts, and the selection sets their reach: a skeleton point
@@ -624,12 +637,21 @@ export default class SkeletonParametersPanel {
     this.resetAllButton = iconButton("/tabler-icons/refresh.svg", "reset-all", () =>
       this._resetRibs("all")
     );
-    // Each group's buttons sit in one tray, as in the design.
-    const iconGroup = (labelKey, buttons) => [
+    // Each group's buttons sit in one tray, as in the design. The Rib group
+    // is the exception: three latch buttons standing on their own (Figma
+    // 309:1617), not segments of one plate.
+    const iconGroup = (labelKey, buttons, latches = false) => [
       html.span({ class: "selection-row-group-label" }, [
         translate(`sidebar.skeleton-parameters.${labelKey}`),
       ]),
-      html.div({ class: "selection-row-group-icons tray" }, buttons),
+      html.div(
+        {
+          class: latches
+            ? "selection-row-group-icons latches"
+            : "selection-row-group-icons tray",
+        },
+        buttons
+      ),
     ];
     // Ticket 48: Projection is the contour's sides, D, L and R for both, left
     // and right. Its overflow holds the two options on that change: keep
@@ -658,11 +680,11 @@ export default class SkeletonParametersPanel {
       this._refreshProjectionOverflow();
     });
     this._refreshProjectionOverflow();
-    // The Rib group's overflow, a card as in the design: Rib angle (the rib
-    // angle lock: Free, Vertical, Horizontal) with Keep the footprint, the
-    // forced rib's mode, under it; then Lock with the three lock kinds and Link
-    // with Tied ribs and Detach. The controls are built once; each update sets
-    // their state from the selection.
+    // The Rib group's lock, a latch button with a card as in the design
+    // (Figma 309:1617): Rib angle (the rib angle lock: Free, Vertical,
+    // Horizontal) with Keep the footprint, the forced rib's mode, under it;
+    // then Lock with the three lock kinds. The controls are built once; each
+    // update sets their state from the selection.
     this.ribAngleControl = html.createDomElement("segmented-control", {
       options: [
         ["auto", "free"],
@@ -748,7 +770,7 @@ export default class SkeletonParametersPanel {
         { style: "display: flex; flex-direction: column; gap: 0.25em;" },
         children
       );
-    this.ribOverflow = html.createDomElement("icon-button", {
+    this.ribOverflow = html.createDomElement("latch-button", {
       "src": "/tabler-icons/lock.svg",
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
@@ -1041,11 +1063,11 @@ export default class SkeletonParametersPanel {
         ]),
       ]),
       html.div({ class: "row-group" }, [
-        ...iconGroup("group.rib", [
-          this.tiedButton,
-          this.detachButton,
-          this.ribOverflow,
-        ]),
+        ...iconGroup(
+          "group.rib",
+          [this.tiedButton, this.detachButton, this.ribOverflow],
+          true
+        ),
       ]),
     ]);
     // Projection sits in the Skeleton heading, with its options beside it.
@@ -1066,10 +1088,13 @@ export default class SkeletonParametersPanel {
   // already carries the name. `slider` draws the field as a scrub-slider: the
   // same control with a fill showing the value's place in its range.
   _makeCompactField(key, labelKey, { scrub, commit, defaultValue, label, slider }) {
-    const field = html.createDomElement(slider ? "scrub-slider" : "compact-scrub-field", {
-      label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
-      integer: true,
-    });
+    const field = html.createDomElement(
+      slider ? "scrub-slider" : "compact-scrub-field",
+      {
+        label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
+        integer: true,
+      }
+    );
     field.defaultValue = defaultValue;
     field.style.flex = "1 1 0";
     field.style.minWidth = "0";
