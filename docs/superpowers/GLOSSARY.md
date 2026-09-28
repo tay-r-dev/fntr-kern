@@ -345,7 +345,8 @@ layer; it never reaches a compiled font.
 where the outline leaves the black.
 
 **Aimed ray** — a ray that points where the designer dragged it, not along the normal. The angle
-is in glyph space and is stored on the ray's cast end. Drag its arrow to aim it again.
+is in glyph space and is stored on the ray's cast end. Drag its arrow to aim it again. Ctrl-click
+it to return it to the normal.
 
 **Dimension** — a marker placed between two points, measuring the distance between them and moving
 with both.

@@ -55,7 +55,7 @@ import {
   createHandleLengthTargetEntries,
   getHandleLengthBehaviorName,
 } from "./handle-length-editing.js";
-import { deleteMarkers, handleMarkerDrag } from "./marker-editing.js";
+import { deleteMarkers, handleMarkerDrag, unaimMarker } from "./marker-editing.js";
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import {
@@ -604,10 +604,23 @@ export class PointerTool extends BaseTool {
     const clickedMarker = parseSelection(selection).marker || [];
     const clickedMarkerEnd = parseSelection(selection).markerEnd || [];
     if (clickedMarker.length || clickedMarkerEnd.length) {
+      const [markerId, endIndex] = clickedMarkerEnd.length
+        ? String(clickedMarkerEnd[0]).split("/")
+        : [String(clickedMarker[0]), undefined];
+      // Ctrl-click returns an aimed ray to the normal.
+      if (initialEvent.ctrlKey) {
+        eventStream.done();
+        const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
+        if (positionedGlyph) {
+          await unaimMarker(
+            sceneController,
+            markerId,
+            positionedGlyph.glyph.flattenedPath
+          );
+        }
+        return;
+      }
       if (await shouldInitiateDrag(eventStream, initialEvent)) {
-        const [markerId, endIndex] = clickedMarkerEnd.length
-          ? String(clickedMarkerEnd[0]).split("/")
-          : [String(clickedMarker[0]), undefined];
         await handleMarkerDrag({
           sceneController,
           eventStream,

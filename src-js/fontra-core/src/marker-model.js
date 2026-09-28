@@ -479,9 +479,23 @@ export function nearestOnCurvePlace(path, at) {
   if (!found) {
     return undefined;
   }
+  const end = placeOfOnCurvePoint(path, found.contourIndex, found.pointIndex);
+  if (!end) {
+    return undefined;
+  }
+  return {
+    distance: found.distance,
+    point: { x: found.point.x, y: found.point.y },
+    end,
+  };
+}
+
+// An on-curve point as a place on the outline: the start of the segment that leaves it,
+// or the end of the one that arrives where nothing leaves (an open contour's last point).
+function placeOfOnCurvePoint(path, contourIndex, contourPointIndex) {
   // Segment point indices count across the whole path, not within the contour.
-  const pointIndex = path.getAbsolutePointIndex(found.contourIndex, found.pointIndex);
-  const segments = [...path.iterContourDecomposedSegments(found.contourIndex)];
+  const pointIndex = path.getAbsolutePointIndex(contourIndex, contourPointIndex);
+  const segments = [...path.iterContourDecomposedSegments(contourIndex)];
   let segmentIndex = segments.findIndex(
     (segment) => segment.pointIndices[0] === pointIndex
   );
@@ -495,17 +509,60 @@ export function nearestOnCurvePlace(path, at) {
   if (segmentIndex < 0) {
     return undefined;
   }
-  return {
-    distance: found.distance,
-    point: { x: found.point.x, y: found.point.y },
-    end: withAnchorPosition(
-      {
-        kind: "pathSegment",
-        contourIndex: found.contourIndex,
-        segmentIndex,
-        t,
-      },
-      path
-    ),
-  };
+  return withAnchorPosition(
+    { kind: "pathSegment", contourIndex, segmentIndex, t },
+    path
+  );
+}
+
+// An aimed ray at a segment's end sits on an on-curve point, and is addressed as that
+// point, so the file says what it sits on. A plain ray stays on its segment: it reads its
+// normal off the segment, and a point has no normal. Returns the ends unchanged where
+// there is nothing to readdress.
+export function aimedRayOnPoint(ends, path) {
+  const anchorIndex = ends.findIndex((end) => end.kind !== "cast");
+  const cast = ends.find((end) => end.kind === "cast");
+  const anchor = ends[anchorIndex];
+  if (
+    !aimedDirection(cast) ||
+    anchor?.kind !== "pathSegment" ||
+    (anchor.t !== 0 && anchor.t !== 1)
+  ) {
+    return ends;
+  }
+  const segment = [...path.iterContourDecomposedSegments(anchor.contourIndex)][
+    anchor.segmentIndex
+  ];
+  if (!segment) {
+    return ends;
+  }
+  const absolute =
+    anchor.t === 0 ? segment.pointIndices[0] : segment.pointIndices.at(-1);
+  const [contourIndex, pointIndex] = path.getContourAndPointIndex(absolute);
+  const next = [...ends];
+  next[anchorIndex] = withAnchorPosition(
+    { kind: "pathPoint", contourIndex, pointIndex },
+    path
+  );
+  return next;
+}
+
+// A ray returned to the normal (Ctrl-click). The aim goes, and a ray on a point goes
+// back onto the segment that leaves the point, where it reads a normal again. Null for a
+// ray that is not aimed, which has nothing to return from.
+export function unaimedRay(ends, path) {
+  const castIndex = ends.findIndex((end) => end.kind === "cast");
+  if (castIndex < 0 || !aimedDirection(ends[castIndex])) {
+    return null;
+  }
+  const next = ends.map((end) => {
+    if (end.kind === "cast") {
+      return { kind: "cast" };
+    }
+    if (end.kind === "pathPoint") {
+      return placeOfOnCurvePoint(path, end.contourIndex, end.pointIndex) || end;
+    }
+    return end;
+  });
+  return next;
 }

@@ -1,6 +1,7 @@
 import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
 import {
   aimedCast,
+  aimedRayOnPoint,
   computeMarkerSignature,
   nearestOnCurvePoint,
   resolveMarkerEnd,
@@ -17,6 +18,7 @@ import {
   handleMarkerDrag,
   nearestMarkerAnchorage,
   placeMarker,
+  unaimMarker,
 } from "./marker-editing.js";
 import { setMarkerPlacementPreview } from "./visualization-layer-markers.js";
 
@@ -111,7 +113,10 @@ export class MarkerTool extends BaseTool {
   // it is aimed at the nearest on-curve point instead (aimCollapsedRay).
   rayEnds(glyphController, end, direction = undefined) {
     if (direction) {
-      return [end, aimedCast(direction)];
+      return aimedRayOnPoint(
+        [end, aimedCast(direction)],
+        glyphController.flattenedPath
+      );
     }
     const ends = [end, { kind: "cast" }];
     return (
@@ -197,6 +202,15 @@ export class MarkerTool extends BaseTool {
           ? `marker/${markerTarget.markerId}`
           : `markerEnd/${markerTarget.markerId}/${markerTarget.endIndex}`,
       ]);
+      if (initialEvent.ctrlKey) {
+        eventStream.done();
+        await unaimMarker(
+          this.sceneController,
+          markerTarget.markerId,
+          positionedGlyph.glyph.flattenedPath
+        );
+        return;
+      }
       if (await shouldInitiateDrag(eventStream, initialEvent)) {
         await handleMarkerDrag({
           sceneController: this.sceneController,

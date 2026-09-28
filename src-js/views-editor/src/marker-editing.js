@@ -13,6 +13,7 @@ import { ChangeCollector } from "@fontra/core/changes.js";
 import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
 import {
   aimedCast,
+  aimedRayOnPoint,
   allocateMarkerId,
   computeMarkerSignature,
   getMarkerData,
@@ -25,6 +26,7 @@ import {
   refreshedMarkers,
   resolveMarkerEnd,
   setMarkerData,
+  unaimedRay,
   withAnchorPosition,
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
@@ -182,6 +184,25 @@ export async function reanchorMarkerEnd(
       ends[endIndex] = end;
       return { ...marker, ends, signature };
     });
+  });
+}
+
+// Ctrl-click: an aimed ray goes back to the normal. The address may change with it (a
+// ray on a point goes back onto a segment), so the signature is written in the same
+// edit. A ray that the normal cannot measure is left that way: it was asked for.
+export async function unaimMarker(sceneController, id, flattenedPath) {
+  const signature = computeMarkerSignature(flattenedPath);
+  return await runMarkerEdit(sceneController, "Reset Marker Aim", (data) => {
+    let changed = false;
+    data.markers = data.markers.map((marker) => {
+      const ends = marker.id === id ? unaimedRay(marker.ends, flattenedPath) : null;
+      if (!ends) {
+        return marker;
+      }
+      changed = true;
+      return { ...marker, ends, signature };
+    });
+    return changed;
   });
 }
 
@@ -393,10 +414,14 @@ export async function handleMarkerDrag({
       path,
       skeletonData,
     });
+    if (!isRay) {
+      return moved;
+    }
     // A plain ray dropped where the normal measures nothing is aimed instead, the same
-    // way a placement is.
-    const aimed = isRay ? aimCollapsedRay(moved.ends, path, hitTester) : null;
-    return aimed ? { ...moved, ends: aimed } : moved;
+    // way a placement is, and an aimed ray dropped on an on-curve point is addressed as
+    // that point.
+    const aimed = aimCollapsedRay(moved.ends, path, hitTester);
+    return { ...moved, ends: aimed || aimedRayOnPoint(moved.ends, path) };
   };
 
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {

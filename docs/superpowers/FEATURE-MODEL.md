@@ -1899,6 +1899,15 @@ ray leaves the outline where it starts. On a click or an anchor drag, the ray mo
 the nearest on-curve point and takes the miter as its first aim. The designer then aims
 it. The miter is only a start: across a terminal corner it measures a diagonal.
 
+**An aimed ray on an on-curve point is addressed as that point** (`pathPoint`), so the
+file says what it sits on. A plain ray stays addressed on a segment even at its end,
+because it reads its normal off the segment and a point has no normal.
+
+**Ctrl-click on a ray returns it to the normal** (`unaimedRay`), in the marker tool and
+the pointer tool. The aim goes, and a ray on a point goes back onto the segment that
+leaves the point. A ray that the normal cannot measure stays that way, because it was
+asked for.
+
 **Null is the honest answer** where a ray never leaves the black, and every reader must
 handle it. A marker with no measurement draws its anchor and no number. It is not stale
 and must not be greyed as though it were.

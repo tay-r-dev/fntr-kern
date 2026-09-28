@@ -1,6 +1,7 @@
 import {
   aimedCast,
   aimedDirection,
+  aimedRayOnPoint,
   markerIndicesChanged,
   nearestOnCurvePlace,
   resolveMarkerAnchor,
@@ -331,7 +332,7 @@ export function aimCollapsedRay(ends, path, pathHitTester) {
   const next = [...ends];
   next[anchorIndex] = place.end;
   next[castIndex] = aimedCast(aim);
-  return next;
+  return aimedRayOnPoint(next, path);
 }
 
 // The average of the normals of the two segments meeting at an on-curve place. At an

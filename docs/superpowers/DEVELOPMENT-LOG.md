@@ -2403,6 +2403,12 @@ the outline against where the anchor last stood.
   diagonal across the terminal; the stroke there is 26. A corner has no one
   direction to measure in, so the designer aims the ray. The miter survives
   only as the first aim of a collapsed ray.
+- **"It goes to some segment" was the address, not the place.** Reported twice.
+  A simulated press at every whole unit of `b.json` landed every collapsed ray
+  on the corner under its own anchor. The file wrote that corner as the start of
+  a segment, and the panel named the segment. An aimed ray on a point is
+  addressed as the point now. **Read the report as what the designer sees in
+  the file, not only on the canvas.**
 
 Three sweeps: a moving neighbour over 200 steps and an anchor dragged along a
 straight edge over 260 both report 0, and an anchor on a wedge of slope 1-in-2

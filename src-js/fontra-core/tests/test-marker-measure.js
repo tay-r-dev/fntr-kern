@@ -7,7 +7,12 @@ import {
   measureSkeletonAnchor,
   walkRayIntersections,
 } from "@fontra/core/marker-measure.js";
-import { aimedCast, computeMarkerSignature } from "@fontra/core/marker-model.js";
+import {
+  aimedCast,
+  aimedRayOnPoint,
+  computeMarkerSignature,
+  unaimedRay,
+} from "@fontra/core/marker-model.js";
 import { PathHitTester } from "@fontra/core/path-hit-tester.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
@@ -369,6 +374,12 @@ describe("marker-measure — a collapsed ray", () => {
     ];
     const aimed = aimCollapsedRay(ends, path, hitTester);
     expect(aimed).to.not.equal(null);
+    // The file says what the ray sits on: the corner point, not a segment's end.
+    expect(aimed[0]).to.deep.include({
+      kind: "pathPoint",
+      contourIndex: 0,
+      pointIndex: 1,
+    });
     expect(aimed[1].kind).to.equal("cast");
     expect(aimed[1].angle).to.be.a("number");
     const geometry = markerGeometry(
@@ -467,5 +478,82 @@ describe("marker-measure — the angle", () => {
       null
     );
     expect(geometry.angle).to.be.closeTo((Math.atan2(4, 3) * 180) / Math.PI, 1e-9);
+  });
+});
+
+// An aimed ray on an on-curve point is addressed as that point. A plain ray is not: it
+// reads its normal off the segment it is addressed on, and a point has no normal.
+describe("marker-model — where an aimed ray is addressed", () => {
+  const path = pathOf(rectContour(0, 0, 100, 100));
+
+  it("addresses an aimed ray at a segment's end as the point", () => {
+    const ends = aimedRayOnPoint(
+      [
+        { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 1 },
+        aimedCast({ x: 1, y: 0 }),
+      ],
+      path
+    );
+    expect(ends[0]).to.deep.include({
+      kind: "pathPoint",
+      contourIndex: 0,
+      pointIndex: 3,
+    });
+    expect(ends[0].at).to.deep.equal({ x: 0, y: 100 });
+  });
+
+  it("leaves an aimed ray along a segment, and a plain ray, as they are", () => {
+    const along = [
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 0.5 },
+      aimedCast({ x: 1, y: 0 }),
+    ];
+    const plain = [
+      { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 0 },
+      { kind: "cast" },
+    ];
+    expect(aimedRayOnPoint(along, path)).to.equal(along);
+    expect(aimedRayOnPoint(plain, path)).to.equal(plain);
+  });
+});
+
+// Ctrl-click returns a ray to the normal: the aim goes, and a ray on a point is
+// addressed on the segment that leaves the point, where it has a normal again.
+describe("marker-model — a ray returned to the normal", () => {
+  const path = pathOf(rectContour(0, 0, 100, 100));
+
+  it("drops the aim and readdresses a point on its segment", () => {
+    const ends = unaimedRay(
+      [
+        { kind: "pathPoint", contourIndex: 0, pointIndex: 3 },
+        aimedCast({ x: 1, y: 0 }),
+      ],
+      path
+    );
+    expect(ends[1]).to.deep.equal({ kind: "cast" });
+    expect(ends[0]).to.deep.include({
+      kind: "pathSegment",
+      contourIndex: 0,
+      segmentIndex: 3,
+      t: 0,
+    });
+  });
+
+  it("keeps the place of a ray along a segment", () => {
+    const anchor = { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 0.5 };
+    const ends = unaimedRay([anchor, aimedCast({ x: 1, y: 0 })], path);
+    expect(ends[0]).to.equal(anchor);
+    expect(ends[1]).to.deep.equal({ kind: "cast" });
+  });
+
+  it("returns null for a ray that is not aimed", () => {
+    expect(
+      unaimedRay(
+        [
+          { kind: "pathSegment", contourIndex: 0, segmentIndex: 2, t: 0.5 },
+          { kind: "cast" },
+        ],
+        path
+      )
+    ).to.equal(null);
   });
 });
