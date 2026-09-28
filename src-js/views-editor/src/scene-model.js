@@ -2,7 +2,11 @@ import {
   pointInConvexPolygon,
   rectIntersectsPolygon,
 } from "@fontra/core/convex-hull.js";
-import { calculateHandleMeasure, ribPlaque } from "@fontra/core/distance-angle.js";
+import {
+  calculateHandleMeasure,
+  handleGizmoPlaque,
+  ribPlaque,
+} from "@fontra/core/distance-angle.js";
 import {
   getSuggestedGlyphName,
   guessDirectionFromCodePoints,
@@ -1401,6 +1405,11 @@ export class SceneModel {
     if (this.visualizationLayersSettings?.model?.["fontra.point.labels"]) {
       return [];
     }
+    // A curvature gizmo shows its handles' plaques itself, through the drag as on
+    // hover (the handle highlight layer).
+    if (this.tunniDragTarget.gizmoKey?.split(":")[1] === "curvature") {
+      return [];
+    }
     const segmentPoints = this._resolveTunniDragSegment(positionedGlyph);
     if (segmentPoints?.length !== 4 || segmentPoints.some((point) => !point)) {
       return [];
@@ -1420,8 +1429,7 @@ export class SceneModel {
         x: handle.x,
         y: handle.y,
         kind,
-        label: `T ${measure.tension.toFixed(2)}
-d ${measure.distance.toFixed(1)}`,
+        plaque: handleGizmoPlaque(measure),
       });
     }
     return readouts;

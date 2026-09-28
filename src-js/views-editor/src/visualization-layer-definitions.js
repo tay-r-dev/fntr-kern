@@ -1,5 +1,6 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import {
+  drawPlaque,
   LABEL_COLORS,
   LABEL_COLORS_DARK_MODE,
   LABEL_SCREEN_PARAMETERS,
@@ -10,6 +11,7 @@ import {
   calculateBadgeDimensions,
   calculateBadgePosition,
   calculateDistancesFromPoint,
+  calculateHandleMeasure,
   calculateOffCurveAngle,
   DISTANCE_ANGLE_BADGE_COLOR,
   DISTANCE_ANGLE_BADGE_PADDING,
@@ -26,6 +28,7 @@ import {
   drawPointStyleLabel,
   formatDistanceAndAngle,
   formatDistanceTensionAngle,
+  handleGizmoPlaque,
   OFFCURVE_DISTANCE_BADGE_COLOR,
   OFFCURVE_DISTANCE_BADGE_PADDING,
   OFFCURVE_DISTANCE_BADGE_RADIUS,
@@ -67,6 +70,7 @@ import {
   iterBasicTunniSegments,
   tunniLabelAlpha,
   TUNNI_SETTINGS,
+  tunniCurvatureSegmentPoints,
   tunniGizmoKey,
 } from "./tunni-gizmos.js";
 
@@ -2494,6 +2498,63 @@ registerVisualizationLayerDefinition({
     }
   },
 });
+
+// The curvature gizmo under the cursor, or held in a drag, brings its two handles up:
+// the handle lines and their nodes, drawn even where gizmo mode hides them, and on
+// each handle label/Q in its gizmo state -- the handle's length and tension. All of
+// it eases in and out with the gizmo's hover emphasis, so it arrives and leaves with
+// the gizmo rather than blinking.
+registerVisualizationLayerDefinition({
+  identifier: "fontra.tunni.handle-highlight",
+  name: "Tunni curvature handle highlight",
+  selectionFunc: glyphSelector("editing"),
+  zIndex: 640,
+  screenParameters: { strokeWidth: 1.5, handleSize: 6.5, ...PLAQUE_SCREEN_PARAMETERS },
+  colors: TUNNI_GIZMO_COLORS,
+  colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
+  draw: (context, positionedGlyph, parameters, model, controller) => {
+    const hot = model.tunniGizmoReveal?.hotKeys() || [];
+    for (const { key, hotness } of hot) {
+      if (key.split(":")[1] !== "curvature") {
+        continue;
+      }
+      const points = tunniCurvatureSegmentPoints(key, {
+        path: positionedGlyph.glyph.path,
+        skeletonData: getTunniSkeletonData(positionedGlyph, model),
+      });
+      if (points?.length !== 4 || points.some((point) => !point)) {
+        continue;
+      }
+      drawGizmoHandles(context, points, hotness, parameters, controller);
+    }
+  },
+});
+
+function drawGizmoHandles(context, points, alpha, parameters, controller) {
+  const [p0, p1, p2, p3] = points;
+  context.save();
+  context.globalAlpha = alpha;
+  context.strokeStyle = parameters.gizmoColor;
+  context.fillStyle = parameters.gizmoColor;
+  context.lineWidth = parameters.strokeWidth;
+  strokeLine(context, p0.x, p0.y, p1.x, p1.y);
+  strokeLine(context, p3.x, p3.y, p2.x, p2.y);
+  for (const handle of [p1, p2]) {
+    fillRoundNode(context, handle, parameters.handleSize);
+  }
+  for (const [side, handle] of [
+    ["start", p1],
+    ["end", p2],
+  ]) {
+    const measure = calculateHandleMeasure(points, side);
+    if (measure) {
+      drawPlaque(context, parameters, handle, handleGizmoPlaque(measure), {
+        onIconLoad: () => controller?.requestUpdate?.(),
+      });
+    }
+  }
+  context.restore();
+}
 
 // A label shows with its curvature gizmo and fades with it, so `alpha` is that
 // gizmo's reveal opacity.

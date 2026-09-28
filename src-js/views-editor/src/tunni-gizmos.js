@@ -6,6 +6,7 @@ import {
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   getGeneratedPathContourIndices,
+  segmentToTunniPoints,
 } from "@fontra/core/skeleton-model.js";
 import {
   calculateCurvatureGizmoPoint,
@@ -157,6 +158,37 @@ export function skeletonTunniSegmentId(contour, segment) {
 
 export function generatedTunniSegmentId(segment) {
   return `${segment.pathContourIndex}/${segment.segmentIndex}`;
+}
+
+// The four points of the segment a curvature gizmo key stands for, from live
+// geometry, or null where the key names nothing now.
+export function tunniCurvatureSegmentPoints(key, { path, skeletonData }) {
+  const [kind, , id] = key.split(":");
+  if (kind === "basic") {
+    for (const segment of iterBasicTunniSegments(path, skeletonData)) {
+      if (segment.id === id) {
+        return segment.segment.points;
+      }
+    }
+    return null;
+  }
+  if (kind === "skeleton") {
+    for (const contour of skeletonData?.contours || []) {
+      for (const segment of buildSkeletonTunniSegments(contour)) {
+        if (skeletonTunniSegmentId(contour, segment) === id) {
+          return segmentToTunniPoints(segment);
+        }
+      }
+    }
+    return null;
+  }
+  if (kind === "generated" && skeletonData?.generated?.length) {
+    const segment = buildGeneratedTunniSegments(skeletonData, path).find(
+      (candidate) => generatedTunniSegmentId(candidate) === id
+    );
+    return segment?.points ?? null;
+  }
+  return null;
 }
 
 //
@@ -414,6 +446,23 @@ export class TunniGizmoReveal {
     return this._value("hot", key, now);
   }
 
+  // Every key whose hover emphasis shows, growing in or fading out: the gizmo under
+  // the cursor, the one held through a drag, and the one just let go.
+  hotKeys(now = performance.now()) {
+    const keys = [];
+    for (const tween of this._tweens.values()) {
+      if (tween.channel !== "hot") {
+        continue;
+      }
+      const key = tween.key;
+      const hotness = this._value("hot", key, now);
+      if (hotness > 0) {
+        keys.push({ key, hotness });
+      }
+    }
+    return keys;
+  }
+
   _setHot(key) {
     if (key === this._hotKey) {
       return;
@@ -464,6 +513,7 @@ export class TunniGizmoReveal {
     const linger = slow && to === 0 ? TUNNI_GIZMO_TUNING.onCurveHideDelay : 0;
     this._tweens.set(`${channel}:${key}`, {
       channel,
+      key,
       slow,
       from: this._value(channel, key, now),
       to,

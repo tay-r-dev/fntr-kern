@@ -1823,7 +1823,9 @@ function isGeneratedHandleAdjustBehavior(name) {
 // parent point indices, skeleton segments by contour + endpoint ids.
 function makePathTunniDragTarget(gizmo) {
   const indices = gizmo?.segment?.parentPointIndices;
-  return indices?.length === 4 ? { kind: "path", pointIndices: [...indices] } : null;
+  return indices?.length === 4
+    ? { kind: "path", pointIndices: [...indices], gizmoKey: gizmo.key }
+    : null;
 }
 
 function makeSkeletonTunniDragTarget(tunniHit) {
@@ -1833,7 +1835,7 @@ function makeSkeletonTunniDragTarget(tunniHit) {
   if (contourId == null || startPointId == null || endPointId == null) {
     return null;
   }
-  return { kind: "skeleton", contourId, startPointId, endPointId };
+  return { kind: "skeleton", contourId, startPointId, endPointId, gizmoKey: tunniHit.key };
 }
 
 // Address the dragged generated segment by its place in the path, so the readout

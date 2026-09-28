@@ -1701,6 +1701,18 @@ function drawMeasureGuideLine(context, p1, p2, color, parameters) {
   context.setLineDash([]);
 }
 
+// label/Q, type=handle, state=gizmo (node 342:17490): what a curvature gizmo moves on
+// each of its handles, its length and its tension. No header: the handle is the one
+// the plaque stands on, and the gizmo is what the designer is holding.
+export function handleGizmoPlaque({ distance, tension }) {
+  return {
+    rows: [
+      { icon: "distance", value: distance.toFixed(1) },
+      { icon: "tension", value: tension == null ? "n/a" : tension.toFixed(2) },
+    ],
+  };
+}
+
 // label/Q, type=rib, in its three states. Default, on hover: the stroke's width with
 // its left/right distribution under it, then how far the rib end slides along the
 // stroke. "adjusting width", while a drag changes the width: the width alone.
