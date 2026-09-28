@@ -1,3 +1,9 @@
+import {
+  LABEL_COLORS,
+  LABEL_COLORS_DARK_MODE,
+  LABEL_SCREEN_PARAMETERS,
+  drawLabel,
+} from "@fontra/core/canvas-labels.js";
 import * as rectangle from "@fontra/core/rectangle.ts";
 import { commandKeyProperty, range } from "@fontra/core/utils.ts";
 import { VarPackedPath, packContour } from "@fontra/core/var-path.js";
@@ -63,11 +69,13 @@ export class ShapeToolRect extends BaseTool {
       this.drawShapePath2D(drawPath, mouseRect, event);
       this.sceneModel.shapeToolShapePath = drawPath;
       this.sceneModel.shapeToolShowFill = event[commandKeyProperty];
+      this.sceneModel.shapeToolDimensions = this.shapeDimensions(mouseRect, event);
       this.canvasController.requestUpdate();
     }
 
     delete this.sceneModel.shapeToolShapePath;
     delete this.sceneModel.shapeToolShowFill;
+    delete this.sceneModel.shapeToolDimensions;
     this.canvasController.requestUpdate();
 
     // rectsize return when too small
@@ -125,7 +133,9 @@ export class ShapeToolRect extends BaseTool {
     return path.drawToPath2d(path2d);
   }
 
-  drawShapeVarPackedPath(mouseRect, event) {
+  // The box the shape is drawn in, after Shift (square) and Alt (from the centre). The
+  // path and the size label both read it, so the label states the shape drawn.
+  shapeBox(mouseRect, event) {
     let x = mouseRect.xMin;
     let y = mouseRect.yMin;
     let width = mouseRect.xMax - mouseRect.xMin;
@@ -145,6 +155,20 @@ export class ShapeToolRect extends BaseTool {
       width *= 2;
       height *= 2;
     }
+    return { x, y, width, height };
+  }
+
+  // The size the shape is being drawn at, labelled at its centre: width by height.
+  shapeDimensions(mouseRect, event) {
+    const { x, y, width, height } = this.shapeBox(mouseRect, event);
+    return {
+      center: { x: x + width / 2, y: y + height / 2 },
+      label: `${formatSize(width)} × ${formatSize(height)}`,
+    };
+  }
+
+  drawShapeVarPackedPath(mouseRect, event) {
+    const { x, y, width, height } = this.shapeBox(mouseRect, event);
 
     const varPackedPath = VarPackedPath.fromUnpackedContours(
       this.getUnpackedContours(x, y, width, height)
@@ -203,12 +227,26 @@ export class ShapeToolEllipse extends ShapeToolRect {
   identifier = "shape-tool-ellipse";
   shapeNames = ["ellipse", "circle"];
 
+  // A circle reads its diameter; an ellipse its width by its height.
+  shapeDimensions(mouseRect, event) {
+    const dimensions = super.shapeDimensions(mouseRect, event);
+    const { width, height } = this.shapeBox(mouseRect, event);
+    if (Math.abs(Math.abs(width) - Math.abs(height)) < 0.5) {
+      dimensions.label = `⌀ ${formatSize(width)}`;
+    }
+    return dimensions;
+  }
+
   getUnpackedContours(x, y, width, height) {
     let cx = x + width / 2;
     let cy = y + height / 2;
     let shape = getUnpackedContoursEllipse(cx, cy, width / 2, height / 2);
     return [this.reversePackedContour(shape[0])];
   }
+}
+
+function formatSize(size) {
+  return String(Math.round(Math.abs(size) * 10) / 10);
 }
 
 const bezierArcMagic = 0.5522847498; // constant for drawing circular arcs w/ Beziers
@@ -231,9 +269,9 @@ registerVisualizationLayerDefinition({
   name: "Shape tool shape",
   selectionFunc: glyphSelector("editing"),
   zIndex: 500,
-  screenParameters: { strokeWidth: 1 },
-  colors: { boxColor: "#FFFB", strokeColor: "#000" },
-  colorsDarkMode: { boxColor: "#1118", strokeColor: "#FFF" },
+  screenParameters: { strokeWidth: 1, ...LABEL_SCREEN_PARAMETERS },
+  colors: { boxColor: "#FFFB", strokeColor: "#000", ...LABEL_COLORS },
+  colorsDarkMode: { boxColor: "#1118", strokeColor: "#FFF", ...LABEL_COLORS_DARK_MODE },
   draw: (context, positionedGlyph, parameters, model, controller) => {
     const shape = model.shapeToolShapePath;
     if (!shape) {
@@ -248,5 +286,10 @@ registerVisualizationLayerDefinition({
     context.strokeStyle = parameters.strokeColor;
     context.lineWidth = parameters.strokeWidth;
     context.stroke(shape);
+
+    const dimensions = model.shapeToolDimensions;
+    if (dimensions) {
+      drawLabel(context, parameters, dimensions.center, dimensions.label);
+    }
   },
 });
