@@ -3,6 +3,7 @@ import {
   LABEL_COLORS_DARK_MODE,
   LABEL_SCREEN_PARAMETERS,
   drawLabel,
+  labelMetrics,
 } from "@fontra/core/canvas-labels.js";
 import { markerGeometry } from "@fontra/core/marker-measure.js";
 import { markerKind } from "@fontra/core/marker-model.js";
@@ -298,7 +299,7 @@ export function drawCurvatureGeometry(context, parameters, geometry, color, bold
 // the radius line nor the curve's inside.
 export function curvatureReadoutPlace(geometry, parameters) {
   const { point, center } = geometry;
-  const clearance = parameters.labelHeight * 1.5;
+  const clearance = labelMetrics(parameters).height * 1.5;
   if (!center) {
     return { x: point.x, y: point.y + clearance };
   }

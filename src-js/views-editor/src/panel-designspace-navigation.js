@@ -79,6 +79,7 @@ import {
   makeClickableIconHeader,
 } from "@fontra/web-components/ui-accordion.js";
 
+import { LABEL_TUNING, LABEL_TUNING_DEFAULTS } from "@fontra/core/canvas-labels.js";
 import { NumberFormatter } from "@fontra/core/formatters.js";
 import Panel from "./panel.js";
 import {
@@ -127,6 +128,82 @@ const TUNNI_DEBUG_CONTROLS = [
     unit: "ms",
   },
 ];
+
+// The canvas labels' sizes (canvas-labels.js, LABEL_TUNING), for tuning by hand.
+const LABEL_DEBUG_CONTROLS = [
+  {
+    key: "valueSize",
+    label: "Pill/plaque size",
+    min: 6,
+    max: 16,
+    step: 0.5,
+    unit: "px",
+  },
+  {
+    key: "smallSize",
+    label: "Pill/plaque small",
+    min: 4,
+    max: 14,
+    step: 0.5,
+    unit: "px",
+  },
+  {
+    key: "measureSize",
+    label: "Measure label",
+    min: 3,
+    max: 20,
+    step: 0.5,
+    unit: "u",
+  },
+  {
+    key: "measureMinScreenSize",
+    label: "Measure min on screen",
+    min: 0,
+    max: 16,
+    step: 0.5,
+    unit: "px",
+  },
+];
+
+// A debug accordion's body: one slider and readout per control, and a reset. The
+// Tunni and the label sections both build theirs here and wire it with
+// setupTuningControls, so the two cannot drift.
+function tuningControlsContent(prefix, controls) {
+  return html.div({}, [
+    html.div(
+      {
+        style: `
+          display: grid;
+          grid-template-columns: auto 1fr auto;
+          gap: 0.35em 0.5em;
+          align-items: center;
+        `,
+      },
+      controls.flatMap((control) => [
+        html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
+          control.label,
+        ]),
+        html.input({
+          id: `${prefix}-${control.key}`,
+          type: "range",
+          min: control.min,
+          max: control.max,
+          step: control.step,
+        }),
+        html.span(
+          {
+            id: `${prefix}-${control.key}-value`,
+            style: "font-family: monospace; font-size: 0.85em; min-width: 4em;",
+          },
+          [""]
+        ),
+      ])
+    ),
+    html.div({ style: "padding-top: 0.6em;" }, [
+      html.button({ id: `${prefix}-reset` }, ["Reset to defaults"]),
+    ]),
+  ]);
+}
 
 // Bug fix: no accordion item's open/closed state survived a reload -- every
 // `open` below is a fixed initial value, nothing ever read or wrote it
@@ -1124,40 +1201,15 @@ export default class DesignspaceNavigationPanel extends Panel {
         id: "tunni-debug-accordion-item",
         label: "Tunni (debug)",
         open: false,
-        content: html.div({}, [
-          html.div(
-            {
-              style: `
-                display: grid;
-                grid-template-columns: auto 1fr auto;
-                gap: 0.35em 0.5em;
-                align-items: center;
-              `,
-            },
-            TUNNI_DEBUG_CONTROLS.flatMap((control) => [
-              html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
-                control.label,
-              ]),
-              html.input({
-                id: `tunni-debug-${control.key}`,
-                type: "range",
-                min: control.min,
-                max: control.max,
-                step: control.step,
-              }),
-              html.span(
-                {
-                  id: `tunni-debug-${control.key}-value`,
-                  style: "font-family: monospace; font-size: 0.85em; min-width: 4em;",
-                },
-                [""]
-              ),
-            ])
-          ),
-          html.div({ style: "padding-top: 0.6em;" }, [
-            html.button({ id: "tunni-debug-reset" }, ["Reset to defaults"]),
-          ]),
-        ]),
+        content: tuningControlsContent("tunni-debug", TUNNI_DEBUG_CONTROLS),
+      },
+      {
+        // The canvas labels' sizes -- the pill, the Q plaque, and the measurement
+        // labels on handles and gizmos. Live and stored per browser.
+        id: "labels-debug-accordion-item",
+        label: "Labels (debug)",
+        open: false,
+        content: tuningControlsContent("labels-debug", LABEL_DEBUG_CONTROLS),
       },
       {
         // Which modified drags snap. Each modifier states its own geometry, so
@@ -1778,19 +1830,42 @@ export default class DesignspaceNavigationPanel extends Panel {
   }
 
   _setupTunniDebugControls() {
-    const stored = applicationSettingsController.model.tunniGizmoTuning || {};
-    for (const control of TUNNI_DEBUG_CONTROLS) {
+    this._setupTuningControls({
+      prefix: "tunni-debug",
+      controls: TUNNI_DEBUG_CONTROLS,
+      tuning: TUNNI_GIZMO_TUNING,
+      defaults: TUNNI_GIZMO_TUNING_DEFAULTS,
+      settingsKey: "tunniGizmoTuning",
+    });
+  }
+
+  _setupLabelDebugControls() {
+    this._setupTuningControls({
+      prefix: "labels-debug",
+      controls: LABEL_DEBUG_CONTROLS,
+      tuning: LABEL_TUNING,
+      defaults: LABEL_TUNING_DEFAULTS,
+      settingsKey: "labelTuning",
+    });
+  }
+
+  // A live tuning object, its sliders, and the app setting it is stored in. The
+  // stored values are applied at start, every slider writes through at once, and the
+  // canvas redraws on each change.
+  _setupTuningControls({ prefix, controls, tuning, defaults, settingsKey }) {
+    const stored = applicationSettingsController.model[settingsKey] || {};
+    for (const control of controls) {
       if (Number.isFinite(stored[control.key])) {
-        TUNNI_GIZMO_TUNING[control.key] = stored[control.key];
+        tuning[control.key] = stored[control.key];
       }
     }
     const sync = () => {
-      for (const control of TUNNI_DEBUG_CONTROLS) {
-        const input = this.visualAccordion.querySelector(`#tunni-debug-${control.key}`);
+      for (const control of controls) {
+        const input = this.visualAccordion.querySelector(`#${prefix}-${control.key}`);
         const readout = this.visualAccordion.querySelector(
-          `#tunni-debug-${control.key}-value`
+          `#${prefix}-${control.key}-value`
         );
-        const value = TUNNI_GIZMO_TUNING[control.key];
+        const value = tuning[control.key];
         if (input) {
           input.value = String(value);
         }
@@ -1800,22 +1875,22 @@ export default class DesignspaceNavigationPanel extends Panel {
       }
     };
     const persist = () => {
-      applicationSettingsController.model.tunniGizmoTuning = { ...TUNNI_GIZMO_TUNING };
+      applicationSettingsController.model[settingsKey] = { ...tuning };
       this.sceneController.canvasController.requestUpdate();
     };
-    for (const control of TUNNI_DEBUG_CONTROLS) {
+    for (const control of controls) {
       this.visualAccordion
-        .querySelector(`#tunni-debug-${control.key}`)
+        .querySelector(`#${prefix}-${control.key}`)
         ?.addEventListener("input", (event) => {
-          TUNNI_GIZMO_TUNING[control.key] = Number(event.target.value);
+          tuning[control.key] = Number(event.target.value);
           sync();
           persist();
         });
     }
     this.visualAccordion
-      .querySelector("#tunni-debug-reset")
+      .querySelector(`#${prefix}-reset`)
       ?.addEventListener("click", () => {
-        Object.assign(TUNNI_GIZMO_TUNING, TUNNI_GIZMO_TUNING_DEFAULTS);
+        Object.assign(tuning, defaults);
         sync();
         persist();
       });
@@ -2132,6 +2207,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._setupTunniControls();
     this._setupTunniLabelsAlwaysVisibleToggle();
     this._setupTunniDebugControls();
+    this._setupLabelDebugControls();
     this._setupSkeletonVisualControls();
     this._setupSpeedPunkControls();
     this._setupSnappingDebugControls();

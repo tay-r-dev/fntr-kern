@@ -8,6 +8,24 @@
 // keep their size on screen at every zoom.
 
 const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
+
+// The sizes a designer can tune by hand, from the "Labels (debug)" accordion in the
+// left panel. Live: every draw reads them. The panel stores them per browser.
+//
+//   valueSize, smallSize: the pill's and the plaque's two font sizes, in screen pixels.
+//     The pill grows with its value size; the plaque keeps its layout.
+//   measureSize: the measurement labels on handles and gizmos, in font units, so they
+//     grow on zoom in like the drawing does.
+//   measureMinScreenSize: the smallest those labels get on screen, in screen pixels, so
+//     they stay readable zoomed out.
+export const LABEL_TUNING_DEFAULTS = Object.freeze({
+  valueSize: 9,
+  smallSize: 7,
+  measureSize: 6,
+  measureMinScreenSize: 7,
+});
+
+export const LABEL_TUNING = { ...LABEL_TUNING_DEFAULTS };
 const LABEL_SEPARATOR = "•";
 const LABEL_SHADOW_COLOR = "rgba(0, 0, 0, 0.2)";
 // Figma's background blur, in CSS pixels.
@@ -31,22 +49,23 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
   context.textBaseline = "middle";
   context.textAlign = "left";
 
+  const metrics = labelMetrics(parameters);
   const items = [];
   values.forEach((value, i) => {
     if (i) {
-      items.push({ text: LABEL_SEPARATOR, size: parameters.labelSeparatorSize });
+      items.push({ text: LABEL_SEPARATOR, size: metrics.separatorSize });
     }
-    items.push({ text: String(value), size: parameters.labelFontSize, value: true });
+    items.push({ text: String(value), size: metrics.fontSize, value: true });
   });
   for (const item of items) {
     setLabelFont(context, item.size, TRACKING);
     item.width = context.measureText(item.text).width;
   }
-  const gap = parameters.labelGap;
+  const gap = metrics.gap;
   const contentWidth =
     items.reduce((sum, item) => sum + item.width, 0) + gap * (items.length - 1);
-  const width = contentWidth + 2 * parameters.labelPaddingX;
-  const height = parameters.labelHeight;
+  const width = contentWidth + 2 * metrics.paddingX;
+  const height = metrics.height;
   const left = at.x - width / 2;
   const top = -at.y - height / 2;
 
@@ -58,7 +77,7 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
     borderColor: parameters.labelBorderColor,
   });
 
-  let x = left + parameters.labelPaddingX;
+  let x = left + metrics.paddingX;
   for (const item of items) {
     setLabelFont(context, item.size, TRACKING);
     context.fillStyle = item.value ? ink : parameters.labelSeparatorColor;
@@ -68,14 +87,38 @@ export function drawLabel(context, parameters, at, parts, { inverse = false } = 
   context.restore();
 }
 
+// `labelPixel` is one screen pixel, which the layer turns into font units.
 export const LABEL_SCREEN_PARAMETERS = {
-  labelFontSize: 9,
-  labelSeparatorSize: 7,
-  labelGap: 3,
-  labelPaddingX: 8,
-  labelHeight: 18,
+  labelPixel: 1,
   labelBorderWidth: 1,
 };
+
+// The pill's measurements at the tuned value size. The frame draws a 9 value on an
+// 18-high pill with 8 of padding and 3 around the bullet; all of it grows with the value
+// size, so a larger value keeps the same pill around it.
+export function labelMetrics(parameters) {
+  const px = parameters.labelPixel;
+  const k = LABEL_TUNING.valueSize / LABEL_TUNING_DEFAULTS.valueSize;
+  return {
+    fontSize: LABEL_TUNING.valueSize * px,
+    separatorSize: LABEL_TUNING.smallSize * px,
+    gap: 3 * k * px,
+    paddingX: 8 * k * px,
+    height: 18 * k * px,
+  };
+}
+
+// The measurement labels on handles and gizmos: in font units, so they grow on zoom
+// in, but never under the tuned minimum on screen, so they stay readable zoomed out.
+// Read off the context's own transform, which is what the text will be drawn at.
+export function measureLabelFontSize(context) {
+  const m = context.getTransform();
+  const pixel = globalThis.devicePixelRatio || 1;
+  const screenPerUnit = Math.hypot(m.a, m.b) / pixel;
+  const floor =
+    screenPerUnit > 0 ? LABEL_TUNING.measureMinScreenSize / screenPerUnit : 0;
+  return Math.max(LABEL_TUNING.measureSize, floor);
+}
 
 export const LABEL_COLORS = {
   labelFillColor: "#FFFFFF",
@@ -191,10 +234,11 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   const padding = PLAQUE.padding * s;
   const rowGap = PLAQUE.rowGap * s;
   const iconGap = PLAQUE.iconGap * s;
-  const valueSize = PLAQUE.valueSize * s;
-  const smallSize = PLAQUE.smallSize * s;
-  const valueLine = PLAQUE.valueLine * s;
-  const smallLine = PLAQUE.smallLine * s;
+  // The two sizes are tuned; each line keeps the frame's proportion to its size.
+  const valueSize = LABEL_TUNING.valueSize * s;
+  const smallSize = LABEL_TUNING.smallSize * s;
+  const valueLine = valueSize * PLAQUE.valueLineRatio;
+  const smallLine = smallSize * PLAQUE.smallLineRatio;
 
   context.save();
   context.scale(1, -1);
@@ -312,10 +356,9 @@ const PLAQUE = {
   rowGap: 5,
   iconGap: 6,
   radius: 6,
-  valueSize: 9,
-  smallSize: 7,
-  valueLine: 12,
-  smallLine: 10,
+  // Line heights over font sizes: 12 over 9 and 10 over 7 in the frame.
+  valueLineRatio: 12 / 9,
+  smallLineRatio: 10 / 7,
   minHeaderWidth: 46,
   // The room either side of the bullet between the header's two coordinates, and of
   // the slash in a width's left/right distribution. The frame sets both at none; the
@@ -366,7 +409,7 @@ export const PLAQUE_SCREEN_PARAMETERS = {
 // Martian Mono's tracking is -3 per cent.
 const TRACKING = -0.03;
 
-function setLabelFont(context, size, tracking) {
+export function setLabelFont(context, size, tracking = TRACKING) {
   context.font = `400 ${size}px ${LABEL_FONT_FAMILY}`;
   context.fontStretch = "semi-condensed";
   context.letterSpacing = `${tracking * size}px`;

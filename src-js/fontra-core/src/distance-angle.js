@@ -3,7 +3,16 @@
 
 // Import necessary functions from vector.js for the new functions
 import { applicationSettingsController } from "./application-settings.js";
-import { drawLabel, drawPlaque } from "./canvas-labels.js";
+import {
+  drawLabel,
+  drawPlaque,
+  measureLabelFontSize,
+  setLabelFont,
+} from "./canvas-labels.js";
+
+// The measurement labels' face: Martian Mono, the pill's (canvas-labels.js). A name
+// calculateBadgeDimensions recognises, so it measures in the face it will draw in.
+const LABEL_MEASURE_FAMILY = "label";
 import {
   calculateControlHandlePoint,
   calculateTunniPoint,
@@ -86,11 +95,15 @@ export function calculateProjectedDistanceComponents(point1, point2) {
 }
 
 // Calculate the dimensions needed for the info badge
-export function calculateBadgeDimensions(text, fontSize) {
+export function calculateBadgeDimensions(text, fontSize, fontFamily = "sans-serif") {
   // Create a temporary canvas to measure text
   const canvas = document.createElement("canvas");
   const context = canvas.getContext("2d");
-  context.font = `${fontSize}px sans-serif`;
+  if (fontFamily === LABEL_MEASURE_FAMILY) {
+    setLabelFont(context, fontSize);
+  } else {
+    context.font = `${fontSize}px ${fontFamily}`;
+  }
 
   const lines = text.split("\n");
   let maxWidth = 0;
@@ -1057,13 +1070,14 @@ function drawRoundRect(context, x, y, width, height, radii) {
  * @param {Object} controller - The controller
  */
 
-// One line of point-label text, in the same 6px face and left-aligned baseline
+// One line of point-label text, in the same face, size and left-aligned baseline
 // the handle badges use, at a glyph-space position a caller has already offset.
 // The y flip is local: the canvas is upside down for text.
 export function drawPointStyleLabel(context, x, y, text, color) {
+  const size = measureLabelFontSize(context);
   context.save();
   context.scale(1, -1);
-  context.font = `6px fontra-ui-regular, sans-serif`;
+  setLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.fillStyle = color;
@@ -1113,9 +1127,12 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   if (showAngle) visibleComponents2.push(`${angle2.toFixed(1)}°`);
   const text2 = visibleComponents2.join("\n");
 
-  // Calculate badge dimensions for both labels
-  const badgeDimensions1 = calculateBadgeDimensions(text1, 6); // 6pt font
-  const badgeDimensions2 = calculateBadgeDimensions(text2, 6); // 6pt font
+  // The labels' size: 6 font units by default, never under the tuned minimum on
+  // screen (measureLabelFontSize). The layout around them grows with them.
+  const size = measureLabelFontSize(context);
+  const grow = size / 6;
+  const badgeDimensions1 = calculateBadgeDimensions(text1, size, LABEL_MEASURE_FAMILY);
+  const badgeDimensions2 = calculateBadgeDimensions(text2, size, LABEL_MEASURE_FAMILY);
 
   // Calculate unit vector from p1 to p2 for p2 label positioning
   const unitVector1 = unitVectorFromTo(p1, p2);
@@ -1125,14 +1142,14 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
 
   // Calculate badge positions for both labels and shift to the right of the off-curve point
   const badgePosition1 = calculateBadgePosition(
-    { x: p2.x + 14, y: p2.y }, // Shift to the right
+    { x: p2.x + 14 * grow, y: p2.y }, // Shift to the right
     { x: -unitVector1.y, y: unitVector1.x },
     badgeDimensions1.width,
     badgeDimensions1.height
   );
 
   const badgePosition2 = calculateBadgePosition(
-    { x: p3.x + 14, y: p3.y }, // Shift to the right
+    { x: p3.x + 14 * grow, y: p3.y }, // Shift to the right
     { x: -unitVector2.y, y: unitVector2.x },
     badgeDimensions2.width,
     badgeDimensions2.height
@@ -1141,14 +1158,14 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   // Draw text for p2 with distance, tension, angle (top to bottom)
   context.save();
   context.fillStyle = "rgba(4, 28, 44, 1)"; // New text color
-  context.font = `6px fontra-ui-regular, sans-serif`; // 6pt font, medium weight
+  setLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.scale(1, -1);
 
   // Split the text into lines and draw each line
   const lines1 = text1.split("\n");
-  const lineHeight = 6; // font size
+  const lineHeight = size;
   const totalHeight = lines1.length * lineHeight;
   const startY =
     -(badgePosition1.y + badgeDimensions1.height / 2) -
@@ -1164,7 +1181,7 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   // Draw text for p3 with distance, tension, angle (top to bottom)
   context.save();
   context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
-  context.font = `6px fontra-ui-regular, sans-serif`; // 6pt font, medium weight
+  setLabelFont(context, size);
   context.textAlign = "left";
   context.textBaseline = "middle";
   context.scale(1, -1);
@@ -1345,14 +1362,19 @@ export function drawPointLabels(
           const text = visibleComponentsOff.join("\n");
 
           // Calculate badge dimensions for the label
-          const badgeDimensionsOff = calculateBadgeDimensions(text, 6); // 6pt font
+          const sizeOff = measureLabelFontSize(context);
+          const badgeDimensionsOff = calculateBadgeDimensions(
+            text,
+            sizeOff,
+            LABEL_MEASURE_FAMILY
+          );
 
           // Calculate unit vector from on-curve to off-curve point for label positioning
           const unitVectorOff = unitVectorFromTo(onCurvePoint, offCurvePoint);
 
           // Calculate badge position and shift to the right of the off-curve point
           const badgePositionOff = calculateBadgePosition(
-            { x: offCurvePoint.x + 8, y: offCurvePoint.y }, // Shift to the right
+            { x: offCurvePoint.x + (8 * sizeOff) / 6, y: offCurvePoint.y }, // Shift to the right
             { x: -unitVectorOff.y, y: unitVectorOff.x },
             badgeDimensionsOff.width,
             badgeDimensionsOff.height
@@ -1361,14 +1383,14 @@ export function drawPointLabels(
           // Draw text with distance, angle (top to bottom)
           context.save();
           context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
-          context.font = `6px fontra-ui-regular, sans-serif`; // 6pt font, medium weight
+          setLabelFont(context, sizeOff);
           context.textAlign = "left";
           context.textBaseline = "middle";
           context.scale(1, -1);
 
           // Split the text into lines and draw each line
           const linesOff = text.split("\n");
-          const lineHeightOff = 6; // font size
+          const lineHeightOff = sizeOff;
           const totalHeightOff = linesOff.length * lineHeightOff;
           const startYOff =
             -(badgePositionOff.y + badgeDimensionsOff.height / 2) -
