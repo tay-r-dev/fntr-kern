@@ -69,6 +69,25 @@ function capPoints(result) {
   );
 }
 
+// The inner side's last cubic at the capped end, as four points in contour
+// order: the wall segment the cap cuts.
+function innerWallSegment(result, side, endId) {
+  const points = result.contours[0].points,
+    map = result.provenance[0].pointMap,
+    n = points.length;
+  for (let i = 0; i < n; i++) {
+    const segment = [0, 1, 2, 3].map((k) => (i + k) % n);
+    const [a, b, c, d] = segment.map((k) => points[k]);
+    if (a.type || !b.type || !c.type || d.type) continue;
+    const origins = segment.map((k) => map[k]);
+    if (origins.some((o) => o?.side !== side || o.capCurvatureField)) continue;
+    if (!origins.some((o) => o.skeletonPointId === endId && o.role !== "onCurve"))
+      continue;
+    return [a, b, c, d];
+  }
+  throw new Error(`no inner wall segment on ${side}`);
+}
+
 function finite(result) {
   expect(result.contours).to.have.length(1);
   expect(result.contours[0].isClosed).to.equal(true);
@@ -164,8 +183,9 @@ describe("rib-apex bulbs", function () {
       expect(ball.at(-Math.PI / 2).y).to.be.closeTo(0, 1e-10);
       expect(ball.at(0)).to.deep.equal({ x: 50, y: 50 });
       expect(ball.at(Math.PI).x).to.be.closeTo(-50 * (1 + 1.4 * shape), 1e-10);
+      // Three on-curves after the entry: the bottom, the side apex and the end.
       const points = buildBulbArc(ball, 1.3 * Math.PI);
-      expect(points.filter((p) => !p.type)).to.have.length(4);
+      expect(points.filter((p) => !p.type)).to.have.length(3);
       expect(Math.max(...points.map((p) => p.x))).to.be.closeTo(50, 1e-10);
       if (!shape) {
         for (let i = 0; i <= 64; i++) {
@@ -343,6 +363,9 @@ describe("rib-apex bulbs", function () {
             if (p.type || map[i]?.side || map[i]?.role !== "onCurve") return;
             const before = points[(i - 1 + points.length) % points.length],
               after = points[(i + 1) % points.length];
+            // A stop past the neck collapses onto it, and is no extreme.
+            if ([before, after].some((q) => Math.hypot(q.x - p.x, q.y - p.y) < 1e-8))
+              return;
             expect(before.type).to.equal("cubic");
             expect(after.type).to.equal("cubic");
             const vertical =
@@ -377,16 +400,19 @@ describe("rib-apex bulbs", function () {
     });
     const arc = buildBulbArc(ball, 2.4),
       slid = slideBulbEntry(wall, arc);
-    expect(slid.t).to.be.greaterThan(0);
-    expect(slid.t).to.be.below(1);
+    // A positive slide runs up the wall, a negative one into the ball.
+    expect(Math.abs(slid.s)).to.be.greaterThan(0);
+    expect(Math.abs(slid.s)).to.be.below(1);
     const candidate = makeSlideCandidate(
       { points: [...wall, ...arc.slice(0, 3)], isClosed: false },
       3,
-      "next",
-      slid.t
+      slid.s > 0 ? "previous" : "next",
+      slid.s > 0 ? 1 - slid.s : -slid.s
     );
     expect(slid.wall.at(-1)).to.deep.equal(candidate.points[3]);
-    expect(slid.arc.slice(0, 3)).to.deep.equal(candidate.points.slice(4));
+    // The slid segment's handle lengths are harmonized afterwards; its
+    // on-curves are the V-slide's.
+    expect(slid.arc[2]).to.deep.equal(candidate.points[6]);
     expect(slid.arc.slice(3)).to.deep.equal(arc.slice(3));
     expect(
       curvatureDiscontinuity(slid.wall, [slid.wall.at(-1), ...slid.arc.slice(0, 3)])
@@ -452,6 +478,74 @@ describe("rib-apex bulbs", function () {
         curvatureDiscontinuity([-3, -2, -1, 0].map(at), [0, 1, 2, 3].map(at))
       ).to.be.below(1e-6);
     }
+  });
+
+  // The inner wall the ball does not take is the stroke's own wall, cut and
+  // emitted unchanged. The old neck drew the stem piece and the neck as one
+  // curve, which left the wall by up to 22 units on this specimen.
+  it("keeps the inner wall it does not consume on the stroke's wall", () => {
+    for (const start of [false, true])
+      for (const capBallSide of ["left", "right"]) {
+        const innerSide = capBallSide === "left" ? "right" : "left";
+        const butt = generateFromSkeleton(
+          specimen({ start, cap: { capStyle: "butt" } })
+        );
+        const wallCurve = new Bezier(innerWallSegment(butt, innerSide, start ? 2 : 5));
+        for (const capBallEasing of [0, 0.2, 0.5, 0.8, 1]) {
+          const result = generateFromSkeleton(
+            specimen({ start, cap: { capBallSide, capBallEasing } })
+          );
+          finite(result);
+          const piece = innerWallSegment(result, innerSide, start ? 2 : 5);
+          const drawn = new Bezier(piece);
+          for (let j = 0; j <= 50; j++) {
+            const p = drawn.get(j / 50);
+            expect(wallCurve.project(p).d, `easing ${capBallEasing}`).to.be.below(0.75);
+          }
+        }
+      }
+  });
+
+  it("keeps one point count through easing, size and the ball leaving the wall", () => {
+    for (const capBallSide of ["left", "right"]) {
+      const counts = new Set();
+      for (let step = 0; step <= 40; step++) {
+        counts.add(
+          generateFromSkeleton(
+            specimen({ cap: { capBallSide, capBallEasing: step / 40 } })
+          ).contours[0].points.length
+        );
+        counts.add(
+          generateFromSkeleton(
+            specimen({ cap: { capBallSide, capBallRatio: 0.3 + step / 40 } })
+          ).contours[0].points.length
+        );
+      }
+      expect([...counts], capBallSide).to.have.length(1);
+    }
+  });
+
+  it("moves the neck continuously with easing and neck curvature", () => {
+    for (const capBallSide of ["left", "right"])
+      for (const field of ["capBallEasing", "capBallEaseCurvature"]) {
+        let previous = null;
+        for (let step = 0; step <= 200; step++) {
+          const points = generateFromSkeleton(
+            specimen({
+              cap: { capBallSide, capBallEasing: 0.5, [field]: step / 200 },
+            })
+          ).contours[0].points;
+          if (previous) {
+            const worst = Math.max(
+              ...points.map((p, i) =>
+                Math.hypot(p.x - previous[i].x, p.y - previous[i].y)
+              )
+            );
+            expect(worst, `${capBallSide} ${field} ${step}`).to.be.below(5);
+          }
+          previous = points;
+        }
+      }
   });
 
   it("changes only neck handles when neck curvature changes", () => {

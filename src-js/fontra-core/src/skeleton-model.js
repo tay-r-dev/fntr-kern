@@ -5741,14 +5741,20 @@ export function calculateGeneratedCurvatureEdits({
   // the drag changes: the same tension is measured the same way. It carries no
   // collapse tail either — a cap handle has no stored offset to put one on, so
   // the pin is the whole answer and a drag below its floor simply stops.
+  //
+  // The neck's handles blend toward half its chord where its corner degenerates,
+  // so the drawn tension is the pin times a factor of the geometry, published on
+  // the handles. The pin is what was read divided by that factor, so a still
+  // grab stores the number already stored.
   const capCurvatureField = generatedSegmentCapCurvatureField(provenance);
   if (capCurvatureField) {
+    const scale = provenance[1]?.capCurvatureScale;
     return {
       segmentPointIndex,
       skeletonPointId: start.skeletonPointId,
       side: start.side,
       capCurvatureField,
-      tension,
+      tension: scale > 0 ? tension / scale : tension,
       collapse: [],
     };
   }
@@ -5916,6 +5922,14 @@ function computeGeneratedTunniSegments(skeletonData, path) {
         (side !== "left" && side !== "right") ||
         provenance.some((item) => item.side !== side)
       ) {
+        continue;
+      }
+      // A segment collapsed onto one spot has no gizmo axis, and its control
+      // would sit on top of the point. A bulb's neck at easing 0 is one: the
+      // plain notch, with the neck's four points kept for the point count.
+      const [p0, p1, p2, p3] = segment.points;
+      const under = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 1;
+      if (under(p0, p3) && under(p0, p1) && under(p3, p2)) {
         continue;
       }
       const generatedSegment = {
@@ -6143,6 +6157,11 @@ function storedConstructionSegment(item, index) {
 
 function untrimmedConstructionSegment(segmentPoints, provenance) {
   if (segmentPoints?.length !== 4) {
+    return null;
+  }
+  // A bulb's neck is drawn as constructed. Its wall end is also the end of the
+  // wall piece the cap cut, and the snapshot there is that wall's.
+  if (generatedSegmentCapCurvatureField(provenance)) {
     return null;
   }
   const carrier = provenance?.findIndex(

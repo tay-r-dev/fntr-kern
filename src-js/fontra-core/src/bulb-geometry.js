@@ -52,6 +52,39 @@ export function makeBulbBall({ outer, inner, outerDirection, radius, shape }) {
   };
 }
 
+// Arc length along the ball from theta `a` to `b` (a < b), by Simpson's rule on
+// the ellipse's speed. The two halves have different along radii, so the speed
+// is taken per half and the seam at cos = 0 is continuous.
+export function ballArcLength(ball, a, b, steps = 64) {
+  const speed = (theta) => {
+    const along = Math.cos(theta) < -1e-10 ? ball.rearRadius : ball.radius;
+    return Math.hypot(
+      -ball.ex.x * along * Math.sin(theta) + ball.ey.x * ball.radius * Math.cos(theta),
+      -ball.ex.y * along * Math.sin(theta) + ball.ey.y * ball.radius * Math.cos(theta)
+    );
+  };
+  const h = (b - a) / steps;
+  let sum = speed(a) + speed(b);
+  for (let i = 1; i < steps; i++) sum += (i % 2 ? 4 : 2) * speed(a + i * h);
+  return (sum * h) / 3;
+}
+
+// The theta reached by walking `length` back along the ball from `from`, never
+// past `limit`. Arc length rises strictly as theta falls, so bisection is exact
+// and continuous in every input.
+export function thetaBackAlongBall(ball, from, length, limit) {
+  if (!(length > 0) || !(from > limit)) return from;
+  if (ballArcLength(ball, limit, from) <= length) return limit;
+  let low = limit,
+    high = from;
+  for (let i = 0; i < 40; i++) {
+    const middle = (low + high) / 2;
+    if (ballArcLength(ball, middle, from) > length) low = middle;
+    else high = middle;
+  }
+  return (low + high) / 2;
+}
+
 // Glyph-axis extrema of the two half ellipses. The rear half may have a
 // different along radius, so each candidate is accepted only on its own half.
 export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {

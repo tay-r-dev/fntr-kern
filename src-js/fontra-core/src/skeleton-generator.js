@@ -4,6 +4,7 @@ import {
   bulbStops,
   makeBulbBall,
   slideBulbEntry,
+  thetaBackAlongBall,
 } from "./bulb-geometry.js";
 import { gridKinkAllowance } from "./harmonization.js";
 import { fitSerifEasing } from "./serif-easing-fit.js";
@@ -25,6 +26,7 @@ import {
   splitSideAtParameter,
 } from "./skeleton-insertions.js";
 import {
+  boundedEasingHandles,
   buildSerifTerminal,
   computeSerifFrame,
   makeSerifWall,
@@ -54,6 +56,7 @@ import {
 } from "./skeleton-model.js";
 import { easedWidth, jointWidthRate } from "./skeleton-width-rate.js";
 import {
+  calculateSegmentTension,
   computeTunniHandleLengths,
   shiftTensionsToMean,
 } from "./tunni-calculations.js";
@@ -76,7 +79,9 @@ const DEFAULT_CAP_BALL_SHAPE = 0;
 const DEFAULT_CAP_BALL_EASING = 0;
 export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
 const MAX_CAP_BALL_SHAPE = 1;
-const NECK_HANDLE_FRACTION = 0.45;
+// The share of the neck's chord over which its handles blend from the corner's
+// meeting to half the chord as that meeting nears the release or the ball.
+const NECK_NEAR_WINDOW = 1;
 const MAX_NECK_ARC_BACKOFF = 0.6;
 // A corner trim may run the whole way to the neighbouring on-curve. Two corners
 // sharing one segment are held apart by the pairwise limiter below, which is
@@ -6573,16 +6578,71 @@ function findSideBallCrossing(sidePoints, position, contains) {
   return rearMost;
 }
 
-// The same crossing slid back along its own segment by `easing`, a 0..1 fraction
-// of the run from the crossing to that segment's far on-curve.
+// The inner wall's terminal, in the shape of a crossing, for a ball too small
+// to reach the wall: the neck bridges to it and easing releases from it.
+function terminalCrossing(sidePoints, position) {
+  const segment = getSideSegmentsFromTerminal(sidePoints, position)[0];
+  if (!segment) {
+    return null;
+  }
+  const { segmentStartIndex, segmentEndIndex, segmentPoints } = segment;
+  const fromEnd = position === "end";
+  const isCubic = segmentPoints.length === 4;
+  const bezier = isCubic ? createBezierFromPoints(segmentPoints) : null;
+  const tCross = fromEnd ? 1 : 0;
+  const chord = vector.subVectors(segmentPoints.at(-1), segmentPoints[0]);
+  const derivative = bezier?.derivative(tCross);
+  const tangent = derivative && isUsableDirection(derivative) ? derivative : chord;
+  return {
+    crossing: { ...segmentPoints[fromEnd ? segmentPoints.length - 1 : 0] },
+    crossingTangent: isUsableDirection(tangent)
+      ? vector.normalizeVector(tangent)
+      : null,
+    segmentStartIndex,
+    segmentEndIndex,
+    segmentPoints,
+    bezier,
+    isCubic,
+    tCross,
+    fromEnd,
+    segmentsFromTerminal: 0,
+    provenanceSource: sidePoints[fromEnd ? segmentEndIndex : segmentStartIndex],
+  };
+}
+
+// The release: the crossing slid back up the wall by `easing`, a 0..1 share of
+// the wall's LENGTH from the crossing to that segment's far on-curve, as the
+// serif's easing distance is a share of the wall above its junction. Measured
+// in parameter instead, the same share landed at different lengths on a
+// curving wall.
 //
 // Staying on the crossing's own segment is what bounds the neck. At easing 1 the
-// far end lands exactly on the on-curve and the two collapse, and there is
-// nowhere past it to go — so the stop is a property of the run rather than a
+// release lands exactly on the on-curve and the wall piece collapses, and there
+// is nowhere past it to go — so the stop is a property of the run rather than a
 // separate clamp that could disagree with the panel's range.
 function crossingAtEasing(crossingInfo, easing) {
   const { tCross, fromEnd, bezier, segmentPoints } = crossingInfo;
-  const t = fromEnd ? tCross * (1 - easing) : tCross + (1 - tCross) * easing;
+  const farT = fromEnd ? 0 : 1;
+  const lengthTo = (t) =>
+    bezier
+      ? t === tCross
+        ? 0
+        : bezier.split(Math.min(t, tCross), Math.max(t, tCross)).length()
+      : vector.distance(segmentPoints[0], segmentPoints.at(-1)) * Math.abs(t - tCross);
+  const easeDistance = easing * lengthTo(farT);
+  let t = tCross;
+  if (easing >= 1) {
+    t = farT;
+  } else if (easeDistance > 0) {
+    let near = tCross,
+      far = farT;
+    for (let i = 0; i < 40; i++) {
+      const middle = (near + far) / 2;
+      if (lengthTo(middle) < easeDistance) near = middle;
+      else far = middle;
+    }
+    t = (near + far) / 2;
+  }
   let crossing;
   let crossingTangent = null;
   if (bezier) {
@@ -6603,6 +6663,7 @@ function crossingAtEasing(crossingInfo, easing) {
       ? crossingTangent
       : crossingInfo.crossingTangent,
     tCross: t,
+    easeDistance,
   };
 }
 
@@ -6695,16 +6756,6 @@ function rebuildTrimmedSide(sidePoints, crossingInfo, { smooth, addressable = fa
     : [...rewrittenSegment, ...sidePoints.slice(segmentEndIndex + 1)];
 }
 
-function withoutTerminalSegment(sidePoints, position) {
-  const terminal = getSideSegmentsFromTerminal(sidePoints, position)[0];
-  if (!terminal) {
-    return sidePoints;
-  }
-  return position === "end"
-    ? sidePoints.slice(0, terminal.segmentStartIndex + 1)
-    : sidePoints.slice(terminal.segmentEndIndex);
-}
-
 function dropCapHandle(coords) {
   return { ...coords, type: "cubic" };
 }
@@ -6761,41 +6812,32 @@ function buildDropCap({
     ball.contains(point)
   );
 
-  // Easing slides the neck's far end back along the inner edge, so the stroke
-  // edge peels away earlier and eases into the ball instead of meeting it at a
-  // notch. The far end is placed directly at its fraction of the run, which is
-  // what lets the value be aimed: an earlier version grew a second, inflated
-  // ball and took whatever crossing that happened to make, and no reading of the
-  // number told you where the neck would land.
-  const easedCross =
-    ballCross && easing > 0 ? crossingAtEasing(ballCross, easing) : null;
-
-  let trimmedInnerSide;
-  let thetaInner;
-  let mode;
-  if (easedCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, easedCross, { smooth: true });
-    thetaInner = ball.thetaOf(ballCross.crossing);
-    mode = "soft";
-  } else if (ballCross) {
-    trimmedInnerSide = rebuildTrimmedSide(innerSideArr, ballCross, {
-      smooth: false,
-      addressable: true,
-    });
-    thetaInner = ball.thetaOf(ballCross.crossing);
-    mode = "corner";
-  } else {
-    trimmedInnerSide = innerSideArr;
-    const innerTerminal =
-      position === "start"
-        ? getFirstOnCurvePoint(innerSideArr)
-        : getLastOnCurvePoint(innerSideArr);
-    if (!innerTerminal) {
-      return null;
-    }
-    thetaInner = ball.thetaOf(innerTerminal);
-    mode = "bridge";
+  // Easing rounds the corner where the ball meets the inner wall, the way a
+  // serif's easing rounds its bracket into the stem. The wall is cut at the
+  // release and the piece that survives is emitted unchanged, so the stroke
+  // keeps its own wall. One neck runs from the ball to the release. At easing 0
+  // the neck collapses onto the crossing, which is the plain notch, so the
+  // corner and the eased neck are one construction with one point count.
+  //
+  // The old neck drew the surviving stem piece and the neck as ONE curve from
+  // the stem's on-curve, and that curve left the wall by up to 22 units.
+  //
+  // A ball too small to reach the inner wall bridges to the wall's terminal
+  // instead, and the terminal stands in for the crossing. The two meet where
+  // the ball first touches the terminal, so growing the ball through that
+  // point moves nothing by a step. Easing there had no effect before, and
+  // switched on in full the moment the ball touched: 191 units in one step.
+  const crossing = ballCross ?? terminalCrossing(innerSideArr, position);
+  if (!crossing) {
+    return null;
   }
+  const release = crossingAtEasing(crossing, easing);
+  const trimmedInnerSide = rebuildTrimmedSide(innerSideArr, release, {
+    smooth: easing > 0 || !ballCross,
+    addressable: true,
+  });
+  terminal(trimmedInnerSide).skipColinear = true;
+  let thetaInner = ball.thetaOf(crossing.crossing);
 
   // The tangency sits at theta = -pi/2 by construction (it is the ball's
   // extreme along -ey). Sweep counter-clockwise from there, around the forward
@@ -6811,10 +6853,16 @@ function buildDropCap({
   }
   // Preserve the existing inner cut and neck attachment. Only the intermediate
   // ball points are glyph-axis apexes; the neck is a separate join endpoint.
+  // The ball end of the neck travels back along the ball as far as the release
+  // travelled up the wall, as a serif's bracket end matches its release. The
+  // ball has less to give: past its room the release runs on alone.
   const sweep = thetaInner - thetaOuter;
-  const backoff =
-    mode === "soft" ? easing * Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF) : 0;
-  const thetaArcEnd = thetaInner - backoff;
+  const thetaArcEnd = thetaBackAlongBall(
+    ball,
+    thetaInner,
+    release.easeDistance,
+    thetaInner - Math.min(0.35 * sweep, MAX_NECK_ARC_BACKOFF)
+  );
 
   let arc = buildBulbArc(ball, thetaArcEnd);
   const outerSegment = getSideSegmentsFromTerminal(outerSideArr, position)[0];
@@ -6864,164 +6912,58 @@ function buildDropCap({
 
   // Points strictly between the outer tangency and the inner terminal, in the
   // outer -> inner traversal direction.
-  let capForwardToInner;
-  if (mode === "soft") {
-    // Concave neck: the arc ends at the backed-off ball attachment (smooth);
-    // one cubic eases from there into the pulled-back inner trim — tangent to
-    // the ball at the ball end (continuing the sweep) and along the stroke edge
-    // at the inner end.
-    const innerTrim = easedCross.crossing;
-    const ballAttach = ball.at(thetaArcEnd);
-    const sweepTangent = ball.tangentAt(thetaArcEnd);
-    const innerTangent = orientDirectionToward(
-      easedCross.crossingTangent ?? ex,
-      vector.subVectors(ballAttach, innerTrim)
-    );
-    const chord = vector.distance(ballAttach, innerTrim);
-    const neckLengths = computeTunniHandleLengths(
-      ballAttach,
-      sweepTangent,
-      innerTrim,
-      innerTangent,
-      easeCurvature
-    );
-    const clampNeckLen = (value) =>
-      Math.min(
-        Math.max(Number.isFinite(value) ? value : NECK_HANDLE_FRACTION * chord, 0),
-        chord
-      );
-    // The inner trim is not emitted. The stem piece up to it and the neck after
-    // it are drawn as ONE curve from the stem's own on-curve into the ball. A
-    // landing on the stem was a point that answered to nothing; at full easing
-    // it sat on top of that on-curve.
-    const stemPiece = getSideSegmentsFromTerminal(trimmedInnerSide, position)[0];
-    trimmedInnerSide = withoutTerminalSegment(trimmedInnerSide, position);
-    const stemPoints = stemPiece
-      ? position === "end"
-        ? stemPiece.segmentPoints
-        : [...stemPiece.segmentPoints].reverse()
-      : [innerTrim, innerTrim];
-    const stemPoint = stemPoints[0];
-    const stemOut = [stemPoints[1], stemPoints[stemPoints.length - 1]]
-      .map((point) => vector.subVectors(point, stemPoint))
-      .find(isUsableDirection);
-    const stemDirection = stemOut ? vector.normalizeVector(stemOut) : innerTangent;
-    // The landing moves back to the stem's on-curve and the neck's stem-side
-    // handle grows by the run it moved, so the neck keeps its own shape and
-    // hugs the stem where the stem piece used to run. Within 2.6 units of the
-    // old stem piece and neck on the `h` of skeletron, exact at full easing. A
-    // least-squares fit to the pair strayed 17 units and cut into the black.
-    const fitted = {
-      a: vector.distance(stemPoint, innerTrim) + clampNeckLen(neckLengths.endLen),
-      b: clampNeckLen(neckLengths.startLen),
-    };
-    capForwardToInner = [
-      ...arc,
-      withNeckProvenance(
-        dropCapHandle(
-          vector.addVectors(ballAttach, vector.mulVectorScalar(sweepTangent, fitted.b))
-        ),
-        endpoint,
-        innerSideName,
-        "out"
-      ),
-      withNeckProvenance(
-        dropCapHandle(
-          vector.addVectors(stemPoint, vector.mulVectorScalar(stemDirection, fitted.a))
-        ),
-        endpoint,
-        innerSideName,
-        "in"
-      ),
-    ];
-    // The arc's last on-curve is the neck's own start. It needs an address for
-    // the segment walk to see the neck at all; the walk takes a segment only
-    // when all four of its points carry one.
-    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
-    // The pin governs the neck on its own chord, into the inner trim, and not
-    // the drawn neck, whose stem-side handle is stretched by the run to the
-    // stem's on-curve. The gizmo read the drawn one and wrote that back as the
-    // pin, and the neck jumped at the first grab. That chord is published, as
-    // a cut segment publishes its uncut curve, so the gizmo reads what it
-    // writes.
-    const neckStart = arc[arc.length - 1];
-    if (neckStart._provenance) {
-      neckStart._provenance.constructionSegment = [
-        ballAttach,
-        vector.addVectors(
-          ballAttach,
-          vector.mulVectorScalar(sweepTangent, clampNeckLen(neckLengths.startLen))
-        ),
-        vector.addVectors(
-          innerTrim,
-          vector.mulVectorScalar(innerTangent, clampNeckLen(neckLengths.endLen))
-        ),
-        innerTrim,
-      ].map(({ x, y }) => ({ x, y }));
+  // The neck: from the ball end, along the ball toward the crossing, to the
+  // release, along the wall toward the crossing. Both handles aim into the
+  // corner the neck rounds, and the serif's bounded construction sizes them,
+  // so a far or parallel meeting of the two directions cannot throw them out.
+  // Where they meet nearby the neck's tension is exactly the pin, which is the
+  // number its gizmo reads back.
+  const ballAttach = ball.at(thetaArcEnd);
+  // The emitted release, which the trim put on whole units.
+  const releasePoint = terminal(trimmedInnerSide);
+  const towardBall = ball.tangentAt(thetaArcEnd);
+  const wallTangent = release.crossingTangent ?? ex;
+  const towardWall = release.fromEnd
+    ? wallTangent
+    : vector.mulVectorScalar(wallTangent, -1);
+  const uv = ({ x, y }) => ({ u: x, v: y });
+  const unit = boundedEasingHandles(
+    uv(ballAttach),
+    uv(towardBall),
+    uv(releasePoint),
+    uv(towardWall),
+    1,
+    { nearWindow: NECK_NEAR_WINDOW }
+  );
+  const handleAt = (anchor, direction, length) =>
+    dropCapHandle(vector.addVectors(anchor, vector.mulVectorScalar(direction, length)));
+  // The blend makes the drawn tension the pin times a factor of the geometry
+  // alone, since both lengths scale with the pin. The factor is published so
+  // the gizmo stores what it reads divided by it, and a still grab writes the
+  // pin back unchanged.
+  const unitTension = calculateSegmentTension(
+    handleAt(ballAttach, towardBall, unit.startLen),
+    ballAttach,
+    handleAt(releasePoint, towardWall, unit.endLen),
+    releasePoint
+  );
+  const neckHandle = (handle, role) => {
+    withNeckProvenance(handle, endpoint, innerSideName, role);
+    if (handle._provenance && unitTension > 1e-9) {
+      handle._provenance.capCurvatureScale = unitTension;
     }
-  } else if (mode === "bridge") {
-    // Small ball: connect the last arc on-curve to the inner terminal with a
-    // short concave neck cubic, scaled by tension.
-    const neckPoint = ball.at(thetaArcEnd);
-    const innerTerminal =
-      position === "start"
-        ? getFirstOnCurvePoint(innerSideArr)
-        : getLastOnCurvePoint(innerSideArr);
-    const chord = vector.distance(neckPoint, innerTerminal);
-    const ballTangent = orientDirectionToward(
-      ball.tangentAt(thetaArcEnd),
-      vector.subVectors(innerTerminal, neckPoint)
-    );
-    const innerTangent = orientDirectionToward(
-      getSideTerminalTangent(innerSideArr, position) ?? ex,
-      vector.subVectors(neckPoint, innerTerminal)
-    );
-    const neckLengths = computeTunniHandleLengths(
-      neckPoint,
-      ballTangent,
-      innerTerminal,
-      innerTangent,
-      easeCurvature
-    );
-    const clampNeckLen = (value) =>
-      Math.min(Math.max(Number.isFinite(value) ? value : 0.4 * chord, 0), 0.6 * chord);
-    capForwardToInner = [
-      ...arc,
-      withNeckProvenance(
-        dropCapHandle({
-          x: neckPoint.x + ballTangent.x * clampNeckLen(neckLengths.startLen),
-          y: neckPoint.y + ballTangent.y * clampNeckLen(neckLengths.startLen),
-        }),
-        endpoint,
-        innerSideName,
-        "out"
-      ),
-      withNeckProvenance(
-        dropCapHandle({
-          x: innerTerminal.x + innerTangent.x * clampNeckLen(neckLengths.endLen),
-          y: innerTerminal.y + innerTangent.y * clampNeckLen(neckLengths.endLen),
-        }),
-        endpoint,
-        innerSideName,
-        "in"
-      ),
-    ];
-    withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
-  } else {
-    // Hard corner: the trimmed inner side already provides the crossing
-    // on-curve, and the arc's own lands on the same spot. Both are emitted. A
-    // ball that stops reaching the inner edge turns this corner into a neck,
-    // and dropping one here made the outline lose a point at that crossover —
-    // a count that steps while the size is dragged. Points collapse, they do
-    // not disappear.
-    capForwardToInner = arc;
-  }
+    return handle;
+  };
+  const capForwardToInner = [
+    ...arc,
+    neckHandle(handleAt(ballAttach, towardBall, unit.startLen * easeCurvature), "out"),
+    neckHandle(handleAt(releasePoint, towardWall, unit.endLen * easeCurvature), "in"),
+  ];
+  // The arc's last on-curve is the neck's own start. It needs an address for
+  // the segment walk to see the neck at all; the walk takes a segment only
+  // when all four of its points carry one.
+  withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
 
-  if (mode === "bridge") {
-    const innerTerminal = terminal(trimmedInnerSide);
-    innerTerminal.skipColinear = true;
-    innerTerminal.smooth = true;
-  }
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =
     outerSide === fromSide ? capForwardToInner : capForwardToInner.slice().reverse();

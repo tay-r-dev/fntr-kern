@@ -507,7 +507,19 @@ function splitCubic(p0, p1, p2, p3, t) {
 // Far or backward intersections are not useful corners. Blend to a local
 // chord-based construction before reaching parallel, so neither the handle
 // lengths nor their derivatives jump when the intersection changes sides.
-function boundedEasingHandles(start, startDirection, end, endDirection, curvature) {
+// The bulb's neck is the same rounding and uses this copy (rail R-B).
+//
+// `nearWindow` is how much of the chord the blend takes as the meeting nears an
+// end. The bulb's neck meets shallow crossings, where the meeting sweeps past
+// its release quickly, and takes a wider window than the serif.
+export function boundedEasingHandles(
+  start,
+  startDirection,
+  end,
+  endDirection,
+  curvature,
+  { nearWindow = 0.05 } = {}
+) {
   const chord = lengthUV(subUV(end, start));
   const fallback = chord / 2;
   const a = normalize(startDirection);
@@ -526,7 +538,7 @@ function boundedEasingHandles(start, startDirection, end, endDirection, curvatur
     const reachEnd = cross(delta, a) / denominator;
     if (reachStart > 0 && reachEnd > 0) {
       const weight =
-        smooth(Math.min(reachStart, reachEnd) / (0.05 * chord)) *
+        smooth(Math.min(reachStart, reachEnd) / (nearWindow * chord)) *
         (1 - smooth((Math.max(reachStart, reachEnd) - chord) / chord));
       startLen += weight * (reachStart - fallback);
       endLen += weight * (reachEnd - fallback);
