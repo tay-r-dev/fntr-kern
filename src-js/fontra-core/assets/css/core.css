@@ -33,6 +33,14 @@
   font-stretch: semi-condensed; /* nearest static to wdth 90 (87.5) */
 }
 
+/* The canvas measurement labels' lighter face: Narrow Light. */
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrLt.woff2") format("woff2");
+  font-weight: 300;
+  font-stretch: semi-condensed;
+}
+
 :root {
   /* https://css-tricks.com/the-css-custom-property-toggle-trick/ */
   --fontra-theme-marker: ; /* a space, which is valid */

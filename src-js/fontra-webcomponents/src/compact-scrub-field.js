@@ -744,7 +744,7 @@ export class CompactScrubField extends UnlitElement {
     event.preventDefault();
 
     const startX = event.clientX;
-    const startValue = this._value;
+    const startValue = Number(this._value) || 0;
     let travel = 0;
     let dragging = false;
     // The modifiers of the last real move, so the travel the edge adds on its

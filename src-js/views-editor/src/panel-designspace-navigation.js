@@ -552,6 +552,13 @@ const DESIGNSPACE_PANEL_COLORS = {
   "ds-input-focus-text-color": ["#151515", "#f0f0f0"],
   "ds-input-focus-border-color": ["#def280", "#8fae4a"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
+  "ds-checkmark-color": ["#d9d9d9", "#555555"],
+  "ds-checkmark-border-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
+  "ds-checkmark-inactive-color": ["#e9e9e9", "#444444"],
+  "ds-checkmark-inactive-border-color": [
+    "rgba(21, 21, 21, 0.05)",
+    "rgba(255, 255, 255, 0.05)",
+  ],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
   "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
   "ui-accordion-switch-border-color": ["#e9e9e9", "#3a3a3a"],
@@ -756,7 +763,8 @@ export default class DesignspaceNavigationPanel extends Panel {
         border-left: 1px solid var(--ds-popover-border-color);
       }
 
-      /* checkmark (Figma 379:22544), ui/label/S */
+      /* checkmark (Figma 379:22544), ui/label/S. A column whose labels are
+         off greys its boxes and names; its choices stay live. */
       .ds-checkmark-row {
         display: flex;
         align-items: center;
@@ -773,15 +781,39 @@ export default class DesignspaceNavigationPanel extends Panel {
 
       .ds-checkmark {
         appearance: none;
+        box-sizing: border-box;
         margin: 0;
         width: 14px;
         height: 14px;
-        background: url("/images/checkbox-off.svg") center / contain no-repeat;
+        border: 1px solid var(--ds-checkmark-border-color);
+        border-bottom: none;
+        border-radius: 4px;
+        background: var(--ds-checkmark-color) center / contain no-repeat;
         cursor: pointer;
       }
 
       .ds-checkmark:checked {
+        border: none;
         background-image: url("/images/checkbox-on.svg");
+      }
+
+      .ds-popover-column.inactive .ds-checkmark-row {
+        color: var(--ds-label-color);
+      }
+
+      .ds-popover-column.inactive .ds-checkmark {
+        background-color: var(--ds-checkmark-inactive-color);
+        border-color: var(--ds-checkmark-inactive-border-color);
+      }
+
+      .ds-popover-column.inactive .ds-checkmark:checked {
+        background-image: url("/images/checkbox-on-inactive.svg");
+      }
+
+      .ds-checkmark:disabled,
+      .ds-checkmark:disabled + * {
+        opacity: 0.3;
+        cursor: default;
       }
     `);
 
@@ -939,7 +971,17 @@ export default class DesignspaceNavigationPanel extends Panel {
       "data-tooltip": "Point label settings",
       "data-tooltipposition": "top",
     });
-    settingsButton.onclick = () => this._togglePointLabelsPopover(settingsButton);
+    // The popover closes itself on any press outside it, this button's too,
+    // before the click lands; so the click reads whether it was open at the press.
+    let wasOpen = false;
+    settingsButton.addEventListener("pointerdown", () => {
+      wasOpen = !!this._pointLabelsPopover?.matches(":popover-open");
+    });
+    settingsButton.onclick = () => {
+      if (!wasOpen) {
+        this._showPointLabelsPopover(settingsButton);
+      }
+    };
 
     return html.div({ class: "ds-card" }, [
       html.div({ class: "ds-heading ds-heading--spaced" }, ["display"]),
@@ -1028,10 +1070,11 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   // Figma 381:23113: which values each kind of point label shows, in two
   // columns. A native popover, so a click elsewhere or Escape closes it.
-  _togglePointLabelsPopover(anchor) {
+  _showPointLabelsPopover(anchor) {
     if (!this._pointLabelsPopover) {
-      const column = (title, keys) =>
-        html.div({ class: "ds-popover-column" }, [
+      const layers = this.editorController.visualizationLayersSettings;
+      const column = (title, layerKey, keys) => {
+        const element = html.div({ class: "ds-popover-column" }, [
           html.div({ class: "ds-label ds-label--dark" }, [title]),
           ...Object.entries(keys).map(([label, key]) => {
             const box = html.input({ type: "checkbox", class: "ds-checkmark" });
@@ -1046,13 +1089,19 @@ export default class DesignspaceNavigationPanel extends Panel {
             return html.label({ class: "ds-checkmark-row" }, [box, label]);
           }),
         ]);
+        const sync = () =>
+          element.classList.toggle("inactive", !layers.model[layerKey]);
+        sync();
+        layers.addKeyListener(layerKey, sync);
+        return element;
+      };
       this._pointLabelsPopover = html.div({ class: "ds-popover", popover: "auto" }, [
-        column("Point labels", {
+        column("Point labels", "fontra.point.labels", {
           Distance: "showLabelsDistance",
           Tension: "showLabelsTension",
           Angle: "showLabelsAngle",
         }),
-        column("Skeleton labels", {
+        column("Skeleton labels", "fontra.skeleton.point-labels", {
           Distance: "showSkeletonLabelsDistance",
           Tension: "showSkeletonLabelsTension",
           Angle: "showSkeletonLabelsAngle",
@@ -1061,10 +1110,6 @@ export default class DesignspaceNavigationPanel extends Panel {
       this.shadowRoot.appendChild(this._pointLabelsPopover);
     }
     const popover = this._pointLabelsPopover;
-    if (popover.matches(":popover-open")) {
-      popover.hidePopover();
-      return;
-    }
     const rect = anchor.getBoundingClientRect();
     popover.style.left = `${rect.left}px`;
     popover.style.top = `${rect.bottom + 4}px`;
@@ -1608,7 +1653,7 @@ export default class DesignspaceNavigationPanel extends Panel {
   _updateCoarseGridCustomFieldsVisibility() {
     const fields = this.coarseGridCustomFields;
     if (fields) {
-      fields.style.display = this._coarseGridSettings.custom ? "grid" : "none";
+      fields.style.display = this._coarseGridSettings.custom ? "flex" : "none";
     }
   }
 
@@ -1631,10 +1676,10 @@ export default class DesignspaceNavigationPanel extends Panel {
         this.coarseGridCustomToggle.value = settings.custom ? "on" : "off";
       }
       if (this.coarseGridBaseInput) {
-        this.coarseGridBaseInput.value = String(settings.base);
+        this.coarseGridBaseInput.value = settings.base;
       }
       if (this.coarseGridIncrementInput) {
-        this.coarseGridIncrementInput.value = String(settings.increment);
+        this.coarseGridIncrementInput.value = settings.increment;
       }
       this._updateCoarseGridCustomFieldsVisibility();
       window.coarseGridValues = values;

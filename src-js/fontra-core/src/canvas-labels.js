@@ -13,6 +13,9 @@
 // new font afresh -- the lag on the first pass through a range of zooms.
 
 const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
+// No page text uses the Light face, so nothing else asks for it: load it up
+// front, or the first labels draw in the fallback.
+globalThis.document?.fonts?.load(`300 semi-condensed 10px fontra-ui-mono`);
 
 // The sizes a designer can tune by hand, from the "Labels (debug)" accordion in the
 // left panel. Live: every draw reads them. The panel stores them per browser.
@@ -449,12 +452,12 @@ export function setMeasureLabelFont(context, size) {
   const base = LABEL_TUNING.measureSize;
   const scale = size / base;
   context.scale(scale, scale);
-  setLabelFont(context, base);
+  setLabelFont(context, base, TRACKING, 300);
   return scale;
 }
 
-export function setLabelFont(context, size, tracking = TRACKING) {
-  context.font = `400 ${size}px ${LABEL_FONT_FAMILY}`;
+export function setLabelFont(context, size, tracking = TRACKING, weight = 400) {
+  context.font = `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
   context.fontStretch = "semi-condensed";
   context.letterSpacing = `${tracking * size}px`;
 }

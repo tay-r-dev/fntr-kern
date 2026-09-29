@@ -1135,34 +1135,50 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   if (showAngle) visibleComponents2.push(`${angle2.toFixed(1)}°`);
   const text2 = visibleComponents2.join("\n");
 
-  drawHandleLabel(context, p2, p1, visibleComponents, "rgba(4, 28, 44, 1)");
-  drawHandleLabel(context, p3, p4, visibleComponents2, "rgba(44, 28, 44, 1)");
+  drawHandleLabel(context, p2, p1, visibleComponents, HANDLE_LABEL_COLOR);
+  drawHandleLabel(context, p3, p4, visibleComponents2, HANDLE_LABEL_COLOR);
 }
+
+// grey/solid/3: lighter than the near-black the labels had.
+const HANDLE_LABEL_COLOR = "#565656";
 
 // One handle's measurement lines, centred over the handle and stacked beyond its
 // tip: above a handle that points up from its on-curve point, below one that points
 // down. The size is 6 font units by default, never under the tuned minimum on
 // screen (measureLabelFontSize); the gap and line spacing grow with it.
+// One screen pixel in the context's current units.
+function screenPixel(context) {
+  const m = context.getTransform();
+  return (globalThis.devicePixelRatio || 1) / Math.hypot(m.a, m.b);
+}
+
 export function drawHandleLabel(context, handle, onCurve, lines, color) {
   if (!lines.length) {
     return;
   }
   const size = measureLabelFontSize(context);
-  const lineHeight = size * 1.3;
+  // The Figma label's 12 over 9 line, and two screen pixels more between values.
+  const lineHeight = size * 1.33 + 2 * screenPixel(context);
   const gap = size * 1.2;
   const blockHeight = lines.length * lineHeight;
   const up = handle.y >= onCurve.y;
-  // Screen y (down) of the first line's middle.
+  // Screen y (down) of the block's top.
   const top = up ? -handle.y - gap - blockHeight : -handle.y + gap;
   context.save();
   context.globalAlpha *= measureLabelAlpha(context);
   context.fillStyle = color;
   context.scale(1, -1);
   const k = setMeasureLabelFont(context, size);
-  context.textAlign = "center";
+  // Left-aligned lines, the block as a whole centred on the handle.
+  const width = Math.max(...lines.map((line) => context.measureText(line).width));
+  context.textAlign = "left";
   context.textBaseline = "middle";
   lines.forEach((line, i) => {
-    context.fillText(line, handle.x / k, (top + (i + 0.5) * lineHeight) / k);
+    context.fillText(
+      line,
+      handle.x / k - width / 2,
+      (top + (i + 0.5) * lineHeight) / k
+    );
   });
   context.restore();
 }
