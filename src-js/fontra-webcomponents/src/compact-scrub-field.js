@@ -34,6 +34,7 @@ import { themeColorCSS } from "./theme-support.js";
 // dark-theme counterpart.
 const colors = {
   "compact-scrub-field-background-color": ["#f5f5f5", "#3a3a3a"],
+  "compact-scrub-field-border-color": ["#e0e0e0", "#4a4a4a"],
   "compact-scrub-field-hover-background-color": ["#f7f7f7", "#464646"],
   "compact-scrub-field-hover-border-color": [
     "rgba(0, 0, 0, 0.08)",
@@ -69,7 +70,8 @@ export class CompactScrubField extends UnlitElement {
        hover/scrub/manual-input background and text changes. */
     .box {
       background-color: var(--compact-scrub-field-background-color);
-      border-radius: 0.375em;
+      border-top: 1px solid var(--compact-scrub-field-border-color);
+      border-radius: 6px;
       box-sizing: border-box;
       height: 24px;
       padding: 3px;
@@ -77,20 +79,31 @@ export class CompactScrubField extends UnlitElement {
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
-      /* ui/label/XS */
-      font: var(--ui-text-label-xs);
+      /* ui/label/S */
+      font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
     }
 
+    /* No border at rest: hover and active draw theirs as an inset ring, so
+       nothing moves when it appears. */
     .inner {
       display: flex;
       align-items: center;
-      gap: 0.35em;
-      border: 1px solid transparent;
-      border-radius: 0.25em;
+      gap: 4px;
+      border-radius: 3px;
       box-sizing: border-box;
       height: 100%;
-      padding: 0 0.4em;
+      padding: 0 0 0 6px;
+    }
+
+    .inner::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: inset 0 0 0 1px transparent;
+      pointer-events: none;
     }
 
     .inner {
@@ -116,8 +129,11 @@ export class CompactScrubField extends UnlitElement {
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {
       background-color: var(--compact-scrub-field-hover-background-color);
-      border-color: var(--compact-scrub-field-hover-border-color);
       color: var(--compact-scrub-field-hover-text-color);
+    }
+
+    .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner::after {
+      box-shadow: inset 0 0 0 1px var(--compact-scrub-field-hover-border-color);
     }
 
     /* Scrubbing and manual input share the design's active look: lime accent
@@ -126,16 +142,28 @@ export class CompactScrubField extends UnlitElement {
     .box.editing .inner,
     .box:focus-within .inner {
       background-color: var(--compact-scrub-field-active-background-color);
-      border-color: var(--compact-scrub-field-active-border-color);
       color: var(--compact-scrub-field-active-text-color);
+    }
+
+    .box.scrubbing .inner::after,
+    .box.editing .inner::after,
+    .box:focus-within .inner::after {
+      box-shadow: inset 0 0 0 1px var(--compact-scrub-field-active-border-color);
     }
 
     /* The design fades the disabled state to 70% opacity, not 30% -- its
        text is already the faint grey/solid/4, so a heavier fade read as
        gone rather than disabled. */
+    .box.string {
+      cursor: text;
+    }
+
     .box.disabled {
-      opacity: 0.7;
       cursor: default;
+    }
+
+    .box.disabled .inner {
+      opacity: 0.7;
     }
 
     .name {
@@ -154,8 +182,8 @@ export class CompactScrubField extends UnlitElement {
 
     .scrub-icon {
       flex: 0 0 auto;
-      width: 0.9em;
-      height: 0.9em;
+      width: 10px;
+      height: 10px;
       color: var(--compact-scrub-field-handle-color);
     }
 
@@ -168,8 +196,8 @@ export class CompactScrubField extends UnlitElement {
       align-self: stretch;
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      min-width: 2.5em;
+      justify-content: center;
+      min-width: 22px;
       min-height: 1.2em;
       cursor: text;
     }
@@ -186,7 +214,7 @@ export class CompactScrubField extends UnlitElement {
 
     .value input {
       width: 4em;
-      text-align: right;
+      text-align: center;
       border: none;
       background: transparent;
       color: inherit;
@@ -213,8 +241,9 @@ export class CompactScrubField extends UnlitElement {
     .stepper {
       display: grid;
       place-items: center;
-      width: 0.9em;
-      height: 0.6em;
+      flex: 1 1 0;
+      width: 10px;
+      min-height: 0;
       margin: 0;
       padding: 0;
       border: 0;
@@ -230,17 +259,17 @@ export class CompactScrubField extends UnlitElement {
     .stepper::before {
       width: 0;
       height: 0;
-      border-right: 0.2em solid transparent;
-      border-left: 0.2em solid transparent;
+      border-right: 3.5px solid transparent;
+      border-left: 3.5px solid transparent;
       content: "";
     }
 
     .stepper.up::before {
-      border-bottom: 0.2em solid currentColor;
+      border-bottom: 4px solid currentColor;
     }
 
     .stepper.down::before {
-      border-top: 0.2em solid currentColor;
+      border-top: 4px solid currentColor;
     }
 
     /* Ticket (coordinator addendum): button/icon/increment, node 287:15519 --
@@ -255,7 +284,9 @@ export class CompactScrubField extends UnlitElement {
       flex-direction: column;
       align-self: stretch;
       justify-content: center;
-      margin-left: 0.15em;
+      box-sizing: border-box;
+      width: 10px;
+      padding: 2px 0;
       opacity: 0;
     }
 
@@ -297,6 +328,12 @@ export class CompactScrubField extends UnlitElement {
   set fill(value) {
     this._fill = !!value;
     this.requestUpdate();
+  }
+
+  // input/string: neither the scrub icon nor the slider's fill, so nothing
+  // says the field drags, and it does not.
+  _isStringInput() {
+    return !this._scrubIcon && !this._fill;
   }
 
   _renderFill() {
@@ -507,7 +544,10 @@ export class CompactScrubField extends UnlitElement {
 
     this._box = html.div(
       {
-        class: "box" + (this._disabled ? " disabled" : ""),
+        class:
+          "box" +
+          (this._disabled ? " disabled" : "") +
+          (this._isStringInput() ? " string" : ""),
         onpointerdown: (event) => this._onPointerDown(event),
         ondblclick: (event) => {
           if (
@@ -738,6 +778,12 @@ export class CompactScrubField extends UnlitElement {
     }
     if (this._hoverSteppers.contains(event.target)) {
       // Let the increment button's own click handler take it instead.
+      return;
+    }
+    if (this._isStringInput()) {
+      // input/string has no drag: a press anywhere types.
+      event.preventDefault();
+      this._startEdit();
       return;
     }
     this._box.setPointerCapture(event.pointerId);

@@ -41,7 +41,58 @@ const colors = {
   ],
   "multi-select-dropdown-active-border-color": ["#def280", "#8fae4a"],
   "multi-select-dropdown-text-color": ["#303030", "#e0e0e0"],
+  // A label with nothing chosen is the design's placeholder grey.
+  "multi-select-dropdown-placeholder-color": ["#8e8e8e", "#8e8e8e"],
+  // The open list: white, hairline border, soft shadow; the hovered item lime.
+  "multi-select-dropdown-list-background-color": ["#fff", "#2a2a2a"],
+  "multi-select-dropdown-list-border-color": [
+    "rgba(0, 0, 0, 0.1)",
+    "rgba(255, 255, 255, 0.14)",
+  ],
+  "multi-select-dropdown-list-shadow-color": [
+    "rgba(0, 0, 0, 0.12)",
+    "rgba(0, 0, 0, 0.4)",
+  ],
+  "multi-select-dropdown-item-color": ["#565656", "#b0b0b0"],
+  "multi-select-dropdown-item-hover-background-color": ["#d5ed57", "#d5ed57"],
+  "multi-select-dropdown-item-hover-color": ["#303030", "#303030"],
 };
+
+const listStyles = `
+  ${themeColorCSS(colors)}
+
+  :host {
+    box-sizing: border-box;
+    padding: 4px;
+    background-color: var(--multi-select-dropdown-list-background-color);
+    border: 1px solid var(--multi-select-dropdown-list-border-color);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px var(--multi-select-dropdown-list-shadow-color);
+    /* ui/label/S */
+    font: var(--ui-text-label-s);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+  }
+
+  .menu-container {
+    margin: 0;
+  }
+
+  .context-menu-item {
+    padding: 4px;
+    border-radius: 2px;
+    color: var(--multi-select-dropdown-item-color);
+  }
+
+  .context-menu-item:not(.enabled) {
+    opacity: 0.4;
+  }
+
+  .context-menu-item.enabled.selected {
+    background-color: var(--multi-select-dropdown-item-hover-background-color);
+    color: var(--multi-select-dropdown-item-hover-color);
+  }
+`;
 
 export class MultiSelectDropdown extends UnlitElement {
   static styles = `
@@ -61,20 +112,34 @@ export class MultiSelectDropdown extends UnlitElement {
     button {
       pointer-events: none;
       background-color: var(--multi-select-dropdown-background-color);
-      color: var(--multi-select-dropdown-text-color);
+      color: var(--multi-select-dropdown-placeholder-color);
       border: 1px solid var(--multi-select-dropdown-border-color);
       border-radius: 6px;
       padding: 4px 6px;
       gap: 4px;
       /* ui/label/XS */
-      font: var(--ui-text-label-xs);
+      font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
       box-sizing: border-box;
       height: var(--multi-select-dropdown-height, 24px);
       width: var(--multi-select-dropdown-width, auto);
       max-width: 100%;
       display: inline-flex;
       align-items: center;
+    }
+
+    /* The label is the placeholder grey until something is chosen, and on
+       hover or while the list is open. */
+    button.filled,
+    button.open,
+    button.icon-mode,
+    :host(:hover) button {
+      color: var(--multi-select-dropdown-text-color);
+    }
+
+    :host(:active) button:not(.filled):not(.icon-mode) {
+      color: var(--multi-select-dropdown-placeholder-color);
     }
 
     :host(:hover) button {
@@ -88,10 +153,11 @@ export class MultiSelectDropdown extends UnlitElement {
       border-color: var(--multi-select-dropdown-active-border-color);
     }
 
-    /* The chevron flips while the list is open, matching the design's
-       "selecting" state. */
-    button.open .triangle {
-      transform: scaleY(-1);
+    /* The chevron flips while the list is open or pressed, matching the
+       design's "selecting" and "press" states. */
+    button.open .chevron,
+    :host(:active) button .chevron {
+      transform: none;
     }
 
     /* A label longer than the button ends in an ellipsis; the triangle stays. */
@@ -105,10 +171,13 @@ export class MultiSelectDropdown extends UnlitElement {
       opacity: var(--multi-select-dropdown-label-opacity, 1);
     }
 
-    .triangle {
+    /* The design's 12px chevron; the icon points up, so it turns to point down. */
+    .chevron {
+      display: block;
       flex: 0 0 auto;
-      margin-left: 0.4em;
-      font-size: 0.7em;
+      width: 12px;
+      height: 12px;
+      transform: rotate(180deg);
     }
 
     /* Ticket 48: the icon mode, which is how the overflow button draws. */
@@ -201,6 +270,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set items(value) {
     this._items = value || [];
+    this._updateButtonClass();
   }
 
   get singleChoice() {
@@ -225,7 +295,7 @@ export class MultiSelectDropdown extends UnlitElement {
       "button",
       {
         type: "button",
-        class: this._icon ? "icon-mode" : "",
+        class: this._buttonClass(),
         disabled: this._disabled,
         // mousedown skips the keyboard, so Enter and Space come back here.
         onkeydown: (event) => {
@@ -237,9 +307,31 @@ export class MultiSelectDropdown extends UnlitElement {
       },
       this._icon
         ? [html.createDomElement("inline-svg", { src: this._icon })]
-        : [this._labelSpan, html.span({ class: "triangle" }, ["▾"])]
+        : [
+            this._labelSpan,
+            html.createDomElement("inline-svg", {
+              class: "chevron",
+              src: "/tabler-icons/chevron-up.svg",
+            }),
+          ]
     );
     return this._button;
+  }
+
+  _buttonClass() {
+    return [
+      this._icon ? "icon-mode" : "",
+      this._items.some((item) => item.checked && !item.divider) ? "filled" : "",
+      this._menu ? "open" : "",
+    ]
+      .join(" ")
+      .trim();
+  }
+
+  _updateButtonClass() {
+    if (this._button) {
+      this._button.className = this._buttonClass();
+    }
   }
 
   toggleMenu() {
@@ -278,18 +370,21 @@ export class MultiSelectDropdown extends UnlitElement {
       {
         onClose: () => {
           this._menu = null;
-          this._button.classList.remove("open");
+          this._updateButtonClass();
         },
         onSelect: () => {
           this._menu = null;
           if (!this._singleChoice) {
             this.openMenu();
           } else {
-            this._button.classList.remove("open");
+            this._updateButtonClass();
           }
         },
       }
     );
+    // The list takes the design's look here, not in the app-wide menu.
+    this._menu.appendStyle(listStyles);
+    this._menu.style.minWidth = `${rect.width}px`;
   }
 
   pickItem(item) {
@@ -306,6 +401,7 @@ export class MultiSelectDropdown extends UnlitElement {
     } else {
       item.checked = !item.checked;
     }
+    this._updateButtonClass();
     this.dispatchEvent(
       new CustomEvent("change", { detail: { checked: this.checkedValues(), item } })
     );

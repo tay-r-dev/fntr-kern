@@ -552,13 +552,14 @@ const DESIGNSPACE_PANEL_COLORS = {
   "ds-input-focus-text-color": ["#151515", "#f0f0f0"],
   "ds-input-focus-border-color": ["#def280", "#8fae4a"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
-  "ds-checkmark-color": ["#d9d9d9", "#555555"],
-  "ds-checkmark-border-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
-  "ds-checkmark-inactive-color": ["#e9e9e9", "#444444"],
-  "ds-checkmark-inactive-border-color": [
-    "rgba(21, 21, 21, 0.05)",
-    "rgba(255, 255, 255, 0.05)",
+  "ds-checkmark-color": ["#e9e9e9", "#444444"],
+  "ds-checkmark-border-color": ["rgba(21, 21, 21, 0.05)", "rgba(255, 255, 255, 0.05)"],
+  "ds-checkmark-hover-color": ["#d9d9d9", "#555555"],
+  "ds-checkmark-hover-border-color": [
+    "rgba(21, 21, 21, 0.1)",
+    "rgba(255, 255, 255, 0.1)",
   ],
+  "ds-label-disabled-color": ["#b4b4b4", "#6a6a6a"],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
   "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
   "ui-accordion-switch-border-color": ["#e9e9e9", "#3a3a3a"],
@@ -723,7 +724,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         resize: vertical;
         background-color: var(--ds-input-background-color);
         color: var(--ds-input-text-color);
-        font: var(--ui-text-label-xs);
+        font: var(--ui-text-label-s);
         letter-spacing: var(--ui-tracking);
       }
 
@@ -763,16 +764,19 @@ export default class DesignspaceNavigationPanel extends Panel {
         border-left: 1px solid var(--ds-popover-border-color);
       }
 
-      /* checkmark (Figma 379:22544), ui/label/S. A column whose labels are
-         off greys its boxes and names; its choices stay live. */
+      /* checkmark (Figma 379:22544), ui/label/S. Its checkbox parts are
+         named checkbox/<active|base>/<hover>, active being checked. At rest a
+         checked box is the grey check and an empty one the light box, both
+         with grey names; hover lights the check lime or darkens the box, and
+         darkens the name. */
       .ds-checkmark-row {
         display: flex;
         align-items: center;
         gap: 4px;
         cursor: pointer;
-        font: var(--ui-text-label-xs);
+        font: var(--ui-text-label-s);
         letter-spacing: var(--ui-tracking);
-        color: var(--ds-label-dark-color);
+        color: var(--ds-label-color);
       }
 
       .ds-checkmark-row + .ds-checkmark-row {
@@ -792,28 +796,34 @@ export default class DesignspaceNavigationPanel extends Panel {
         cursor: pointer;
       }
 
-      .ds-checkmark:checked {
+      .ds-checkmark-row:hover .ds-checkmark {
+        background-color: var(--ds-checkmark-hover-color);
+        border-color: var(--ds-checkmark-hover-border-color);
+      }
+
+      .ds-checkmark:checked,
+      .ds-checkmark-row:hover .ds-checkmark:checked {
         border: none;
-        background-image: url("/images/checkbox-on.svg");
+        background-color: transparent;
+        background-image: url("/images/checkbox-on-rest.svg");
       }
 
-      .ds-popover-column.inactive .ds-checkmark-row {
-        color: var(--ds-label-color);
+      .ds-checkmark-row:hover .ds-checkmark:checked {
+        background-image: url("/images/checkbox-on-hover.svg");
       }
 
-      .ds-popover-column.inactive .ds-checkmark {
-        background-color: var(--ds-checkmark-inactive-color);
-        border-color: var(--ds-checkmark-inactive-border-color);
+      .ds-checkmark-row:hover {
+        color: var(--ds-label-dark-color);
       }
 
-      .ds-popover-column.inactive .ds-checkmark:checked {
-        background-image: url("/images/checkbox-on-inactive.svg");
-      }
-
-      .ds-checkmark:disabled,
-      .ds-checkmark:disabled + * {
-        opacity: 0.3;
+      .ds-checkmark-row:has(:disabled) {
+        color: var(--ds-label-disabled-color);
         cursor: default;
+      }
+
+      .ds-checkmark:disabled {
+        border: none;
+        background: url("/images/checkbox-disabled.svg") center / contain no-repeat;
       }
     `);
 
@@ -1038,33 +1048,26 @@ export default class DesignspaceNavigationPanel extends Panel {
   // the layer's own setting, so they and the View menu cannot disagree.
   _setupDisplaySwitches() {
     const settings = this.editorController.visualizationLayersSettings;
-    const bind = (element, key, write, eventName, read) => {
+    const follow = (key, write) => {
       write(!!settings.model[key]);
-      element.addEventListener(eventName, () => {
-        settings.model[key] = read();
-      });
       settings.addKeyListener(key, (event) => write(!!event.newValue));
     };
     const speedpunk = this.displayCard.querySelector("#measurements-speedpunk-toggle");
-    bind(
-      speedpunk,
-      "fontra.curvature",
-      (on) => (speedpunk.value = on ? "on" : "off"),
-      "change",
-      () => speedpunk.value === "on"
-    );
+    follow("fontra.curvature", (on) => (speedpunk.value = on ? "on" : "off"));
+    speedpunk.addEventListener("change", () => {
+      settings.model["fontra.curvature"] = speedpunk.value === "on";
+    });
     for (const [id, key] of [
       ["#measurements-basic-latch", "fontra.point.labels"],
       ["#measurements-skeleton-latch", "fontra.skeleton.point-labels"],
     ]) {
       const button = this.displayCard.querySelector(id);
-      bind(
-        button,
-        key,
-        (on) => (button.on = on),
-        "click",
-        () => !settings.model[key]
-      );
+      follow(key, (on) => (button.on = on));
+      // latch-button takes its click through `onclick`; it stops the event
+      // itself, so a listener added beside it never hears it.
+      button.onclick = () => {
+        settings.model[key] = !settings.model[key];
+      };
     }
   }
 
@@ -1072,8 +1075,7 @@ export default class DesignspaceNavigationPanel extends Panel {
   // columns. A native popover, so a click elsewhere or Escape closes it.
   _showPointLabelsPopover(anchor) {
     if (!this._pointLabelsPopover) {
-      const layers = this.editorController.visualizationLayersSettings;
-      const column = (title, layerKey, keys) => {
+      const column = (title, keys) => {
         const element = html.div({ class: "ds-popover-column" }, [
           html.div({ class: "ds-label ds-label--dark" }, [title]),
           ...Object.entries(keys).map(([label, key]) => {
@@ -1089,19 +1091,15 @@ export default class DesignspaceNavigationPanel extends Panel {
             return html.label({ class: "ds-checkmark-row" }, [box, label]);
           }),
         ]);
-        const sync = () =>
-          element.classList.toggle("inactive", !layers.model[layerKey]);
-        sync();
-        layers.addKeyListener(layerKey, sync);
         return element;
       };
       this._pointLabelsPopover = html.div({ class: "ds-popover", popover: "auto" }, [
-        column("Point labels", "fontra.point.labels", {
+        column("Point labels", {
           Distance: "showLabelsDistance",
           Tension: "showLabelsTension",
           Angle: "showLabelsAngle",
         }),
-        column("Skeleton labels", "fontra.skeleton.point-labels", {
+        column("Skeleton labels", {
           Distance: "showSkeletonLabelsDistance",
           Tension: "showSkeletonLabelsTension",
           Angle: "showSkeletonLabelsAngle",
@@ -2994,7 +2992,12 @@ export default class DesignspaceNavigationPanel extends Panel {
     const sourceIndex = this.sourcesList.getSelectedItem()?.sourceIndex;
     const haveLayers =
       this.sceneModel.selectedGlyph?.isEditing && sourceIndex != undefined;
-    this.glyphLayersAccordionItem.hidden = !haveLayers;
+    // Always shown; off a master there are no layers to pick, so it is disabled.
+    const layersContent = this.glyphLayersAccordionItem.querySelector(
+      ".ui-accordion-item-content"
+    );
+    layersContent.style.opacity = haveLayers ? "" : "0.4";
+    layersContent.style.pointerEvents = haveLayers ? "" : "none";
 
     if (!haveLayers) {
       this.sourceLayersList.setItems([]);

@@ -23,6 +23,10 @@ const colors = {
   "icon-button-icon-press-color": ["#a9c915", "#a9c915"],
   "icon-button-icon-disabled-color": ["#d9d9d9", "#5a5a5a"],
   "icon-button-hover-background-color": ["#f7f7f7", "#464646"],
+  "icon-button-hover-border-color": [
+    "rgba(0, 0, 0, 0.02)",
+    "rgba(255, 255, 255, 0.06)",
+  ],
   "icon-button-press-background-color": ["#fafafa", "#3c3c3c"],
   "icon-button-press-border-color": [
     "rgba(224, 224, 224, 0.31)",
@@ -79,8 +83,8 @@ export class IconButton extends UnlitElement {
         background-color 150ms,
         color 150ms;
       /* ui/label/S, for a text segment. */
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking-label-s);
+      font: var(--ui-text-label-m);
+      letter-spacing: var(--ui-tracking-label-m);
     }
 
     /* The design's icon is 16px in a 20px button; the icon scales with the
@@ -96,6 +100,7 @@ export class IconButton extends UnlitElement {
     /* Hover: a light-grey fill and a darker icon. */
     :host(:hover) button:not(:disabled):not(.icon-button-latch) {
       background-color: var(--icon-button-hover-background-color);
+      border-color: var(--icon-button-hover-border-color);
       color: var(--icon-button-icon-hover-color);
     }
 
@@ -115,8 +120,8 @@ export class IconButton extends UnlitElement {
        top-right corner. */
     indication-badge {
       position: absolute;
-      top: 0;
-      right: 0;
+      top: -1px;
+      right: -1px;
       pointer-events: none;
     }
 
@@ -188,8 +193,8 @@ export class IconButton extends UnlitElement {
       color: inherit;
       /* ui/label/S's size in the old UI font, for the checks and toggles
          a card holds. */
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking-label-s);
+      font: var(--ui-text-label-m);
+      letter-spacing: var(--ui-tracking-label-m);
       font-family: var(--ui-font-old);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }

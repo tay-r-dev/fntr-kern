@@ -15,30 +15,205 @@
   src: url("../fonts/InriaSans-Regular.woff2") format("woff2");
 }
 
-/* Figma's component text styles (heading/h2-h5, label/XS, label/S) use two
-   static widths: wdth 75 (exact match: MartianMono Condensed) and wdth 90
-   (no exact static instance; nearest is Narrow, 87.5). Weight 220 (label/XS,
-   label/S) has no static file either; nearest is Light (300). */
+/* Martian Mono as static files, every weight at every width. Figma uses the
+   variable font; each style below takes the nearest file: wdth 75 is
+   Condensed, wdth 90 is Narrow (87.5); weight 220 is ExtraLight (200) and
+   320 is Light (300). A face loads only when something uses it. */
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnTh.woff2") format("woff2");
+  font-weight: 100;
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnxLt.woff2") format("woff2");
+  font-weight: 200;
+  font-stretch: condensed;
+}
+
 @font-face {
   font-family: "fontra-ui-mono";
   src: url("../fonts/MartianMono-CnLt.woff2") format("woff2");
   font-weight: 300;
-  font-stretch: condensed; /* wdth 75 */
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnRg.woff2") format("woff2");
+  font-weight: 400;
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnMd.woff2") format("woff2");
+  font-weight: 500;
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnBd.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-CnxBd.woff2") format("woff2");
+  font-weight: 800;
+  font-stretch: condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrTh.woff2") format("woff2");
+  font-weight: 100;
+  font-stretch: semi-condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrxLt.woff2") format("woff2");
+  font-weight: 200;
+  font-stretch: semi-condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrLt.woff2") format("woff2");
+  font-weight: 300;
+  font-stretch: semi-condensed;
 }
 
 @font-face {
   font-family: "fontra-ui-mono";
   src: url("../fonts/MartianMono-NrRg.woff2") format("woff2");
   font-weight: 400;
-  font-stretch: semi-condensed; /* nearest static to wdth 90 (87.5) */
+  font-stretch: semi-condensed;
 }
 
-/* The canvas measurement labels' lighter face: Narrow Light. */
 @font-face {
   font-family: "fontra-ui-mono";
-  src: url("../fonts/MartianMono-NrLt.woff2") format("woff2");
-  font-weight: 300;
+  src: url("../fonts/MartianMono-NrMd.woff2") format("woff2");
+  font-weight: 500;
   font-stretch: semi-condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrBd.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: semi-condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-NrxBd.woff2") format("woff2");
+  font-weight: 800;
+  font-stretch: semi-condensed;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdTh.woff2") format("woff2");
+  font-weight: 100;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdxLt.woff2") format("woff2");
+  font-weight: 200;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdLt.woff2") format("woff2");
+  font-weight: 300;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdRg.woff2") format("woff2");
+  font-weight: 400;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdMd.woff2") format("woff2");
+  font-weight: 500;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdBd.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-StdxBd.woff2") format("woff2");
+  font-weight: 800;
+  font-stretch: normal;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdTh.woff2") format("woff2");
+  font-weight: 100;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdxLt.woff2") format("woff2");
+  font-weight: 200;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdLt.woff2") format("woff2");
+  font-weight: 300;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdRg.woff2") format("woff2");
+  font-weight: 400;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdMd.woff2") format("woff2");
+  font-weight: 500;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdBd.woff2") format("woff2");
+  font-weight: 700;
+  font-stretch: semi-expanded;
+}
+
+@font-face {
+  font-family: "fontra-ui-mono";
+  src: url("../fonts/MartianMono-sWdxBd.woff2") format("woff2");
+  font-weight: 800;
+  font-stretch: semi-expanded;
 }
 
 :root {
@@ -51,18 +226,19 @@
      Martian Mono, which is for the new components and headings only; an old
      control takes a style's size in the UI font by setting
      `font-family: var(--ui-font-old)` after the token.
-     Condensed is wdth 75; semi-condensed (87.5) is the nearest file to
-     wdth 90. Weight 220 has no file, so the labels use Light (300). */
+     The files are the nearest statics to the Figma weights and widths
+     (see the @font-face block above). */
   --ui-font-mono: "fontra-ui-mono", "fontra-ui-regular", monospace;
   --ui-font-old: "fontra-ui-regular", sans-serif;
   --ui-text-heading-h2: 300 condensed 16px / 16px var(--ui-font-mono);
   --ui-text-heading-h3: 300 condensed 13px / 14px var(--ui-font-mono);
-  --ui-text-heading-h4: 300 condensed 12px / 12px var(--ui-font-mono);
+  --ui-text-heading-h4: 300 condensed 11px / 12px var(--ui-font-mono);
   --ui-text-heading-h5: 400 semi-condensed 9px / 10px var(--ui-font-mono);
-  --ui-text-label-xs: 300 condensed 10px / 12px var(--ui-font-mono);
-  --ui-text-label-s: 300 condensed 11px / 12px var(--ui-font-mono);
-  --ui-tracking: -0.03em; /* every style but label/S */
-  --ui-tracking-label-s: -0.01em;
+  --ui-text-label-xs: 300 condensed 9px / 10px var(--ui-font-mono);
+  --ui-text-label-s: 200 condensed 10px / 12px var(--ui-font-mono);
+  --ui-text-label-m: 200 condensed 11px / 12px var(--ui-font-mono);
+  --ui-tracking: -0.03em; /* every style but label/M */
+  --ui-tracking-label-m: -0.01em;
 }
 
 :root.dark-theme {

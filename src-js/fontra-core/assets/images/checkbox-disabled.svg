@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="checkbox/base/disabled/S">
+<rect width="14" height="14" rx="4" fill="#E9E9E9"/>
+<g id="ON">
+<path fill-rule="evenodd" clip-rule="evenodd" d="M3.82353 5.65385L5.94118 7.80769L10.1765 3.5L11.5 4.84615L5.94118 10.5L2.5 7L3.82353 5.65385Z" fill="white" fill-opacity="0.4"/>
+<path d="M10.7988 4.8457L5.94043 9.78613L3.2002 6.99902L3.82324 6.36621L5.58496 8.1582L5.94141 8.52051L6.29785 8.1582L10.1768 4.21289L10.7988 4.8457Z" stroke="white" stroke-opacity="0.5"/>
+</g>
+</g>
+</svg>

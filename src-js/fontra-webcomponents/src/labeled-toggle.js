@@ -33,8 +33,8 @@ export class LabeledToggle extends UnlitElement {
       align-items: center;
       gap: 0.4em;
       /* ui/label/S's size, in the old UI font */
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking-label-s);
+      font: var(--ui-text-label-m);
+      letter-spacing: var(--ui-tracking-label-m);
       font-family: var(--ui-font-old);
       color: var(--labeled-toggle-text-color);
       cursor: pointer;

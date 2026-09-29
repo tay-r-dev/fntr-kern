@@ -11,7 +11,7 @@ import { themeColorCSS } from "./theme-support.js";
 // group (Figma 309:1617) is three of these, not segments of one plate.
 //
 // The button is two layers, and the states change both: the face draws the
-// borders -- 2px at the bottom at rest, a hairline all around on hover, and
+// borders -- 1px at the bottom at rest, a hairline all around on hover, and
 // the weight moved to the top while pressed or latched -- and the inner
 // container draws its own grey fill over it on hover, or lets the face
 // through otherwise. The icon is grey at rest, dark on hover, light lime
@@ -60,7 +60,7 @@ export class LatchButton extends UnlitElement {
       cursor: default;
     }
 
-    /* The face: at rest, the grey face with the 2px bottom edge. */
+    /* The face: at rest, the grey face with the 1px bottom edge. */
     button {
       display: flex;
       box-sizing: border-box;
@@ -70,7 +70,7 @@ export class LatchButton extends UnlitElement {
       padding: 2px;
       background: var(--latch-button-face-background-color);
       border: 0 solid var(--latch-button-border-color);
-      border-bottom-width: 2px;
+      border-bottom-width: 1px;
       border-radius: 6px;
       overflow: hidden;
       cursor: pointer;
@@ -117,6 +117,7 @@ export class LatchButton extends UnlitElement {
       background: var(--latch-button-face-hover-background-color);
       border-top-width: 1px;
       border-bottom-width: 1px;
+      padding: 2px 1px;
     }
 
     :host(:hover) button:not(:disabled):not(.on) .container {
@@ -126,17 +127,17 @@ export class LatchButton extends UnlitElement {
       color: var(--latch-button-icon-hover-color);
     }
 
-    /* Press: the white face loses its bottom edge, the container lets it
-       through, and the icon goes light lime. */
+    /* Press: the white face loses its bottom edge, the container keeps its
+       own fill, and the icon goes light lime. */
     :host(:active) button:not(:disabled) {
       background: var(--latch-button-face-press-background-color);
       border-width: 1px 1px 0;
-      padding: 2px 1px 0;
+      padding: 2px 2px 0;
     }
 
     :host(:active) button:not(:disabled) .container {
-      background: transparent;
-      border-radius: 5px 5px 4px 4px;
+      background: var(--latch-button-container-hover-background-color);
+      border-radius: 4px;
       padding: 2px;
       color: var(--latch-button-icon-press-color);
     }
@@ -146,7 +147,7 @@ export class LatchButton extends UnlitElement {
     button.on,
     button.open {
       background: var(--latch-button-face-on-background-color);
-      border-width: 2px 1px 0;
+      border-width: 1px 1px 0;
       padding: 2px 1px 0;
     }
 
@@ -185,9 +186,20 @@ export class LatchButton extends UnlitElement {
     /* The design's 6px indication-badge at the button's top-right corner. */
     indication-badge {
       position: absolute;
-      top: 0;
-      right: 0;
+      top: 3px;
+      right: 2px;
+      display: none;
       pointer-events: none;
+    }
+
+    indication-badge.shown,
+    :host(:active:not([disabled])) indication-badge {
+      display: inline-block;
+    }
+
+    /* The chevron flips while the card is open. */
+    button.open .latch-button-chevron {
+      transform: none;
     }
 
     /* The dropdown card: a native popover under the button's right edge, as
@@ -203,8 +215,8 @@ export class LatchButton extends UnlitElement {
       color: inherit;
       /* ui/label/S's size in the old UI font, for the checks and toggles a
          card holds. */
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking-label-s);
+      font: var(--ui-text-label-m);
+      letter-spacing: var(--ui-tracking-label-m);
       font-family: var(--ui-font-old);
       box-shadow: 0 0.2em 1em var(--latch-button-card-shadow-color);
     }
@@ -375,13 +387,12 @@ export class LatchButton extends UnlitElement {
       },
       [html.div({ class: "container" }, children)]
     );
-    const result = this.dropdown ? [this._button, this._card] : [this._button];
-    if (this.badge) {
-      const badge = html.createDomElement("indication-badge", {});
-      badge.size = "M";
-      result.push(badge);
-    }
-    return result.length > 1 ? result : this._button;
+    // The badge is always there: a press shows it too.
+    const badge = html.createDomElement("indication-badge", {
+      class: this.badge ? "shown" : "",
+    });
+    badge.size = "M";
+    return this.dropdown ? [this._button, this._card, badge] : [this._button, badge];
   }
 }
 

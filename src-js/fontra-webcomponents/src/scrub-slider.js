@@ -52,7 +52,7 @@ export class ScrubSlider extends CompactScrubField {
       user-select: none;
       touch-action: none;
       /* ui/label/XS */
-      font: var(--ui-text-label-xs);
+      font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
     }
 

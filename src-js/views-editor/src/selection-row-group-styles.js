@@ -166,15 +166,15 @@ export const SELECTION_ROW_GROUP_STYLES = `
   .ui-form-label,
   .ui-form-value,
   .ui-form-full-width {
-    font: var(--ui-text-label-xs);
+    font: var(--ui-text-label-s);
     letter-spacing: var(--ui-tracking);
     font-family: var(--ui-font-old);
   }
 
   .ui-form-label.checkbox,
   .ui-form-value.checkbox {
-    font: var(--ui-text-label-s);
-    letter-spacing: var(--ui-tracking-label-s);
+    font: var(--ui-text-label-m);
+    letter-spacing: var(--ui-tracking-label-m);
     font-family: var(--ui-font-old);
   }
 `;

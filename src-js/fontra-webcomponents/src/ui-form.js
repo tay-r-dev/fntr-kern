@@ -165,7 +165,7 @@ export class Form extends SimpleElement {
       padding: 4px 6px;
       height: 24px;
       /* ui/label/XS's size, in the old UI font: every form's select. */
-      font: var(--ui-text-label-xs);
+      font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
       font-family: var(--ui-font-old);
       box-sizing: border-box;
