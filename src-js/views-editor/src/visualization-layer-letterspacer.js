@@ -12,7 +12,7 @@ export const LetterspacerVisualizationLayer = {
   zIndex: 500,
   selectionFunc: glyphSelector("editing"),
 
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     if (!positionedGlyph) return;
 
     const { path } = positionedGlyph.glyph;

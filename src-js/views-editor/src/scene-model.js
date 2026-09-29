@@ -753,22 +753,8 @@ export class SceneModel {
       return selection;
     }
 
-    // Then, look for segment selection (they should *not* participate in the
-    // "prefer if it's in the current selection" logic). Skeleton segments
-    // first: the centerline is the primary editing target while a skeleton
-    // is present, and clicking it selects the segment's two skeleton points,
-    // mirroring how regular segment clicks select the two parent points.
-    const skeletonSegmentSelection = this.skeletonSegmentSelectionAtPoint(point, size);
-    if (skeletonSegmentSelection.size) {
-      return { selection: skeletonSegmentSelection, isSegment: true };
-    }
-
-    selection = this.segmentSelectionAtPoint(point, size);
-    if (selection.pathHit) {
-      return selection;
-    }
-
-    // Then, look for components (ditto)
+    // Then, look for components (they should *not* participate in the
+    // "prefer if it's in the current selection" logic)
     const componentSelection = this.componentSelectionAtPoint(
       point,
       size,
@@ -853,6 +839,24 @@ export class SceneModel {
     );
     if (pointSelection.size) {
       return { selection: pointSelection };
+    }
+
+    // Skeleton segments before path segments: the centerline is the primary
+    // editing target while a skeleton is present, and clicking it selects the
+    // segment's two skeleton points, as a path segment click selects its two
+    // parent points.
+    const skeletonSegmentSelection = this.skeletonSegmentSelectionAtPoint(point, size);
+    if (skeletonSegmentSelection.size) {
+      return { selection: skeletonSegmentSelection, isSegment: true };
+    }
+
+    const segmentSelection = this.segmentSelectionAtPoint(
+      point,
+      size,
+      parsedCurrentSelection
+    );
+    if (segmentSelection.pathHit) {
+      return segmentSelection;
     }
 
     const guidelineSelection = this.guidelineSelectionAtPoint(
@@ -1658,29 +1662,52 @@ export class SceneModel {
     return new Set();
   }
 
-  segmentSelectionAtPoint(point, size) {
+  segmentSelectionAtPoint(point, size, parsedCurrentSelection) {
     const pathHit = this.pathHitAtPoint(point, size);
+
+    // Skip if we have parsedCurrentSelection and a hit, but the hit
+    // does not match the parsedCurrentSelection
+    const pointIndices = parsedCurrentSelection
+      ? (parsedCurrentSelection.point ?? [])
+      : undefined;
+
     if (
-      pathHit.segment?.parentPoints.every(
+      pointIndices &&
+      pathHit.segment &&
+      !(
+        pointIndices.includes(pathHit.segment.parentPointIndices[0]) &&
+        pointIndices.includes(pathHit.segment.parentPointIndices.at(-1))
+      )
+    ) {
+      return { selection: new Set() };
+    }
+
+    // Skip if the hit is too close to a node
+    if (
+      !pathHit.segment?.parentPoints.every(
         (point) => vector.distance(pathHit, point) > size
       )
     ) {
-      const pointIndices = [
-        pathHit.segment.parentPointIndices[0],
-        pathHit.segment.parentPointIndices.at(-1),
-      ];
-      // Skeleton-generated contours are derived geometry: their segments are
-      // not selectable, just like their points.
-      const generatedPointIndices = this._getGeneratedPointIndices(
-        this.getSelectedPositionedGlyph()
-      );
-      if (generatedPointIndices?.has(pointIndices[0])) {
-        return { selection: new Set() };
-      }
-      const selection = new Set(pointIndices.map((i) => `point/${i}`));
-      return { selection, pathHit, isSegment: true };
+      return { selection: new Set() };
     }
-    return { selection: new Set() };
+
+    const segmentPointIndices = [
+      pathHit.segment.parentPointIndices[0],
+      pathHit.segment.parentPointIndices.at(-1),
+    ];
+    // Skeleton-generated contours are derived geometry: their segments are
+    // not selectable, just like their points.
+    const generatedPointIndices = this._getGeneratedPointIndices(
+      this.getSelectedPositionedGlyph()
+    );
+    if (generatedPointIndices?.has(segmentPointIndices[0])) {
+      return { selection: new Set() };
+    }
+    return {
+      selection: new Set(segmentPointIndices.map((i) => `point/${i}`)),
+      pathHit,
+      isSegment: true,
+    };
   }
 
   // Hit-test the skeleton centerline. A hit selects the segment's two
@@ -2213,8 +2240,9 @@ export class SceneModel {
       const xLeft = positionedGlyph.x;
       const xRight = positionedGlyph.x + glyph.xAdvance;
 
-      const xLeftSB = xLeft + (glyph.leftMargin || 0);
-      const xRightSB = xRight - (glyph.rightMargin || 0);
+      // For empty glyphs, we use fallback sidebearings of 1/4th of the advance
+      const xLeftSB = xLeft + (glyph.leftMargin ?? glyph.xAdvance / 4);
+      const xRightSB = xRight - (glyph.rightMargin ?? glyph.xAdvance / 4);
 
       const [leftZone1, leftZone2] = sorted([xLeft, xLeftSB]);
       const [rightZone1, rightZone2] = sorted([xRight, xRightSB]);

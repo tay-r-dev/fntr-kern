@@ -65,7 +65,7 @@ registerVisualizationLayerDefinition({
     gripColor: "#6BFD",
     selectedGripColor: "#9EFF",
   },
-  draw: (context, positionedGlyph, parameters, model, controller) =>
+  draw: ({ context, positionedGlyph, parameters, model, controller }) =>
     thePowerRulerTool?.draw(context, positionedGlyph, parameters, model, controller),
 });
 

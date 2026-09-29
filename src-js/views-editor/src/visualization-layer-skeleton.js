@@ -385,7 +385,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     fillColor: "rgba(95, 178, 255, 0.18)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     context.fillStyle = parameters.fillColor;
     forEachSkeletonContour(positionedGlyph, model, (contour, outline) => {
       const onCurveIndices = getOnCurvePointIndices(contour);
@@ -427,7 +427,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     strokeColor: "rgba(95, 178, 255, 0.55)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (!applyRibsOpacity(context)) {
       return;
     }
@@ -487,7 +487,7 @@ registerVisualizationLayerDefinition({
     lockedHoverColor: "rgba(180, 80, 200, 1)",
     lockedSelectedColor: "rgba(180, 80, 200, 1)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (!applyRibsOpacity(context)) {
       return;
     }
@@ -608,7 +608,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     strokeColor: "#5fb2ff",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     // Ticket 31: the thickness is an app setting in screen pixels, one value
     // for each state of Show generated geometry.
     const settings = applicationSettingsController.model;
@@ -647,7 +647,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     strokeColor: "rgba(95, 178, 255, 0.6)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
     if (!skeletonData?.generated?.length) {
       return;
@@ -695,7 +695,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     strokeColor: "rgba(95, 178, 255, 0.65)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     context.lineWidth = parameters.strokeWidth;
     context.strokeStyle = parameters.strokeColor;
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
@@ -735,7 +735,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     fillColor: "#5fb2ff",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     context.fillStyle = parameters.fillColor;
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
       for (const point of contour.points) {
@@ -774,7 +774,7 @@ registerVisualizationLayerDefinition({
     selectedColor: "rgba(255, 174, 68, 1)",
     underColor: "#0008",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     const { selected, hovered } = getSkeletonPointSelectionSets(model);
     if (!selected.size && !hovered.size) {
       return;
@@ -834,7 +834,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { gizmoSize: 7, pixel: 1 },
   colors: TUNNI_GIZMO_COLORS,
   colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     context.fillStyle = parameters.gizmoColor;
     forEachSkeletonContour(positionedGlyph, model, (contour) => {
       for (const segment of buildSkeletonTunniSegments(contour)) {
@@ -869,7 +869,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { gizmoSize: 8, strokeWidth: 1, pixel: 1 },
   colors: { gizmoColor: "rgba(255, 128, 0, 0.95)" },
   colorsDarkMode: { gizmoColor: "rgba(255, 174, 68, 1)" },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (
       !isTunniControlLive(
         model.visualizationLayersSettings?.model,
@@ -915,7 +915,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { labelOffset: 13, labelInset: 5 },
   colors: { labelColor: "#2E4FBA" },
   colorsDarkMode: { labelColor: "#7B97F2" },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (
       !isTunniControlLive(
         model.visualizationLayersSettings?.model,
@@ -984,7 +984,7 @@ registerVisualizationLayerDefinition({
     ...TUNNI_GIZMO_COLORS_DARK,
     axisColor: "rgba(123, 151, 242, 0.6)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (
       !isTunniControlLive(
         model.visualizationLayersSettings?.model,
@@ -1052,7 +1052,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { gizmoSize: 8, strokeWidth: 1, pixel: 1 },
   colors: { gizmoColor: "rgba(210, 90, 190, 0.95)" },
   colorsDarkMode: { gizmoColor: "rgba(240, 140, 220, 1)" },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (
       !isTunniControlLive(
         model.visualizationLayersSettings?.model,
@@ -1106,7 +1106,7 @@ registerVisualizationLayerDefinition({
     color: "rgba(96, 232, 190, 1)",
     pinnedColor: "rgba(255, 150, 90, 1)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     if (
       !isTunniControlLive(
         model.visualizationLayersSettings?.model,
@@ -1161,7 +1161,7 @@ registerVisualizationLayerDefinition({
   colorsDarkMode: {
     fillColor: "rgba(95, 178, 255, 0.7)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     const preview = model.skeletonInsertHandles;
     if (!preview?.points?.length) {
       return;
@@ -1198,7 +1198,7 @@ registerVisualizationLayerDefinition({
     activeColor: "#5fb2ff",
     inertColor: "rgba(200, 200, 200, 0.7)",
   },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     const target = model.skeletonPenHoverTarget;
     if (!target) {
       return;
@@ -1256,7 +1256,7 @@ registerVisualizationLayerDefinition({
   // Locked rib endpoints are drawn (purple, larger) by the rib-points layer;
   // this layer marks the GENERATED targets on the outline that are blocked by
   // that same lock.
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     context.lineWidth = parameters.strokeWidth;
     context.strokeStyle = parameters.strokeColor;
     context.fillStyle = parameters.fillColor;
@@ -1312,7 +1312,7 @@ registerVisualizationLayerDefinition({
   defaultOn: true,
   zIndex: 500,
   screenParameters: { strokeWidth: 1 },
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     const skeletonData = getSkeletonDataFromGlyph(positionedGlyph, model);
     if (!skeletonData?.contours?.length) {
       return;
@@ -1372,7 +1372,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { fontSize: 10 },
   colors: { boxColor: "#FFFB", color: "#000" },
   colorsDarkMode: { boxColor: "#1118", color: "#FFF" },
-  draw: (context, positionedGlyph, parameters, model) => {
+  draw: ({ context, positionedGlyph, parameters, model }) => {
     const { selected } = getSkeletonPointSelectionSets(model);
     if (!selected.size) {
       return;

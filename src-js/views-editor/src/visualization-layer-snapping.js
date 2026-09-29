@@ -63,7 +63,7 @@ registerVisualizationLayerDefinition({
     suggestionColor: "#FF8FC0",
     ringColor: "#7FE0FF",
   },
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     const held = model.snapHeldCandidates || [];
     const indicator = model.snapIndicator;
     const { xMin, yMin, xMax, yMax } = controller.getViewBox();

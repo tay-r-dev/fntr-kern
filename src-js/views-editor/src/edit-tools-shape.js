@@ -272,7 +272,7 @@ registerVisualizationLayerDefinition({
   screenParameters: { strokeWidth: 1, ...LABEL_SCREEN_PARAMETERS },
   colors: { boxColor: "#FFFB", strokeColor: "#000", ...LABEL_COLORS },
   colorsDarkMode: { boxColor: "#1118", strokeColor: "#FFF", ...LABEL_COLORS_DARK_MODE },
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     const shape = model.shapeToolShapePath;
     if (!shape) {
       return;

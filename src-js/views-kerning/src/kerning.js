@@ -7836,7 +7836,7 @@ export class KerningViewController extends ViewController {
       screenParameters: { fontSize: 11 },
       colors: { textColor: "#333333" },
       colorsDarkMode: { textColor: "#EEEEEE" },
-      draw: (context, glyph, parameters, model) => {
+      draw: ({ context, positionedGlyph: glyph, parameters, model }) => {
         if (this.sceneController.selectedTool?.identifier !== "kerning-tool") return;
         if (!model.positionedLines.some((line) => line.glyphs.indexOf(glyph) > 0))
           return;
@@ -7877,7 +7877,7 @@ export class KerningViewController extends ViewController {
         fillColor: "#C77DFF26",
         textColor: "#C77DFF",
       },
-      draw: (context, positionedGlyph, parameters, model, controller) => {
+      draw: ({ context, positionedGlyph, parameters, model, controller }) => {
         // Positions and pair values were updated before any layer drew.
         const settings = this.suggestionPreviewSettings.model;
         if (!settings.enabled) {

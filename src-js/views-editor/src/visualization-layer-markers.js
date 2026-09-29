@@ -357,7 +357,8 @@ registerVisualizationLayerDefinition({
     ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
-  draw: drawMarkerRays,
+  draw: ({ context, positionedGlyph, parameters, model, controller }) =>
+    drawMarkerRays(context, positionedGlyph, parameters, model, controller),
 });
 
 registerVisualizationLayerDefinition({
@@ -375,7 +376,8 @@ registerVisualizationLayerDefinition({
     ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
-  draw: drawMarkerDimensions,
+  draw: ({ context, positionedGlyph, parameters, model, controller }) =>
+    drawMarkerDimensions(context, positionedGlyph, parameters, model, controller),
 });
 
 registerVisualizationLayerDefinition({
@@ -392,7 +394,8 @@ registerVisualizationLayerDefinition({
     ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,
-  draw: drawMarkerCurvatures,
+  draw: ({ context, positionedGlyph, parameters, model, controller }) =>
+    drawMarkerCurvatures(context, positionedGlyph, parameters, model, controller),
 });
 
 // What a click would place, drawn while the marker tool hovers a contour. Without it the
@@ -459,5 +462,6 @@ registerVisualizationLayerDefinition({
   },
   colors: { previewColor: "#08A8", ...LABEL_COLORS },
   colorsDarkMode: { previewColor: "#6BFA", ...LABEL_COLORS_DARK_MODE },
-  draw: drawPlacementPreview,
+  draw: ({ context, positionedGlyph, parameters, model, controller }) =>
+    drawPlacementPreview(context, positionedGlyph, parameters, model, controller),
 });

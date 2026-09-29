@@ -1856,7 +1856,13 @@ function makeSkeletonTunniDragTarget(tunniHit) {
   if (contourId == null || startPointId == null || endPointId == null) {
     return null;
   }
-  return { kind: "skeleton", contourId, startPointId, endPointId, gizmoKey: tunniHit.key };
+  return {
+    kind: "skeleton",
+    contourId,
+    startPointId,
+    endPointId,
+    gizmoKey: tunniHit.key,
+  };
 }
 
 // Address the dragged generated segment by its place in the path, so the readout
@@ -1942,7 +1948,7 @@ registerVisualizationLayerDefinition({
 
   colors: { handleColor: "#BBB", strokeColor: "#DDD" },
   colorsDarkMode: { handleColor: "#777", strokeColor: "#555" },
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     if (!model.showTransformSelection) {
       return;
     }

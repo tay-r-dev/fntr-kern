@@ -23,7 +23,7 @@ registerVisualizationLayerDefinition({
   colors: { fillColor: "#00BFFF30", strokeColor: "#00BFFF80" },
   colorsDarkMode: { fillColor: "#7FE0FF30", strokeColor: "#7FE0FF80" },
 
-  draw: (context, positionedGlyph, parameters, model, controller) => {
+  draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     const cloud = model?.compositionMarkCloud;
     if (!cloud?.length) {
       return;
