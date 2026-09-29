@@ -8,6 +8,7 @@ import {
   thetaBackAlongBall,
 } from "./bulb-geometry.js";
 import { gridKinkAllowance } from "./harmonization.js";
+import { getAdjacentSegments, makeSlideCandidate } from "./point-slide.js";
 import { fitSerifEasing } from "./serif-easing-fit.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
@@ -176,6 +177,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       settleSmoothFlags(generatedContour);
       const generatedContourIndex = contours.length;
       annotateGeneratedContourProvenance(generatedContour, skeletonContour);
+      applyGeneratedVSlides(generatedContour, skeletonContour);
       publishConstructionAxes(generatedContour);
       contours.push(generatedContour);
       provenance.push({
@@ -220,6 +222,76 @@ function publishConstructionAxes(contour) {
       constructionAxis: { x: point._axis.x, y: point._axis.y },
     };
   }
+}
+
+// The designer's V-slides of generated on-curves: each point slides along the
+// outline into a neighbouring segment by its stored share, the segment it
+// travels cut exactly and the far one refit, as the editor's V-slide does on a
+// drawn contour. An emission step on the finished contour, like a nudge. A
+// bulb's own points slide inside the cap instead (buildDropCap), so they are
+// skipped here.
+function applyGeneratedVSlides(contour, skeletonContour) {
+  const sources = new Map(
+    skeletonContour.points
+      .filter((point) => !point.type)
+      .map((point) => [point._sourcePointId, point])
+  );
+  contour.points.forEach((point, index) => {
+    const origin = point._provenance;
+    if (point.type || !origin || origin.bulbRole || origin.role !== "onCurve") return;
+    if (origin.side !== "left" && origin.side !== "right") return;
+    const source = sources.get(origin.skeletonPointId);
+    const value = source?.[origin.side === "left" ? "leftVSlide" : "rightVSlide"];
+    if (!value || source[`${origin.side}LockedSlide`]) return;
+    // A side is emitted in skeleton order on the left and backwards on the
+    // right, and the share is stated along the skeleton.
+    slideGeneratedPoint(
+      contour.points,
+      contour.isClosed,
+      index,
+      value,
+      origin.side === "left" ? "next" : "previous"
+    );
+  });
+}
+
+// One V-slide on a point list, written into the list's own point objects.
+// `value` is a share of the neighbouring segment's parameter, positive toward
+// `forward`. The point's provenance keeps the two segments as they were built,
+// one per arm, so their curvature gizmos measure the curves their pins govern.
+function slideGeneratedPoint(points, isClosed, index, value, forward) {
+  const contour = { points, isClosed };
+  const side = value > 0 ? forward : forward === "next" ? "previous" : "next";
+  const share = Math.min(Math.abs(value), 1);
+  const before = getAdjacentSegments(contour, index);
+  const candidate = makeSlideCandidate(
+    contour,
+    index,
+    side,
+    side === "next" ? share : 1 - share
+  );
+  if (!candidate) return;
+  const origin = points[index]._provenance;
+  if (
+    origin &&
+    !origin.constructionSegment &&
+    !origin.constructionSegmentIn &&
+    !origin.constructionSegmentOut
+  ) {
+    const snapshot = (segment) =>
+      segment?.points.length === 4
+        ? segment.points.map(({ x, y }) => ({ x, y }))
+        : undefined;
+    points[index]._provenance = {
+      ...origin,
+      constructionSegmentIn: snapshot(before.previous),
+      constructionSegmentOut: snapshot(before.next),
+    };
+  }
+  candidate.points.forEach((moved, i) => {
+    points[i].x = moved.x;
+    points[i].y = moved.y;
+  });
 }
 
 function annotateGeneratedContourProvenance(contour, skeletonContour) {
@@ -334,6 +406,8 @@ function canonicalPointToGeneratorPoint(point, contour) {
   generatorPoint.rightNudge = point.nudge?.right ?? 0;
   generatorPoint.leftHandleNudge = point.handleNudge?.left ?? 0;
   generatorPoint.rightHandleNudge = point.handleNudge?.right ?? 0;
+  generatorPoint.leftVSlide = point.vSlide?.left ?? 0;
+  generatorPoint.rightVSlide = point.vSlide?.right ?? 0;
   // The rib angle lock has to be copied across explicitly like every other
   // per-point field: the generator never sees the canonical shape (§7).
   generatorPoint.ribAngleLock = point.ribAngleLock ?? null;
@@ -7027,6 +7101,28 @@ function buildDropCap({
       neckIn,
       innerEnd.point,
     ].map(({ x, y }) => ({ x, y }));
+  }
+  // The bulb's V-slides, along the cap from the outer wall to the inner, before
+  // its other edits, which are stated on the drawn points.
+  const outerPiece = getSideSegmentsFromTerminal(trimmedOuterSide, position)[0];
+  const innerPiece = getSideSegmentsFromTerminal(trimmedInnerSide, position)[0];
+  if (outerPiece && innerPiece && neckOut && neckIn) {
+    const outerRun =
+      position === "end"
+        ? outerPiece.segmentPoints
+        : [...outerPiece.segmentPoints].reverse();
+    const innerRun =
+      position === "end"
+        ? [...innerPiece.segmentPoints].reverse()
+        : innerPiece.segmentPoints;
+    const run = [...outerRun, ...arc, neckOut, neckIn, ...innerRun];
+    const entryIndex = outerRun.length - 1;
+    if (run[entryIndex] === outerEnd.point && innerRun[0] === innerEnd.point) {
+      stations.forEach(({ role }, k) => {
+        const value = capBallEdits?.[role]?.vslide;
+        if (value) slideGeneratedPoint(run, false, entryIndex + 3 * k, value, "next");
+      });
+    }
   }
   applyBulbPointEdits(stations, capBallEdits);
 

@@ -173,7 +173,9 @@ export const CAP_BALL_EDIT_ROLES = Object.freeze([
   "neck",
   "release",
 ]);
-const CAP_BALL_EDIT_FIELDS = Object.freeze(["slide", "carry", "in", "out"]);
+// `vslide` is the V-slide: the share of a neighbouring segment's parameter the
+// point has slid into along the outline, positive toward the inner wall.
+const CAP_BALL_EDIT_FIELDS = Object.freeze(["slide", "carry", "in", "out", "vslide"]);
 const BULB_SIDE_PREFIX = "bulb-";
 
 // Bulb points ride in the side slot of the generated-point keys, so every
@@ -1758,6 +1760,7 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.width = normalizeWidth(point?.width);
     normalized.nudge = normalizeNudge(point?.nudge);
     normalized.handleNudge = normalizeNudge(point?.handleNudge);
+    normalized.vSlide = normalizeVSlide(point?.vSlide);
     normalized.segmentCurvature = normalizeSegmentCurvature(point?.segmentCurvature);
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
@@ -1987,6 +1990,13 @@ export function reverseSkeletonContourPoints(contour) {
     }
     for (const field of ["width", "nudge", "handleNudge", "locked", "corner"]) {
       swapProperties(point[field], "left", "right");
+    }
+    // Stated along the skeleton, which a reversal turns round.
+    if (point.vSlide) {
+      point.vSlide = {
+        left: -(point.vSlide.right ?? 0),
+        right: -(point.vSlide.left ?? 0),
+      };
     }
     negateCornerDistribution(point);
     // Side and role turn over together, so the two diagonals exchange.
@@ -3909,6 +3919,7 @@ export function resetSkeletonRibSlide(point, side) {
   const nudge = normalizeNudge(point?.nudge);
   nudge[side] = 0;
   point.nudge = nudge;
+  setSkeletonPointVSlide(point, side, 0);
 }
 
 // Is one named freedom of this side blocked? The kind is required: there is no
@@ -3953,6 +3964,7 @@ export function resetSkeletonEditableRib(point, side) {
   handleNudge[side] = 0;
   point.handleNudge = handleNudge;
   setSkeletonSegmentCurvature(point, side, null);
+  setSkeletonPointVSlide(point, side, 0);
   resetSkeletonEditableRibHandles(point, side);
   // A bulb's points hang off both ribs of its terminal, so either side's full
   // reset returns them to where the bulb builds them.
@@ -4045,6 +4057,7 @@ export function transformSkeletonPointMetadata(point, affine) {
     "segmentCurvature",
     "serif",
     "corner",
+    "vSlide",
   ]) {
     swapProperties(point[field], "left", "right");
   }
@@ -5562,6 +5575,27 @@ function normalizeSegmentCurvature(curvature) {
     left: clamp(curvature?.left),
     right: clamp(curvature?.right),
   };
+}
+
+// A V-slide of a generated on-curve, per side: the share of a neighbouring
+// segment's parameter the point has slid into, held inside -1..1. Positive
+// runs toward the next skeleton point, negative toward the previous one, so a
+// mirror only swaps the sides and a reversal swaps and negates them.
+function normalizeVSlide(vSlide) {
+  const clamp = (value) => Math.min(Math.max(asFiniteNumber(value, 0), -1), 1);
+  return { left: clamp(vSlide?.left), right: clamp(vSlide?.right) };
+}
+
+export function getSkeletonPointVSlide(point, side) {
+  assertSkeletonRibSide(side);
+  return normalizeVSlide(point?.vSlide)[side];
+}
+
+export function setSkeletonPointVSlide(point, side, value) {
+  assertSkeletonRibSide(side);
+  const vSlide = normalizeVSlide(point?.vSlide);
+  vSlide[side] = Math.min(Math.max(asFiniteNumber(value, 0), -1), 1);
+  point.vSlide = vSlide;
 }
 
 function normalizeNudge(nudge) {
