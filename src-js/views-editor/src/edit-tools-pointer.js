@@ -311,7 +311,11 @@ export class PointerTool extends BaseTool {
     const hot = !!gizmo && gizmo.distance <= TUNNI_GIZMO_TUNING.clickRadius * pixel;
     this.tunniGizmoReveal.hover(gizmo?.key ?? null, { hot });
     this.tunniGizmoReveal.hoverContour(this._hoveredTunniContour(point, size, gizmo));
-    if (hot && this.tunniGizmoReveal.isArmed(gizmo.key)) {
+    if (
+      hot &&
+      this.tunniGizmoReveal.isArmed(gizmo.key) &&
+      !this._skeletonPointUnder(point, size)
+    ) {
       // Crosshair moves on-curve points, pointer reshapes between them.
       this.canvasController.canvas.style.cursor = isTunniOnCurveType(gizmo.type)
         ? "crosshair"
@@ -341,6 +345,16 @@ export class PointerTool extends BaseTool {
   // Pressing a skeleton or generated gizmo selects what it belongs to, so the
   // panel shows that object: a skeleton segment's two points, or the ribs at
   // the two ends of a generated segment.
+  _skeletonPointUnder(point, size) {
+    return (
+      this.sceneModel.skeletonPointAtPoint(
+        point,
+        size,
+        parseSelection(this.sceneController.selection)
+      ).size > 0
+    );
+  }
+
   _selectTunniGizmoOwner(gizmo, { basic = false } = {}) {
     const keys = new Set();
     const segment = gizmo.segment;
@@ -538,7 +552,7 @@ export class PointerTool extends BaseTool {
     const size = sceneController.mouseClickMargin;
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
     // A gizmo is reached only once it has shown. A skeleton point under the
-    // pointer outranks the skeleton's own gizmos.
+    // pointer outranks every gizmo (see below).
     const gizmo = positionedGlyph
       ? this._findTunniGizmo(
           point,
@@ -551,17 +565,12 @@ export class PointerTool extends BaseTool {
     const passesDoubleClick =
       gizmo?.kind !== "generated" &&
       (initialEvent.detail >= 2 || initialEvent.myTapCount == 2);
+    // A skeleton point under the pointer outranks every gizmo: a generated
+    // gizmo can sit exactly on one.
     const gizmoTakesPress =
       gizmo &&
       this.tunniGizmoReveal.isArmed(gizmo.key) &&
-      !(
-        gizmo.kind === "skeleton" &&
-        this.sceneModel.skeletonPointAtPoint(
-          point,
-          size,
-          parseSelection(sceneController.selection)
-        ).size
-      );
+      !this._skeletonPointUnder(point, size);
     // The browser counts any press soon after a click as a double-click: the
     // press after an equalize click, or each of several quick drags in a row.
     // Letting all of those through left the gizmo answering hover but not the

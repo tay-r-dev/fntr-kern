@@ -568,6 +568,9 @@ export async function handleGeneratedTunniDrag({
           return {
             contourIndex: resolved.contourIndex,
             pointIndex: resolved.pointIndex,
+            // The neck's ends are bulb points on a side; its pin write still
+            // asks that side's handle lock.
+            side: provenance.side,
             bulbRole: provenance.bulbRole,
             bulbSlot: provenance.bulbSlot,
             edit: getSkeletonCapBallEdit(resolved.point, provenance.bulbRole),
@@ -656,10 +659,12 @@ export async function handleGeneratedTunniDrag({
               continue;
             }
             // Curvature, so the handle lock is the one that speaks.
+            // A ball point has no side, and no side's lock holds it.
             if (
               !original ||
               !point ||
-              isSkeletonSideLocked(point, original.side, "handles")
+              ((original.side === "left" || original.side === "right") &&
+                isSkeletonSideLocked(point, original.side, "handles"))
             ) {
               continue;
             }
