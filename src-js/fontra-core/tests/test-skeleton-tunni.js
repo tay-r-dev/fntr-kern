@@ -612,6 +612,28 @@ describe("generated Tunni segments", () => {
     }
   });
 
+  it("reuses its answer while nothing changed, and matches a fresh build", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const first = buildGeneratedTunniSegments(skeletonData, layer.path);
+    expect(buildGeneratedTunniSegments(skeletonData, layer.path)).to.equal(first);
+    // A fresh build, bypassing the cache through a copy of the skeleton data.
+    const fresh = buildGeneratedTunniSegments({ ...skeletonData }, layer.path);
+    expect(fresh).to.deep.equal(first);
+  });
+
+  it("builds again when a segment's point moves in place", () => {
+    const layer = makeGlyph();
+    const skeletonData = getSkeletonData(layer);
+    const first = buildGeneratedTunniSegments(skeletonData, layer.path);
+    const index = first[0].parentPointIndices[1];
+    const point = layer.path.getPoint(index);
+    layer.path.setPointPosition(index, point.x + 7, point.y);
+    const second = buildGeneratedTunniSegments(skeletonData, layer.path);
+    expect(second).to.not.equal(first);
+    expect(second[0].points[1].x).to.equal(point.x + 7);
+  });
+
   it("reports segment tension from the canonical control-point order", () => {
     const curvature = getGeneratedSegmentCurvature(
       {},

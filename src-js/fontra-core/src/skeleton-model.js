@@ -5809,7 +5809,52 @@ export function calculateGeneratedCurvatureEdits({
 // same side. Anything else — a cap, a corner fill, a contour whose provenance
 // did not survive — is skipped rather than half-addressed.
 //
+// Several layers, the pointer's hover and the drag readouts all ask for these
+// every frame, and between edits the answer does not change. The skeleton data
+// is a new object after every skeleton edit (_getNormalizedSkeleton), so it
+// keys the cache; the path can be edited in place, so a cached answer is kept
+// only while the path has the same shape and every segment's four points are
+// still where they were.
+const _generatedTunniSegmentsCache = new WeakMap();
+
 export function buildGeneratedTunniSegments(skeletonData, path) {
+  if (!skeletonData || typeof skeletonData !== "object" || !path) {
+    return computeGeneratedTunniSegments(skeletonData, path);
+  }
+  const cached = _generatedTunniSegmentsCache.get(skeletonData);
+  if (
+    cached &&
+    cached.path === path &&
+    cached.numContours === path.numContours &&
+    cached.numPoints === path.numPoints &&
+    generatedTunniSegmentsStillMatch(cached.segments, path)
+  ) {
+    return cached.segments;
+  }
+  const segments = computeGeneratedTunniSegments(skeletonData, path);
+  _generatedTunniSegmentsCache.set(skeletonData, {
+    path,
+    numContours: path.numContours,
+    numPoints: path.numPoints,
+    segments,
+  });
+  return segments;
+}
+
+function generatedTunniSegmentsStillMatch(segments, path) {
+  for (const segment of segments) {
+    for (let i = 0; i < 4; i++) {
+      const current = path.getPoint(segment.parentPointIndices[i]);
+      const point = segment.points[i];
+      if (!current || current.x !== point.x || current.y !== point.y) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function computeGeneratedTunniSegments(skeletonData, path) {
   const segments = [];
   if (!path) {
     return segments;
