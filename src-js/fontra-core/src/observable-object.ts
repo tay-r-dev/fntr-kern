@@ -229,6 +229,10 @@ function synchronizeWithLocalStorage<T extends {}>(
   prefix = "",
   readItemsFromLocalStorage = false
 ) {
+  // Values read back from storage carry this sender, so the writer below never
+  // echoes another tab's change back into storage.
+  const fromStorage = {};
+
   const mapKeyToObject: Record<string, string> = {};
   const mapKeyToStorage: Record<string, string> = {};
   const stringKeys: Record<string, boolean> = {};
@@ -284,7 +288,7 @@ function synchronizeWithLocalStorage<T extends {}>(
   }
 
   function setItemOnObject<K extends keyof T & string>(key: K, value: string) {
-    controller.model[key] = stringKeys[key] ? value : JSON.parse(value);
+    controller.setItem(key, stringKeys[key] ? value : JSON.parse(value), fromStorage);
   }
 
   function setItemOnStorage<K extends keyof T & string>(key: K, value: T[K]) {
@@ -297,13 +301,15 @@ function synchronizeWithLocalStorage<T extends {}>(
   }
 
   controller.addListener((event) => {
-    if (event.key in mapKeyToStorage) {
+    if (event.key in mapKeyToStorage && event.senderInfo !== fromStorage) {
       // @ts-ignore
       //
       // TypeScript isn't smart enough to figure out that the above check
       // of presence of the key in `mapKeyToStorage` implies that it is
       // necessarily a string and a keyof T.
-      setItemOnStorage(event.key, event.newValue);
+      // The model's current value, not the event's: listeners run later, and a
+      // stale event must not overwrite a newer value.
+      setItemOnStorage(event.key, controller.model[event.key]);
     }
   });
 

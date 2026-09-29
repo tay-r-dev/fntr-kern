@@ -648,14 +648,15 @@ export class FontController {
         instanceCacheKey,
         instancePromise
       );
-      if (deletedItem !== undefined) {
-        const chacheGlyphName = (await deletedItem.value)?.name;
-        this._glyphInstancePromiseCacheKeys[chacheGlyphName]?.delete(instanceCacheKey);
-      }
       if (this._glyphInstancePromiseCacheKeys[glyphName] === undefined) {
         this._glyphInstancePromiseCacheKeys[glyphName] = new Set();
       }
       this._glyphInstancePromiseCacheKeys[glyphName].add(instanceCacheKey);
+      if (deletedItem !== undefined) {
+        // The evicted entry's own key leaves its glyph's index, not the new one
+        const cacheGlyphName = (await deletedItem.value.catch(() => null))?.name;
+        this._glyphInstancePromiseCacheKeys[cacheGlyphName]?.delete(deletedItem.key);
+      }
     }
     return await instancePromise;
   }
@@ -920,6 +921,7 @@ export class FontController {
     delete this._fontAxesSourceSpace;
 
     this._glyphInstancePromiseCache.clear();
+    this._glyphInstancePromiseCacheKeys = {};
 
     for (const varGlyphPromise of this._glyphsPromiseCache.values()) {
       const varGlyph = await varGlyphPromise;

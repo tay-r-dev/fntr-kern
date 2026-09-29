@@ -2201,17 +2201,27 @@ export default class DesignspaceNavigationPanel extends Panel {
   // one frame at a time and only while the panel is open to be read.
   _startSnappingDebugReadout() {
     const element = this.visualAccordion.querySelector("#snapping-debug-readout");
-    const item = this.visualAccordion.querySelector("#snapping-debug-accordion-item");
     if (!element) {
       return;
     }
+    // The frame loop runs only while the readout is on screen: a closed section,
+    // a hidden panel or a background tab stops it.
+    let frame = null;
     const tick = () => {
-      if (item?.offsetParent !== null) {
-        element.textContent = this._formatSnappingReadout();
+      const text = this._formatSnappingReadout();
+      if (element.textContent !== text) {
+        element.textContent = text;
       }
-      requestAnimationFrame(tick);
+      frame = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && frame === null) {
+        frame = requestAnimationFrame(tick);
+      } else if (!entry.isIntersecting && frame !== null) {
+        cancelAnimationFrame(frame);
+        frame = null;
+      }
+    }).observe(element);
   }
 
   _formatSnappingReadout() {

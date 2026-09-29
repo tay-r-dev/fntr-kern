@@ -85,8 +85,10 @@ export function isTunniOnCurveType(type) {
 // shows and does nothing.
 export function coupleGeneratedGizmoSettings(settings) {
   const { generatedMode, generatedCurvature, generatedOnCurve } = TUNNI_SETTINGS;
-  settings.addKeyListener(generatedMode, (event) => {
-    if (event.newValue === true) {
+  // Listeners run after the change, so each reads the current value: a queued
+  // notice from before a newer switch must not undo it.
+  settings.addKeyListener(generatedMode, () => {
+    if (settings.model[generatedMode] === true) {
       settings.model[generatedCurvature] = true;
     } else {
       settings.model[generatedCurvature] = false;
@@ -94,7 +96,7 @@ export function coupleGeneratedGizmoSettings(settings) {
     }
   });
   settings.addKeyListener([generatedCurvature, generatedOnCurve], (event) => {
-    if (event.newValue === true && settings.model[generatedMode] !== true) {
+    if (settings.model[event.key] === true && settings.model[generatedMode] !== true) {
       settings.model[generatedMode] = true;
     }
   });

@@ -93,7 +93,10 @@ export class RemoteObject {
       this.websocket.onopen = (event) => {
         resolve(event);
         delete this._connectPromise;
-        this.websocket.onclose = (event) => this._trigger("close", event);
+        this.websocket.onclose = (event) => {
+          this._rejectPendingCalls();
+          this._trigger("close", event);
+        };
         this.websocket.onerror = (event) => this._trigger("error", event);
         const message = {
           "client-uuid": this.clientUUID,
@@ -103,6 +106,15 @@ export class RemoteObject {
       this.websocket.onerror = reject;
     });
     return this._connectPromise;
+  }
+
+  // A closed socket never answers: settle its calls so nothing waits forever.
+  _rejectPendingCalls() {
+    const pending = this._callReturnCallbacks;
+    this._callReturnCallbacks = {};
+    for (const callbacks of Object.values(pending)) {
+      callbacks.reject?.(new RemoteError("connection closed"));
+    }
   }
 
   _default_onclose(event) {

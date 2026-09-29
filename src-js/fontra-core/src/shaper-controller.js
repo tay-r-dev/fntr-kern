@@ -240,10 +240,14 @@ export class ShaperController {
   }
 
   async updateAdHocMarkSetFromCachedGlyphs(glyphNames) {
-    // We only need to look at glyphs that we haven't seen before
-    this.updateAdHocMarkSet(
-      glyphNames.filter((glyphName) => !(glyphName in this._adHocMarkGlyphs))
-    );
+    // We only need to look at glyphs that we haven't seen before. Each is
+    // recorded as "not a mark" at once, so a glyph that isn't one, or is still
+    // being checked, is not queued again by the next cache notice.
+    const unseen = glyphNames.filter((glyphName) => !(glyphName in this._adHocMarkGlyphs));
+    for (const glyphName of unseen) {
+      this._adHocMarkGlyphs[glyphName] = false;
+    }
+    this.updateAdHocMarkSet(unseen);
   }
 
   async getGlyphClasses() {
