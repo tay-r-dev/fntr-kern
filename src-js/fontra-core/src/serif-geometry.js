@@ -85,11 +85,25 @@ function orientToLeft(axis, normal) {
 // axis. Reported on the `l` of skeletron, whose serif went over as its handle
 // passed vertical. The next on-curve is a length of stroke away and says the
 // same thing at every axis, so there is nothing left to vanish.
+//
+// Alone, that on-curve has the same fault the other way round. On the `h` of
+// skeletron the stroke leaves up and to the left and arches round to the
+// right, so the chord to it stands square to the stroke's own start: 0.3
+// percent of it along depth, and a half-unit handle move turned the serif
+// over. So both vote, and the tangent's vote weighs as much as the axis
+// crosses the stroke: all of it on a perpendicular foot, where the tangent is
+// exact, and next to none where the axis lies along the stroke, where the
+// chord is the one that knows. The frame turns only where the two disagree.
 function depthForAxis(axis, outward, continuation) {
   const depth = { x: -axis.y, y: axis.x };
-  const into = continuation
-    ? depth.x * continuation.x + depth.y * continuation.y
-    : -(depth.x * outward.x + depth.y * outward.y);
+  const tangentVote = -(depth.x * outward.x + depth.y * outward.y);
+  if (!continuation) {
+    return tangentVote < 0 ? { x: -depth.x, y: -depth.y } : depth;
+  }
+  const chord = vector.normalizeVector(continuation);
+  const chordVote = depth.x * chord.x + depth.y * chord.y;
+  const weight = Math.abs(tangentVote);
+  const into = weight * tangentVote + (1 - weight) * chordVote;
   return into < 0 ? { x: -depth.x, y: -depth.y } : depth;
 }
 

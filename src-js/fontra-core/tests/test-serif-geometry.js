@@ -1936,12 +1936,43 @@ describe("a forced axis almost along its stroke", () => {
           x: travel.x * 200 + travel.y * bend,
           y: travel.y * 200 - travel.x * bend,
         };
+        // Where the chord to the next on-curve itself runs along the axis it
+        // says nothing either, and the tangent decides: at 16 degrees against
+        // a bend of 60 the chord is 1 percent across. That is the `h` of
+        // skeletron turned round.
+        if (Math.abs(next.x) < 0.05 * Math.hypot(next.x, next.y)) continue;
         const { depth } = frameAt(degrees, bend);
         expect(
           depth.x * next.x + depth.y * next.y,
           `depth toward the next on-curve at ${degrees}, bend ${bend}`
         ).to.be.above(0);
       }
+    }
+  });
+
+  // Reported on the `h` of skeletron: a perpendicular foot on a stroke that
+  // leaves up and arches round, so the chord to the next on-curve stands square
+  // to the stroke's own start. A half-unit handle move swung the chord across
+  // square and turned the whole serif over.
+  it("keeps a perpendicular foot's frame when the chord stands square to the stroke", () => {
+    const frameFor = (chordAngle) =>
+      computeSerifFrame({
+        endpoint: { x: 0, y: 0 },
+        tangent: { x: 0, y: -1 },
+        normal: { x: 1, y: 0 },
+        axisMode: "perpendicular",
+        continuation: {
+          x: 200 * Math.cos(chordAngle),
+          y: 200 * Math.sin(chordAngle),
+        },
+      });
+    const reference = frameFor(0);
+    for (const degrees of [-3, -0.5, 0.5, 3]) {
+      const frame = frameFor((degrees * Math.PI) / 180);
+      expectClose(frame.depth.x, reference.depth.x, `depth x at ${degrees}`, 1e-9);
+      expectClose(frame.depth.y, reference.depth.y, `depth y at ${degrees}`, 1e-9);
+      // Depth runs back into the stroke, against the terminal's outward tangent.
+      expect(frame.depth.y, `depth into the stroke at ${degrees}`).to.be.above(0.9);
     }
   });
 
