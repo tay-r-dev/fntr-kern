@@ -376,7 +376,12 @@ export class PointerTool extends BaseTool {
     }
   }
 
-  async _handleTunniGizmoDrag(gizmo, eventStream, initialEvent) {
+  async _handleTunniGizmoDrag(
+    gizmo,
+    eventStream,
+    initialEvent,
+    { dragConfirmed = false } = {}
+  ) {
     const sceneController = this.sceneController;
     this._selectTunniGizmoOwner(gizmo);
     const equalize = initialEvent.ctrlKey && initialEvent.shiftKey;
@@ -404,6 +409,7 @@ export class PointerTool extends BaseTool {
     // and Ctrl+Shift+click on a generated one equalizes its two handles.
     if (
       CURVATURE_GIZMO_TYPES.has(gizmo.type) &&
+      !dragConfirmed &&
       !(await shouldInitiateDrag(eventStream, initialEvent))
     ) {
       if (equalize && gizmo.kind === "generated") {
@@ -530,9 +536,8 @@ export class PointerTool extends BaseTool {
     const passesDoubleClick =
       gizmo?.kind !== "generated" &&
       (initialEvent.detail >= 2 || initialEvent.myTapCount == 2);
-    if (
+    const gizmoTakesPress =
       gizmo &&
-      !passesDoubleClick &&
       this.tunniGizmoReveal.isArmed(gizmo.key) &&
       !(
         gizmo.kind === "skeleton" &&
@@ -541,9 +546,20 @@ export class PointerTool extends BaseTool {
           size,
           parseSelection(sceneController.selection)
         ).size
-      )
-    ) {
-      await this._handleTunniGizmoDrag(gizmo, eventStream, initialEvent);
+      );
+    // The browser counts any press soon after a click as a double-click: the
+    // press after an equalize click, or each of several quick drags in a row.
+    // Letting all of those through left the gizmo answering hover but not the
+    // press. A second press that moves is a drag; only one that stays put is
+    // the double-click that selects the segment below.
+    let dragConfirmed = false;
+    if (gizmoTakesPress && passesDoubleClick) {
+      dragConfirmed = await shouldInitiateDrag(eventStream, initialEvent);
+    }
+    if (gizmoTakesPress && (!passesDoubleClick || dragConfirmed)) {
+      await this._handleTunniGizmoDrag(gizmo, eventStream, initialEvent, {
+        dragConfirmed,
+      });
       return;
     }
 
