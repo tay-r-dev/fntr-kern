@@ -899,8 +899,10 @@ async function applyGeneratedSegmentWrites(
           const point =
             working.contours?.[resolved.contourIndex]?.points?.[resolved.pointIndex];
           // A ball segment's handles are the bulb's. A reset clears the length
-          // edit, and a displacement along the handle becomes one.
-          if (provenance.bulbRole) {
+          // edit, and a displacement along the handle becomes one. The neck's
+          // ball end is a bulb point too, but its reset is the neck's pin,
+          // which the cap field write below owns.
+          if (provenance.bulbRole && write.capCurvature === undefined) {
             if (!originalPoint || !point) continue;
             const slot = provenance.bulbSlot;
             const stored = getSkeletonCapBallEdit(originalPoint, provenance.bulbRole);
