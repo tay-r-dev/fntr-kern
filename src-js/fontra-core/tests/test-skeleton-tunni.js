@@ -1016,9 +1016,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
   function neckSegments(capFields) {
     const layer = makeBulbGlyph(capFields);
     const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
-    return segments.filter((segment) =>
-      segment.provenance.some((entry) => entry?.capCurvatureField)
-    );
+    return segments.filter((segment) => segment.provenance[1]?.capCurvatureField);
   }
 
   it("gives the neck a segment of its own once easing is on", () => {
@@ -1164,6 +1162,13 @@ describe("the curvature gizmo at a bulb terminal", () => {
       along
     );
     expect(edits(zAlt.layer).bottom).to.deep.include({ slide: 12, carry: 0 });
+    const alt = drag(
+      createEditableGeneratedPointTargetEntries,
+      point,
+      "rib-interpolate",
+      along
+    );
+    expect(edits(alt.layer).bottom).to.deep.include({ slide: 12, carry: 0 });
     const still = drag(
       createEditableGeneratedPointTargetEntries,
       point,
@@ -1199,6 +1204,34 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(lengthOf("in")).to.be.closeTo(lengthOf("out"), 1);
   });
 
+  // The ball's own three segments carry a curvature gizmo each, which writes the
+  // bulb's handle lengths. They have no on-curve gizmo.
+  it("offers a curvature gizmo on each ball segment, and a still grab moves nothing", () => {
+    for (const capBallEasing of [0, 0.5]) {
+      const layer = makeBulbGlyph({ capBallEasing });
+      const balls = buildGeneratedTunniSegments(
+        getSkeletonData(layer),
+        layer.path
+      ).filter((segment) => segment.bulb);
+      expect(balls.length, `easing ${capBallEasing}`).to.be.at.least(2);
+      for (const segment of balls) {
+        expect(segment.onCurveMovable).to.deep.equal([false, false]);
+        const curvature = getGeneratedSegmentCurvature(getSkeletonData(layer), segment);
+        expect(curvature.pinned).to.equal(false);
+        const edit = calculateGeneratedCurvatureEdits({
+          segmentPoints: segment.points,
+          provenance: segment.provenance,
+          delta: { x: 0, y: 0 },
+        });
+        expect(edit.bulb).to.equal(true);
+        expect(edit.controls[0].x).to.be.closeTo(segment.points[1].x, 1e-6);
+        expect(edit.controls[0].y).to.be.closeTo(segment.points[1].y, 1e-6);
+        expect(edit.controls[1].x).to.be.closeTo(segment.points[2].x, 1e-6);
+        expect(edit.controls[1].y).to.be.closeTo(segment.points[2].y, 1e-6);
+      }
+    }
+  });
+
   it("keeps the neck gizmo's still grab on its pin after the neck's handles move", () => {
     const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.5 });
     editSkeleton(layer, (skeleton) => {
@@ -1207,7 +1240,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
       setSkeletonCapBallEdit(point, "release", { in: -4 });
     });
     const neck = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
-      (segment) => segment.provenance.some((entry) => entry?.capCurvatureField)
+      (segment) => segment.provenance[1]?.capCurvatureField
     );
     const edit = calculateGeneratedCurvatureEdits({
       segmentPoints: neck.points,
@@ -1250,8 +1283,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
   it("reports the neck's curvature as pinned once the cap field is set", () => {
     const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
     const skeletonData = getSkeletonData(layer);
-    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
-      segment.provenance.some((entry) => entry?.capCurvatureField)
+    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find(
+      (segment) => segment.provenance[1]?.capCurvatureField
     );
     expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
   });
@@ -1266,9 +1299,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
       const walls = buildGeneratedTunniSegments(
         getSkeletonData(layer),
         layer.path
-      ).filter(
-        (segment) => !segment.provenance.some((entry) => entry?.capCurvatureField)
-      );
+      ).filter((segment) => !segment.bulb && !segment.provenance[1]?.capCurvatureField);
       expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
       expect(walls.filter((segment) => segment.side === "right")).to.have.length(1);
       const snapshots = walls.filter((segment) =>
@@ -1283,7 +1314,9 @@ describe("the curvature gizmo at a bulb terminal", () => {
     const layer = makeBulbGlyph({ capBallSide: "left", capBallEasing: 0.5 });
     const outer = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
       (segment) =>
-        segment.side === "left" && !segment.provenance.some((p) => p?.capCurvatureField)
+        segment.side === "left" &&
+        !segment.bulb &&
+        !segment.provenance[1]?.capCurvatureField
     );
     const original = outer.provenance.find(
       (p) => p?.constructionSegment

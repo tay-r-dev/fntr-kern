@@ -20,8 +20,9 @@ import {
 // built.
 //
 // On an on-curve, Z slides it along its tangent and carries its two handles;
-// Z with Alt slides it alone. A plain drag moves nothing: derived geometry
-// answers to a modifier. On a handle, Z (or an arrow key) lengthens it along
+// Alt, with or without Z, slides it alone. A plain drag moves nothing: derived
+// geometry answers to a modifier. Both work in gizmo mode as well, where the
+// on-curves are still drawn and the handles are not. On a handle, Z (or an arrow key) lengthens it along
 // its own line, and Alt gives the handle across the on-curve the same length.
 
 export function isBulbSelectionItem(item) {
@@ -34,8 +35,13 @@ export function createBulbPointTargetEntries(
   behaviorName,
   options
 ) {
+  // Z carries; Alt, with or without Z, slides the point alone.
   const carry = behaviorName === "rib-tangent";
-  if (!carry && behaviorName !== "rib-tangent-interpolate") {
+  if (
+    !carry &&
+    behaviorName !== "rib-tangent-interpolate" &&
+    behaviorName !== "rib-interpolate"
+  ) {
     return [];
   }
   const items = (parseSelection([...selection]).editableGeneratedPoint || [])

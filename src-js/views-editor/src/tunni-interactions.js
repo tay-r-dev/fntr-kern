@@ -15,6 +15,7 @@ import {
   generatedSegmentConstructionPoints,
   generatedSegmentHandleAxes,
   getSkeletonData,
+  getSkeletonCapBallEdit,
   getSkeletonHandleOffset,
   getSkeletonPointNudge,
   segmentToTunniPoints,
@@ -24,6 +25,8 @@ import {
   setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
   setSkeletonSegmentCurvature,
+  isBulbBallSegment,
+  setSkeletonCapBallEdit,
 } from "@fontra/core/skeleton-model.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
@@ -391,7 +394,8 @@ export async function handleSkeletonTunniDrag({
 //
 function collapsedSegmentBase(skeletonData, segment) {
   const addresses = [segment.provenance?.[1], segment.provenance?.[2]];
-  if (addresses.some((address) => !address)) {
+  // A ball segment keeps no collapse mark: its handles are the bulb's lengths.
+  if (isBulbBallSegment(segment.provenance) || addresses.some((address) => !address)) {
     return null;
   }
   const scratch = structuredClone(skeletonData);
@@ -558,6 +562,17 @@ export async function handleGeneratedTunniDrag({
         // role is an error, not an empty result — and only rib ends have a
         // nudge. Read each where it exists.
         //
+        // A ball segment's points are the bulb's: what the drag starts from is
+        // the bulb's edit block, not a rib's offsets.
+        if (provenance.bulbRole) {
+          return {
+            contourIndex: resolved.contourIndex,
+            pointIndex: resolved.pointIndex,
+            bulbRole: provenance.bulbRole,
+            bulbSlot: provenance.bulbSlot,
+            edit: getSkeletonCapBallEdit(resolved.point, provenance.bulbRole),
+          };
+        }
         const isHandle = provenance.role === "in" || provenance.role === "out";
         return {
           contourIndex: resolved.contourIndex,
@@ -626,6 +641,20 @@ export async function handleGeneratedTunniDrag({
               working?.contours?.[original?.contourIndex]?.points?.[
                 original?.pointIndex
               ];
+            // A ball segment: the handle's new length, stated against the one
+            // it had at the grab, lands on the bulb's edit for that handle.
+            if (write.bulbHandle) {
+              if (point && original?.bulbRole) {
+                const anchor = originalPoints[index === 1 ? 0 : 3];
+                const change =
+                  distance(write.bulbHandle, anchor) -
+                  distance(originalPoints[index], anchor);
+                setSkeletonCapBallEdit(point, original.bulbRole, {
+                  [original.bulbSlot]: round(original.edit[original.bulbSlot] + change),
+                });
+              }
+              continue;
+            }
             // Curvature, so the handle lock is the one that speaks.
             if (
               !original ||
@@ -806,6 +835,13 @@ function generatedCurvatureResetWrites(segment) {
   if (capCurvatureField) {
     return [[startIndex, { capCurvature: null, capCurvatureField }]];
   }
+  // A ball segment's curvature is its two handle lengths, and nothing else.
+  if (isBulbBallSegment(segment.provenance)) {
+    return [
+      [1, { bulbReset: true }],
+      [2, { bulbReset: true }],
+    ];
+  }
   return [
     [startIndex, { pinnedTension: null }],
     [1, { resetHandle: true }],
@@ -857,6 +893,29 @@ async function applyGeneratedSegmentWrites(
           const contour = originalSkeletonData.contours?.[resolved.contourIndex];
           const point =
             working.contours?.[resolved.contourIndex]?.points?.[resolved.pointIndex];
+          // A ball segment's handles are the bulb's. A reset clears the length
+          // edit, and a displacement along the handle becomes one.
+          if (provenance.bulbRole) {
+            if (!originalPoint || !point) continue;
+            const slot = provenance.bulbSlot;
+            const stored = getSkeletonCapBallEdit(originalPoint, provenance.bulbRole);
+            if (write.bulbReset) {
+              setSkeletonCapBallEdit(point, provenance.bulbRole, { [slot]: 0 });
+            } else if (write.offsetDelta) {
+              const anchor = segment.points[index === 1 ? 0 : 3];
+              const handle = segment.points[index];
+              const moved = {
+                x: handle.x + write.offsetDelta.x,
+                y: handle.y + write.offsetDelta.y,
+              };
+              setSkeletonCapBallEdit(point, provenance.bulbRole, {
+                [slot]: Math.round(
+                  stored[slot] + distance(moved, anchor) - distance(handle, anchor)
+                ),
+              });
+            }
+            continue;
+          }
           if (
             !originalPoint ||
             !contour ||
@@ -924,6 +983,12 @@ function generatedCurvatureWrites(originalPoints, segment, delta, { fromBase } =
   });
   if (!edit) {
     return null;
+  }
+  if (edit.bulb) {
+    return [
+      [1, { bulbHandle: edit.controls[0] }],
+      [2, { bulbHandle: edit.controls[1] }],
+    ];
   }
   if (edit.capCurvatureField) {
     // A bulb's neck: one write, into the cap field on the cap-owning point.

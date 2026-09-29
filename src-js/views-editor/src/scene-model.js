@@ -1156,12 +1156,11 @@ export class SceneModel {
     // click - the gizmos sit on and around the very handles this targets - so
     // exactly one of them is live at a time. Neither owns the data: both write
     // the same nudge and handle-offset fields, so the switch loses no work.
-    if (
+    // A bulb's on-curves have no gizmo of their own to compete with, so they
+    // stay in reach in gizmo mode, where Z and Alt still slide them.
+    const gizmoMode =
       this.visualizationLayersSettings?.model["fontra.skeleton.generated-tunni"] ===
-      true
-    ) {
-      return null;
-    }
+      true;
     const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
     if (!skeletonData?.generated?.length) {
       return null;
@@ -1179,14 +1178,24 @@ export class SceneModel {
     if (parsedCurrentSelection && !currentPointIndices.length) {
       return null;
     }
-    const pointIndex = currentPointIndices.length
-      ? path.pointIndexNearPointFromPointIndices(glyphPoint, size, currentPointIndices)
+    // In gizmo mode the handles are not drawn, so only the bulb's on-curves are
+    // candidates: a hidden handle nearer the click must not take it.
+    const candidates = gizmoMode
+      ? bulbOnCurvePointIndices(skeletonData, path).filter(
+          (index) => !currentPointIndices.length || currentPointIndices.includes(index)
+        )
+      : currentPointIndices;
+    if (gizmoMode && !candidates.length) {
+      return null;
+    }
+    const pointIndex = candidates.length
+      ? path.pointIndexNearPointFromPointIndices(glyphPoint, size, candidates)
       : path.pointIndexNearPoint(glyphPoint, size);
     if (pointIndex === undefined) {
       return null;
     }
     const target = resolveEditableGeneratedTarget(skeletonData, path, pointIndex);
-    if (!target) {
+    if (!target || (gizmoMode && !(target.bulbRole && target.role === "onCurve"))) {
       return null;
     }
     return {
@@ -2719,4 +2728,25 @@ function skeletonSegmentDistance(segment, p) {
     previous = current;
   }
   return best;
+}
+
+// The path indices of every bulb on-curve, from the provenance the generator
+// published.
+function bulbOnCurvePointIndices(skeletonData, path) {
+  const indices = [];
+  for (const entry of skeletonData?.generated || []) {
+    if (!Number.isInteger(entry.pathContourIndex)) continue;
+    (entry.pointMap || []).forEach((provenance, contourPointIndex) => {
+      if (provenance?.bulbRole && provenance.bulbSlot === "onCurve") {
+        try {
+          indices.push(
+            path.getAbsolutePointIndex(entry.pathContourIndex, contourPointIndex)
+          );
+        } catch {
+          // A stale entry points past the path; it has nothing to offer.
+        }
+      }
+    });
+  }
+  return indices;
 }

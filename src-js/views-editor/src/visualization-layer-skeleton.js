@@ -327,7 +327,9 @@ function forEachEditableGeneratedTarget(positionedGlyph, model, callback) {
         (provenance.role !== "onCurve" &&
           provenance.role !== "in" &&
           provenance.role !== "out") ||
-        (provenance.side !== "left" && provenance.side !== "right")
+        (provenance.side !== "left" && provenance.side !== "right") ||
+        // A bulb's points are the cap's, and no rib's lock holds them.
+        provenance.bulbRole
       ) {
         continue;
       }
