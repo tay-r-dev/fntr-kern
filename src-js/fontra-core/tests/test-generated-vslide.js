@@ -107,3 +107,102 @@ describe("V-slide of generated points", () => {
       }
   });
 });
+
+describe("V-slide of generated points, through the editor's entry", () => {
+  before(() => {
+    globalThis.window = globalThis.window ?? { coarseGridSpacing: 1, event: null };
+  });
+
+  async function layerWith(data) {
+    const { VarPackedPath } = await import("../src/var-path.js");
+    const { setSkeletonData } = await import("../src/skeleton-model.js");
+    const { editSkeleton } = await import("../../views-editor/src/skeleton-editing.js");
+    const layer = {
+      path: new VarPackedPath(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    setSkeletonData(layer, data);
+    editSkeleton(layer, () => {});
+    return layer;
+  }
+
+  async function drag(layer, key, from, to) {
+    const { applyChange } = await import("../src/changes.js");
+    const { getSkeletonData } = await import("../src/skeleton-model.js");
+    const { createPointSlideTargetEntries, getPointSlideBehaviorName } =
+      await import("../../views-editor/src/point-slide-editing.js");
+    const selection = new Set([key]);
+    expect(
+      getPointSlideBehaviorName({ pointSlideMode: true }, new Set(), selection, layer)
+    ).to.be.a("string");
+    const entries = createPointSlideTargetEntries(layer, selection, {
+      referenceSkeletonData: getSkeletonData(layer),
+      initialPointer: from,
+      isPrimary: true,
+      session: {},
+    });
+    expect(entries).to.have.length(1);
+    applyChange(
+      layer,
+      entries[0].makeChangeForDelta({ x: to.x - from.x, y: to.y - from.y })
+    );
+  }
+
+  function pathPoint(layer, predicate) {
+    const { getSkeletonData } = globalThis.__model;
+    const entry = getSkeletonData(layer).generated[0];
+    const index = entry.pointMap.findIndex(predicate);
+    return layer.path.getPoint(
+      layer.path.getAbsolutePointIndex(entry.pathContourIndex, index)
+    );
+  }
+
+  before(async () => {
+    globalThis.__model = await import("../src/skeleton-model.js");
+  });
+
+  it("slides a rib's generated on-curve to where the pointer projects", async () => {
+    const layer = await layerWith(skeleton());
+    const outline = curves(generateFromSkeleton(skeleton()).contours[0].points);
+    const isLeft = (m) =>
+      m?.skeletonPointId === 5 && m.side === "left" && m.role === "onCurve";
+    const start = pathPoint(layer, isLeft);
+    const pointer = { x: start.x + 40, y: start.y + 3 };
+    await drag(layer, "editableGeneratedPoint/1/5/left", start, pointer);
+    const end = pathPoint(layer, isLeft);
+    expect(end.x).to.be.greaterThan(start.x + 25);
+    // The point lands where the pointer projects onto the outline.
+    const projected = Math.min(...outline.map((curve) => curve.project(pointer).d));
+    expect(Math.hypot(end.x - pointer.x, end.y - pointer.y)).to.be.below(projected + 1);
+    const point = globalThis.__model
+      .getSkeletonData(layer)
+      .contours[0].points.find((p) => p.id === 5);
+    expect(point.vSlide.left).to.be.greaterThan(0);
+  });
+
+  it("slides a bulb point through the same gesture", async () => {
+    const layer = await layerWith(
+      skeleton({}, { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" })
+    );
+    const isBottom = (m) => m?.bulbRole === "bottom" && m.bulbSlot === "onCurve";
+    const start = pathPoint(layer, isBottom);
+    const side = pathPoint(
+      layer,
+      (m) => m?.bulbRole === "side" && m.bulbSlot === "onCurve"
+    );
+    const pointer = {
+      x: start.x + (side.x - start.x) * 0.3,
+      y: start.y + (side.y - start.y) * 0.3,
+    };
+    await drag(layer, "editableGeneratedPoint/1/8/bulb-bottom", start, pointer);
+    const end = pathPoint(layer, isBottom);
+    expect(Math.hypot(end.x - start.x, end.y - start.y)).to.be.greaterThan(3);
+    const edits = globalThis.__model
+      .getSkeletonData(layer)
+      .contours[0].points.find((p) => p.id === 8).capBallEdits;
+    expect(edits.bottom.vslide).to.be.greaterThan(0);
+  });
+});

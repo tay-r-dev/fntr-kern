@@ -8,7 +8,17 @@ import {
   slideInsertions,
   slideIntervalsCompatible,
 } from "@fontra/core/point-slide.js";
-import { getSkeletonData, parseSkeletonPointKey } from "@fontra/core/skeleton-model.js";
+import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
+import {
+  bulbRoleOfSide,
+  getSkeletonCapBallEdit,
+  getSkeletonData,
+  getSkeletonPointVSlide,
+  isSkeletonSideLocked,
+  parseSkeletonPointKey,
+  setSkeletonCapBallEdit,
+  setSkeletonPointVSlide,
+} from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import {
@@ -43,6 +53,7 @@ export function getPointSlideBehaviorName(
   { isGeneratedContour = null } = {}
 ) {
   if (!modifiers?.pointSlideMode) return null;
+  if (findGeneratedSlideItem(selection)) return POINT_SLIDE_BEHAVIOR_NAME;
   if (targetKinds?.has("skeletonRib")) return null;
   const targets = findSlideTargets(layerGlyph, selection, { isGeneratedContour });
   return targets ? POINT_SLIDE_BEHAVIOR_NAME : null;
@@ -163,6 +174,14 @@ export function createPointSlideTargetEntries(
     session = null,
   } = {}
 ) {
+  if (findGeneratedSlideItem(selection)) {
+    return createGeneratedSlideTargetEntries(layerGlyph, selection, {
+      referenceSkeletonData,
+      initialPointer,
+      isPrimary,
+      session,
+    });
+  }
   const targets = findSlideTargets(layerGlyph, selection, {
     isGeneratedContour,
     referenceSkeletonData,
@@ -308,4 +327,141 @@ function makeSkeletonWriter(layerGlyph) {
         workingContour.insertions = structuredClone(insertions);
       }
     });
+}
+
+// A generated on-curve slides too. It is reached as a generated point, a bulb
+// point, or the rib end that sits on it, one at a time. The slide is stored as
+// the share of the neighbouring segment the point went into, and the generator
+// repeats it on every rebuild: see the V-slide step in the generator.
+function findGeneratedSlideItem(selection) {
+  const parsed = parseSelection(selection || new Set());
+  if (parsed.point?.length || parsed.skeletonPoint?.length) return null;
+  const generated = parsed.editableGeneratedPoint || [];
+  const ribs = parsed.skeletonRib || [];
+  if (generated.length + ribs.length !== 1) return null;
+  const [contourId, pointId, side] = `${generated[0] ?? ribs[0]}`.split("/");
+  const bulbRole = bulbRoleOfSide(side);
+  if (!bulbRole && side !== "left" && side !== "right") return null;
+  return { contourId: Number(contourId), pointId: Number(pointId), side, bulbRole };
+}
+
+function createGeneratedSlideTargetEntries(
+  layerGlyph,
+  selection,
+  { referenceSkeletonData, initialPointer, isPrimary, session }
+) {
+  const item = findGeneratedSlideItem(selection);
+  const skeletonData = getSkeletonData(layerGlyph);
+  if (!item || !skeletonData || !initialPointer || !session) return [];
+  const address = resolveSkeletonAddressAcrossLayers(
+    referenceSkeletonData || skeletonData,
+    skeletonData,
+    item.contourId,
+    item.pointId
+  );
+  if (!address || address.point.type) return [];
+  if (!item.bulbRole && isSkeletonSideLocked(address.point, item.side, "slide")) {
+    return [];
+  }
+  const read = (point) =>
+    item.bulbRole
+      ? getSkeletonCapBallEdit(point, item.bulbRole).vslide
+      : getSkeletonPointVSlide(point, item.side);
+  const write = (point, value) =>
+    item.bulbRole
+      ? setSkeletonCapBallEdit(point, item.bulbRole, { vslide: value })
+      : setSkeletonPointVSlide(point, item.side, value);
+
+  // The outline this point slides on: the one the generator slides it on,
+  // which is the outline with this one slide taken away.
+  // ponytail: other slides and bulb edits stay in; a neighbour's own slide can
+  // move the segment the generator starts from. Exact when one point is slid.
+  const unslid = structuredClone(skeletonData);
+  write(unslid.contours[address.contourIndex].points[address.pointIndex], 0);
+  const generated = generateFromSkeleton(unslid);
+  const matches = (origin) =>
+    item.bulbRole
+      ? origin?.bulbRole === item.bulbRole && origin.bulbSlot === "onCurve"
+      : origin?.skeletonPointId === item.pointId &&
+        origin.side === item.side &&
+        origin.role === "onCurve" &&
+        !origin.bulbRole;
+  let found = null;
+  generated.provenance.forEach((entry, k) => {
+    if (found || entry.skeletonContourId !== address.contour.id) return;
+    const index = entry.pointMap.findIndex(
+      (origin) => origin?.skeletonPointId === item.pointId && matches(origin)
+    );
+    if (index >= 0) found = { k, index, pointMap: entry.pointMap };
+  });
+  if (!found) return [];
+  const contour = {
+    points: generated.contours[found.k].points,
+    isClosed: generated.contours[found.k].isClosed,
+  };
+  const adjacent = getSlidableSegments(contour, found.index);
+  if (!adjacent.previous && !adjacent.next) return [];
+  const forward = generatedSlideForward(contour, found, item);
+  const point = contour.points[found.index];
+
+  const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layerGlyph);
+  let rollbackChange = null;
+  return [
+    {
+      get rollbackChange() {
+        return rollbackChange;
+      },
+      makeChangeForDelta(delta) {
+        let value;
+        if (isPrimary) {
+          const pointer = {
+            x: initialPointer.x + delta.x,
+            y: initialPointer.y + delta.y,
+          };
+          const destination = chooseSlideInterval(adjacent, pointer, point);
+          if (!destination) return null;
+          const share = destination.side === "next" ? destination.t : 1 - destination.t;
+          value = destination.side === forward ? share : -share;
+          session.generatedSlide = value;
+        } else {
+          value = session.generatedSlide;
+          if (value === undefined) return null;
+        }
+        const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+          const target =
+            working.contours?.[address.contourIndex]?.points?.[address.pointIndex];
+          if (target) write(target, Math.round(value * 1000) / 1000);
+        });
+        rollbackChange = changes.rollbackChange;
+        return changes.change;
+      },
+      makeChangeForTransformation() {
+        return null;
+      },
+    },
+  ];
+}
+
+// Which way along the contour a positive share runs. A rib's share is stated
+// along the skeleton: its left side is emitted in skeleton order, its right
+// side backwards. A bulb point's share runs from the outer wall to the inner,
+// which is the contour's own order where the next bulb point follows it.
+const BULB_ORDER = ["entry", "bottom", "side", "neck", "release"];
+function generatedSlideForward(contour, found, item) {
+  if (!item.bulbRole) return item.side === "left" ? "next" : "previous";
+  const onCurveOrigin = (step) => {
+    const n = contour.points.length;
+    for (let i = 1; i < n; i++) {
+      const index = (found.index + step * i + n) % n;
+      if (!contour.points[index].type) return found.pointMap[index];
+    }
+    return null;
+  };
+  const position = BULB_ORDER.indexOf(item.bulbRole);
+  const nextRole = onCurveOrigin(1)?.bulbRole;
+  const previousRole = onCurveOrigin(-1)?.bulbRole;
+  if (nextRole) return BULB_ORDER.indexOf(nextRole) > position ? "next" : "previous";
+  if (previousRole)
+    return BULB_ORDER.indexOf(previousRole) < position ? "next" : "previous";
+  return "next";
 }
