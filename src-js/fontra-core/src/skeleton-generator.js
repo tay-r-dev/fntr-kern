@@ -7194,10 +7194,20 @@ function buildSerifCap({
   const sides = pointSerif?.sides;
   const builtOnSide = (side) =>
     sides !== "left" && sides !== "right" ? true : sides === side;
+  //
+  // Under a negative height the platform grows below the foot line, and a side
+  // left at zero sat on the foot line while the built half's tip stood below
+  // it, so the underside ran up across the foot to it. The unbuilt half keeps
+  // the platform's depth and nothing else: no wing, so the platform ends in a
+  // straight face under that side's wall, and its underside stays flat.
+  const builtName = sides === "left" || sides === "right" ? sides : null;
+  const platformDepth = builtName
+    ? Math.min(resolveSerifHalf(pointSerif, builtName, unitsContext).tipThickness, 0)
+    : 0;
   const resolveHalfForSide = (side) =>
     builtOnSide(side)
       ? resolveSerifHalf(pointSerif, side, unitsContext)
-      : { ...SERIF_HALF_ZEROS };
+      : { ...SERIF_HALF_ZEROS, tipThickness: platformDepth };
   const left = resolveHalfForSide("left");
   const right = resolveHalfForSide("right");
   // The wall, in frame coordinates, running from the rib end into the stroke.

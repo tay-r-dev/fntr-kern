@@ -4966,3 +4966,50 @@ describe("simplify and harmonize serif easings", () => {
     );
   });
 });
+
+// A side the serif is not built on draws no shape, but under a negative height
+// it keeps the platform's depth: the platform ends in a straight face under
+// that side's wall and its underside stays flat. Reported on the f of
+// skeletron, where the turned-off half sat on the foot line and the underside
+// ran up to it from the built half's tip, 33 units below.
+describe("a one-sided serif with a negative height", () => {
+  const stroke = (sides) =>
+    generateFromSkeleton({
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          points: [
+            {
+              id: 2,
+              x: 0,
+              y: 0,
+              capStyle: "serif",
+              serif: {
+                axisMode: "perpendicular",
+                sides,
+                undersideCup: 0,
+                left: { wingLength: 20, tipThickness: -30 },
+                right: { wingLength: 20, tipThickness: -30 },
+              },
+            },
+            { id: 3, x: 0, y: 300 },
+          ],
+        },
+      ],
+    });
+
+  it("keeps the underside flat at the platform's depth", () => {
+    for (const sides of ["left", "right", "both"]) {
+      const points = stroke(sides).contours[0].points.filter((p) => !p.type);
+      const below = points.filter((p) => p.y < -1);
+      expect(below.length, sides).to.be.at.least(2);
+      for (const p of below) expect(p.y, `${sides} ${p.x}`).to.be.closeTo(-30, 0.5);
+      const xs = below.map((p) => p.x);
+      // One end under each wall or wing: the platform spans the whole foot.
+      expect(Math.min(...xs), sides).to.be.at.most(-29.5);
+      expect(Math.max(...xs), sides).to.be.at.least(29.5);
+    }
+  });
+});
