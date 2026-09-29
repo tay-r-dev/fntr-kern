@@ -1172,12 +1172,38 @@ export function handleLabelGoesUp(handle, onCurve, farEnd = null) {
 // record is cleared once the frame's task is done.
 const labelObstacles = new Map();
 
+// Each label's chosen spot, per canvas, kept across frames. Collisions are
+// judged on screen, so zooming alone would reshuffle crowded labels; instead a
+// label keeps its spot while the set of labels -- their handles, points and
+// values -- stays the same. A frame whose set differs (an edit, another glyph)
+// clears the memo, and the next frame lays everything out afresh.
+const labelSpotMemo = new Map();
+
 function labelObstaclesFor(context) {
   let obstacles = labelObstacles.get(context);
   if (!obstacles) {
-    obstacles = { boxes: [], arms: [] };
+    const memo = labelSpotMemo.get(context);
+    obstacles = {
+      boxes: [],
+      arms: [],
+      contours: [],
+      paths: new Set(),
+      keys: [],
+      choices: new Map(),
+      reuse: memo?.spots ?? new Map(),
+    };
     labelObstacles.set(context, obstacles);
-    queueMicrotask(() => labelObstacles.delete(context));
+    queueMicrotask(() => {
+      labelObstacles.delete(context);
+      const signature = obstacles.keys.join(";");
+      if (memo?.signature !== signature) {
+        // Changed: forget, so the next frame lays every label out from scratch.
+        labelSpotMemo.set(context, { signature, spots: new Map() });
+      } else if (!memo.spots.size) {
+        // The first unchanged frame was laid out whole: keep its choices.
+        labelSpotMemo.set(context, { signature, spots: obstacles.choices });
+      }
+    });
   }
   return obstacles;
 }
@@ -1198,6 +1224,44 @@ export function registerLabelArm(context, onCurve, handle) {
     devicePoint(context, onCurve),
     devicePoint(context, handle),
   ]);
+}
+
+// A path's contours, as short straight pieces, which labels try to keep off:
+// sitting inside the black is fine, a contour running through the text is noise.
+// Each path is added once per frame, whichever layer asks first.
+export function registerLabelContours(context, path) {
+  const obstacles = labelObstaclesFor(context);
+  if (!path || obstacles.paths.has(path)) {
+    return;
+  }
+  obstacles.paths.add(path);
+  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    for (const { points } of path.iterContourDecomposedSegments(contourIndex)) {
+      const steps = points.length > 2 ? CONTOUR_STEPS : 1;
+      let previous = devicePoint(context, points[0]);
+      for (let s = 1; s <= steps; s++) {
+        const next = devicePoint(context, bezierAt(points, s / steps));
+        obstacles.contours.push([previous, next]);
+        previous = next;
+      }
+    }
+  }
+}
+
+const CONTOUR_STEPS = 8;
+
+// A point on a Bézier of any degree, by de Casteljau.
+function bezierAt(points, t) {
+  let row = points.map(({ x, y }) => ({ x, y }));
+  while (row.length > 1) {
+    row = row
+      .slice(1)
+      .map((p, i) => ({
+        x: row[i].x + (p.x - row[i].x) * t,
+        y: row[i].y + (p.y - row[i].y) * t,
+      }));
+  }
+  return row[0];
 }
 
 // Whether segment ab passes through the box (Liang–Barsky clipping).
@@ -1277,33 +1341,49 @@ export function drawHandleLabel(context, handle, onCurve, lines, color, farEnd =
   const width = Math.max(...lines.map((line) => context.measureText(line).width)) * k;
 
   // Glyph-space bottom-left corners of the spots a label may take, in order: its
-  // own side, the other side, to the right and to the left of the handle, then
-  // its own side stepped outward. The first that overlaps no label and crosses
-  // no handle arm wins; with none free it keeps its own side.
+  // own side, the other side, then to the right and to the left of the handle.
+  // Every spot touches the handle, so a label never drifts off what it measures.
+  // The first that overlaps no label and crosses no handle arm wins; with none
+  // free (a crowded, zoomed-out glyph) it keeps its own side.
   const centred = handle.x - width / 2;
   const above = handle.y + gap;
   const below = handle.y - gap - blockHeight;
   const beside = handle.y - blockHeight / 2;
   const own = up ? above : below;
-  const outward = up ? blockHeight : -blockHeight;
   const spots = [
     [centred, own],
     [centred, up ? below : above],
     [handle.x + gap, beside],
     [handle.x - gap - width, beside],
-    [centred, own + outward],
-    [centred, own + 2 * outward],
   ];
   const obstacles = labelObstaclesFor(context);
   const boxAt = ([x, y]) => deviceBox(context, x, y, x + width, y + blockHeight);
-  let spot = spots.find((candidate) => {
-    const box = boxAt(candidate);
+  const key = [handle.x, handle.y, onCurve.x, onCurve.y, ...lines].join(",");
+  // The pinned spot is tried first, so zooming leaves a label where it was;
+  // it still has to be free, or a zoom-out would stack labels on each other.
+  // A spot clear of contours too is best; one clear of labels and arms but
+  // crossing a contour comes next.
+  const pinned = obstacles.reuse.get(key);
+  const order = spots.map((_, i) => i);
+  if (pinned !== undefined) {
+    order.splice(order.indexOf(pinned), 1);
+    order.unshift(pinned);
+  }
+  const clearOf = (i, withContours) => {
+    const box = boxAt(spots[i]);
     return (
       !obstacles.boxes.some((other) => boxesOverlap(box, other)) &&
-      !obstacles.arms.some((arm) => segmentCrossesBox(arm, box))
+      !obstacles.arms.some((arm) => segmentCrossesBox(arm, box)) &&
+      !(withContours && obstacles.contours.some((edge) => segmentCrossesBox(edge, box)))
     );
-  });
-  spot ??= spots[0];
+  };
+  const index =
+    order.find((i) => clearOf(i, true)) ??
+    order.find((i) => clearOf(i, false)) ??
+    order[0];
+  obstacles.keys.push(key);
+  obstacles.choices.set(key, pinned ?? index);
+  const spot = spots[index];
   obstacles.boxes.push(boxAt(spot));
 
   const [left, bottom] = spot;
@@ -1344,6 +1424,7 @@ export function drawPointLabels(
   // Handles the cubic pass labels, so the second pass skips them.
   const cubicHandles = new Set();
 
+  registerLabelContours(context, path);
   // Every labelled arm first, so no label settles across a handle drawn later.
   for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
     if (hiddenContourIndices?.has(contourIndex)) {

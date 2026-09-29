@@ -28,6 +28,7 @@ import {
   formatDistanceTensionAngle,
   drawHandleLabel,
   registerLabelArm,
+  registerLabelContours,
   handleGizmoLines,
   OFFCURVE_DISTANCE_BADGE_COLOR,
   OFFCURVE_DISTANCE_BADGE_PADDING,
@@ -2316,7 +2317,7 @@ registerVisualizationLayerDefinition({
     coarseStrokeWidth: 0.5,
     coarseStrokeColor: "#00000040",
   },
-  draw: (ctx, positionedGlyph, params, model, controller) => {
+  draw: ({ context: ctx, positionedGlyph, parameters: params, model, controller }) => {
     const { strokeWidth, strokeColor, coarseStrokeWidth, coarseStrokeColor } = params;
     const coarseSpacing = model.sceneSettings.coarseGridSpacing;
     let { xMin, yMin, xMax, yMax } = controller.getViewBox();
@@ -2567,6 +2568,7 @@ registerVisualizationLayerDefinition({
       if (points?.length !== 4 || points.some((point) => !point)) {
         continue;
       }
+      registerLabelContours(context, positionedGlyph.glyph.path);
       drawGizmoHandles(context, points, alpha, parameters, model, {
         // In gizmo mode the point labels skip the generated outline's handles
         // (hiddenContourIndices), so a generated segment labels its own.

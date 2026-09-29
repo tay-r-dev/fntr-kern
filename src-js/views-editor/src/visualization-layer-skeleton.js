@@ -2,6 +2,7 @@ import { applicationSettingsController } from "@fontra/core/application-settings
 import {
   drawCubicHandleLabelPair,
   registerLabelArm,
+  registerLabelContours,
 } from "@fontra/core/distance-angle.js";
 import {
   buildGeneratedTunniSegments,
@@ -1343,6 +1344,7 @@ registerVisualizationLayerDefinition({
         }
       }
     }
+    registerLabelContours(context, positionedGlyph.glyph.path);
     // Every arm first, so no label settles across a handle drawn later.
     for (const [p1, p2, p3, p4] of segments) {
       registerLabelArm(context, p1, p2);
