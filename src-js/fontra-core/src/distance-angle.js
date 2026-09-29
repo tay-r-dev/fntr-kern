@@ -1135,8 +1135,10 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   if (showAngle) visibleComponents2.push(`${angle2.toFixed(1)}°`);
   const text2 = visibleComponents2.join("\n");
 
-  drawHandleLabel(context, p2, p1, visibleComponents, HANDLE_LABEL_COLOR);
-  drawHandleLabel(context, p3, p4, visibleComponents2, HANDLE_LABEL_COLOR);
+  registerLabelArm(context, p1, p2);
+  registerLabelArm(context, p4, p3);
+  drawHandleLabel(context, p2, p1, visibleComponents, HANDLE_LABEL_COLOR, p4);
+  drawHandleLabel(context, p3, p4, visibleComponents2, HANDLE_LABEL_COLOR, p1);
 }
 
 // grey/solid/3: lighter than the near-black the labels had.
@@ -1152,7 +1154,110 @@ function screenPixel(context) {
   return (globalThis.devicePixelRatio || 1) / Math.hypot(m.a, m.b);
 }
 
-export function drawHandleLabel(context, handle, onCurve, lines, color) {
+// Which side of its handle a label goes. A mostly vertical handle points the way:
+// up from its on-curve point, label above. A mostly horizontal one is ambiguous --
+// the two handles of one smooth point would split on a hair of slope -- so it goes
+// away from the segment's far end, outside the bulge, and both handles agree.
+export function handleLabelGoesUp(handle, onCurve, farEnd = null) {
+  const dx = handle.x - onCurve.x;
+  const dy = handle.y - onCurve.y;
+  if (farEnd && Math.abs(dy) <= Math.abs(dx)) {
+    return farEnd.y <= onCurve.y;
+  }
+  return dy >= 0;
+}
+
+// What labels must keep clear of this frame, in device pixels, per canvas: the
+// label boxes already drawn and the handle arms. Drawing is synchronous, so the
+// record is cleared once the frame's task is done.
+const labelObstacles = new Map();
+
+function labelObstaclesFor(context) {
+  let obstacles = labelObstacles.get(context);
+  if (!obstacles) {
+    obstacles = { boxes: [], arms: [] };
+    labelObstacles.set(context, obstacles);
+    queueMicrotask(() => labelObstacles.delete(context));
+  }
+  return obstacles;
+}
+
+function devicePoint(context, point) {
+  const m = context.getTransform();
+  return {
+    x: m.a * point.x + m.c * point.y + m.e,
+    y: m.b * point.x + m.d * point.y + m.f,
+  };
+}
+
+// A handle arm, on-curve point to handle, that no label may cross. Callers
+// register a glyph's arms before its labels, so an early label keeps clear of a
+// later handle too.
+export function registerLabelArm(context, onCurve, handle) {
+  labelObstaclesFor(context).arms.push([
+    devicePoint(context, onCurve),
+    devicePoint(context, handle),
+  ]);
+}
+
+// Whether segment ab passes through the box (Liang–Barsky clipping).
+function segmentCrossesBox([a, b], box) {
+  let t0 = 0;
+  let t1 = 1;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  for (const [p, q] of [
+    [-dx, a.x - box.xMin],
+    [dx, box.xMax - a.x],
+    [-dy, a.y - box.yMin],
+    [dy, box.yMax - a.y],
+  ]) {
+    if (p === 0) {
+      if (q < 0) {
+        return false;
+      }
+    } else {
+      const t = q / p;
+      if (p < 0) {
+        t0 = Math.max(t0, t);
+      } else {
+        t1 = Math.min(t1, t);
+      }
+      if (t0 > t1) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// A glyph-space rectangle's box on the device, through the current transform.
+function deviceBox(context, xMin, yMin, xMax, yMax) {
+  const m = context.getTransform();
+  const xs = [];
+  const ys = [];
+  for (const [x, y] of [
+    [xMin, yMin],
+    [xMax, yMin],
+    [xMin, yMax],
+    [xMax, yMax],
+  ]) {
+    xs.push(m.a * x + m.c * y + m.e);
+    ys.push(m.b * x + m.d * y + m.f);
+  }
+  return {
+    xMin: Math.min(...xs),
+    yMin: Math.min(...ys),
+    xMax: Math.max(...xs),
+    yMax: Math.max(...ys),
+  };
+}
+
+function boxesOverlap(a, b) {
+  return a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax;
+}
+
+export function drawHandleLabel(context, handle, onCurve, lines, color, farEnd = null) {
   if (!lines.length) {
     return;
   }
@@ -1162,24 +1267,53 @@ export function drawHandleLabel(context, handle, onCurve, lines, color) {
   const lineHeight = size * 1.33 + px;
   const gap = Math.max(0, size * 0.8 - 1.5 * px);
   const blockHeight = lines.length * lineHeight;
-  const up = handle.y >= onCurve.y;
-  // Screen y (down) of the block's top.
-  const top = up ? -handle.y - gap - blockHeight : -handle.y + gap;
+  const up = handleLabelGoesUp(handle, onCurve, farEnd);
+
   context.save();
   context.globalAlpha *= measureLabelAlpha(context);
   context.fillStyle = color;
-  context.scale(1, -1);
   const k = setMeasureLabelFont(context, size);
   // Left-aligned lines, the block as a whole centred on the handle.
-  const width = Math.max(...lines.map((line) => context.measureText(line).width));
+  const width = Math.max(...lines.map((line) => context.measureText(line).width)) * k;
+
+  // Glyph-space bottom-left corners of the spots a label may take, in order: its
+  // own side, the other side, to the right and to the left of the handle, then
+  // its own side stepped outward. The first that overlaps no label and crosses
+  // no handle arm wins; with none free it keeps its own side.
+  const centred = handle.x - width / 2;
+  const above = handle.y + gap;
+  const below = handle.y - gap - blockHeight;
+  const beside = handle.y - blockHeight / 2;
+  const own = up ? above : below;
+  const outward = up ? blockHeight : -blockHeight;
+  const spots = [
+    [centred, own],
+    [centred, up ? below : above],
+    [handle.x + gap, beside],
+    [handle.x - gap - width, beside],
+    [centred, own + outward],
+    [centred, own + 2 * outward],
+  ];
+  const obstacles = labelObstaclesFor(context);
+  const boxAt = ([x, y]) => deviceBox(context, x, y, x + width, y + blockHeight);
+  let spot = spots.find((candidate) => {
+    const box = boxAt(candidate);
+    return (
+      !obstacles.boxes.some((other) => boxesOverlap(box, other)) &&
+      !obstacles.arms.some((arm) => segmentCrossesBox(arm, box))
+    );
+  });
+  spot ??= spots[0];
+  obstacles.boxes.push(boxAt(spot));
+
+  const [left, bottom] = spot;
+  // Screen y (down) of the block's top.
+  const top = -(bottom + blockHeight);
+  context.scale(1, -1);
   context.textAlign = "left";
   context.textBaseline = "middle";
   lines.forEach((line, i) => {
-    context.fillText(
-      line,
-      handle.x / k - width / 2,
-      (top + (i + 0.5) * lineHeight) / k
-    );
+    context.fillText(line, left / k, (top + (i + 0.5) * lineHeight) / k);
   });
   context.restore();
 }
@@ -1204,6 +1338,37 @@ export function drawPointLabels(
   const showTension = settings.showLabelsTension ?? true;
   const showAngle = settings.showLabelsAngle ?? false;
 
+  // Point types carry a smooth flag on on-curve points: compare the kind alone,
+  // or a smooth on-curve (a tension point next to a straight) reads as a handle.
+  const kindOf = (index) => path.pointTypes[index] & 0x07; // VarPackedPath.POINT_TYPE_MASK
+  // Handles the cubic pass labels, so the second pass skips them.
+  const cubicHandles = new Set();
+
+  // Every labelled arm first, so no label settles across a handle drawn later.
+  for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
+    if (hiddenContourIndices?.has(contourIndex)) {
+      continue;
+    }
+    const start =
+      contourIndex === 0 ? 0 : path.contourInfo[contourIndex - 1].endPoint + 1;
+    const count = path.getNumPointsOfContour(contourIndex);
+    const isClosed = path.contourInfo[contourIndex].isClosed;
+    for (let i = 0; i < count; i++) {
+      if (kindOf(start + i) === 0) {
+        continue;
+      }
+      for (const j of [i - 1, i + 1]) {
+        if (!isClosed && (j < 0 || j >= count)) {
+          continue;
+        }
+        const neighbour = start + ((j + count) % count);
+        if (kindOf(neighbour) === 0) {
+          registerLabelArm(context, path.getPoint(neighbour), path.getPoint(start + i));
+        }
+      }
+    }
+  }
+
   // Save context state
   context.save();
 
@@ -1217,12 +1382,12 @@ export function drawPointLabels(
       // Check if it's a cubic segment (4 points)
       if (segment.points.length === 4) {
         // Check if it's a cubic segment with two off-curve control points
-        const pointTypes = segment.parentPointIndices.map(
-          (index) => path.pointTypes[index]
-        );
+        const pointTypes = segment.parentPointIndices.map(kindOf);
 
         // Both control points must be cubic (type 2)
         if (pointTypes[1] === 2 && pointTypes[2] === 2) {
+          cubicHandles.add(segment.parentPointIndices[1]);
+          cubicHandles.add(segment.parentPointIndices[2]);
           try {
             drawCubicHandleLabelPair(context, segment.points, {
               distance: showDistance,
@@ -1241,7 +1406,7 @@ export function drawPointLabels(
   // Now also handle off-curve points connected to on-curve points (for distance and angle only)
   // Iterate through all points in the path
   for (let pointIndex = 0; pointIndex < path.numPoints; pointIndex++) {
-    const pointType = path.pointTypes[pointIndex];
+    const pointType = kindOf(pointIndex);
 
     if (hiddenContourIndices?.has(path.getContourIndex(pointIndex))) {
       continue;
@@ -1252,39 +1417,8 @@ export function drawPointLabels(
       // Not an on-curve point
       const offCurvePoint = path.getPoint(pointIndex);
 
-      // Check if this point was already processed as part of a cubic segment
-      // We need to check if this point is part of any cubic segment to avoid duplication
-      let isPartOfCubicSegment = false;
-
-      // Iterate through all contours to check if this point is part of a cubic segment
-      for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
-        for (const segment of path.iterContourDecomposedSegments(contourIndex)) {
-          if (segment.points.length === 4) {
-            // Check if it's a cubic segment (two off-curve points)
-            const pointTypes = segment.parentPointIndices.map(
-              (index) => path.pointTypes[index]
-            );
-
-            if (pointTypes[1] === 2 && pointTypes[2] === 2) {
-              // Both are cubic control points
-              // Check if our current pointIndex matches either of the control points in this segment
-              if (
-                segment.parentPointIndices[1] === pointIndex ||
-                segment.parentPointIndices[2] === pointIndex
-              ) {
-                isPartOfCubicSegment = true;
-                break;
-              }
-            }
-          }
-        }
-        if (isPartOfCubicSegment) {
-          break;
-        }
-      }
-
       // Skip if this point was already processed as part of a cubic segment
-      if (isPartOfCubicSegment) {
+      if (cubicHandles.has(pointIndex)) {
         continue;
       }
 
@@ -1310,8 +1444,8 @@ export function drawPointLabels(
       const prevPoint = prevPointIndex >= 0 ? path.getPoint(prevPointIndex) : null;
       const nextPoint = nextPointIndex >= 0 ? path.getPoint(nextPointIndex) : null;
 
-      const prevPointType = prevPointIndex >= 0 ? path.pointTypes[prevPointIndex] : -1;
-      const nextPointType = nextPointIndex >= 0 ? path.pointTypes[nextPointIndex] : -1;
+      const prevPointType = prevPointIndex >= 0 ? kindOf(prevPointIndex) : -1;
+      const nextPointType = nextPointIndex >= 0 ? kindOf(nextPointIndex) : -1;
 
       // Check if either neighbor is an on-curve point
       let onCurvePoint = null;

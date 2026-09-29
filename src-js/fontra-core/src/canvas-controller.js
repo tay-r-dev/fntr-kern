@@ -4,6 +4,10 @@ import { assert, clamp, consolidateCalls, isNumber, withSavedState } from "./uti
 const DEFAULT_MIN_MAGNIFICATION = 0.005;
 const DEFAULT_MAX_MAGNIFICATION = 200;
 
+// How quickly a wheel-notch zoom glides to its target: the time constant of the
+// easing, in ms. Smaller is snappier.
+const ZOOM_GLIDE_MS = 60;
+
 export class CanvasController {
   constructor(canvas, magnificationChangedCallback) {
     this.canvas = canvas; // The HTML5 Canvas object
@@ -210,7 +214,13 @@ export class CanvasController {
       // Note: wheel events with ctrlKey down is *also* how zoom gestures on trackpads
       // are received, on both Windows and macOS.
       const scaleDown = clunkyScrollWheel ? 500 : event.ctrlKey ? 100 : 300;
-      this._doPinchMagnify(event, 1 - deltaY / scaleDown);
+      if (clunkyScrollWheel) {
+        // A wheel notch is one big jump; glide to it instead. Trackpads already
+        // send a stream of small steps, so they zoom directly.
+        this._glideMagnify(event, 1 - deltaY / scaleDown);
+      } else {
+        this._doPinchMagnify(event, 1 - deltaY / scaleDown);
+      }
     } else {
       const scaleDown = clunkyScrollWheel ? 3 : 1;
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
@@ -304,6 +314,41 @@ export class CanvasController {
     this._magnificationChangedCallback?.(this.magnification);
     this.requestUpdate();
     this._dispatchEvent("viewBoxChanged", "magnification");
+  }
+
+  // Eases the magnification toward a target that each notch multiplies, about the
+  // latest cursor position. Notches arriving mid-glide add to the target, so a
+  // fast spin is one continuous zoom rather than a staircase.
+  _glideMagnify(event, zoomFactor) {
+    const glide = this._zoomGlide;
+    const target = clamp(
+      (glide ? glide.target : this.magnification) * zoomFactor,
+      this.minMagnification,
+      this.maxMagnification
+    );
+    const anchor = { pageX: event.pageX, pageY: event.pageY };
+    if (glide) {
+      glide.target = target;
+      glide.anchor = anchor;
+      return;
+    }
+    this._zoomGlide = { target, anchor, time: performance.now() };
+    const tick = (now) => {
+      const glide = this._zoomGlide;
+      const dt = Math.max(0, now - glide.time);
+      glide.time = now;
+      const remaining = Math.log(glide.target / this.magnification);
+      if (Math.abs(remaining) < 0.002) {
+        this._doPinchMagnify(glide.anchor, glide.target / this.magnification);
+        delete this._zoomGlide;
+        return;
+      }
+      // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
+      const share = 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
+      this._doPinchMagnify(glide.anchor, Math.exp(remaining * share));
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   onEvent(event) {

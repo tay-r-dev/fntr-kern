@@ -1,5 +1,8 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
-import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
+import {
+  drawCubicHandleLabelPair,
+  registerLabelArm,
+} from "@fontra/core/distance-angle.js";
 import {
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
@@ -1321,6 +1324,7 @@ registerVisualizationLayerDefinition({
       tension: settings.showSkeletonLabelsTension ?? true,
       angle: settings.showSkeletonLabelsAngle ?? false,
     };
+    const segments = [];
     for (const contour of skeletonData.contours) {
       const points = contour.points || [];
       const numPoints = points.length;
@@ -1335,12 +1339,20 @@ registerVisualizationLayerDefinition({
         const p3 = at(2);
         const p4 = at(3);
         if (p2?.type === "cubic" && p3?.type === "cubic" && p4 && !p4.type) {
-          try {
-            drawCubicHandleLabelPair(context, [p1, p2, p3, p4], show);
-          } catch (error) {
-            // Skip segments where tension calculation fails
-          }
+          segments.push([p1, p2, p3, p4]);
         }
+      }
+    }
+    // Every arm first, so no label settles across a handle drawn later.
+    for (const [p1, p2, p3, p4] of segments) {
+      registerLabelArm(context, p1, p2);
+      registerLabelArm(context, p4, p3);
+    }
+    for (const segment of segments) {
+      try {
+        drawCubicHandleLabelPair(context, segment, show);
+      } catch (error) {
+        // Skip segments where tension calculation fails
       }
     }
   },

@@ -27,6 +27,7 @@ import {
   formatDistanceAndAngle,
   formatDistanceTensionAngle,
   drawHandleLabel,
+  registerLabelArm,
   handleGizmoLines,
   OFFCURVE_DISTANCE_BADGE_COLOR,
   OFFCURVE_DISTANCE_BADGE_PADDING,
@@ -2575,9 +2576,11 @@ function drawGizmoHandles(
     alwaysLabel ||
     !model.visualizationLayersSettings?.model?.["fontra.point.labels"]
   ) {
-    for (const [side, handle, onCurve] of [
-      ["start", p1, p0],
-      ["end", p2, p3],
+    registerLabelArm(context, p0, p1);
+    registerLabelArm(context, p3, p2);
+    for (const [side, handle, onCurve, farEnd] of [
+      ["start", p1, p0, p3],
+      ["end", p2, p3, p0],
     ]) {
       const measure = calculateHandleMeasure(points, side);
       if (measure) {
@@ -2586,7 +2589,8 @@ function drawGizmoHandles(
           handle,
           onCurve,
           handleGizmoLines(measure),
-          parameters.gizmoColor
+          parameters.gizmoColor,
+          farEnd
         );
       }
     }

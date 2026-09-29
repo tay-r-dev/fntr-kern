@@ -3,6 +3,7 @@ import {
   calculateHandleMeasure,
   calculateProjectedDistanceComponents,
   handleGizmoLines,
+  handleLabelGoesUp,
 } from "@fontra/core/distance-angle.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { expect } from "chai";
@@ -149,6 +150,25 @@ describe("distance-angle — the distance from a selection to what is hovered", 
     expect(boxDistanceMeasures(b, a).map((measure) => measure.value)).to.deep.equal(
       boxDistanceMeasures(a, b).map((measure) => measure.value)
     );
+  });
+});
+
+describe("which side of its handle a label goes", () => {
+  it("both horizontal handles of a smooth top point go above, whatever their slope", () => {
+    const top = { x: 100, y: 700 };
+    // The left handle tips a hair up, the right a hair down; both curves fall away.
+    expect(handleLabelGoesUp({ x: 40, y: 701 }, top, { x: 0, y: 350 })).to.equal(true);
+    expect(handleLabelGoesUp({ x: 160, y: 699 }, top, { x: 200, y: 350 })).to.equal(
+      true
+    );
+  });
+
+  it("a mostly vertical handle points the way", () => {
+    const side = { x: 0, y: 350 };
+    expect(handleLabelGoesUp({ x: 1, y: 420 }, side, { x: 100, y: 700 })).to.equal(
+      true
+    );
+    expect(handleLabelGoesUp({ x: 1, y: 280 }, side, { x: 100, y: 0 })).to.equal(false);
   });
 });
 
