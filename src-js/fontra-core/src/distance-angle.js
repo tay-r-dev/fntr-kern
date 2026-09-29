@@ -1157,9 +1157,10 @@ export function drawHandleLabel(context, handle, onCurve, lines, color) {
     return;
   }
   const size = measureLabelFontSize(context);
-  // The Figma label's 12 over 9 line, and two screen pixels more between values.
-  const lineHeight = size * 1.33 + 2 * screenPixel(context);
-  const gap = size * 0.8;
+  // The Figma label's 12 over 9 line, and one screen pixel more between values.
+  const px = screenPixel(context);
+  const lineHeight = size * 1.33 + px;
+  const gap = Math.max(0, size * 0.8 - 1.5 * px);
   const blockHeight = lines.length * lineHeight;
   const up = handle.y >= onCurve.y;
   // Screen y (down) of the block's top.
@@ -1574,14 +1575,14 @@ export function drawMeasureOverlay(
     const tension = handleMeasure?.tension ?? null;
     const tensionText = tension == null ? "n/a" : tension.toFixed(2);
     drawMeasureGuideLine(context, p2, p1, segmentColor, parameters);
-    // label/Q, type=handle: which handle and where, then its length, tension and angle.
+    // label/Q, type=handle: where the handle is, then its length, tension and angle.
     drawPlaque(
       context,
       parameters,
       p1,
       {
         header: {
-          left: String(measureHoverHandle.pointNumber ?? ""),
+          left: "",
           right: [Math.round(p1.x), Math.round(p1.y)],
         },
         rows: [

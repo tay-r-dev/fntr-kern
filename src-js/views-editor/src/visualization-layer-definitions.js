@@ -24,7 +24,6 @@ import {
   drawMeasureOverlay,
   drawOffCurveDistanceVisualization,
   drawPointLabels,
-  drawPointStyleLabel,
   formatDistanceAndAngle,
   formatDistanceTensionAngle,
   drawHandleLabel,
@@ -2606,14 +2605,24 @@ export function drawTunniTensionLabel(context, alpha, segmentPoints, parameters)
   const anchor = calculateCurvatureGizmoPoint(segmentPoints);
   context.save();
   context.globalAlpha = alpha;
-  drawPointStyleLabel(
+  drawGizmoLabel(
     context,
-    anchor.x + parameters.labelInset,
-    anchor.y + parameters.labelOffset,
+    segmentPoints,
+    anchor,
     tension.toFixed(2),
     parameters.labelColor
   );
   context.restore();
+}
+
+// A curvature gizmo's label is placed as a handle's is: the gizmo stands for the
+// handle, the chord's midpoint for its on-curve point, so the label sits beyond the
+// gizmo, above it on a curve bulging up and below on one bulging down.
+export function drawGizmoLabel(context, segmentPoints, anchor, text, color) {
+  const p0 = segmentPoints[0];
+  const p3 = segmentPoints[segmentPoints.length - 1];
+  const chordMid = { x: (p0.x + p3.x) / 2, y: (p0.y + p3.y) / 2 };
+  drawHandleLabel(context, anchor, chordMid, [text], color);
 }
 
 export function drawDiamondNode(context, point, size, fill) {

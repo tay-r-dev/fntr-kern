@@ -291,12 +291,19 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   let headerWidth = 0;
   if (header) {
     setLabelFont(context, smallSize, TRACKING);
-    headerWidth = Math.max(
-      PLAQUE.minHeaderWidth,
-      measure(header.left, smallSize, TRACKING) +
-        iconGap +
-        joinedWidth(context, header.right, "•", PLAQUE.headerSeparatorGap)
+    const rightWidth = joinedWidth(
+      context,
+      header.right,
+      "•",
+      PLAQUE.headerSeparatorGap
     );
+    // A header without a left part is the coordinates alone, as narrow as they are.
+    headerWidth = header.left
+      ? Math.max(
+          PLAQUE.minHeaderWidth,
+          measure(header.left, smallSize, TRACKING) + iconGap + rightWidth
+        )
+      : rightWidth;
   }
   const rows = plaque.rows.map((row) => {
     // With icons off a row is its value alone, without the icon's room or gap.

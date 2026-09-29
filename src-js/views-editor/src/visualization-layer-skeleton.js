@@ -1,8 +1,5 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
-import {
-  drawCubicHandleLabelPair,
-  drawPointStyleLabel,
-} from "@fontra/core/distance-angle.js";
+import { drawCubicHandleLabelPair } from "@fontra/core/distance-angle.js";
 import {
   buildGeneratedTunniSegments,
   buildSkeletonTunniSegments,
@@ -44,6 +41,7 @@ import {
 import {
   drawDiamondNode,
   drawRevealedTunniGizmo,
+  drawGizmoLabel,
   drawTunniTensionLabel,
   fillRoundNode,
   glyphSelector,
@@ -1134,15 +1132,10 @@ registerVisualizationLayerDefinition({
         continue;
       }
       context.globalAlpha = alpha;
-      // Straight above the gizmo, clear of the node. Placing it along the axis
-      // instead put it where the gizmo and its stub already are, and an offset
-      // that follows the axis moves the number around as the segment turns —
-      // a label the eye has to hunt for is worse than one that occasionally
-      // crosses the stub.
-      drawPointStyleLabel(
+      drawGizmoLabel(
         context,
-        anchor.x + parameters.labelInset,
-        anchor.y + parameters.labelOffset,
+        segment.points,
+        anchor,
         formatGeneratedCurvature(curvature),
         curvature.pinned ? parameters.pinnedColor : parameters.color
       );
