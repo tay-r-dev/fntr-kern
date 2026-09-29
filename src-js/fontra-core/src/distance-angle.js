@@ -1122,7 +1122,6 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   const angle1 = calculateOffCurveAngle(p2, p1); // angle for p2
   const angle2 = calculateOffCurveAngle(p3, p4); // angle for p3
 
-  // Format text based on visibility settings
   const visibleComponents = [];
   if (showDistance) visibleComponents.push(dist1.toFixed(1));
   if (showTension) visibleComponents.push(tension1.toFixed(2));
@@ -1136,79 +1135,35 @@ export function drawCubicHandleLabelPair(context, points, show = {}) {
   if (showAngle) visibleComponents2.push(`${angle2.toFixed(1)}°`);
   const text2 = visibleComponents2.join("\n");
 
-  // The labels' size: 6 font units by default, never under the tuned minimum on
-  // screen (measureLabelFontSize). The layout around them grows with them.
+  drawHandleLabel(context, p2, p1, visibleComponents, "rgba(4, 28, 44, 1)");
+  drawHandleLabel(context, p3, p4, visibleComponents2, "rgba(44, 28, 44, 1)");
+}
+
+// One handle's measurement lines, centred over the handle and stacked beyond its
+// tip: above a handle that points up from its on-curve point, below one that points
+// down. The size is 6 font units by default, never under the tuned minimum on
+// screen (measureLabelFontSize); the gap and line spacing grow with it.
+export function drawHandleLabel(context, handle, onCurve, lines, color) {
+  if (!lines.length) {
+    return;
+  }
   const size = measureLabelFontSize(context);
-  const grow = size / 6;
-  const badgeDimensions1 = calculateBadgeDimensions(text1, size, LABEL_MEASURE_FAMILY);
-  const badgeDimensions2 = calculateBadgeDimensions(text2, size, LABEL_MEASURE_FAMILY);
-
-  // Calculate unit vector from p1 to p2 for p2 label positioning
-  const unitVector1 = unitVectorFromTo(p1, p2);
-
-  // Calculate unit vector from p4 to p3 for p3 label positioning
-  const unitVector2 = unitVectorFromTo(p4, p3);
-
-  // Calculate badge positions for both labels and shift to the right of the off-curve point
-  const badgePosition1 = calculateBadgePosition(
-    { x: p2.x + 14 * grow, y: p2.y }, // Shift to the right
-    { x: -unitVector1.y, y: unitVector1.x },
-    badgeDimensions1.width,
-    badgeDimensions1.height
-  );
-
-  const badgePosition2 = calculateBadgePosition(
-    { x: p3.x + 14 * grow, y: p3.y }, // Shift to the right
-    { x: -unitVector2.y, y: unitVector2.x },
-    badgeDimensions2.width,
-    badgeDimensions2.height
-  );
-
-  // Draw text for p2 with distance, tension, angle (top to bottom)
+  const lineHeight = size * 1.3;
+  const gap = size * 1.2;
+  const blockHeight = lines.length * lineHeight;
+  const up = handle.y >= onCurve.y;
+  // Screen y (down) of the first line's middle.
+  const top = up ? -handle.y - gap - blockHeight : -handle.y + gap;
   context.save();
   context.globalAlpha *= measureLabelAlpha(context);
-  context.fillStyle = "rgba(4, 28, 44, 1)"; // New text color
+  context.fillStyle = color;
+  context.scale(1, -1);
   const k = setMeasureLabelFont(context, size);
-  context.textAlign = "left";
+  context.textAlign = "center";
   context.textBaseline = "middle";
-  context.scale(1, -1);
-
-  // Split the text into lines and draw each line
-  const lines1 = text1.split("\n");
-  const lineHeight = size;
-  const totalHeight = lines1.length * lineHeight;
-  const startY =
-    -(badgePosition1.y + badgeDimensions1.height / 2) -
-    totalHeight / 2 +
-    lineHeight / 2;
-
-  for (let i = 0; i < lines1.length; i++) {
-    context.fillText(lines1[i], badgePosition1.x / k, (startY + i * lineHeight) / k);
-  }
-
-  context.restore();
-
-  // Draw text for p3 with distance, tension, angle (top to bottom)
-  context.save();
-  context.globalAlpha *= measureLabelAlpha(context);
-  context.fillStyle = "rgba(44, 28, 44, 1)"; // New text color
-  setMeasureLabelFont(context, size);
-  context.textAlign = "left";
-  context.textBaseline = "middle";
-  context.scale(1, -1);
-
-  // Split the text into lines and draw each line
-  const lines2 = text2.split("\n");
-  const totalHeight2 = lines2.length * lineHeight;
-  const startY2 =
-    -(badgePosition2.y + badgeDimensions2.height / 2) -
-    totalHeight2 / 2 +
-    lineHeight / 2;
-
-  for (let i = 0; i < lines2.length; i++) {
-    context.fillText(lines2[i], badgePosition2.x / k, (startY2 + i * lineHeight) / k);
-  }
-
+  lines.forEach((line, i) => {
+    context.fillText(line, handle.x / k, (top + (i + 0.5) * lineHeight) / k);
+  });
   context.restore();
 }
 
@@ -1701,16 +1656,10 @@ function drawMeasureGuideLine(context, p1, p2, color, parameters) {
   context.setLineDash([]);
 }
 
-// label/Q, type=handle, state=gizmo (node 342:17490): what a curvature gizmo moves on
-// each of its handles, its length and its tension. No header: the handle is the one
-// the plaque stands on, and the gizmo is what the designer is holding.
-export function handleGizmoPlaque({ distance, tension }) {
-  return {
-    rows: [
-      { icon: "distance", value: distance.toFixed(1) },
-      { icon: "tension", value: tension == null ? "n/a" : tension.toFixed(2) },
-    ],
-  };
+// What a Tunni gizmo moves on each of its handles, its length and its tension, as
+// the plain lines drawHandleLabel stacks by the handle.
+export function handleGizmoLines({ distance, tension }) {
+  return [distance.toFixed(1), tension == null ? "n/a" : tension.toFixed(2)];
 }
 
 // label/Q, type=rib, in its three states. Default, on hover: the stroke's width with
@@ -1748,6 +1697,12 @@ export function drawDragReadout(
   controller
 ) {
   for (const readout of model.getDragReadouts?.(positionedGlyph) || []) {
+    const color =
+      readout.kind === "skeleton" ? parameters.skeletonColor : parameters.pathColor;
+    if (readout.handleLines) {
+      drawHandleLabel(context, readout, readout.onCurve, readout.handleLines, color);
+      continue;
+    }
     // A readout that carries a plaque draws label/Q; the rest keep the plain box.
     if (readout.plaque) {
       drawPlaque(context, parameters, readout, readout.plaque, {
@@ -1755,8 +1710,6 @@ export function drawDragReadout(
       });
       continue;
     }
-    const color =
-      readout.kind === "skeleton" ? parameters.skeletonColor : parameters.pathColor;
     drawMeasureLabel(context, readout.x, readout.y, readout.label, color, parameters, {
       offsetY: 8,
       alignBottom: true,
@@ -1770,7 +1723,7 @@ function drawMeasureLabel(context, x, y, label, color, parameters, options = {})
 
   context.save();
   context.scale(1, -1);
-  context.font = `500 ${parameters.fontSize}px fontra-ui-regular, sans-serif`;
+  setLabelFont(context, parameters.fontSize);
   context.textAlign = "center";
   context.textBaseline = "middle";
 

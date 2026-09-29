@@ -67,7 +67,9 @@ import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-fi
 import "@fontra/web-components/designspace-location.js";
 import { IconButton } from "@fontra/web-components/icon-button.js";
 import { InlineSVG } from "@fontra/web-components/inline-svg.js";
-import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the Visual group's header toggles
+import "@fontra/web-components/labeled-toggle.js";
+import "@fontra/web-components/latch-button.js"; // the Display card's point label switches
+import { themeColorCSS } from "@fontra/web-components/theme-support.js"; // for <labeled-toggle>, the Visual group's header toggles
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/range-slider.js";
@@ -82,6 +84,7 @@ import {
 import { LABEL_TUNING, LABEL_TUNING_DEFAULTS } from "@fontra/core/canvas-labels.js";
 import { NumberFormatter } from "@fontra/core/formatters.js";
 import Panel from "./panel.js";
+import { PresetHeaderControl } from "./preset-header-control.js";
 import {
   isTunniControlLive,
   TUNNI_GIZMO_TUNING,
@@ -170,6 +173,15 @@ const LABEL_DEBUG_CONTROLS = [
     max: 100,
     step: 5,
     unit: "%",
+  },
+  // ponytail: an off/on as a two-stop slider, so it rides the sliders' wiring.
+  {
+    key: "showIcons",
+    label: "Plaque icons (off/on)",
+    min: 0,
+    max: 1,
+    step: 1,
+    unit: "",
   },
 ];
 
@@ -526,6 +538,26 @@ function readSnapParameter(path) {
   return SNAP_PARAMETERS[path];
 }
 
+// Figma 379:22417's panel, card and field colours, light and dark.
+const DESIGNSPACE_PANEL_COLORS = {
+  "ds-panel-background-color": ["#f5f5f5", "#1e1e1e"],
+  "ds-card-background-color": ["#ffffff", "#2a2a2a"],
+  "ds-card-border-color": ["rgba(0, 0, 0, 0.03)", "rgba(255, 255, 255, 0.05)"],
+  "ds-heading-color": ["#848484", "#a0a0a0"],
+  "ds-label-color": ["#8e8e8e", "#9a9a9a"],
+  "ds-label-dark-color": ["#303030", "#e0e0e0"],
+  "ds-input-background-color": ["#f5f5f5", "#3a3a3a"],
+  "ds-input-border-color": ["#e0e0e0", "#555555"],
+  "ds-input-text-color": ["#8e8e8e", "#b0b0b0"],
+  "ds-input-focus-text-color": ["#151515", "#f0f0f0"],
+  "ds-input-focus-border-color": ["#def280", "#8fae4a"],
+  "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
+  // Read by ui-accordion.js's accordion switch, through the shadow boundary.
+  "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
+  "ui-accordion-switch-border-color": ["#e9e9e9", "#3a3a3a"],
+  "ui-accordion-switch-text-color": ["#565656", "#c0c0c0"],
+};
+
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
   iconPath = "/images/sliders.svg";
@@ -542,85 +574,214 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
 
     this._appendStyle(`
-      .designspace-phrase-heading {
-        font-weight: bold;
-        margin: 0 0 0.5em 0;
-      }
+      ${themeColorCSS(DESIGNSPACE_PANEL_COLORS)}
 
-      #designspace-phrase-textarea {
-        background-color: var(--text-input-background-color);
-        color: var(--text-input-foreground-color);
-        border-radius: 0.25em;
-        border: 0.5px solid lightgray;
-        outline: none;
-        padding: 0.2em 0.5em;
-        font-family: fontra-ui-regular, sans-serif;
-        font-size: 1.1rem;
-        resize: none;
-        width: 100%;
+      /* Figma 379:22417: three white cards on the grey panel. */
+      .designspace-panel {
+        background-color: var(--ds-panel-background-color);
+        padding: 12px;
+        gap: 8px;
         box-sizing: border-box;
+        overflow: hidden auto;
       }
 
-      #designspace-phrase-align-row {
-        display: flex;
-        gap: 0.35em;
-        margin-top: 0.5em;
-      }
-
-      #designspace-phrase-align-row icon-button {
-        width: 1.5rem;
-        height: 1.5rem;
-      }
-
-      .designspace-visual-heading {
-        font-weight: bold;
-        /* The flex column's own 0.5em gap already spaces this from its
-           neighbours; a margin here on top of that gap was doubling the
-           distance from the Designspace group above it. */
-        margin: 0;
-      }
-
-      /* Two ui-accordion elements now share this column (Designspace group,
-         then Visual group) instead of one alone filling it. Flex, rather
-         than the height:100% panel-section--full-height relied on for a
-         single child, so each accordion gets an explicit share of the
-         space and scrolls its own overflow instead of the pair fighting
-         over an ambiguous percentage height. */
-      .designspace-accordion-column {
+      .ds-card {
+        flex: 0 0 auto;
         display: flex;
         flex-direction: column;
-        gap: 0.5em;
-        min-height: 0;
+        background-color: var(--ds-card-background-color);
+        border: 1px solid var(--ds-card-border-color);
+        border-radius: 14px;
+        padding: 8px;
       }
 
-      /* Overrides panel.js's own .panel-section--full-height { height: 100% },
-         written for a single full-height child. With the Phrase section now
-         a sibling above it, this section should take whatever .panel (also
-         flex column) has left over, not a fixed 100% that fights the
-         sibling for space. */
-      .designspace-accordion-column.panel-section--full-height {
-        height: auto;
+      .ds-card--phrase {
+        gap: 6px;
+      }
+
+      /* The font card's sections run edge to edge, so its padding is vertical. */
+      .ds-card--font {
+        padding: 8px 0;
+      }
+
+      .ds-card--font > .ds-heading {
+        padding: 4px 8px 12px;
+      }
+
+      /* ui/heading/h2 */
+      .ds-heading {
+        font: var(--ui-text-heading-h2);
+        letter-spacing: var(--ui-tracking);
+        text-transform: uppercase;
+        color: var(--ds-heading-color);
+        opacity: 0.4;
+      }
+
+      .ds-heading--spaced {
+        padding: 4px 0 12px;
+      }
+
+      .ds-heading-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* ui/heading/h3 */
+      .ds-subheading {
         flex: 1 1 auto;
+        font: var(--ui-text-heading-h3);
+        letter-spacing: var(--ui-tracking);
+        text-transform: uppercase;
+        color: var(--ds-heading-color);
       }
 
-      /* The Designspace group (font/glyph axes, sources, layers) sizes to
-         its own content instead of being forced to fill half the column --
-         that forced stretch, not the heading's margin, was the real cause
-         of the big gap between Source layers and the Visual heading below
-         it: an equal flex share made this accordion taller than its open
-         items needed, leaving blank space at its own bottom. */
-      .designspace-accordion-column > ui-accordion:first-of-type {
-        flex: 0 0 auto;
-        min-height: 0;
-        overflow: auto;
+      /* ui/heading/h5 */
+      .ds-label {
+        font: var(--ui-text-heading-h5);
+        letter-spacing: var(--ui-tracking);
+        color: var(--ds-label-color);
+        white-space: nowrap;
       }
 
-      /* The Visual group takes whatever space is left over and scrolls its
-         own overflow when its open items don't fit it. */
-      .designspace-accordion-column > ui-accordion:last-of-type {
-        flex: 1 1 auto;
-        min-height: 0;
-        overflow: auto;
+      .ds-label--dark {
+        color: var(--ds-label-dark-color);
+        line-height: 14px;
+      }
+
+      .ds-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .ds-stack--sections {
+        gap: 16px;
+      }
+
+      .ds-stack--grid {
+        gap: 12px;
+      }
+
+      .ds-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 24px;
+      }
+
+      .ds-grow,
+      .ds-grow > * {
+        flex: 1 1 0;
+        min-width: 0;
+        gap: 4px;
+      }
+
+      .ds-field {
+        flex: 1 1 0;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .ds-row--measurement {
+        align-items: stretch;
+      }
+
+      .ds-row--labels {
+        gap: 4px;
+      }
+
+      .ds-row--labels latch-button {
+        flex: 1 1 0;
+      }
+
+      .ds-row--labels icon-button {
+        width: 24px;
+        height: 24px;
+      }
+
+      /* input/text (Figma 379:22475): a grey tray with the white, lime-edged
+         box inside it while typing, drawn as insets on the one textarea. */
+      #designspace-phrase-textarea {
+        box-sizing: border-box;
+        width: 100%;
+        height: 60px;
+        padding: 11px 9px 3px;
+        border: none;
+        border-top: 1px solid var(--ds-input-border-color);
+        border-radius: 6px;
+        outline: none;
+        resize: vertical;
+        background-color: var(--ds-input-background-color);
+        color: var(--ds-input-text-color);
+        font: var(--ui-text-label-xs);
+        letter-spacing: var(--ui-tracking);
+      }
+
+      #designspace-phrase-textarea:focus {
+        color: var(--ds-input-focus-text-color);
+        box-shadow:
+          inset 0 0 0 3px var(--ds-input-background-color),
+          inset 0 0 0 4px var(--ds-input-focus-border-color),
+          inset 0 0 0 100px var(--ds-card-background-color);
+      }
+
+      /* The point labels card (Figma 381:23113). */
+      .ds-popover {
+        position: fixed;
+        inset: auto;
+        margin: 0;
+        padding: 0;
+        display: none;
+        background-color: var(--ds-card-background-color);
+        border: 1px solid var(--ds-popover-border-color);
+        border-radius: 6px;
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+      }
+
+      .ds-popover:popover-open {
+        display: flex;
+      }
+
+      .ds-popover-column {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px;
+      }
+
+      .ds-popover-column + .ds-popover-column {
+        border-left: 1px solid var(--ds-popover-border-color);
+      }
+
+      /* checkmark (Figma 379:22544), ui/label/S */
+      .ds-checkmark-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        cursor: pointer;
+        font: var(--ui-text-label-xs);
+        letter-spacing: var(--ui-tracking);
+        color: var(--ds-label-dark-color);
+      }
+
+      .ds-checkmark-row + .ds-checkmark-row {
+        margin-top: 6px;
+      }
+
+      .ds-checkmark {
+        appearance: none;
+        margin: 0;
+        width: 14px;
+        height: 14px;
+        background: url("/images/checkbox-off.svg") center / contain no-repeat;
+        cursor: pointer;
+      }
+
+      .ds-checkmark:checked {
+        background-image: url("/images/checkbox-on.svg");
       }
     `);
 
@@ -702,44 +863,212 @@ export default class DesignspaceNavigationPanel extends Panel {
       textarea.value = event.newValue;
     });
 
-    const alignButtons = {
-      left: html.createDomElement("icon-button", {
-        "id": "designspace-phrase-align-left",
-        "src": "/images/alignleft.svg",
-        "data-tooltip": "Align left",
-      }),
-      center: html.createDomElement("icon-button", {
-        "id": "designspace-phrase-align-center",
-        "src": "/images/aligncenter.svg",
-        "data-tooltip": "Align center",
-      }),
-      right: html.createDomElement("icon-button", {
-        "id": "designspace-phrase-align-right",
-        "src": "/images/alignright.svg",
-        "data-tooltip": "Align right",
-      }),
-    };
-    const applyAlign = (align) => {
-      for (const [key, button] of Object.entries(alignButtons)) {
-        button.on = key === align;
-      }
-    };
-    applyAlign(sceneSettingsController.model.align);
-    for (const [key, button] of Object.entries(alignButtons)) {
-      button.onclick = () => {
-        sceneSettingsController.setItem("align", key, { senderID: this });
-        applyAlign(key);
-      };
-    }
+    // Figma 379:22418: the alignment is the heading's pill segmented control.
+    const align = html.createDomElement("segmented-control", {
+      options: ["left", "center", "right"].map((value) => ({ value, label: value })),
+      value: sceneSettingsController.model.align,
+    });
+    align.setAttribute("small", "");
+    align.addEventListener("change", (event) => {
+      sceneSettingsController.setItem("align", event.detail.value, { senderID: this });
+    });
     sceneSettingsController.addKeyListener("align", (event) => {
-      applyAlign(event.newValue);
+      align.value = event.newValue;
     });
 
-    return html.div({}, [
-      html.div({ class: "designspace-phrase-heading" }, ["Phrase"]),
+    return html.div({ class: "ds-card ds-card--phrase" }, [
+      html.div({ class: "ds-heading-row" }, [
+        html.div({ class: "ds-heading" }, ["phrase"]),
+        align,
+      ]),
       textarea,
-      html.div({ id: "designspace-phrase-align-row" }, Object.values(alignButtons)),
     ]);
+  }
+
+  // DISPLAY (Figma 379:22440): the grid and the measurement labels. The ids
+  // are the ones the grid wiring (_setupCoarseGridControls) has always looked up.
+  _buildDisplayCard() {
+    const scrubField = (id, label, fill) => {
+      const field = html.createDomElement("compact-scrub-field", { id, label });
+      field.scrubIcon = false;
+      field.integer = true;
+      field.fill = fill;
+      return field;
+    };
+    const segmented = (id) =>
+      html.createDomElement("segmented-control", {
+        id,
+        options: [
+          { value: "off", label: "Off" },
+          { value: "on", label: "On" },
+        ],
+        value: "off",
+      });
+
+    // Grid presets have no backend yet: the Skeleton panel's preset control,
+    // shown and disabled.
+    const presets = new PresetHeaderControl({
+      onPick: () => {},
+      onAdd: () => {},
+      onUpdate: () => {},
+      onLock: () => {},
+      onRefresh: () => {},
+    });
+    for (const button of [
+      presets.addButton,
+      presets.refreshButton,
+      presets.lockButton,
+      presets.updateButton,
+    ]) {
+      button.disabled = true;
+      button.style.width = button.style.height = "24px";
+    }
+    presets.dropdown.disabled = true;
+    presets.dropdown.style.setProperty("--multi-select-dropdown-width", "112px");
+
+    const latch = (id, src, tooltip) =>
+      html.createDomElement("latch-button", {
+        "id": id,
+        "src": src,
+        "data-tooltip": tooltip,
+        "data-tooltipposition": "top",
+      });
+    const settingsButton = html.createDomElement("icon-button", {
+      "id": "measurements-settings-button",
+      "src": "/tabler-icons/settings.svg",
+      "data-tooltip": "Point label settings",
+      "data-tooltipposition": "top",
+    });
+    settingsButton.onclick = () => this._togglePointLabelsPopover(settingsButton);
+
+    return html.div({ class: "ds-card" }, [
+      html.div({ class: "ds-heading ds-heading--spaced" }, ["display"]),
+      html.div({ class: "ds-stack ds-stack--sections" }, [
+        html.div({ id: "coarse-grid-content", class: "ds-stack" }, [
+          html.div({ class: "ds-row" }, [
+            html.div({ class: "ds-subheading" }, ["grid"]),
+            presets.element,
+          ]),
+          html.div({ class: "ds-stack ds-stack--grid" }, [
+            scrubField("coarse-grid-spacing-input", "Spacing", true),
+            html.div({ class: "ds-field" }, [
+              html.div({ class: "ds-label" }, ["Custom spacing"]),
+              html.div({ class: "ds-row" }, [
+                segmented("coarse-grid-custom-toggle"),
+                html.div({ id: "coarse-grid-custom-fields", class: "ds-row ds-grow" }, [
+                  scrubField("coarse-grid-base-input", "Base", false),
+                  scrubField("coarse-grid-increment-input", "Increment", false),
+                ]),
+              ]),
+            ]),
+          ]),
+        ]),
+        html.div({ class: "ds-stack" }, [
+          html.div({ class: "ds-subheading" }, ["measurement"]),
+          html.div({ class: "ds-row ds-row--measurement" }, [
+            html.div({ class: "ds-field" }, [
+              html.div({ class: "ds-label" }, ["Speedpunk"]),
+              segmented("measurements-speedpunk-toggle"),
+            ]),
+            html.div({ class: "ds-field" }, [
+              html.div({ class: "ds-label" }, ["Point labels"]),
+              html.div({ class: "ds-row ds-row--labels" }, [
+                latch(
+                  "measurements-basic-latch",
+                  "/images/measure-distance.svg",
+                  "Point labels"
+                ),
+                latch(
+                  "measurements-skeleton-latch",
+                  "/images/skeleton-pen.svg",
+                  "Skeleton labels"
+                ),
+                settingsButton,
+              ]),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]);
+  }
+
+  // The Display card's switches each turn one drawing layer on and off, through
+  // the layer's own setting, so they and the View menu cannot disagree.
+  _setupDisplaySwitches() {
+    const settings = this.editorController.visualizationLayersSettings;
+    const bind = (element, key, write, eventName, read) => {
+      write(!!settings.model[key]);
+      element.addEventListener(eventName, () => {
+        settings.model[key] = read();
+      });
+      settings.addKeyListener(key, (event) => write(!!event.newValue));
+    };
+    const speedpunk = this.displayCard.querySelector("#measurements-speedpunk-toggle");
+    bind(
+      speedpunk,
+      "fontra.curvature",
+      (on) => (speedpunk.value = on ? "on" : "off"),
+      "change",
+      () => speedpunk.value === "on"
+    );
+    for (const [id, key] of [
+      ["#measurements-basic-latch", "fontra.point.labels"],
+      ["#measurements-skeleton-latch", "fontra.skeleton.point-labels"],
+    ]) {
+      const button = this.displayCard.querySelector(id);
+      bind(
+        button,
+        key,
+        (on) => (button.on = on),
+        "click",
+        () => !settings.model[key]
+      );
+    }
+  }
+
+  // Figma 381:23113: which values each kind of point label shows, in two
+  // columns. A native popover, so a click elsewhere or Escape closes it.
+  _togglePointLabelsPopover(anchor) {
+    if (!this._pointLabelsPopover) {
+      const column = (title, keys) =>
+        html.div({ class: "ds-popover-column" }, [
+          html.div({ class: "ds-label ds-label--dark" }, [title]),
+          ...Object.entries(keys).map(([label, key]) => {
+            const box = html.input({ type: "checkbox", class: "ds-checkmark" });
+            box.checked = !!applicationSettingsController.model[key];
+            box.addEventListener("change", () => {
+              applicationSettingsController.model[key] = box.checked;
+              this.sceneController.canvasController.requestUpdate();
+            });
+            applicationSettingsController.addKeyListener(key, (event) => {
+              box.checked = !!event.newValue;
+            });
+            return html.label({ class: "ds-checkmark-row" }, [box, label]);
+          }),
+        ]);
+      this._pointLabelsPopover = html.div({ class: "ds-popover", popover: "auto" }, [
+        column("Point labels", {
+          Distance: "showLabelsDistance",
+          Tension: "showLabelsTension",
+          Angle: "showLabelsAngle",
+        }),
+        column("Skeleton labels", {
+          Distance: "showSkeletonLabelsDistance",
+          Tension: "showSkeletonLabelsTension",
+          Angle: "showSkeletonLabelsAngle",
+        }),
+      ]);
+      this.shadowRoot.appendChild(this._pointLabelsPopover);
+    }
+    const popover = this._pointLabelsPopover;
+    if (popover.matches(":popover-open")) {
+      popover.hidePopover();
+      return;
+    }
+    const rect = anchor.getBoundingClientRect();
+    popover.style.left = `${rect.left}px`;
+    popover.style.top = `${rect.bottom + 4}px`;
+    popover.showPopover();
   }
 
   initActions() {
@@ -888,117 +1217,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     // heading sits between two Accordion elements instead.
     this.visualAccordion = new Accordion();
     this.visualAccordion.items = restoreAccordionOpenState([
-      {
-        id: "coarse-grid-accordion-item",
-        label: translate("sidebar.designspace-navigation.coarse-grid"),
-        open: false,
-        auxiliaryHeaderElement: this._makeVisualHeaderToggle(
-          "coarse-grid-header-toggle"
-        ),
-        content: html.div(
-          {
-            id: "coarse-grid-content",
-            style: `
-              display: grid;
-              grid-template-columns: auto 1fr;
-              gap: 0.5em;
-              align-items: center;
-            `,
-          },
-          [
-            html.label(
-              { for: "coarse-grid-spacing-input", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.coarse-grid.spacing")]
-            ),
-            html.createDomElement("range-slider", {
-              id: "coarse-grid-spacing-input",
-              type: "range",
-            }),
-            html.label(
-              { for: "coarse-grid-custom-toggle", style: "white-space: nowrap;" },
-              [translate("sidebar.designspace-navigation.coarse-grid.custom")]
-            ),
-            html.input({ id: "coarse-grid-custom-toggle", type: "checkbox" }),
-            html.div(),
-            html.div(
-              {
-                id: "coarse-grid-custom-fields",
-                style: `
-                  display: none;
-                  grid-template-columns: auto 1fr;
-                  gap: 0.5em;
-                  align-items: center;
-                `,
-              },
-              [
-                html.label(
-                  { for: "coarse-grid-base-input", style: "white-space: nowrap;" },
-                  [translate("sidebar.designspace-navigation.coarse-grid.base")]
-                ),
-                html.input({
-                  id: "coarse-grid-base-input",
-                  type: "number",
-                  min: 1,
-                  step: 1,
-                }),
-                html.label(
-                  {
-                    for: "coarse-grid-increment-input",
-                    style: "white-space: nowrap;",
-                  },
-                  [translate("sidebar.designspace-navigation.coarse-grid.increment")]
-                ),
-                html.input({
-                  id: "coarse-grid-increment-input",
-                  type: "number",
-                  min: 1,
-                  step: 1,
-                }),
-              ]
-            ),
-          ]
-        ),
-      },
-      {
-        // Ticket 28, spec §2.3: header toggle drives the fontra.point.labels
-        // drawing layer, same wiring as Coarse Grid's header toggle; the
-        // three checkboxes bind by key (never by position, unlike the old
-        // Transformation panel block they replace) to the persisted app
-        // settings the label-drawing layers read (distance-angle.js,
-        // visualization-layer-skeleton.js).
-        id: "measurements-accordion-item",
-        label: translate("sidebar.designspace-navigation.measurements"),
-        open: false,
-        auxiliaryHeaderElement: this._makeVisualHeaderToggle(
-          "measurements-header-toggle"
-        ),
-        content: html.div(
-          {
-            id: "measurements-content",
-            style: `
-              display: grid;
-              grid-template-columns: auto auto;
-              gap: 0.35em 0.75em;
-              justify-content: start;
-              align-items: center;
-            `,
-          },
-          [
-            html.label({ for: "measurements-distance-toggle" }, [
-              translate("sidebar.designspace-navigation.measurements.distance"),
-            ]),
-            html.input({ id: "measurements-distance-toggle", type: "checkbox" }),
-            html.label({ for: "measurements-tension-toggle" }, [
-              translate("sidebar.designspace-navigation.measurements.tension"),
-            ]),
-            html.input({ id: "measurements-tension-toggle", type: "checkbox" }),
-            html.label({ for: "measurements-angle-toggle" }, [
-              translate("sidebar.designspace-navigation.measurements.angle"),
-            ]),
-            html.input({ id: "measurements-angle-toggle", type: "checkbox" }),
-          ]
-        ),
-      },
       {
         // Ticket 29: one column per kind of curve, and no switch for the whole
         // section. The toggle is that kind's curvature gizmo; the checks under
@@ -1281,19 +1499,18 @@ export default class DesignspaceNavigationPanel extends Panel {
     ]);
     persistAccordionOpenState(this.visualAccordion);
 
-    return html.div({ class: "panel" }, [
-      html.div({ class: "panel-section" }, [this._buildPhraseSection()]),
-      html.div(
-        {
-          class:
-            "panel-section panel-section--full-height designspace-accordion-column",
-        },
-        [
-          this.accordion,
-          html.div({ class: "designspace-visual-heading" }, ["Visual"]),
-          this.visualAccordion,
-        ]
-      ),
+    // Everything left in the old Visual accordion is tuning, and lives in the
+    // Debug panel (panel-debug.js), which shows this same element.
+    this.displayCard = this._buildDisplayCard();
+    this.accordion.setAttribute("switch", "");
+
+    return html.div({ class: "panel designspace-panel" }, [
+      this._buildPhraseSection(),
+      html.div({ class: "ds-card ds-card--font" }, [
+        html.div({ class: "ds-heading" }, ["font"]),
+        this.accordion,
+      ]),
+      this.displayCard,
     ]);
   }
 
@@ -1313,52 +1530,28 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.accordion.querySelector("#glyph-layers-accordion-item");
   }
 
-  get coarseGridHeaderToggle() {
-    return this.visualAccordion.querySelector("#coarse-grid-header-toggle");
-  }
-
   get coarseGridContent() {
-    return this.visualAccordion.querySelector("#coarse-grid-content");
+    return this.displayCard.querySelector("#coarse-grid-content");
   }
 
   get coarseGridSpacingInput() {
-    return this.visualAccordion.querySelector("#coarse-grid-spacing-input");
+    return this.displayCard.querySelector("#coarse-grid-spacing-input");
   }
 
   get coarseGridCustomToggle() {
-    return this.visualAccordion.querySelector("#coarse-grid-custom-toggle");
+    return this.displayCard.querySelector("#coarse-grid-custom-toggle");
   }
 
   get coarseGridCustomFields() {
-    return this.visualAccordion.querySelector("#coarse-grid-custom-fields");
+    return this.displayCard.querySelector("#coarse-grid-custom-fields");
   }
 
   get coarseGridBaseInput() {
-    return this.visualAccordion.querySelector("#coarse-grid-base-input");
-  }
-
-  get measurementsHeaderToggle() {
-    return this.visualAccordion.querySelector("#measurements-header-toggle");
-  }
-
-  get measurementsContent() {
-    return this.visualAccordion.querySelector("#measurements-content");
-  }
-
-  get measurementsDistanceToggle() {
-    return this.visualAccordion.querySelector("#measurements-distance-toggle");
-  }
-
-  get measurementsTensionToggle() {
-    return this.visualAccordion.querySelector("#measurements-tension-toggle");
-  }
-
-  get measurementsAngleToggle() {
-    return this.visualAccordion.querySelector("#measurements-angle-toggle");
+    return this.displayCard.querySelector("#coarse-grid-base-input");
   }
 
   get coarseGridIncrementInput() {
-    return this.visualAccordion.querySelector("#coarse-grid-increment-input");
+    return this.displayCard.querySelector("#coarse-grid-increment-input");
   }
 
   get speedPunkHeaderToggle() {
@@ -1419,14 +1612,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
   }
 
-  _updateCoarseGridControlsEnabled() {
-    const enabled =
-      !!this.editorController.visualizationLayersSettings.model["fontra.coarse.grid"];
-    // Ticket 24, spec §2.4: off freezes every control in the accordion item,
-    // not just the four named ones -- the shared helper both of them reuse.
-    setContainerFrozen(this.coarseGridContent, !enabled);
-  }
-
   _syncCoarseGridControls() {
     const settings = this._coarseGridSettings;
     const values = buildCoarseGridSliderValues(settings);
@@ -1443,7 +1628,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         spacingInput.value = spacing;
       }
       if (this.coarseGridCustomToggle) {
-        this.coarseGridCustomToggle.checked = settings.custom;
+        this.coarseGridCustomToggle.value = settings.custom ? "on" : "off";
       }
       if (this.coarseGridBaseInput) {
         this.coarseGridBaseInput.value = String(settings.base);
@@ -1452,7 +1637,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         this.coarseGridIncrementInput.value = String(settings.increment);
       }
       this._updateCoarseGridCustomFieldsVisibility();
-      this._updateCoarseGridControlsEnabled();
       window.coarseGridValues = values;
       this.sceneSettingsController.setItem("coarseGridSpacing", spacing, {
         senderID: this,
@@ -1470,22 +1654,25 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     const spacingInput = this.coarseGridSpacingInput;
     if (spacingInput) {
-      spacingInput.onChangeCallback = (event) => {
-        this._coarseGridSettings = {
-          ...this._coarseGridSettings,
-          spacing: event.value,
-        };
-        this.sceneSettingsController.setItem("coarseGridSpacing", event.value, {
+      // The field scrubs freely; the grid takes the nearest allowed spacing.
+      spacingInput.addEventListener("change", (event) => {
+        const spacing = snapCoarseGridSpacing(
+          event.detail.value,
+          buildCoarseGridSliderValues(this._coarseGridSettings)
+        );
+        spacingInput.value = spacing;
+        this._coarseGridSettings = { ...this._coarseGridSettings, spacing };
+        this.sceneSettingsController.setItem("coarseGridSpacing", spacing, {
           senderID: this,
         });
         this._persistCoarseGridSettings();
-      };
+      });
     }
 
     const customToggle = this.coarseGridCustomToggle;
     if (customToggle) {
       customToggle.addEventListener("change", (event) => {
-        const custom = !!event.target.checked;
+        const custom = event.detail.value === "on";
         const values = buildCoarseGridSliderValues({
           ...this._coarseGridSettings,
           custom,
@@ -1553,24 +1740,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
   }
 
-  _setupCoarseGridDisplayToggle() {
-    const toggle = this.coarseGridHeaderToggle;
-    if (!toggle) {
-      return;
-    }
-    const visualizationSettings = this.editorController.visualizationLayersSettings;
-    toggle.checked = !!visualizationSettings.model["fontra.coarse.grid"];
-    this._updateCoarseGridControlsEnabled();
-    toggle.addEventListener("change", () => {
-      visualizationSettings.model["fontra.coarse.grid"] = !!toggle.checked;
-      this._updateCoarseGridControlsEnabled();
-    });
-    visualizationSettings.addKeyListener("fontra.coarse.grid", (event) => {
-      toggle.checked = !!event.newValue;
-      this._updateCoarseGridControlsEnabled();
-    });
-  }
-
   // Ticket 28: header toggle drives the fontra.point.labels drawing layer and
   // freezes the three checkboxes, exactly like Coarse Grid's own header
   // toggle (_setupCoarseGridDisplayToggle above). The three checkboxes bind
@@ -1578,50 +1747,6 @@ export default class DesignspaceNavigationPanel extends Panel {
   // (distance-angle.js, visualization-layer-skeleton.js), and listen for
   // external writes -- e.g. from the View menu's own fontra.point.labels
   // entry -- so the header toggle always agrees with it.
-  _updateMeasurementsControlsEnabled() {
-    const enabled =
-      !!this.editorController.visualizationLayersSettings.model["fontra.point.labels"];
-    setContainerFrozen(this.measurementsContent, !enabled);
-  }
-
-  _setupMeasurementsDisplayToggle() {
-    const toggle = this.measurementsHeaderToggle;
-    if (!toggle) {
-      return;
-    }
-    const visualizationSettings = this.editorController.visualizationLayersSettings;
-    toggle.checked = !!visualizationSettings.model["fontra.point.labels"];
-    this._updateMeasurementsControlsEnabled();
-    toggle.addEventListener("change", () => {
-      visualizationSettings.model["fontra.point.labels"] = !!toggle.checked;
-      this._updateMeasurementsControlsEnabled();
-    });
-    visualizationSettings.addKeyListener("fontra.point.labels", (event) => {
-      toggle.checked = !!event.newValue;
-      this._updateMeasurementsControlsEnabled();
-    });
-  }
-
-  _setupMeasurementsCheckboxes() {
-    const bindings = [
-      [this.measurementsDistanceToggle, "showLabelsDistance"],
-      [this.measurementsTensionToggle, "showLabelsTension"],
-      [this.measurementsAngleToggle, "showLabelsAngle"],
-    ];
-    for (const [checkbox, settingKey] of bindings) {
-      if (!checkbox) {
-        continue;
-      }
-      checkbox.checked = !!applicationSettingsController.model[settingKey];
-      checkbox.addEventListener("change", () => {
-        applicationSettingsController.model[settingKey] = !!checkbox.checked;
-        this.sceneController.canvasController.requestUpdate();
-      });
-      applicationSettingsController.addKeyListener(settingKey, (event) => {
-        checkbox.checked = !!event.newValue;
-      });
-    }
-  }
 
   _normalizeSpeedPunkPeakHeightUpm(value) {
     if (!Number.isFinite(value)) return SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM;
@@ -2209,9 +2334,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     });
 
     this._setupCoarseGridControls();
-    this._setupCoarseGridDisplayToggle();
-    this._setupMeasurementsDisplayToggle();
-    this._setupMeasurementsCheckboxes();
+    this._setupDisplaySwitches();
     this._setupTunniControls();
     this._setupTunniLabelsAlwaysVisibleToggle();
     this._setupTunniDebugControls();

@@ -135,6 +135,7 @@ import {
 import { subVectors } from "@fontra/core/vector.js";
 import { ViewController } from "@fontra/core/view-controller.js";
 import CharactersGlyphsPanel from "./panel-characters-glyphs.js";
+import DebugPanel from "./panel-debug.js";
 import DesignspaceNavigationPanel from "./panel-designspace-navigation.js";
 import GlyphNotePanel from "./panel-glyph-note.js";
 import GlyphSearchPanel from "./panel-glyph-search.js";
@@ -1306,8 +1307,13 @@ export class EditorController extends ViewController {
     this.addSidebar(new Sidebar("right"));
     this.addSidebarPanel(new TextEntryPanel(this), "left");
     this.addSidebarPanel(new GlyphSearchPanel(this), "left");
-    this.addSidebarPanel(new DesignspaceNavigationPanel(this), "left");
+    const designspacePanel = new DesignspaceNavigationPanel(this);
+    this.addSidebarPanel(designspacePanel, "left");
     this.addSidebarPanel(new ReferenceFontPanel(this), "left");
+    this.addSidebarPanel(
+      new DebugPanel(this, designspacePanel.visualAccordion),
+      "left"
+    );
     this.addSidebarPanel(new SelectionInfoPanel(this), "right");
     this.addSidebarPanel(new SelectionPanel(this), "right");
     this.addSidebarPanel(new SkeletonSettingsPanel(this), "right");

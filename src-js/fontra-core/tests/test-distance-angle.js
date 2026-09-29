@@ -2,7 +2,7 @@ import {
   boxDistanceMeasures,
   calculateHandleMeasure,
   calculateProjectedDistanceComponents,
-  handleGizmoPlaque,
+  handleGizmoLines,
 } from "@fontra/core/distance-angle.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
 import { expect } from "chai";
@@ -152,18 +152,15 @@ describe("distance-angle — the distance from a selection to what is hovered", 
   });
 });
 
-describe("handleGizmoPlaque", () => {
-  // label/Q, type=handle, state=gizmo (node 342:17490): distance, then tension.
-  it("carries the handle's length and tension, and no header", () => {
-    expect(handleGizmoPlaque({ distance: 55.04, tension: 0.5523 })).to.deep.equal({
-      rows: [
-        { icon: "distance", value: "55.0" },
-        { icon: "tension", value: "0.55" },
-      ],
-    });
+describe("handleGizmoLines", () => {
+  it("carries the handle's length, then its tension", () => {
+    expect(handleGizmoLines({ distance: 55.04, tension: 0.5523 })).to.deep.equal([
+      "55.0",
+      "0.55",
+    ]);
   });
 
-  it('says n/a for a tension there is none of', () => {
-    expect(handleGizmoPlaque({ distance: 10, tension: null }).rows[1].value).to.equal('n/a');
+  it("says n/a for a tension there is none of", () => {
+    expect(handleGizmoLines({ distance: 10, tension: null })[1]).to.equal("n/a");
   });
 });

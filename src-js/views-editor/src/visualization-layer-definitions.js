@@ -1,6 +1,5 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import {
-  drawPlaque,
   LABEL_COLORS,
   LABEL_COLORS_DARK_MODE,
   LABEL_SCREEN_PARAMETERS,
@@ -28,7 +27,8 @@ import {
   drawPointStyleLabel,
   formatDistanceAndAngle,
   formatDistanceTensionAngle,
-  handleGizmoPlaque,
+  drawHandleLabel,
+  handleGizmoLines,
   OFFCURVE_DISTANCE_BADGE_COLOR,
   OFFCURVE_DISTANCE_BADGE_PADDING,
   OFFCURVE_DISTANCE_BADGE_RADIUS,
@@ -2541,12 +2541,12 @@ registerVisualizationLayerDefinition({
       if (points?.length !== 4 || points.some((point) => !point)) {
         continue;
       }
-      drawGizmoHandles(context, points, alpha, parameters, controller);
+      drawGizmoHandles(context, points, alpha, parameters, model);
     }
   },
 });
 
-function drawGizmoHandles(context, points, alpha, parameters, controller) {
+function drawGizmoHandles(context, points, alpha, parameters, model) {
   const [p0, p1, p2, p3] = points;
   context.save();
   context.globalAlpha = alpha;
@@ -2558,15 +2558,22 @@ function drawGizmoHandles(context, points, alpha, parameters, controller) {
   for (const handle of [p1, p2]) {
     fillRoundNode(context, handle, parameters.handleSize);
   }
-  for (const [side, handle] of [
-    ["start", p1],
-    ["end", p2],
-  ]) {
-    const measure = calculateHandleMeasure(points, side);
-    if (measure) {
-      drawPlaque(context, parameters, handle, handleGizmoPlaque(measure), {
-        onIconLoad: () => controller?.requestUpdate?.(),
-      });
+  // The permanent point labels already say the same thing on these handles.
+  if (!model.visualizationLayersSettings?.model?.["fontra.point.labels"]) {
+    for (const [side, handle, onCurve] of [
+      ["start", p1, p0],
+      ["end", p2, p3],
+    ]) {
+      const measure = calculateHandleMeasure(points, side);
+      if (measure) {
+        drawHandleLabel(
+          context,
+          handle,
+          onCurve,
+          handleGizmoLines(measure),
+          parameters.gizmoColor
+        );
+      }
     }
   }
   context.restore();

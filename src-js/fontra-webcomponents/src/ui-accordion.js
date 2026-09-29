@@ -55,6 +55,49 @@ export class Accordion extends UnlitElement {
     display: block;
     overflow: auto;
   }
+
+  /* accordion switch (Figma 56:45): a grey header bar ruled above and below,
+     a 16px chevron, the h5 label, and the sections stacked with no gap. */
+  :host([switch]) .ui-accordion-contents {
+    gap: 0;
+  }
+
+  :host([switch]) .ui-accordion-item {
+    gap: 0;
+  }
+
+  :host([switch]) .ui-accordion-item-header {
+    gap: 4px;
+    padding: 4px 6px 4px 4px;
+    background-color: var(--ui-accordion-switch-background-color, #fafafa);
+    border-top: 1px solid var(--ui-accordion-switch-border-color, #e9e9e9);
+    border-bottom: 1px solid var(--ui-accordion-switch-border-color, #e9e9e9);
+    /* ui/heading/h5 */
+    font: var(--ui-text-heading-h5);
+    text-transform: none;
+    color: var(--ui-accordion-switch-text-color, #565656);
+  }
+
+  :host([switch]) .ui-accordion-item + .ui-accordion-item .ui-accordion-item-header {
+    border-top: none;
+  }
+
+  :host([switch]) .open-close-icon {
+    width: 16px;
+    height: 16px;
+    box-sizing: border-box;
+    padding: 3px;
+    transform: rotate(180deg);
+  }
+
+  /* Closed, the chevron keeps pointing down and fades. */
+  :host([switch]) .ui-accordion-item-closed .open-close-icon {
+    opacity: 0.3;
+  }
+
+  :host([switch]) .ui-accordion-item:not(.ui-accordion-item-closed) .ui-accordion-item-content {
+    padding: 8px;
+  }
   `;
 
   static properties = {

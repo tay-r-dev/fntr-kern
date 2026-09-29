@@ -1321,13 +1321,12 @@ registerVisualizationLayerDefinition({
     if (!skeletonData?.contours?.length) {
       return;
     }
-    // Same persisted store the Measurements accordion checkboxes write
-    // (ticket 28), shared with the ordinary-outline point labels layer.
+    // The Skeleton labels column of the Point labels settings card.
     const settings = applicationSettingsController.model;
     const show = {
-      distance: settings.showLabelsDistance ?? true,
-      tension: settings.showLabelsTension ?? true,
-      angle: settings.showLabelsAngle ?? false,
+      distance: settings.showSkeletonLabelsDistance ?? true,
+      tension: settings.showSkeletonLabelsTension ?? true,
+      angle: settings.showSkeletonLabelsAngle ?? false,
     };
     for (const contour of skeletonData.contours) {
       const points = contour.points || [];

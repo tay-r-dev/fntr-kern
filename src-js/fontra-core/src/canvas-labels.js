@@ -31,6 +31,7 @@ export const LABEL_TUNING_DEFAULTS = Object.freeze({
   measureSize: 6,
   measureMinScreenSize: 7,
   measureMaxFade: 60,
+  showIcons: 1,
 });
 
 export const LABEL_TUNING = { ...LABEL_TUNING_DEFAULTS };
@@ -289,9 +290,11 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     );
   }
   const rows = plaque.rows.map((row) => {
-    const icon = PLAQUE_ICONS[row.icon];
-    const iconWidth = icon.width;
-    const iconHeight = icon.height;
+    // With icons off a row is its value alone, without the icon's room or gap.
+    const icon = LABEL_TUNING.showIcons ? PLAQUE_ICONS[row.icon] : null;
+    const iconWidth = icon ? icon.width : 0;
+    const iconHeight = icon ? icon.height : 0;
+    const gap = icon ? iconGap : 0;
     const valueWidth = measure(row.value, valueSize, row.tracking ? TRACKING : 0);
     setLabelFont(context, smallSize, TRACKING);
     const subWidth = row.sub
@@ -303,7 +306,8 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
       icon,
       iconWidth,
       iconHeight,
-      width: iconWidth + iconGap + Math.max(valueWidth, subWidth),
+      gap,
+      width: iconWidth + gap + Math.max(valueWidth, subWidth),
       height: Math.max(iconHeight, textHeight),
     };
   });
@@ -344,16 +348,18 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     // A one-line row centres its icon on the value; a row with small print under it
     // aligns the icon with the top, as the width row does.
     const iconTop = row.sub ? y : y + (row.height - row.iconHeight) / 2;
-    drawPlaqueIcon(
-      context,
-      row.icon,
-      x,
-      iconTop,
-      row.iconWidth,
-      row.iconHeight,
-      onIconLoad
-    );
-    const textX = x + row.iconWidth + iconGap;
+    if (row.icon) {
+      drawPlaqueIcon(
+        context,
+        row.icon,
+        x,
+        iconTop,
+        row.iconWidth,
+        row.iconHeight,
+        onIconLoad
+      );
+    }
+    const textX = x + row.iconWidth + row.gap;
     const valueTop = row.sub ? y : y + (row.height - valueLine) / 2;
     context.fillStyle = PLAQUE_COLORS.value;
     setLabelFont(context, valueSize, row.tracking ? TRACKING : 0);

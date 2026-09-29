@@ -60,6 +60,10 @@ export const applicationSettingsController = new ObservableController({
   showLabelsDistance: true,
   showLabelsTension: true,
   showLabelsAngle: false,
+  // The skeleton's own point labels, set apart from the outline's.
+  showSkeletonLabelsDistance: true,
+  showSkeletonLabelsTension: true,
+  showSkeletonLabelsAngle: false,
   tunniLabelsAlwaysVisible: false,
   // Ticket 30/31: the Visual > Skeleton accordion. Off, the generated outline is
   // not drawn, and SpeedPunk can draw on the centerline instead. The centerline

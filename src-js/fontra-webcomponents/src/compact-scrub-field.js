@@ -48,6 +48,9 @@ const colors = {
   "compact-scrub-field-hover-text-color": ["#303030", "#e0e0e0"],
   "compact-scrub-field-active-text-color": ["#151515", "#f0f0f0"],
   "compact-scrub-field-handle-color": ["#b4b4b4", "#777777"],
+  // input/slider (Figma 379:22560): the value's share of the range as a bar.
+  "compact-scrub-field-fill-color": ["#e9e9e9", "#4a4a4a"],
+  "compact-scrub-field-active-fill-color": ["#d5ed57", "#6f8a1e"],
   "compact-scrub-field-selection-color": ["#d5ed57", "#5c7033"],
   "compact-scrub-field-stepper-color": ["#d9d9d9", "#666666"],
   "compact-scrub-field-stepper-active-color": ["#303030", "#dddddd"],
@@ -88,6 +91,27 @@ export class CompactScrubField extends UnlitElement {
       box-sizing: border-box;
       height: 100%;
       padding: 0 0.4em;
+    }
+
+    .inner {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .inner > :not(.fill) {
+      position: relative;
+    }
+
+    .fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background-color: var(--compact-scrub-field-fill-color);
+      pointer-events: none;
+    }
+
+    .box.scrubbing .fill,
+    .box.editing .fill {
+      background-color: var(--compact-scrub-field-active-fill-color);
     }
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {
@@ -261,6 +285,29 @@ export class CompactScrubField extends UnlitElement {
     // (drag-arrows) icon hidden -- everything else, including the drag
     // itself, is unchanged.
     this._scrubIcon = true;
+    this._fill = false;
+  }
+
+  // input/slider: a bar behind the name showing where the value sits between
+  // minValue and maxValue.
+  get fill() {
+    return this._fill;
+  }
+
+  set fill(value) {
+    this._fill = !!value;
+    this.requestUpdate();
+  }
+
+  _renderFill() {
+    if (!this._fillElement) {
+      return;
+    }
+    const min = this._minValue ?? 0;
+    const max = this._maxValue ?? 100;
+    const share = max > min ? (Number(this._value) - min) / (max - min) : 0;
+    const clamped = Math.max(0, Math.min(1, share || 0));
+    this._fillElement.style.width = `${clamped * 100}%`;
   }
 
   get scrubIcon() {
@@ -347,6 +394,7 @@ export class CompactScrubField extends UnlitElement {
 
   set minValue(value) {
     this._minValue = value;
+    this._renderFill();
   }
 
   get maxValue() {
@@ -355,6 +403,7 @@ export class CompactScrubField extends UnlitElement {
 
   set maxValue(value) {
     this._maxValue = value;
+    this._renderFill();
   }
 
   get step() {
@@ -399,6 +448,7 @@ export class CompactScrubField extends UnlitElement {
   }
 
   _renderValue() {
+    this._renderFill();
     if (this._valueElement && !this._editing) {
       this._valueElement.textContent = this._showsMixed()
         ? "mixed"
@@ -448,6 +498,8 @@ export class CompactScrubField extends UnlitElement {
         })
       : undefined;
 
+    this._fillElement = this._fill ? html.div({ class: "fill" }) : undefined;
+
     this._hoverSteppers = html.div({ class: "hover-steppers" }, [
       this._makeStepperButton(1, "Increase"),
       this._makeStepperButton(-1, "Decrease"),
@@ -468,6 +520,7 @@ export class CompactScrubField extends UnlitElement {
       },
       [
         html.div({ class: "inner" }, [
+          ...(this._fillElement ? [this._fillElement] : []),
           ...(this._iconElement ? [this._iconElement] : []),
           this._nameElement,
           ...(this._scrubIcon
@@ -483,6 +536,7 @@ export class CompactScrubField extends UnlitElement {
         ]),
       ]
     );
+    this._renderFill();
     return this._box;
   }
 

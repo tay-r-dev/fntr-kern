@@ -4,7 +4,7 @@ import {
 } from "@fontra/core/convex-hull.js";
 import {
   calculateHandleMeasure,
-  handleGizmoPlaque,
+  handleGizmoLines,
   ribPlaque,
 } from "@fontra/core/distance-angle.js";
 import {
@@ -1429,7 +1429,8 @@ export class SceneModel {
         x: handle.x,
         y: handle.y,
         kind,
-        plaque: handleGizmoPlaque(measure),
+        onCurve: segmentPoints[side === "start" ? 0 : 3],
+        handleLines: handleGizmoLines(measure),
       });
     }
     return readouts;
