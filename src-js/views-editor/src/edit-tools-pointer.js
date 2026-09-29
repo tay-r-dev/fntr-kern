@@ -24,7 +24,9 @@ import {
   union,
 } from "@fontra/core/set-ops.js";
 import {
+  bulbSideOfRole,
   getSkeletonData,
+  makeEditableGeneratedPointKey,
   makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
@@ -360,6 +362,19 @@ export class PointerTool extends BaseTool {
     } else if (gizmo.kind === "generated" && segment) {
       for (const entry of [segment.provenance?.[0], segment.provenance?.at(-1)]) {
         if (entry?.skeletonPointId === undefined || entry.insertion) {
+          continue;
+        }
+        // A ball segment belongs to no rib: its ends are the bulb's own points.
+        if (segment.bulb) {
+          if (entry.bulbRole) {
+            keys.add(
+              makeEditableGeneratedPointKey(
+                entry.skeletonContourId ?? segment.skeletonContourId,
+                entry.skeletonPointId,
+                bulbSideOfRole(entry.bulbRole)
+              )
+            );
+          }
           continue;
         }
         keys.add(
