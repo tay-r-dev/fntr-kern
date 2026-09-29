@@ -294,6 +294,9 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
 
 // How the reveal behaves, in screen pixels and milliseconds. Live numbers the
 // Visual panel's debug section edits, read at the moment they are needed.
+// How long after a gizmo is dropped it still comes back without its reveal.
+const RECENT_REARM_MS = 500;
+
 export const TUNNI_GIZMO_TUNING_DEFAULTS = {
   revealRadius: 28,
   clickRadius: 10,
@@ -413,9 +416,22 @@ export class TunniGizmoReveal {
       this._cancelPending();
       if (this._armedKey) {
         this._tweenTo("alpha", this._armedKey, 0);
+        this._recentKey = this._armedKey;
+        this._recentAt = performance.now();
         this._armedKey = null;
       }
-      if (key) {
+      // A gizmo that was armed a moment ago comes straight back, with no delay
+      // and no fade: an edit rebuilding the glyph can drop it from one hover
+      // pass, and making the designer wait out the reveal again to grab the
+      // gizmo they were just holding read as the drag lagging.
+      if (
+        key &&
+        key === this._recentKey &&
+        performance.now() - this._recentAt < RECENT_REARM_MS
+      ) {
+        this._armedKey = key;
+        this._setNow("alpha", key, 1);
+      } else if (key) {
         this._pendingKey = key;
         this._timer = setTimeout(() => {
           this._pendingKey = null;
@@ -457,7 +473,9 @@ export class TunniGizmoReveal {
     }
     this._draggedKey = key;
     if (key) {
-      this._tweenTo("drag", key, 1);
+      // At full strength from the first frame: a fade-in on the handles the
+      // drag is moving made the start of every drag look slow.
+      this._setNow("drag", key, 1);
     }
   }
 
@@ -518,6 +536,19 @@ export class TunniGizmoReveal {
     clearTimeout(this._timer);
     this._timer = null;
     this._pendingKey = null;
+  }
+
+  // Jump straight to `value`, with no tween.
+  _setNow(channel, key, value) {
+    this._tweens.set(`${channel}:${key}`, {
+      channel,
+      key,
+      slow: false,
+      from: value,
+      to: value,
+      start: performance.now(),
+    });
+    this._animate();
   }
 
   // An on-curve gizmo (`slow`) lingers before it fades out.

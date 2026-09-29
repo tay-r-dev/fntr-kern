@@ -76,19 +76,32 @@ describe("the segment a curvature gizmo stands for", () => {
 });
 
 describe("the dragged gizmo", () => {
-  it("eases in while its drag lasts and out after it, and hovering alone does not", () => {
+  it("shows at once while its drag lasts and fades after it, and hovering alone does not", () => {
     globalThis.requestAnimationFrame ??= () => 0;
     const reveal = new TunniGizmoReveal(() => {});
     const key = tunniGizmoKey("basic", "curvature", "0/0");
     reveal._setHot(key);
     expect(reveal.draggedKeys(performance.now() + 10000)).to.deep.equal([]);
     reveal.setDragged(key);
-    const start = performance.now();
-    const early = reveal.draggedKeys(start + 20)[0]?.alpha ?? 0;
-    expect(early).to.be.above(0).and.below(1);
-    expect(reveal.draggedKeys(start + 10000)).to.deep.equal([{ key, alpha: 1 }]);
+    expect(reveal.draggedKeys(performance.now())).to.deep.equal([{ key, alpha: 1 }]);
     reveal.setDragged(null);
-    expect(reveal.draggedKeys(performance.now() + 10000)).to.deep.equal([]);
+    const end = performance.now();
+    const fading = reveal.draggedKeys(end + 20)[0]?.alpha ?? 0;
+    expect(fading).to.be.above(0).and.below(1);
+    expect(reveal.draggedKeys(end + 10000)).to.deep.equal([]);
+  });
+
+  it("re-arms a gizmo it just dropped without the reveal delay", () => {
+    globalThis.requestAnimationFrame ??= () => 0;
+    globalThis.cancelAnimationFrame ??= () => {};
+    const reveal = new TunniGizmoReveal(() => {});
+    const key = tunniGizmoKey("basic", "curvature", "0/0");
+    reveal._armedKey = key;
+    reveal.hover(null);
+    expect(reveal.isArmed(key)).to.equal(false);
+    reveal.hover(key);
+    expect(reveal.isArmed(key)).to.equal(true);
+    reveal.hover(null);
   });
 });
 
