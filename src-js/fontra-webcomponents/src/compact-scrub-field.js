@@ -202,6 +202,10 @@ export class CompactScrubField extends UnlitElement {
       cursor: text;
     }
 
+    .value.scrub-only {
+      cursor: inherit;
+    }
+
     .value.mixed {
       font-family: inherit;
       font-style: italic;
@@ -317,6 +321,19 @@ export class CompactScrubField extends UnlitElement {
     // itself, is unchanged.
     this._scrubIcon = true;
     this._fill = false;
+    this._scrubOnly = false;
+  }
+
+  // A field whose value only a drag sets: no typing, no stepper arrows. For a
+  // value that snaps to a list of steps, where a typed number or a one-unit
+  // step would land back where it was.
+  get scrubOnly() {
+    return this._scrubOnly;
+  }
+
+  set scrubOnly(value) {
+    this._scrubOnly = !!value;
+    this.requestUpdate();
   }
 
   // input/slider: a bar behind the name showing where the value sits between
@@ -516,7 +533,10 @@ export class CompactScrubField extends UnlitElement {
     this._nameElement = html.span({ class: "name" }, [this._label]);
     this._valueElement = html.span(
       {
-        class: "value" + (this._showsMixed() ? " mixed" : ""),
+        class:
+          "value" +
+          (this._showsMixed() ? " mixed" : "") +
+          (this._scrubOnly ? " scrub-only" : ""),
         onclick: () => this._startEdit(),
       },
       [this._showsMixed() ? "mixed" : this._displayValue()]
@@ -572,7 +592,7 @@ export class CompactScrubField extends UnlitElement {
               ]
             : []),
           this._valueElement,
-          this._hoverSteppers,
+          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
         ]),
       ]
     );
@@ -643,6 +663,9 @@ export class CompactScrubField extends UnlitElement {
   }
 
   _startEdit() {
+    if (this._scrubOnly) {
+      return;
+    }
     if (this._disabled || this._editing) {
       return;
     }
@@ -772,7 +795,7 @@ export class CompactScrubField extends UnlitElement {
     if (this._disabled || this._editing || event.button !== 0) {
       return;
     }
-    if (this._valueElement.contains(event.target)) {
+    if (!this._scrubOnly && this._valueElement.contains(event.target)) {
       // Let the click-to-edit handler take it instead.
       return;
     }

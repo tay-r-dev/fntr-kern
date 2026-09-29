@@ -943,6 +943,8 @@ export default class DesignspaceNavigationPanel extends Panel {
       field.scrubIcon = false;
       field.integer = true;
       field.fill = fill;
+      // The spacing snaps to its steps; only a drag sets it.
+      field.scrubOnly = fill;
       return field;
     };
     const segmented = (id) =>
@@ -1010,7 +1012,13 @@ export default class DesignspaceNavigationPanel extends Panel {
             presets.element,
           ]),
           html.div({ class: "ds-stack ds-stack--grid" }, [
-            scrubField("coarse-grid-spacing-input", "Spacing", true),
+            // The grid itself on and off, then its spacing.
+            html.div({ class: "ds-row" }, [
+              segmented("coarse-grid-toggle"),
+              html.div({ class: "ds-grow" }, [
+                scrubField("coarse-grid-spacing-input", "Spacing", true),
+              ]),
+            ]),
             html.div({ class: "ds-field" }, [
               html.div({ class: "ds-label" }, ["Custom spacing"]),
               html.div({ class: "ds-row" }, [
@@ -1060,11 +1068,16 @@ export default class DesignspaceNavigationPanel extends Panel {
       write(!!settings.model[key]);
       settings.addKeyListener(key, (event) => write(!!event.newValue));
     };
-    const speedpunk = this.displayCard.querySelector("#measurements-speedpunk-toggle");
-    follow("fontra.curvature", (on) => (speedpunk.value = on ? "on" : "off"));
-    speedpunk.addEventListener("change", () => {
-      settings.model["fontra.curvature"] = speedpunk.value === "on";
-    });
+    for (const [id, key] of [
+      ["#coarse-grid-toggle", "fontra.coarse.grid"],
+      ["#measurements-speedpunk-toggle", "fontra.curvature"],
+    ]) {
+      const control = this.displayCard.querySelector(id);
+      follow(key, (on) => (control.value = on ? "on" : "off"));
+      control.addEventListener("change", () => {
+        settings.model[key] = control.value === "on";
+      });
+    }
     for (const [id, key] of [
       ["#measurements-basic-latch", "fontra.point.labels"],
       ["#measurements-skeleton-latch", "fontra.skeleton.point-labels"],

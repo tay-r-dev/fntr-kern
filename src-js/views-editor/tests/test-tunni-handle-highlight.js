@@ -23,10 +23,13 @@ function quarterPath() {
 
 describe("the segment a curvature gizmo stands for", () => {
   it("finds an ordinary path segment by its gizmo key", () => {
-    const points = tunniCurvatureSegmentPoints(tunniGizmoKey("basic", "curvature", "0/0"), {
-      path: quarterPath(),
-      skeletonData: null,
-    });
+    const points = tunniCurvatureSegmentPoints(
+      tunniGizmoKey("basic", "curvature", "0/0"),
+      {
+        path: quarterPath(),
+        skeletonData: null,
+      }
+    );
     expect(points.map(({ x, y }) => [x, y])).to.deep.equal([
       [0, 0],
       [55, 0],
@@ -86,5 +89,46 @@ describe("the dragged gizmo", () => {
     expect(reveal.draggedKeys(start + 10000)).to.deep.equal([{ key, alpha: 1 }]);
     reveal.setDragged(null);
     expect(reveal.draggedKeys(performance.now() + 10000)).to.deep.equal([]);
+  });
+});
+
+describe("the segment a generated-outline curvature gizmo stands for", () => {
+  it("finds a generated segment by its gizmo key", async () => {
+    const { VarPackedPath: Path } = await import("@fontra/core/var-path.js");
+    const skeleton = await import("@fontra/core/skeleton-model.js");
+    const { editSkeleton } = await import("../src/skeleton-editing.js");
+    const { generatedTunniSegmentId } = await import("../src/tunni-gizmos.js");
+    const layer = {
+      path: new Path(),
+      components: [],
+      anchors: [],
+      guidelines: [],
+      customData: {},
+    };
+    skeleton.setSkeletonData(
+      layer,
+      skeleton.normalizeSkeletonData({
+        contours: [
+          skeleton.makeSkeletonContour({
+            id: 80,
+            defaultWidth: 80,
+            points: [
+              skeleton.makeSkeletonPoint({ id: 1, x: 0, y: 0 }),
+              skeleton.makeSkeletonPoint({ id: 2, x: 30, y: 40, type: "cubic" }),
+              skeleton.makeSkeletonPoint({ id: 3, x: 70, y: 40, type: "cubic" }),
+              skeleton.makeSkeletonPoint({ id: 4, x: 100, y: 0 }),
+            ],
+          }),
+        ],
+      })
+    );
+    editSkeleton(layer, () => {});
+    const skeletonData = skeleton.getSkeletonData(layer);
+    const [segment] = skeleton.buildGeneratedTunniSegments(skeletonData, layer.path);
+    const points = tunniCurvatureSegmentPoints(
+      tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment)),
+      { path: layer.path, skeletonData }
+    );
+    expect(points).to.have.length(4);
   });
 });

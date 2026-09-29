@@ -2541,12 +2541,23 @@ registerVisualizationLayerDefinition({
       if (points?.length !== 4 || points.some((point) => !point)) {
         continue;
       }
-      drawGizmoHandles(context, points, alpha, parameters, model);
+      drawGizmoHandles(context, points, alpha, parameters, model, {
+        // In gizmo mode the point labels skip the generated outline's handles
+        // (hiddenContourIndices), so a generated segment labels its own.
+        alwaysLabel: key.startsWith("generated:"),
+      });
     }
   },
 });
 
-function drawGizmoHandles(context, points, alpha, parameters, model) {
+function drawGizmoHandles(
+  context,
+  points,
+  alpha,
+  parameters,
+  model,
+  { alwaysLabel = false } = {}
+) {
   const [p0, p1, p2, p3] = points;
   context.save();
   context.globalAlpha = alpha;
@@ -2559,7 +2570,10 @@ function drawGizmoHandles(context, points, alpha, parameters, model) {
     fillRoundNode(context, handle, parameters.handleSize);
   }
   // The permanent point labels already say the same thing on these handles.
-  if (!model.visualizationLayersSettings?.model?.["fontra.point.labels"]) {
+  if (
+    alwaysLabel ||
+    !model.visualizationLayersSettings?.model?.["fontra.point.labels"]
+  ) {
     for (const [side, handle, onCurve] of [
       ["start", p1, p0],
       ["end", p2, p3],

@@ -1159,7 +1159,7 @@ export function drawHandleLabel(context, handle, onCurve, lines, color) {
   const size = measureLabelFontSize(context);
   // The Figma label's 12 over 9 line, and two screen pixels more between values.
   const lineHeight = size * 1.33 + 2 * screenPixel(context);
-  const gap = size * 1.2;
+  const gap = size * 0.8;
   const blockHeight = lines.length * lineHeight;
   const up = handle.y >= onCurve.y;
   // Screen y (down) of the block's top.
