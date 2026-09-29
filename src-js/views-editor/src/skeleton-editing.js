@@ -57,6 +57,11 @@ import { applyTensionAwareEdit } from "@fontra/core/tension-aware-edit.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { dotVector, mulVectorScalar } from "@fontra/core/vector.js";
+import {
+  createBulbHandleTargetEntries,
+  createBulbPointTargetEntries,
+  isBulbSelectionItem,
+} from "./bulb-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
   makeAxisLock,
@@ -1702,8 +1707,16 @@ export function createEditableGeneratedPointTargetEntries(
 ) {
   const referenceSkeletonData =
     options.referenceSkeletonData || getSkeletonData(layerGlyph);
+  // A bulb's points are the cap's, and write the cap's edit block.
+  const bulbEntries = createBulbPointTargetEntries(
+    layerGlyph,
+    selection,
+    behaviorName,
+    { ...options, referenceSkeletonData }
+  );
   const ribSelection = new Set();
   for (const item of parseSelection([...selection]).editableGeneratedPoint || []) {
+    if (isBulbSelectionItem(item)) continue;
     const { contourId, pointId, side } = parseEditableGeneratedPointKey(item);
     const address = getSkeletonRibAddress(
       referenceSkeletonData,
@@ -1725,11 +1738,14 @@ export function createEditableGeneratedPointTargetEntries(
       continue;
     ribSelection.add(makeSkeletonRibKey(address.contour.id, address.point.id, side));
   }
-  if (!ribSelection.size) return [];
-  return createSkeletonRibTargetEntries(layerGlyph, ribSelection, behaviorName, {
-    ...options,
-    referenceSkeletonData,
-  });
+  if (!ribSelection.size) return bulbEntries;
+  return [
+    ...createSkeletonRibTargetEntries(layerGlyph, ribSelection, behaviorName, {
+      ...options,
+      referenceSkeletonData,
+    }),
+    ...bulbEntries,
+  ];
 }
 
 export function createEditableGeneratedHandleTargetEntries(
@@ -1741,12 +1757,18 @@ export function createEditableGeneratedHandleTargetEntries(
   const skeletonData = getSkeletonData(layerGlyph);
   if (!skeletonData) return [];
   const referenceSkeletonData = options.referenceSkeletonData || skeletonData;
+  const bulbEntries = createBulbHandleTargetEntries(
+    layerGlyph,
+    selection,
+    behaviorName,
+    { ...options, referenceSkeletonData }
+  );
   const selected = collectEditableGeneratedHandleSelectionForEditing(
     selection,
     referenceSkeletonData,
     skeletonData
   );
-  if (!selected.length) return [];
+  if (!selected.length) return bulbEntries;
   const originalLayerGlyph = {
     ...layerGlyph,
     path: layerGlyph.path.copy(),
@@ -1793,13 +1815,18 @@ export function createEditableGeneratedHandleTargetEntries(
         return null;
       },
     },
+    ...bulbEntries,
   ];
 }
 
 export function toggleEditableGeneratedHandleDetached(layerGlyph, selection) {
   const skeletonData = getSkeletonData(layerGlyph);
   if (!skeletonData) return null;
-  const handles = parseSelection([...selection]).editableGeneratedHandle || [];
+  // A bulb handle is the cap's, placed by its edit block, and has no detached
+  // state.
+  const handles = (parseSelection([...selection]).editableGeneratedHandle || []).filter(
+    (item) => !isBulbSelectionItem(item)
+  );
   if (!handles.length) return null;
   const firstHandle = parseEditableGeneratedHandleKey(handles[0]);
   const current = resolveEditableGeneratedHandleAddressAcrossLayersForEditing(
@@ -2306,6 +2333,7 @@ function collectEditableGeneratedHandleSelectionForEditing(
 ) {
   const selected = [];
   for (const item of parseSelection([...selection]).editableGeneratedHandle || []) {
+    if (isBulbSelectionItem(item)) continue;
     const { contourId, pointId, side, role } = parseEditableGeneratedHandleKey(item);
     const reference = resolveEditableGeneratedHandleAddressAcrossLayersForEditing(
       referenceSkeletonData,

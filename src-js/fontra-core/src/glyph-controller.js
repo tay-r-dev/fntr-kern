@@ -29,6 +29,8 @@ import {
 } from "./representation-cache.js";
 import { setPopFirst } from "./set-ops.js";
 import {
+  bulbRoleOfSide,
+  findGeneratedPathAddress,
   getSkeletonData,
   getSkeletonRibPosition,
   normalizeSkeletonData,
@@ -887,7 +889,29 @@ export class StaticGlyphController {
         ...editableGeneratedHandleKeys,
       ];
       for (const key of ribKeys) {
-        const [contourId, pointId, side] = `${key}`.split("/");
+        const [contourId, pointId, side, role] = `${key}`.split("/");
+        // A bulb point is the cap's, and stands where the outline has it.
+        if (bulbRoleOfSide(side)) {
+          const address = findGeneratedPathAddress(
+            skeletonData,
+            contourId,
+            pointId,
+            side,
+            role ?? "onCurve"
+          );
+          const position = address
+            ? this.instance.path.getPoint(
+                this.instance.path.getAbsolutePointIndex(
+                  address.pathContourIndex,
+                  address.contourPointIndex
+                )
+              )
+            : null;
+          if (position) {
+            selectionRects.push(centeredRect(position.x, position.y, 0));
+          }
+          continue;
+        }
         if (side !== "left" && side !== "right") continue;
         const address = findAddress(contourId, pointId);
         if (!address) continue;

@@ -155,6 +155,71 @@ export const CAP_POINT_FIELDS = [
 // here and matched against the provenance the generator stamps, so the two
 // cannot drift apart.
 export const CAP_CURVATURE_FIELDS = new Set(["capBallEaseCurvature"]);
+
+// A bulb's own points, which Z and Alt edit the way they edit any generated
+// point: the entry on the outer wall, the ball's bottom and side apexes, the
+// neck's start on the ball, and the release on the inner wall. They belong to
+// the cap, not to a rib, so their edits live on the cap-owning point, one
+// block per point, in the cap's own order from the outer wall to the inner.
+//
+// `slide` moves the on-curve along its tangent, positive toward the inner
+// wall. `carry` is the part of it Z carried to the two handles. `in` and
+// `out` lengthen the handle before and after it, along the handle's own line.
+// All four are scalars, because every edit here keeps its line.
+export const CAP_BALL_EDIT_ROLES = Object.freeze([
+  "entry",
+  "bottom",
+  "side",
+  "neck",
+  "release",
+]);
+const CAP_BALL_EDIT_FIELDS = Object.freeze(["slide", "carry", "in", "out"]);
+const BULB_SIDE_PREFIX = "bulb-";
+
+// Bulb points ride in the side slot of the generated-point keys, so every
+// reader that draws, hovers or bounds a generated selection sees them.
+export function bulbSideOfRole(role) {
+  return `${BULB_SIDE_PREFIX}${role}`;
+}
+
+export function bulbRoleOfSide(side) {
+  if (typeof side !== "string" || !side.startsWith(BULB_SIDE_PREFIX)) {
+    return null;
+  }
+  const role = side.slice(BULB_SIDE_PREFIX.length);
+  return CAP_BALL_EDIT_ROLES.includes(role) ? role : null;
+}
+
+export function normalizeCapBallEdits(edits) {
+  return Object.fromEntries(
+    CAP_BALL_EDIT_ROLES.map((role) => [
+      role,
+      Object.fromEntries(
+        CAP_BALL_EDIT_FIELDS.map((field) => [
+          field,
+          asFiniteNumber(edits?.[role]?.[field], 0),
+        ])
+      ),
+    ])
+  );
+}
+
+export function getSkeletonCapBallEdit(point, role) {
+  return normalizeCapBallEdits(point?.capBallEdits)[role];
+}
+
+export function setSkeletonCapBallEdit(point, role, values) {
+  if (!CAP_BALL_EDIT_ROLES.includes(role)) {
+    return;
+  }
+  const edits = normalizeCapBallEdits(point?.capBallEdits);
+  for (const field of CAP_BALL_EDIT_FIELDS) {
+    if (Number.isFinite(values?.[field])) {
+      edits[role][field] = values[field];
+    }
+  }
+  point.capBallEdits = edits;
+}
 // `tilt` is `perpendicular` turned off the rib by a stated angle. It is a mode
 // rather than a number every mode reads, so the plain perpendicular stays the
 // default and the tilt is something a designer asks for. The three named modes
@@ -1696,6 +1761,11 @@ export function normalizeSkeletonPoint(point, skeletonData = null, usedIds = nul
     normalized.segmentCurvature = normalizeSegmentCurvature(point?.segmentCurvature);
     normalized.locked = normalizeLocked(point?.locked);
     normalized.handleOffsets = normalizeHandleOffsets(point?.handleOffsets);
+    // Every drop terminal carries the whole block, zeros included, so two
+    // masters compare field for field whichever of them was edited.
+    if (point?.capStyle === "drop" || point?.capBallEdits) {
+      normalized.capBallEdits = normalizeCapBallEdits(point?.capBallEdits);
+    }
     normalized.serif = normalizeSerif(point?.serif);
     normalized.corner = normalizeCorner(point?.corner);
     normalized.capStyle = VALID_CAP_STYLES.has(point?.capStyle) ? point.capStyle : null;
@@ -2230,6 +2300,11 @@ function copySkeletonCapData(sourcePoint, targetPoint) {
     } else {
       delete targetPoint[field];
     }
+  }
+  if (sourcePoint.capBallEdits) {
+    targetPoint.capBallEdits = normalizeCapBallEdits(sourcePoint.capBallEdits);
+  } else {
+    delete targetPoint.capBallEdits;
   }
 }
 
@@ -3879,6 +3954,11 @@ export function resetSkeletonEditableRib(point, side) {
   point.handleNudge = handleNudge;
   setSkeletonSegmentCurvature(point, side, null);
   resetSkeletonEditableRibHandles(point, side);
+  // A bulb's points hang off both ribs of its terminal, so either side's full
+  // reset returns them to where the bulb builds them.
+  if (point.capBallEdits) {
+    point.capBallEdits = normalizeCapBallEdits(null);
+  }
 }
 
 function clearCollapsedRibSides(point) {
@@ -4339,7 +4419,8 @@ export function getSkeletonRibEndpoints(contour, point, outline = null) {
 const VALID_GENERATED_ROLES = new Set(["onCurve", "in", "out"]);
 
 export function findGeneratedPathAddress(skeletonData, contourId, pointId, side, role) {
-  if (side !== "left" && side !== "right") {
+  const bulbRole = bulbRoleOfSide(side);
+  if (side !== "left" && side !== "right" && !bulbRole) {
     throw new Error(`invalid editable generated side: ${side}`);
   }
   if (!VALID_GENERATED_ROLES.has(role)) {
@@ -4359,11 +4440,10 @@ export function findGeneratedPathAddress(skeletonData, contourId, pointId, side,
       contourPointIndex++
     ) {
       const provenance = pointMap[contourPointIndex];
-      if (
-        provenance?.skeletonPointId === numericPointId &&
-        provenance.side === side &&
-        provenance.role === role
-      ) {
+      const matches = bulbRole
+        ? provenance?.bulbRole === bulbRole && provenance.bulbSlot === role
+        : provenance?.side === side && provenance.role === role;
+      if (provenance?.skeletonPointId === numericPointId && matches) {
         return {
           pathContourIndex: generatedEntry.pathContourIndex,
           contourPointIndex,
@@ -4785,7 +4865,11 @@ function setSingleSidedTotalWidth(point, defaultWidth, side, totalWidth) {
 
 const EDITABLE_GENERATED_POINT_KEY_KIND = "editableGeneratedPoint";
 const EDITABLE_GENERATED_HANDLE_KEY_KIND = "editableGeneratedHandle";
-const EDITABLE_VALID_GENERATED_SIDES = new Set(["left", "right"]);
+const EDITABLE_VALID_GENERATED_SIDES = new Set([
+  "left",
+  "right",
+  ...CAP_BALL_EDIT_ROLES.map(bulbSideOfRole),
+]);
 const EDITABLE_VALID_HANDLE_ROLES = new Set(["in", "out"]);
 
 export function makeEditableGeneratedPointKey(contourId, pointId, side) {
@@ -4856,6 +4940,8 @@ export function resolveGeneratedPointProvenance(skeletonData, path, pathPointInd
     side: provenance.side,
     role: provenance.role,
     capCurvatureField: provenance.capCurvatureField ?? null,
+    bulbRole: provenance.bulbRole ?? null,
+    bulbSlot: provenance.bulbSlot ?? null,
     contour,
     contourIndex,
     point: contour.points[pointIndex],
@@ -4869,11 +4955,39 @@ export function resolveEditableGeneratedTarget(skeletonData, path, pathPointInde
     path,
     pathPointIndex
   );
-  if (!provenance || !EDITABLE_VALID_GENERATED_SIDES.has(provenance.side)) return null;
-  // A bulb's neck names the cap-owning point so its curvature gizmo can find it.
-  // Its points are not that point's rib geometry, though, so they are not
-  // directly editable: dragging one would move the rib the neck hangs off.
-  if (provenance.capCurvatureField) return null;
+  if (!provenance) return null;
+  // A bulb's points belong to the cap, not to a rib. Addressed as a rib point,
+  // a drag wrote that rib's nudge and moved the ball's anchor: 52 units of one
+  // ball handle for a 10-unit slide of the entry.
+  if (provenance.bulbRole) {
+    const side = bulbSideOfRole(provenance.bulbRole);
+    const role = provenance.bulbSlot;
+    const kind =
+      role === "onCurve"
+        ? EDITABLE_GENERATED_POINT_KEY_KIND
+        : EDITABLE_GENERATED_HANDLE_KEY_KIND;
+    return {
+      ...provenance,
+      side,
+      role,
+      kind,
+      selectionKey:
+        role === "onCurve"
+          ? makeEditableGeneratedPointKey(
+              provenance.contourId,
+              provenance.pointId,
+              side
+            )
+          : makeEditableGeneratedHandleKey(
+              provenance.contourId,
+              provenance.pointId,
+              side,
+              role
+            ),
+    };
+  }
+  if (!EDITABLE_VALID_GENERATED_SIDES.has(provenance.side)) return null;
+  if (bulbRoleOfSide(provenance.side)) return null;
   if (provenance.point?.type) return null;
   // Each gizmo answers to its own lock: the on-curve to the slide lock, the two
   // handles to the handle lock.
@@ -6159,13 +6273,15 @@ function untrimmedConstructionSegment(segmentPoints, provenance) {
   if (segmentPoints?.length !== 4) {
     return null;
   }
-  // A bulb's neck is drawn as constructed. Its wall end is also the end of the
-  // wall piece the cap cut, and the snapshot there is that wall's.
-  if (generatedSegmentCapCurvatureField(provenance)) {
-    return null;
-  }
+  // A bulb's neck reads only its own snapshot, on its ball end, which is the
+  // neck as built before the designer's edits to the bulb's points. Its wall
+  // end is also the end of the wall piece the cap cut, and the snapshot there
+  // is that wall's.
+  const neck = generatedSegmentCapCurvatureField(provenance) !== null;
   const carrier = provenance?.findIndex(
-    (item, index) => storedConstructionSegment(item, index) !== null
+    (item, index) =>
+      (!neck || item?.capCurvatureField) &&
+      storedConstructionSegment(item, index) !== null
   );
   if (carrier === undefined || carrier < 0) {
     return null;

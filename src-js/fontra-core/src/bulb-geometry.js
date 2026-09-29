@@ -85,6 +85,51 @@ export function thetaBackAlongBall(ball, from, length, limit) {
   return (low + high) / 2;
 }
 
+// The designer's edits to a bulb's own points, applied after the bulb is built,
+// the way a rib nudge is an emission step and never an input to construction.
+// `stations` run from the outer wall to the inner, each an on-curve with the
+// handle before it and after it (either may be null). A slide moves the
+// on-curve along its tangent; the carried part moves both handles with it; the
+// two lengths move each handle along its own line. Directions are read before
+// anything moves, so the order the stations are edited in does not matter.
+export function applyBulbPointEdits(stations, edits) {
+  const plan = stations.map(({ role, point, before, after }) => {
+    const unit = (from, to) => {
+      const d = vector.subVectors(to, from);
+      const length = Math.hypot(d.x, d.y);
+      return length > 1e-9 ? { x: d.x / length, y: d.y / length } : null;
+    };
+    const tangent =
+      (before && after && unit(before, after)) ||
+      (after && unit(point, after)) ||
+      (before && unit(before, point));
+    return {
+      edit: edits?.[role],
+      point,
+      before,
+      after,
+      tangent,
+      beforeAxis:
+        (before && unit(point, before)) ??
+        (tangent && vector.mulVectorScalar(tangent, -1)),
+      afterAxis: (after && unit(point, after)) ?? tangent,
+    };
+  });
+  for (const { edit, point, before, after, tangent, beforeAxis, afterAxis } of plan) {
+    if (!edit || !tangent) continue;
+    const move = (target, direction, distance) => {
+      if (!target || !direction || !distance) return;
+      target.x += direction.x * distance;
+      target.y += direction.y * distance;
+    };
+    move(point, tangent, edit.slide);
+    move(before, tangent, edit.carry);
+    move(after, tangent, edit.carry);
+    move(before, beforeAxis, edit.in);
+    move(after, afterAxis, edit.out);
+  }
+}
+
 // Glyph-axis extrema of the two half ellipses. The rear half may have a
 // different along radius, so each candidate is accepted only on its own half.
 export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {

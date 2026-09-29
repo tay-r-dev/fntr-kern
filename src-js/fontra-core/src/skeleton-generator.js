@@ -1,5 +1,6 @@
 import { Bezier } from "bezier-js";
 import {
+  applyBulbPointEdits,
   buildBulbArc,
   bulbStops,
   makeBulbBall,
@@ -361,7 +362,12 @@ function canonicalPointToGeneratorPoint(point, contour) {
   // where the segment is unpinned, which is not the same as zero.
   generatorPoint.leftSegmentCurvature = point.segmentCurvature?.left ?? null;
   generatorPoint.rightSegmentCurvature = point.segmentCurvature?.right ?? null;
-  for (const field of ["capStyle", "capBallSide", ...CAP_POINT_FIELDS]) {
+  for (const field of [
+    "capStyle",
+    "capBallSide",
+    "capBallEdits",
+    ...CAP_POINT_FIELDS,
+  ]) {
     if (point[field] !== null && point[field] !== undefined) {
       generatorPoint[field] = point[field];
     }
@@ -3034,6 +3040,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
         capBallEaseCurvature:
           firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
+        capBallEdits: firstOnCurvePoint.capBallEdits,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3236,6 +3243,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
         capBallEaseCurvature:
           lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
+        capBallEdits: lastOnCurvePoint.capBallEdits,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -6772,6 +6780,7 @@ function buildDropCap({
   capBallShape,
   capBallEasing,
   capBallEaseCurvature,
+  capBallEdits = null,
 }) {
   const forward = vector.normalizeVector(outwardTangent);
   if (!endpoint || !(capWidth > 0.001) || !isUsableDirection(forward)) {
@@ -6963,6 +6972,63 @@ function buildDropCap({
   // the segment walk to see the neck at all; the walk takes a segment only
   // when all four of its points carry one.
   withNeckProvenance(arc[arc.length - 1], endpoint, innerSideName, "onCurve");
+
+  // The bulb's own points, from the outer wall to the inner. Each is addressed
+  // as the cap's, not as a rib's, and takes the designer's edits here, after
+  // everything above has built it.
+  const sideEnd = (sideArr) =>
+    position === "end"
+      ? { point: sideArr.at(-1), handle: sideArr.at(-2) }
+      : { point: sideArr[0], handle: sideArr[1] };
+  const offCurve = (point) => (point?.type ? point : null);
+  const outerEnd = sideEnd(trimmedOuterSide);
+  const innerEnd = sideEnd(trimmedInnerSide);
+  const [neckOut, neckIn] = capForwardToInner.slice(-2);
+  const stations = [
+    {
+      role: "entry",
+      point: outerEnd.point,
+      before: offCurve(outerEnd.handle),
+      after: arc[0],
+    },
+    { role: "bottom", point: arc[2], before: arc[1], after: arc[3] },
+    { role: "side", point: arc[5], before: arc[4], after: arc[6] },
+    { role: "neck", point: arc[8], before: arc[7], after: neckOut },
+    {
+      role: "release",
+      point: innerEnd.point,
+      before: neckIn,
+      after: offCurve(innerEnd.handle),
+    },
+  ];
+  const stamp = (point, bulbRole, bulbSlot) => {
+    if (!point) return;
+    point._provenance = {
+      skeletonPointId: endpoint._sourcePointId,
+      side: null,
+      role: bulbSlot,
+      ...point._provenance,
+      bulbRole,
+      bulbSlot,
+    };
+  };
+  for (const { role, point, before, after } of stations) {
+    stamp(point, role, "onCurve");
+    stamp(before, role, "in");
+    stamp(after, role, "out");
+    if (point) point.skipColinear = true;
+  }
+  // The neck's gizmo measures the neck as built, before any edit, which is the
+  // curve its pin governs.
+  if (neckOut && neckIn && arc[8]?._provenance) {
+    arc[8]._provenance.constructionSegment = [
+      arc[8],
+      neckOut,
+      neckIn,
+      innerEnd.point,
+    ].map(({ x, y }) => ({ x, y }));
+  }
+  applyBulbPointEdits(stations, capBallEdits);
 
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =

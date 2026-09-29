@@ -18,8 +18,10 @@ import {
   getSkeletonPointNudge,
   makeSkeletonContour,
   makeSkeletonPoint,
+  findGeneratedPathAddress,
   normalizeSkeletonData,
   resolveEditableGeneratedTarget,
+  setSkeletonCapBallEdit,
   segmentToTunniPoints,
   setSkeletonData,
   setSkeletonPointSideNudge,
@@ -34,7 +36,12 @@ import {
 } from "@fontra/core/tunni-calculations.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
-import { editSkeleton } from "../../views-editor/src/skeleton-editing.js";
+import { applyChange } from "@fontra/core/changes.js";
+import {
+  createEditableGeneratedHandleTargetEntries,
+  createEditableGeneratedPointTargetEntries,
+  editSkeleton,
+} from "../../views-editor/src/skeleton-editing.js";
 
 before(() => {
   globalThis.window = { coarseGridSpacing: 1, event: null };
@@ -1033,20 +1040,181 @@ describe("the curvature gizmo at a bulb terminal", () => {
     ]);
   });
 
-  it("makes no neck point directly editable", () => {
+  // The bulb's points belong to the cap. Addressed as a rib point, a Z drag on
+  // the entry wrote the outer rib's nudge and moved the ball's anchor.
+  it("addresses every bulb point to the cap, none to a rib", () => {
     const layer = makeBulbGlyph({ capBallEasing: 0.5 });
     const skeletonData = getSkeletonData(layer);
-    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find((segment) =>
-      segment.provenance.some((entry) => entry?.capCurvatureField)
-    );
-    for (let index = 0; index < 3; index++) {
-      const target = resolveEditableGeneratedTarget(
-        skeletonData,
-        layer.path,
-        neck.parentPointIndices[index]
-      );
-      expect(target, `neck point ${index}`).to.equal(null);
+    const found = new Set();
+    for (let index = 0; index < layer.path.numPoints; index++) {
+      const provenance = skeletonData.generated[0].pointMap[index];
+      if (!provenance?.bulbRole) continue;
+      const target = resolveEditableGeneratedTarget(skeletonData, layer.path, index);
+      expect(target.side, `point ${index}`).to.equal(`bulb-${provenance.bulbRole}`);
+      expect(target.pointId).to.equal(4);
+      found.add(`${target.side}/${target.role}`);
     }
+    for (const role of ["entry", "bottom", "side", "neck", "release"])
+      for (const slot of ["onCurve", "in", "out"])
+        expect(found.has(`bulb-${role}/${slot}`), `${role} ${slot}`).to.equal(true);
+  });
+
+  function bulbPosition(layer, role, slot) {
+    const address = findGeneratedPathAddress(
+      getSkeletonData(layer),
+      80,
+      4,
+      `bulb-${role}`,
+      slot
+    );
+    return layer.path.getPoint(address.pathPointIndex);
+  }
+
+  function editedBulbGlyph(role, values) {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5 });
+    editSkeleton(layer, (skeleton) => {
+      const point = skeleton.contours[0].points.find((p) => p.id === 4);
+      setSkeletonCapBallEdit(point, role, values);
+    });
+    return layer;
+  }
+
+  it("slides a bulb point along its tangent and carries only its own handles", () => {
+    for (const role of ["entry", "bottom", "side", "neck", "release"]) {
+      const plain = makeBulbGlyph({ capBallEasing: 0.5 });
+      const before = bulbPosition(plain, role, "in");
+      const after = bulbPosition(plain, role, "out");
+      const tangent = {
+        x: (after.x - before.x) / Math.hypot(after.x - before.x, after.y - before.y),
+        y: (after.y - before.y) / Math.hypot(after.x - before.x, after.y - before.y),
+      };
+      for (const carry of [0, 6]) {
+        const edited = editedBulbGlyph(role, { slide: 6, carry });
+        const moved = [];
+        for (let i = 0; i < plain.path.numPoints; i++) {
+          const a = plain.path.getPoint(i),
+            b = edited.path.getPoint(i);
+          if (Math.hypot(a.x - b.x, a.y - b.y) > 1e-6) moved.push(i);
+        }
+        const onCurve = bulbPosition(edited, role, "onCurve");
+        const start = bulbPosition(plain, role, "onCurve");
+        expect(onCurve.x - start.x, role).to.be.closeTo(6 * tangent.x, 1e-6);
+        expect(onCurve.y - start.y, role).to.be.closeTo(6 * tangent.y, 1e-6);
+        expect(moved, `${role} carry ${carry}`).to.have.length(carry ? 3 : 1);
+      }
+    }
+  });
+
+  it("lengthens a bulb handle along its own line and moves nothing else", () => {
+    for (const role of ["entry", "bottom", "side", "neck", "release"])
+      for (const slot of ["in", "out"]) {
+        const plain = makeBulbGlyph({ capBallEasing: 0.5 });
+        const edited = editedBulbGlyph(role, { [slot]: 5 });
+        const anchor = bulbPosition(plain, role, "onCurve");
+        const a = bulbPosition(plain, role, slot),
+          b = bulbPosition(edited, role, slot);
+        const length = (p) => Math.hypot(p.x - anchor.x, p.y - anchor.y);
+        expect(length(b) - length(a), `${role} ${slot}`).to.be.closeTo(5, 1e-6);
+        let moved = 0;
+        for (let i = 0; i < plain.path.numPoints; i++) {
+          const p = plain.path.getPoint(i),
+            q = edited.path.getPoint(i);
+          if (Math.hypot(p.x - q.x, p.y - q.y) > 1e-6) moved++;
+        }
+        expect(moved, `${role} ${slot}`).to.equal(1);
+      }
+  });
+
+  // The drag itself: Z slides and carries, Z with Alt slides alone, a plain
+  // drag moves nothing, Z on a handle lengthens it, Alt gives its partner the
+  // same length.
+  it("drags bulb points and handles through the editor's own entries", () => {
+    const edits = (layer) =>
+      getSkeletonData(layer).contours[0].points.find((p) => p.id === 4).capBallEdits;
+    const drag = (create, key, name, delta) => {
+      const layer = makeBulbGlyph({ capBallEasing: 0.5 });
+      const entries = create(layer, new Set([key]), name, {
+        referenceSkeletonData: getSkeletonData(layer),
+      });
+      for (const entry of entries) applyChange(layer, entry.makeChangeForDelta(delta));
+      return { layer, entries };
+    };
+    const point = "editableGeneratedPoint/80/4/bulb-bottom";
+    const handle = "editableGeneratedHandle/80/4/bulb-neck/out";
+    const plain = makeBulbGlyph({ capBallEasing: 0.5 });
+    const tangent = (() => {
+      const a = bulbPosition(plain, "bottom", "in"),
+        b = bulbPosition(plain, "bottom", "out");
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      return { x: (b.x - a.x) / length, y: (b.y - a.y) / length };
+    })();
+    const along = { x: tangent.x * 12, y: tangent.y * 12 };
+
+    const z = drag(
+      createEditableGeneratedPointTargetEntries,
+      point,
+      "rib-tangent",
+      along
+    );
+    expect(edits(z.layer).bottom).to.deep.include({ slide: 12, carry: 12 });
+    const zAlt = drag(
+      createEditableGeneratedPointTargetEntries,
+      point,
+      "rib-tangent-interpolate",
+      along
+    );
+    expect(edits(zAlt.layer).bottom).to.deep.include({ slide: 12, carry: 0 });
+    const still = drag(
+      createEditableGeneratedPointTargetEntries,
+      point,
+      "rib-default",
+      along
+    );
+    expect(still.entries).to.have.length(0);
+
+    const anchor = bulbPosition(plain, "neck", "onCurve");
+    const out = bulbPosition(plain, "neck", "out");
+    const length = Math.hypot(out.x - anchor.x, out.y - anchor.y);
+    const axis = { x: (out.x - anchor.x) / length, y: (out.y - anchor.y) / length };
+    const pull = { x: axis.x * 7, y: axis.y * 7 };
+    const move = drag(
+      createEditableGeneratedHandleTargetEntries,
+      handle,
+      "generated-handle-move",
+      pull
+    );
+    expect(edits(move.layer).neck).to.deep.include({ in: 0, out: 7 });
+    const equalize = drag(
+      createEditableGeneratedHandleTargetEntries,
+      handle,
+      "alternate",
+      pull
+    );
+    const moved = equalize.layer;
+    const newAnchor = bulbPosition(moved, "neck", "onCurve");
+    const lengthOf = (slot) => {
+      const p = bulbPosition(moved, "neck", slot);
+      return Math.hypot(p.x - newAnchor.x, p.y - newAnchor.y);
+    };
+    expect(lengthOf("in")).to.be.closeTo(lengthOf("out"), 1);
+  });
+
+  it("keeps the neck gizmo's still grab on its pin after the neck's handles move", () => {
+    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.5 });
+    editSkeleton(layer, (skeleton) => {
+      const point = skeleton.contours[0].points.find((p) => p.id === 4);
+      setSkeletonCapBallEdit(point, "neck", { out: 8 });
+      setSkeletonCapBallEdit(point, "release", { in: -4 });
+    });
+    const neck = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
+      (segment) => segment.provenance.some((entry) => entry?.capCurvatureField)
+    );
+    const edit = calculateGeneratedCurvatureEdits({
+      segmentPoints: neck.points,
+      provenance: neck.provenance,
+      delta: { x: 0, y: 0 },
+    });
+    expect(edit.tension).to.be.closeTo(0.5, 1e-3);
   });
 
   it("keeps the crisp inner incision when easing is zero", () => {

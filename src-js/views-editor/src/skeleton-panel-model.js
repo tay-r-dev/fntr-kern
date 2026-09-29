@@ -17,6 +17,7 @@ import {
   captureSerifPreset,
   SKELETON_LOCK_KINDS,
   isSkeletonSideLocked,
+  bulbRoleOfSide,
   parseEditableGeneratedHandleKey,
   parseEditableGeneratedPointKey,
   parseSkeletonInsertionSelectionItem,
@@ -679,6 +680,11 @@ export function collectRibEditTargets(panelSelection) {
 // handle entry ({contourId, pointId, side, role, …}) or null.
 export function singleGeneratedHandleTarget(panelSelection) {
   if (panelSelection?.generatedHandles?.length !== 1) {
+    return null;
+  }
+  // A bulb handle is the cap's, not a side's: the handle reset has nothing to
+  // clear on it.
+  if (bulbRoleOfSide(panelSelection.generatedHandles[0].side)) {
     return null;
   }
   if (
