@@ -758,7 +758,7 @@ export default class SkeletonParametersPanel {
     this.ribLockButtons = Object.fromEntries(
       SKELETON_LOCK_KINDS.map((kind) => [
         kind,
-        toggleButton(`/images/lock-${kind}.svg`, `locked.${kind}`, (value) =>
+        latchButton(`/images/lock-${kind}.svg`, `locked.${kind}`, (value) =>
           this._onRibChange(`locked-${kind}`, value)
         ),
       ])
@@ -770,11 +770,14 @@ export default class SkeletonParametersPanel {
         { style: "display: flex; flex-direction: column; gap: 0.25em;" },
         children
       );
-    this.ribOverflow = html.createDomElement("latch-button", {
-      "src": "/tabler-icons/lock.svg",
+    // Rib options: a 24px three-dot icon button whose card holds the rib angle
+    // and the lock latches.
+    this.ribOverflow = html.createDomElement("icon-button", {
+      "src": "/tabler-icons/dots-vertical.svg",
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });
+    this.ribOverflow.style.width = this.ribOverflow.style.height = "24px";
     this.ribOverflow.dropdown = html.div(
       {
         class: "selection-row-group-icons",
@@ -795,10 +798,6 @@ export default class SkeletonParametersPanel {
         ]),
       ]
     );
-    for (const button of Object.values(this.ribLockButtons)) {
-      button.style.width = "1.8em";
-      button.style.height = "1.8em";
-    }
     // Ticket 49: the Generation header's preset control. A preset is a total
     // width and a projection side. Add stores the selection's total and
     // projection as a new preset for the glyph's case; Update writes them over

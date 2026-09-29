@@ -68,11 +68,14 @@ export class IconButton extends UnlitElement {
       align-items: center;
       justify-content: center;
       gap: 2px;
-      background-color: transparent;
-      border: 1px solid transparent;
-      border-radius: 4px;
+      /* The --icon-button-inner-* hooks let a container draw this face as
+         part of a larger component (the tray's segment/button). */
+      background-color: var(--icon-button-inner-fill, transparent);
+      border: 1px solid var(--icon-button-inner-border, transparent);
+      border-radius: var(--icon-button-inner-radius, 4px);
       box-sizing: border-box;
-      padding: 0;
+      padding: var(--icon-button-inner-padding, 0);
+      opacity: var(--icon-button-inner-opacity, 1);
       margin: 0;
       width: 100%;
       height: 100%;
@@ -92,23 +95,35 @@ export class IconButton extends UnlitElement {
        it. */
     button > inline-svg:not(.icon-button-chevron) {
       display: block;
-      height: 80%;
+      height: var(--icon-button-icon-size, 80%);
       width: auto;
       aspect-ratio: 1;
     }
 
     /* Hover: a light-grey fill and a darker icon. */
     :host(:hover) button:not(:disabled):not(.icon-button-latch) {
-      background-color: var(--icon-button-hover-background-color);
-      border-color: var(--icon-button-hover-border-color);
+      background-color: var(
+        --icon-button-inner-hover-fill,
+        var(--icon-button-hover-background-color)
+      );
+      border-color: var(
+        --icon-button-inner-hover-border,
+        var(--icon-button-hover-border-color)
+      );
       color: var(--icon-button-icon-hover-color);
     }
 
     /* Press: a near-white fill with a faint border, and the lime accent
        icon. */
     :host(:active) button:not(:disabled):not(.icon-button-latch) {
-      background-color: var(--icon-button-press-background-color);
-      border-color: var(--icon-button-press-border-color);
+      background-color: var(
+        --icon-button-inner-press-fill,
+        var(--icon-button-press-background-color)
+      );
+      border-color: var(
+        --icon-button-inner-press-border,
+        var(--icon-button-press-border-color)
+      );
       color: var(--icon-button-icon-press-color);
     }
 
@@ -148,27 +163,28 @@ export class IconButton extends UnlitElement {
       width: 24px;
       height: 24px;
       background: var(--icon-button-latch-background-color);
-      border: 1px solid var(--icon-button-latch-border-color);
-      border-bottom-width: 2px;
+      /* segment/button (Figma 287:15640): a 1px line under it at rest,
+         above and below on hover, and above and at the sides, none under,
+         while pressed or on. */
+      border: 0 solid var(--icon-button-latch-border-color);
+      border-bottom-width: 1px;
       border-radius: 6px;
       padding: 4px;
     }
 
     :host(:hover) button.icon-button-latch {
       background: var(--icon-button-latch-hover-background-color);
-      border-bottom-width: 1px;
+      border-width: 1px 0;
     }
 
     :host(:active) button.icon-button-latch {
       background: var(--icon-button-latch-press-background-color);
-      border-top-width: 2px;
-      border-bottom-width: 1px;
+      border-width: 1px 1px 0;
     }
 
     button.icon-button-latch.icon-button-on {
       background: var(--icon-button-latch-active-background-color);
-      border-top-width: 2px;
-      border-bottom-width: 1px;
+      border-width: 1px 1px 0;
       border-radius: 6px;
     }
 

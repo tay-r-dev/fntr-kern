@@ -45,6 +45,10 @@ export default class SelectionPanel extends Panel {
         padding: 8px;
         border: 1px solid #00000008;
         border-radius: 14px;
+        /* Figma strokes the card outside its fill. A CSS border sits on the
+           card's own white, where 3% black does not show; clipped to the
+           padding, it lies over the grey panel as in the design. */
+        background-clip: padding-box;
         background-color: var(--ui-element-background-color);
       }
     `);

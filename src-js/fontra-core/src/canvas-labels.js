@@ -13,9 +13,15 @@
 // new font afresh -- the lag on the first pass through a range of zooms.
 
 const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
-// No page text uses the Light face, so nothing else asks for it: load it up
-// front, or the first labels draw in the fallback.
-globalThis.document?.fonts?.load(`300 semi-condensed 10px fontra-ui-mono`);
+// The canvas labels' weights: pills, plaques and readouts in Narrow Light, the
+// handle and gizmo measurements a step lighter in Narrow ExtraLight. No page
+// text asks for these faces, so load them up front, or the first labels draw
+// in the fallback.
+const LABEL_WEIGHT = 300;
+const MEASURE_LABEL_WEIGHT = 200;
+for (const weight of [LABEL_WEIGHT, MEASURE_LABEL_WEIGHT]) {
+  globalThis.document?.fonts?.load(`${weight} semi-condensed 10px fontra-ui-mono`);
+}
 
 // The sizes a designer can tune by hand, from the "Labels (debug)" accordion in the
 // left panel. Live: every draw reads them. The panel stores them per browser.
@@ -452,11 +458,16 @@ export function setMeasureLabelFont(context, size) {
   const base = LABEL_TUNING.measureSize;
   const scale = size / base;
   context.scale(scale, scale);
-  setLabelFont(context, base, TRACKING, 300);
+  setLabelFont(context, base, TRACKING, MEASURE_LABEL_WEIGHT);
   return scale;
 }
 
-export function setLabelFont(context, size, tracking = TRACKING, weight = 400) {
+export function setLabelFont(
+  context,
+  size,
+  tracking = TRACKING,
+  weight = LABEL_WEIGHT
+) {
   context.font = `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
   context.fontStretch = "semi-condensed";
   context.letterSpacing = `${tracking * size}px`;

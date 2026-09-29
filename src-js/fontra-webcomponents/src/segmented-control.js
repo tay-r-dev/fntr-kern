@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
+import "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
 
 // Ticket 42 (UI-REFACTOR.md §5.4, UI-NOMENCLATURE.md §14): the shared
@@ -61,7 +62,6 @@ export class SegmentedControl extends UnlitElement {
       background: transparent;
       color: var(--segmented-control-off-text-color);
       /* ui/label/S */
-      /* ui/label/S */
       font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
@@ -71,10 +71,9 @@ export class SegmentedControl extends UnlitElement {
       height: var(--segmented-control-button-height, 100%);
     }
 
-    /* Hover: the tray turns lime, its border a dark lime, and the padding
-       shrinks a pixel. */
+    /* Hover: the tray turns lime and its border a dark lime. The padding
+       stays, so nothing inside moves. */
     .row:hover:not(:has(button:disabled)) {
-      padding: var(--segmented-control-tray-padding, 2px);
       background: var(--segmented-control-tray-hover-color);
       border-color: var(--segmented-control-tray-hover-border-color);
     }
@@ -101,6 +100,12 @@ export class SegmentedControl extends UnlitElement {
 
     :host([disabled]) button {
       cursor: default;
+    }
+
+    button .icon {
+      display: block;
+      width: 12px;
+      height: 12px;
     }
 
     :host([small]) .row {
@@ -176,7 +181,17 @@ export class SegmentedControl extends UnlitElement {
               );
             },
           },
-          [option.label]
+          // An option with an icon shows it, and its label as the tooltip.
+          [
+            option.icon
+              ? html.createDomElement("inline-svg", {
+                  "class": "icon",
+                  "src": option.icon,
+                  "data-tooltip": option.label,
+                  "data-tooltipposition": "top",
+                })
+              : option.label,
+          ]
         )
       )
     );

@@ -192,6 +192,7 @@ export class LatchButton extends UnlitElement {
       pointer-events: none;
     }
 
+    /* Shown while latched on (render sets .shown), and through the press. */
     indication-badge.shown,
     :host(:active:not([disabled])) indication-badge {
       display: inline-block;
@@ -389,7 +390,9 @@ export class LatchButton extends UnlitElement {
     );
     // The badge is always there: a press shows it too.
     const badge = html.createDomElement("indication-badge", {
-      class: this.badge ? "shown" : "",
+      // Latched shows it too. Read here, at render: the element base defines
+      // `on` per instance, over this class's setter, so no attribute follows it.
+      class: this.badge || this.on ? "shown" : "",
     });
     badge.size = "M";
     return this.dropdown ? [this._button, this._card, badge] : [this._button, badge];

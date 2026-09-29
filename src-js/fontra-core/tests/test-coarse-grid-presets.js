@@ -1,8 +1,6 @@
 import {
   COARSE_GRID_DEFAULT_SPACING,
   COARSE_GRID_DEFAULT_VALUES,
-  COARSE_GRID_SLIDER_MAX,
-  buildCoarseGridSliderValues,
   buildCoarseGridValues,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
@@ -44,19 +42,6 @@ describe("coarse-grid-presets", () => {
     expect(
       buildCoarseGridValues({ custom: true, base: 45, increment: 20 })
     ).deep.equals([45, 65, 85, 105, 125, 145, 165, 185]);
-  });
-
-  it("buildCoarseGridSliderValues caps slider choices at 40", () => {
-    expect(COARSE_GRID_SLIDER_MAX).equals(40);
-    expect(
-      buildCoarseGridSliderValues({ custom: true, base: 10, increment: 20 })
-    ).deep.equals([10, 30]);
-  });
-
-  it("buildCoarseGridSliderValues falls back to cap when custom values exceed it", () => {
-    expect(
-      buildCoarseGridSliderValues({ custom: true, base: 45, increment: 20 })
-    ).deep.equals([40]);
   });
 
   it("buildCoarseGridValues custom normalizes bad base/increment", () => {

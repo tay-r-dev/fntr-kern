@@ -51,19 +51,39 @@ export const SELECTION_ROW_GROUP_STYLES = `
     background: #e0e0e0;
   }
 
-  /* Each icon-button child styled from outside as segment/button (Figma
-     287:15640): the host itself is the segment's face, since the button
-     inside its shadow root stays transparent and 100% of the host box. */
+  /* Each icon-button child drawn as segment/button (Figma 287:15640). The
+     host is the outer face, with its lines and 2px/1px inset; the button in
+     its shadow root is the inner container, set through its
+     --icon-button-inner-* hooks. The icon is 16px throughout.
+
+     rest     face #f5f5f5, line under;           inner #f5f5f5, square
+     hover    face white, lines above and under;  inner #f7f7f7, radius 5
+     press    face white, line above and at the   inner #f7f7f7, radius 5,
+              outer side(s), none under;          2px padding
+     on       face #f0f0f0, lines as press;       inner clear
+     disabled as rest;                            inner at 30%
+
+     A left segment rounds its left corners and takes the left side line, a
+     right one the right; a middle one is square and takes both. */
   .selection-row-group-icons.tray icon-button {
     box-sizing: border-box;
     flex: 1 1 0;
     min-width: 0;
     width: auto;
     height: 24px;
-    padding: 4px;
+    padding: 2px 1px;
     background: #f5f5f5;
-    border: none;
-    border-bottom: 2px solid #e0e0e0;
+    border: 0 solid #e0e0e0;
+    border-bottom-width: 1px;
+    --icon-button-icon-size: 16px;
+    --icon-button-inner-fill: #f5f5f5;
+    --icon-button-inner-border: transparent;
+    --icon-button-inner-radius: 0;
+    --icon-button-inner-hover-fill: #f7f7f7;
+    --icon-button-inner-hover-border: transparent;
+    --icon-button-inner-press-fill: #f7f7f7;
+    --icon-button-inner-press-border: transparent;
+    --icon-button-on-background-color: transparent;
   }
 
   .selection-row-group-icons.tray icon-button:first-child {
@@ -76,24 +96,39 @@ export const SELECTION_ROW_GROUP_STYLES = `
 
   .selection-row-group-icons.tray icon-button:hover {
     background: #fff;
-    border-top: 1px solid #e0e0e0;
-    border-bottom: 1px solid #e0e0e0;
+    border-width: 1px 0;
+    --icon-button-inner-radius: 5px;
+  }
+
+  .selection-row-group-icons.tray icon-button:active,
+  .selection-row-group-icons.tray icon-button[on] {
+    padding-bottom: 0;
+    border-width: 1px 1px 0;
+    --icon-button-inner-radius: 5px;
+    --icon-button-inner-padding: 2px;
   }
 
   .selection-row-group-icons.tray icon-button:active {
-    background: #fcfcfc;
-    border-top: 2px solid #e0e0e0;
-    border-bottom: 1px solid #e0e0e0;
+    background: #fff;
   }
 
   .selection-row-group-icons.tray icon-button[on] {
     background: #f0f0f0;
-    border-top: 2px solid #e0e0e0;
-    border-bottom: 1px solid #e0e0e0;
+    --icon-button-inner-fill: transparent;
+  }
+
+  .selection-row-group-icons.tray icon-button:first-child:is(:active, [on]) {
+    border-right-width: 0;
+  }
+
+  .selection-row-group-icons.tray icon-button:last-child:is(:active, [on]) {
+    border-left-width: 0;
   }
 
   .selection-row-group-icons.tray icon-button[disabled] {
-    opacity: 35%;
+    background: #f5f5f5;
+    border-width: 0 0 1px;
+    --icon-button-inner-opacity: 0.3;
   }
 
   .selection-row-group-icons.tray overflow-button,
