@@ -2303,27 +2303,29 @@ registerVisualizationLayerDefinition({
     yMin -= positionedGlyph.y;
     yMax -= positionedGlyph.y;
 
-    // dotted coarse grid
-    //ctx.setLineDash([2, 2]);
     ctx.lineWidth = coarseStrokeWidth;
     ctx.strokeStyle = coarseStrokeColor;
 
+    // Every line in one path and one stroke. A stroke per line was hundreds of
+    // separate rasterisations a frame, zoomed out, and redrawn on every drag.
+    ctx.beginPath();
     for (
       let x = Math.floor(xMin / coarseSpacing) * coarseSpacing;
       x <= Math.ceil(xMax / coarseSpacing) * coarseSpacing;
       x += coarseSpacing
     ) {
-      strokeLine(ctx, x, yMin, x, yMax);
+      ctx.moveTo(x, yMin);
+      ctx.lineTo(x, yMax);
     }
     for (
       let y = Math.floor(yMin / coarseSpacing) * coarseSpacing;
       y <= Math.ceil(yMax / coarseSpacing) * coarseSpacing;
       y += coarseSpacing
     ) {
-      strokeLine(ctx, xMin, y, xMax, y);
+      ctx.moveTo(xMin, y);
+      ctx.lineTo(xMax, y);
     }
-
-    ctx.setLineDash([]);
+    ctx.stroke();
   },
 });
 

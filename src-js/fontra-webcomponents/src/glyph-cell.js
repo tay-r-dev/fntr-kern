@@ -19,6 +19,21 @@ const colors = {
 
 const UNSCALED_CELL_HEIGHT = 75;
 
+// A tab in the background still hears its glyphs change, but nobody sees the
+// tiles: each would refetch its glyph (for a skeleton glyph, regenerate its
+// outline) on every edit made in another tab. The tiles an edit reaches while
+// the tab is hidden wait here, and redraw once when it is shown again.
+const cellsChangedWhileHidden = new Set();
+globalThis.document?.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    return;
+  }
+  for (const cell of cellsChangedWhileHidden) {
+    cell.throttledUpdate();
+  }
+  cellsChangedWhileHidden.clear();
+});
+
 const cellObserver = new IntersectionObserver(
   (entries, observer) => {
     entries.forEach((entry) => {
@@ -169,7 +184,13 @@ export class GlyphCell extends UnlitElement {
     this.stale = false;
     this._hasDrawn = false;
     this._allowRedraw = false;
-    this.onGlyphChanged = () => this.throttledUpdate();
+    this.onGlyphChanged = () => {
+      if (document.hidden) {
+        cellsChangedWhileHidden.add(this);
+        return;
+      }
+      this.throttledUpdate();
+    };
     // A location change is not an edit, so it redraws whatever the cell was
     // told about deferring.
     this.onLocationChanged = () => this.refreshNow();
@@ -199,6 +220,7 @@ export class GlyphCell extends UnlitElement {
   disconnectedCallback() {
     super.disconnectedCallback?.();
     cellObserver.unobserve(this);
+    cellsChangedWhileHidden.delete(this);
     this.locationController.removeKeyListener(this.locationKey, this.onLocationChanged);
     this.fontController.removeGlyphChangeListener(this.glyphName, this.onGlyphChanged);
   }
