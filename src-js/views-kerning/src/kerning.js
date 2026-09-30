@@ -8335,9 +8335,15 @@ function buildValueSpan(value, unreliable) {
 // layer toggles bleed into the editor's and vice versa.
 // The kerning view's glyph selection: a dot centred under the glyph, a gap
 // below its lowest point (or the baseline, if the glyph sits above it) --
-// dark for the selected glyph, grey for the hovered one.
+// dark for the selected glyph, grey for the hovered one. The layer it
+// replaces also paints the glyph itself (the context layer leaves the
+// selected glyph out), so this one fills it too, just without the outline.
 function drawGlyphDot({ context, positionedGlyph, parameters }) {
   const glyph = positionedGlyph.glyph;
+  context.fillStyle = glyph.errors?.length
+    ? parameters.errorColor
+    : parameters.fillColor;
+  context.fill(glyph.flattenedPath2d);
   const bottom = Math.min(0, glyph.bounds?.yMin ?? 0);
   context.fillStyle = parameters.dotColor;
   context.beginPath();
@@ -8359,8 +8365,8 @@ function glyphDotLayer(identifier, name, selection, dotColor, dotColorDark) {
     selectionFilter: (positionedGlyph) => !positionedGlyph.isEmpty,
     zIndex: 200,
     screenParameters: { dotRadius: 3, dotGap: 8 },
-    colors: { dotColor },
-    colorsDarkMode: { dotColor: dotColorDark },
+    colors: { dotColor, fillColor: "#000", errorColor: "#AAA" },
+    colorsDarkMode: { dotColor: dotColorDark, fillColor: "#FFF", errorColor: "#999" },
     draw: drawGlyphDot,
   };
 }
