@@ -69,6 +69,7 @@ import {
   readFromClipboard,
   reversed,
   scheduleCalls,
+  sleepAsync,
   unionIndexSets,
   writeObjectToURLFragment,
   writeToClipboard,
@@ -739,16 +740,37 @@ export class EditorController extends ViewController {
         topic: "0020-action-topics.menu.view",
         titleKey: "canvas.clean-view-and-hand-tool",
         // A little hack so we match any modifier combinations,
-        // effectively ignoring the modifier
-        defaultShortCuts: [...range(1 << 4)].map((i) => ({
-          baseKey: "Space",
-          altKey: !!(i & 0x01),
-          shiftKey: !!(i & 0x02),
-          metaKey: !!(i & 0x04),
-          ctrlKey: !!(i & 0x08),
-        })),
+        // effectively ignoring the modifier. Shift alone is left out: Shift+Space
+        // is the split canvas's preview toggle, and does this when whole.
+        defaultShortCuts: [...range(1 << 4)]
+          .filter((i) => i !== 0x02)
+          .map((i) => ({
+            baseKey: "Space",
+            altKey: !!(i & 0x01),
+            shiftKey: !!(i & 0x02),
+            metaKey: !!(i & 0x04),
+            ctrlKey: !!(i & 0x08),
+          })),
       },
       (event) => this.enterCleanViewAndHandTool(event)
+    );
+
+    registerAction(
+      "action.canvas.toggle-pane-preview",
+      {
+        topic: "0020-action-topics.menu.view",
+        titleKey: "canvas.toggle-pane-preview",
+        defaultShortCuts: [{ baseKey: "Space", shiftKey: true }],
+      },
+      (event) => {
+        if (!this.canvasSplit.isSplit) {
+          if (event) {
+            this.enterCleanViewAndHandTool(event);
+          }
+        } else if (!event?.repeat) {
+          this.canvasSplit.togglePreview();
+        }
+      }
     );
 
     {
@@ -948,6 +970,7 @@ export class EditorController extends ViewController {
       { actionIdentifier: "action.zoom-fit-selection" },
       MenuItemDivider,
       { actionIdentifier: "action.canvas.split" },
+      { actionIdentifier: "action.canvas.toggle-pane-preview" },
     ];
 
     if (typeof this.sceneModel.selectedGlyph !== "undefined") {
@@ -3912,6 +3935,7 @@ export class EditorController extends ViewController {
   enterCleanViewAndHandTool(event) {
     this.canvasController.sceneView = this.cleanSceneView;
     this.canvasController.requestUpdate();
+    this.canvasSplit.setCleanView(true);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.add("overlay-layer-hidden");
     }
@@ -3926,6 +3950,7 @@ export class EditorController extends ViewController {
   leaveCleanViewAndHandTool() {
     this.canvasController.sceneView = this.defaultSceneView;
     this.canvasController.requestUpdate();
+    this.canvasSplit.setCleanView(false);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.remove("overlay-layer-hidden");
     }
@@ -4030,19 +4055,25 @@ export class EditorController extends ViewController {
   }
 
   // A split pane's view, taken over by the live canvas. Every key of the
-  // view is set, so nothing of the view it replaces stays. A view without a
-  // view box is framed on its glyph once the glyph is laid out.
+  // view is set, so nothing of the view it replaces stays. Resolves once the
+  // glyphs are laid out. Where the canvas looks is left to showLiveView, once
+  // the canvas is in the pane it will be seen in.
   async applyPaneViewInfo(viewInfo) {
-    this.sceneController.autoViewBox = !viewInfo.viewBox;
-    const laidOut = this.sceneSettingsController.waitForKeyChange(
-      "positionedLines",
-      false,
-      1000
-    );
-    await this.sceneController.replaceSceneSettingsFromViewInfo(viewInfo);
-    if (!viewInfo.viewBox && this.sceneSettings.selectedGlyph?.isEditing) {
-      await laidOut;
-      this.zoomFit(false);
+    const { viewBox, ...rest } = viewInfo;
+    await this.sceneController.replaceSceneSettingsFromViewInfo(rest);
+    // The listeners the settings wake run first; the layout made after them is
+    // the one that stays.
+    await sleepAsync(0);
+    await this.sceneModel.updateScene();
+  }
+
+  // Shows this view box (an array, as view info holds it), or frames the glyph
+  // when there is none.
+  showLiveView(viewBox) {
+    this.sceneController.autoViewBox = false;
+    const rect = viewBox ? rectFromArray(viewBox) : this.fitViewBox();
+    if (rect) {
+      this.canvasController.setViewBox(rect);
     }
     this.canvasController.requestUpdate();
   }
@@ -4151,16 +4182,24 @@ export class EditorController extends ViewController {
     this.sceneController.autoViewBox = false;
   }
 
-  zoomFit(animate = true) {
+  // The view box that fits the selection, or the glyphs when nothing is
+  // selected.
+  fitViewBox() {
     let viewBox = this.sceneController.getSelectionBounds();
+    if (!viewBox) {
+      return null;
+    }
+    const size = rectSize(viewBox);
+    if (size.width < 4 && size.height < 4) {
+      const center = rectCenter(viewBox);
+      return centeredRect(center.x, center.y, 10, 10);
+    }
+    return rectAddMargin(viewBox, 0.1);
+  }
+
+  zoomFit(animate = true) {
+    const viewBox = this.fitViewBox();
     if (viewBox) {
-      let size = rectSize(viewBox);
-      if (size.width < 4 && size.height < 4) {
-        const center = rectCenter(viewBox);
-        viewBox = centeredRect(center.x, center.y, 10, 10);
-      } else {
-        viewBox = rectAddMargin(viewBox, 0.1);
-      }
       if (animate) {
         this.animateToViewBox(viewBox);
       } else {

@@ -10,6 +10,7 @@ import { rectAddMargin, rectFromArray, rectToArray } from "@fontra/core/rectangl
 import { SceneView } from "@fontra/core/scene-view.js";
 import {
   consolidateCalls,
+  sleepAsync,
   dumpURLFragment,
   getCharFromCodePoint,
   glyphMapToItemList,
@@ -29,11 +30,15 @@ import {
 } from "./canvas-split-model.js";
 import { getSceneSettingsDefaults } from "./scene-controller.js";
 import { SceneModel } from "./scene-model.js";
-import { allGlyphsCleanVisualizationLayerDefinition } from "./visualization-layer-definitions.js";
+import {
+  allGlyphsCleanVisualizationLayerDefinition,
+  visualizationLayerDefinitions,
+} from "./visualization-layer-definitions.js";
 import { VisualizationContext, VisualizationLayers } from "./visualization-layers.js";
 
 const MIN_PANE_WIDTH = 160;
 const RATIO_STORAGE_KEY = "fontra-canvas-split-ratio";
+const PREVIEW_STORAGE_KEY = "fontra-canvas-split-preview";
 
 // The settings the passive canvas takes from the live one: both panes show
 // the font at one location, set by the same text settings.
@@ -69,7 +74,23 @@ export class CanvasSplit {
     // The pane a context menu was opened on; the pane actions act on it.
     this.menuPaneIndex = null;
     this.ratio = readStoredRatio();
+    // The pane that is not live shows its glyphs filled (the preview) rather
+    // than as the editing view. Shift+Space turns it on and off.
+    this.preview = readStoredFlag(PREVIEW_STORAGE_KEY);
+    // Held Space: both panes show the clean view, as the live canvas does.
+    this.cleanView = false;
     this._setupDivider();
+  }
+
+  togglePreview() {
+    this.preview = !this.preview;
+    storeFlag(PREVIEW_STORAGE_KEY, this.preview);
+    this.passive?.canvasController.requestUpdate();
+  }
+
+  setCleanView(onOff) {
+    this.cleanView = onOff;
+    this.passive?.canvasController.requestUpdate();
   }
 
   get isSplit() {
@@ -149,14 +170,29 @@ export class CanvasSplit {
     return this._swapping;
   }
 
+  // Both canvases take their new views while neither draws; then the live
+  // canvas moves and both draw in the same frame. Drawn as they changed, each
+  // pane would show the other's glyph for a moment.
   async _moveLive(index) {
     const editor = this.editor;
     const liveInfo = editor.sceneController.getViewInfoFromSceneSettings();
     const passiveState = this.passive.getState();
-    this.layout = { ...this.layout, live: index };
-    this._render();
-    this.passive.setState(paneStateFromViewInfo(liveInfo));
-    await editor.applyPaneViewInfo(paneViewInfo(liveInfo, passiveState));
+    const canvases = [editor.canvasController, this.passive.canvasController];
+    holdDrawing(canvases);
+    try {
+      await Promise.all([
+        this.passive.setState({ ...paneStateFromViewInfo(liveInfo), viewBox: null }),
+        editor.applyPaneViewInfo(
+          paneViewInfo(liveInfo, { ...passiveState, viewBox: null })
+        ),
+      ]);
+      this.layout = { ...this.layout, live: index };
+      this._render();
+      this.passive.showView(liveInfo.viewBox ?? null);
+      editor.showLiveView(passiveState.viewBox);
+    } finally {
+      releaseDrawing(canvases);
+    }
     editor.canvasController.canvas.focus();
   }
 
@@ -166,10 +202,11 @@ export class CanvasSplit {
       this._render();
       const liveInfo = this.editor.sceneController.getViewInfoFromSceneSettings();
       await this.editor.applyPaneViewInfo(paneViewInfo(liveInfo, paneState));
+      this.editor.showLiveView(paneState.viewBox);
       this.editor.canvasController.canvas.focus();
       return;
     }
-    this.passive.setState(paneState);
+    await this.passive.setState(paneState);
     this.layout = { ...this.layout, panes: openGlyphInPane(this.layout, index).panes };
     this._render();
     await this.activate(index);
@@ -350,7 +387,12 @@ class PassivePane {
     // the page before it is made.
     split.slots[1].appendChild(this.element);
 
-    this.canvasController = new CanvasController(this.canvas, () => {});
+    this.canvasController = new CanvasController(this.canvas, (magnification) => {
+      // Called while the canvas is set up too, before the layers exist.
+      if (this.editingLayers) {
+        this.editingLayers.scaleFactor = 1 / magnification;
+      }
+    });
     this.canvasController.minMagnification = editor.canvasController.minMagnification;
     this.canvasController.maxMagnification = editor.canvasController.maxMagnification;
 
@@ -372,14 +414,25 @@ class PassivePane {
     this.sceneModel.getLocationForGlyph = (glyphName) =>
       editor.sceneModel.getLocationForGlyph(glyphName);
 
-    this.layers = new VisualizationLayers(
+    // The preview draws the glyphs filled; the editing view draws what the
+    // live canvas draws, with the same layers switched on.
+    this.previewLayers = new VisualizationLayers(
       [allGlyphsCleanVisualizationLayerDefinition],
       editor.isThemeDark
     );
+    this.editingLayers = new VisualizationLayers(
+      visualizationLayerDefinitions,
+      editor.isThemeDark
+    );
+    this.editingLayers.visibleLayerIds = editor.visualizationLayers.visibleLayerIds;
+    this.editingLayers.scaleFactor = 1 / this.canvasController.magnification;
+    editor.visualizationLayersSettings.addListener(() => {
+      this.editingLayers.requestUpdate();
+      this.canvasController.requestUpdate();
+    });
     this.canvasController.sceneView = new SceneView(
       this.sceneModel,
-      (model, controller) =>
-        this.layers.drawVisualizationLayers(new VisualizationContext(model, controller))
+      (model, controller) => this._draw(model, controller)
     );
 
     this.requestSceneUpdate = consolidateCalls(async () => {
@@ -428,14 +481,7 @@ class PassivePane {
       this._updateCharacterLines()
     );
 
-    // The first press on this pane makes it the live one; the gesture itself
-    // is not handed on, so a click to switch panes edits nothing.
-    this.canvas.addEventListener("pointerdown", (event) => {
-      const index = split.paneIndexOfElement(this.element);
-      if (index >= 0) {
-        split.activate(index);
-      }
-    });
+    this.canvas.addEventListener("mousedown", (event) => this._mouseDown(event));
     this.canvas.addEventListener("contextmenu", async (event) => {
       event.preventDefault();
       const index = split.paneIndexOfElement(this.element);
@@ -448,24 +494,102 @@ class PassivePane {
     return {
       text: this.settings.text,
       selectedGlyph: this.settings.selectedGlyph,
+      selection: [...this.settings.selection],
       viewBox: this.autoFit ? null : rectToArray(this.canvasController.getViewBox()),
     };
   }
 
-  setState({ text, selectedGlyph, viewBox }) {
-    this.autoFit = !viewBox;
+  // Resolves once the pane's glyphs are laid out.
+  async setState({ text, selectedGlyph, selection, viewBox }) {
     this.settings.selectedGlyph = selectedGlyph;
+    this.settings.selection = new Set(selection ?? []);
+    this.settings.combinedSelection = this.settings.selection;
     this.settings.text = text;
-    if (viewBox) {
-      this.canvasController.setViewBox(rectFromArray(viewBox));
-    }
     this._updateCharacterLines();
+    this.showView(viewBox);
+    // The listeners the settings wake run first; the layout made after them is
+    // the one that stays.
+    await sleepAsync(0);
+    await this.sceneModel.updateScene();
+    if (this.autoFit) {
+      this._fitScene();
+    }
     this.canvasController.requestUpdate();
   }
 
+  // Shows this view box, or frames the glyphs when there is none.
+  showView(viewBox) {
+    this.autoFit = !viewBox;
+    if (viewBox) {
+      this.canvasController.setViewBox(rectFromArray(viewBox));
+    } else {
+      this._fitScene();
+    }
+  }
+
   themeChanged() {
-    this.layers.darkTheme = this.editor.isThemeDark;
+    this.previewLayers.darkTheme = this.editor.isThemeDark;
+    this.editingLayers.darkTheme = this.editor.isThemeDark;
     this.canvasController.requestUpdate();
+  }
+
+  _draw(model, controller) {
+    const split = this.split;
+    const layers =
+      split.preview || split.cleanView ? this.previewLayers : this.editingLayers;
+    drawLayersSafely(layers, new VisualizationContext(model, controller));
+  }
+
+  // A press on this pane. With the hand (Space held, or the hand tool) or the
+  // middle button it pans this pane. Otherwise the pane turns live and the
+  // press goes on to its canvas, so one click selects or drags there.
+  _mouseDown(event) {
+    const split = this.split;
+    const editor = this.editor;
+    if (event.button === 1 || editor.selectedToolIdentifier === "hand-tool") {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      this._pan(event);
+      return;
+    }
+    const index = split.paneIndexOfElement(this.element);
+    if (index < 0) {
+      return;
+    }
+    if (event.button !== 0) {
+      split.activate(index);
+      return;
+    }
+    let release = null;
+    const noteRelease = (upEvent) => (release = upEvent);
+    window.addEventListener("mouseup", noteRelease, { capture: true });
+    split.activate(index).then(() => {
+      window.removeEventListener("mouseup", noteRelease, { capture: true });
+      editor.canvasController.canvas.dispatchEvent(new MouseEvent("mousedown", event));
+      if (release) {
+        window.dispatchEvent(new MouseEvent("mouseup", release));
+      }
+    });
+  }
+
+  _pan(event) {
+    const canvasController = this.canvasController;
+    const { x: startX, y: startY } = event;
+    const { x: originX, y: originY } = canvasController.origin;
+    this.canvas.style.cursor = "grabbing";
+    const move = (moveEvent) => {
+      canvasController.origin.x = originX + moveEvent.x - startX;
+      canvasController.origin.y = originY + moveEvent.y - startY;
+      this.autoFit = false;
+      canvasController.requestUpdate();
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move, { capture: true });
+      window.removeEventListener("mouseup", up, { capture: true });
+      this.canvas.style.cursor = "";
+    };
+    window.addEventListener("mousemove", move, { capture: true });
+    window.addEventListener("mouseup", up, { capture: true });
   }
 
   _updateCharacterLines() {
@@ -577,6 +701,74 @@ class PaneOverview {
       selectedGlyph: { lineIndex: 0, glyphIndex: 0, isEditing: true },
       viewBox: null,
     });
+  }
+}
+
+// The layers the live canvas draws, drawn for this pane's scene. A layer made
+// for the live scene may lean on something only it has; that layer is left
+// out here and the others still draw.
+function drawLayersSafely(visualizationLayers, visContext) {
+  if (!visualizationLayers.layers) {
+    visualizationLayers.buildLayers();
+  }
+  const { model, controller } = visContext;
+  const context = controller.context;
+  for (const layer of visualizationLayers.layers) {
+    context.save();
+    try {
+      for (const item of layer.selectionFunc(visContext, layer)) {
+        context.save();
+        try {
+          context.translate(item.x, item.y);
+          layer.draw({
+            context,
+            positionedGlyph: item,
+            parameters: layer.parameters,
+            model,
+            controller,
+          });
+        } finally {
+          context.restore();
+        }
+      }
+    } catch (error) {
+      if (!layer.failedInPane) {
+        layer.failedInPane = true;
+        console.warn("split pane: a layer could not draw", error);
+      }
+    } finally {
+      context.restore();
+    }
+  }
+}
+
+// While held, a canvas keeps what it shows; release draws it at once.
+function holdDrawing(canvasControllers) {
+  for (const canvasController of canvasControllers) {
+    canvasController.draw = () => {};
+  }
+}
+
+function releaseDrawing(canvasControllers) {
+  for (const canvasController of canvasControllers) {
+    delete canvasController.draw;
+    canvasController.draw();
+  }
+}
+
+function readStoredFlag(key) {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function storeFlag(key, value) {
+  try {
+    localStorage.setItem(key, String(value));
+  } catch {
+    // Without storage the flag starts off next time.
   }
 }
 

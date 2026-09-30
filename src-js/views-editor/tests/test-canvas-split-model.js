@@ -107,7 +107,7 @@ describe("canvas split model", () => {
   });
 
   describe("paneStateFromViewInfo", () => {
-    it("keeps what belongs to a pane: its text, its glyph and its view", () => {
+    it("keeps what belongs to a pane: its text, glyph, selection and view", () => {
       const state = paneStateFromViewInfo({
         text: "Aacute",
         selectedGlyph: { lineIndex: 0, glyphIndex: 1, isEditing: true },
@@ -118,6 +118,7 @@ describe("canvas split model", () => {
       expect(state).to.deep.equal({
         text: "Aacute",
         selectedGlyph: { lineIndex: 0, glyphIndex: 1, isEditing: true },
+        selection: ["point/1"],
         viewBox: [0, 0, 100, 100],
       });
     });
@@ -126,6 +127,7 @@ describe("canvas split model", () => {
       expect(paneStateFromViewInfo({})).to.deep.equal({
         text: "",
         selectedGlyph: null,
+        selection: [],
         viewBox: null,
       });
     });
@@ -154,6 +156,16 @@ describe("canvas split model", () => {
       expect(info.viewBox).to.deep.equal([5, 6, 7, 8]);
       expect(info.location).to.deep.equal({ wght: 700 });
       expect(info.align).to.equal("left");
+    });
+
+    it("carries the pane's own selection", () => {
+      const info = paneViewInfo(liveInfo, {
+        text: "b",
+        selectedGlyph: { lineIndex: 0, glyphIndex: 0, isEditing: true },
+        selection: ["point/7"],
+        viewBox: null,
+      });
+      expect(info.selection).to.deep.equal(["point/7"]);
     });
 
     it("drops what only fits the live glyph", () => {

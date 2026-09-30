@@ -53,13 +53,14 @@ export function clampSplitRatio(ratio, width, minWidth) {
   return Math.min(Math.max(ratio, min), 1 - min);
 }
 
-// What a pane keeps of a view: its text, its glyph and where it looks. The
-// rest of the view (the location, the text settings) is the live one's, which
-// both panes share.
+// What a pane keeps of a view: its text, its glyph, the selection in it and
+// where it looks. The rest of the view (the location, the text settings) is
+// the live one's, which both panes share.
 export function paneStateFromViewInfo(viewInfo) {
   return {
     text: viewInfo.text ?? "",
     selectedGlyph: viewInfo.selectedGlyph ?? null,
+    selection: viewInfo.selection ?? [],
     viewBox: viewInfo.viewBox ?? null,
   };
 }
@@ -74,7 +75,7 @@ const LIVE_GLYPH_KEYS = [
 ];
 
 // The view a pane takes over the live canvas with: the live view, with the
-// pane's own text, glyph and view in it.
+// pane's own text, glyph, selection and view in it.
 export function paneViewInfo(liveInfo, paneState) {
   const info = { ...liveInfo };
   for (const key of LIVE_GLYPH_KEYS) {
@@ -82,6 +83,9 @@ export function paneViewInfo(liveInfo, paneState) {
   }
   info.text = paneState.text;
   info.selectedGlyph = paneState.selectedGlyph;
+  if (paneState.selection?.length) {
+    info.selection = paneState.selection;
+  }
   if (paneState.viewBox) {
     info.viewBox = paneState.viewBox;
   } else {
