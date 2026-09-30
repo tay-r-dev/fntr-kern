@@ -145,4 +145,14 @@ describe("data-table-model", () => {
   it("leaves the widths alone when the box does not change", () => {
     expect(spreadColumnWidths([56, 64], 0)).to.deep.equal([56, 64]);
   });
+
+  it("honours a minimum per column", () => {
+    // 150 into 110 with the first column held at 60: the others give 40.
+    expect(fitColumnWidths([60, 45, 45], 110, [60, 24, 24])).to.deep.equal([
+      60, 25, 25,
+    ]);
+    expect(spreadColumnWidths([60, 45, 45], -40, [60, 24, 24])).to.deep.equal([
+      60, 25, 25,
+    ]);
+  });
 });

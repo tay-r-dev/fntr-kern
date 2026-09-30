@@ -2729,6 +2729,8 @@ export class KerningViewController extends ViewController {
         // against, so it is not in the column menu.
         label: "Current",
         width: 64,
+        // Three digits in the input (4px in on each side) beside the reset.
+        minWidth: 64,
         sortKey: "current",
         sortable: true,
         headerClassName: "kerning-pairtable-current-col",

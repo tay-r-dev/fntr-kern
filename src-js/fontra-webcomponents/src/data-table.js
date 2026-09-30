@@ -898,7 +898,14 @@ export class DataTable extends HTMLElement {
     // for them and that minimum, every fixed column gives up the same amount
     // (fitColumnWidths) -- on screen only; the kept widths come back when the
     // box widens.
-    const shown = anyWidth && box > 0 ? fitColumnWidths(widths, box - lastMin) : widths;
+    const shown =
+      anyWidth && box > 0
+        ? fitColumnWidths(
+            widths,
+            box - lastMin,
+            fixed.map(({ column }) => column.minWidth ?? 24)
+          )
+        : widths;
     let used = 0;
     fixed.forEach((entry, i) => {
       const th = entry.column._headerElement;
@@ -980,7 +987,11 @@ export class DataTable extends HTMLElement {
       const onMove = (moveEvent) => {
         this._columnWidths[id] = Math.min(
           maxWidth,
-          resizedColumnWidth(startWidth, moveEvent.clientX - startX)
+          resizedColumnWidth(
+            startWidth,
+            moveEvent.clientX - startX,
+            column.minWidth ?? 24
+          )
         );
         this._applyColumnWidths();
       };
@@ -1301,7 +1312,11 @@ export class DataTable extends HTMLElement {
           const slack = Math.max(0, previous - sum - lastMin);
           delta = Math.min(0, delta + slack);
         }
-        const next = spreadColumnWidths(current, delta);
+        const next = spreadColumnWidths(
+          current,
+          delta,
+          fixed.map(({ column }) => column.minWidth ?? 24)
+        );
         this._columnWidths = { ...this._columnWidths };
         ids.forEach((id, i) => (this._columnWidths[id] = next[i]));
         this._storeColumnWidths();

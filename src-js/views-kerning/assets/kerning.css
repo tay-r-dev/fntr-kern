@@ -1253,3 +1253,11 @@ data-table[look]
   td.kerning-pairtable-apply-col {
   background-color: var(--data-table-look-active-color);
 }
+
+/* The Current input: 4px in on each side, so three digits fit the column's
+   minimum width. */
+data-table[look]
+  .kerning-pairtable-table
+  .data-table-input.kerning-pairtable-current-input {
+  padding: 3px 4px;
+}

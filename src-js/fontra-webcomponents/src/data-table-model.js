@@ -96,20 +96,22 @@ export function resizedColumnWidth(startWidth, dx, minimum = 24) {
 // Widths that fit `available`: when they add up to more, every column gives
 // up the same amount. A column that reaches `minimum` gives what it can, and
 // its unmet share goes to the others. When even the minimums do not fit,
-// every column is at its minimum.
+// every column is at its minimum. `minimum` is one width for every column or
+// a list, one per column.
 export function fitColumnWidths(widths, available, minimum = 24) {
   const result = [...widths];
+  const minOf = (index) => (Array.isArray(minimum) ? minimum[index] : minimum);
   let excess = result.reduce((sum, width) => sum + width, 0) - available;
   while (excess > 1e-6) {
     const free = result
       .map((width, index) => index)
-      .filter((index) => result[index] > minimum);
+      .filter((index) => result[index] > minOf(index));
     if (!free.length) {
       break;
     }
     const share = excess / free.length;
     for (const index of free) {
-      const take = Math.min(share, result[index] - minimum);
+      const take = Math.min(share, result[index] - minOf(index));
       result[index] -= take;
       excess -= take;
     }
