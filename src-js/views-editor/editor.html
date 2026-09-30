@@ -26,15 +26,24 @@
         <div class="sidebar-resize-gutter" data-grow-direction="right"></div>
       </div>
       <div class="main-container">
-        <canvas
-          id="edit-canvas"
-          class="focus-preferred"
-          tabindex="1"
-          lang="en"
-        ></canvas>
+        <!-- The canvas area, whole or split in two panes (canvas-split.js) -->
+        <div id="canvas-split">
+          <div class="canvas-slot">
+            <div id="canvas-pane-live" class="canvas-pane">
+              <canvas
+                id="edit-canvas"
+                class="focus-preferred"
+                tabindex="1"
+                lang="en"
+              ></canvas>
 
-        <div id="metric-handle-container">
-          <!-- content will be filled in dynamically -->
+              <div id="metric-handle-container">
+                <!-- content will be filled in dynamically -->
+              </div>
+            </div>
+          </div>
+          <div class="canvas-split-divider"></div>
+          <div class="canvas-slot"></div>
         </div>
 
         <div id="mini-console"></div>

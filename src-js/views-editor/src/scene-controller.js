@@ -97,6 +97,7 @@ import {
   recordComponentDelete,
   recordComponentInsert,
 } from "./composition-editing.js";
+import { completeViewInfo } from "./canvas-split-model.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import { recordMarkerAnchorRefresh } from "./marker-editing.js";
 import { SceneModel } from "./scene-model.js";
@@ -505,6 +506,15 @@ export class SceneController {
         await this.sceneSettingsController.waitForKeyChange(waitKeyAfter, false, 20);
       }
     }
+  }
+
+  // A whole view, as a split pane hands it to the live canvas: the keys the
+  // view info leaves out return to their defaults instead of keeping the
+  // values of the view it replaces.
+  async replaceSceneSettingsFromViewInfo(viewInfo) {
+    await this.updateSceneSettingsFromViewInfo(
+      completeViewInfo(viewInfo, persistentSceneSettings, getSceneSettingsDefaults())
+    );
   }
 
   getViewInfoFromSceneSettings() {
@@ -2937,7 +2947,7 @@ export const persistentSceneSettingsKeys = persistentSceneSettings.map(
   ({ key }) => key
 );
 
-function getSceneSettingsDefaults() {
+export function getSceneSettingsDefaults() {
   return {
     text: "",
     align: "center",

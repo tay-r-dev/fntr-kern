@@ -81,6 +81,7 @@ import "@fontra/web-components/inline-svg.js";
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { parsePluginBasePath } from "@fontra/web-components/plugin-manager.js";
+import { CanvasSplit } from "./canvas-split.js";
 import { CJKDesignFrame } from "./cjk-design-frame.js";
 import {
   componentCountOf,
@@ -307,6 +308,8 @@ export class EditorController extends ViewController {
     this.sceneController.addEventListener("doubleClickedUndefinedGlyph", () =>
       this.showDialogNewGlyph()
     );
+
+    this.canvasSplit = new CanvasSplit(this);
 
     this.sidebars = [];
     this.contextMenuPosition = { x: 0, y: 0 };
@@ -749,6 +752,45 @@ export class EditorController extends ViewController {
     );
 
     {
+      const topic = "0020-action-topics.menu.view";
+
+      registerAction(
+        "action.canvas.split",
+        {
+          topic,
+          titleKey: "canvas.split",
+          defaultShortCuts: [
+            { baseKey: "l", commandKey: true, shiftKey: true, altKey: true },
+          ],
+        },
+        () => this.canvasSplit.toggle(),
+        null,
+        () => (this.canvasSplit.isSplit ? "canvas.unsplit" : "canvas.split")
+      );
+
+      registerAction(
+        "action.canvas.separate-pane",
+        { topic, titleKey: "canvas.separate-pane" },
+        () => this.canvasSplit.separateTargetPane(),
+        () => this.canvasSplit.canSeparatePane()
+      );
+
+      registerAction(
+        "action.canvas.close-pane",
+        { topic, titleKey: "canvas.close-pane" },
+        () => this.canvasSplit.closeTargetPane(),
+        () => this.canvasSplit.isSplit
+      );
+
+      registerAction(
+        "action.canvas.pane-font-overview",
+        { topic, titleKey: "canvas.pane-font-overview" },
+        () => this.canvasSplit.showOverviewInTargetPane(),
+        () => this.canvasSplit.canShowOverview()
+      );
+    }
+
+    {
       const topic = "0055-action-topics.realtime-hotkeys";
       registerActionInfo("action.realtime.measure", {
         topic,
@@ -904,6 +946,8 @@ export class EditorController extends ViewController {
       { actionIdentifier: "action.zoom-in" },
       { actionIdentifier: "action.zoom-out" },
       { actionIdentifier: "action.zoom-fit-selection" },
+      MenuItemDivider,
+      { actionIdentifier: "action.canvas.split" },
     ];
 
     if (typeof this.sceneModel.selectedGlyph !== "undefined") {
@@ -1485,6 +1529,7 @@ export class EditorController extends ViewController {
     this.visualizationLayers.darkTheme = this.isThemeDark;
     this.cleanGlyphsLayers.darkTheme = this.isThemeDark;
     this.canvasController.requestUpdate();
+    this.canvasSplit?.themeChanged();
   }
 
   get isThemeDark() {
@@ -3907,11 +3952,33 @@ export class EditorController extends ViewController {
       menuItems.push(...selectedTool.getContextMenuItems());
     }
 
+    if (this.canvasSplit.isSplit) {
+      menuItems.push(MenuItemDivider);
+      menuItems.push(...this.canvasSplitMenuItems());
+    }
+
     return menuItems;
+  }
+
+  canvasSplitMenuItems() {
+    return [
+      { actionIdentifier: "action.canvas.separate-pane" },
+      { actionIdentifier: "action.canvas.close-pane" },
+      { actionIdentifier: "action.canvas.pane-font-overview" },
+    ];
+  }
+
+  // The menu of a split pane that shows the font overview: the pane items
+  // only, acting on that pane.
+  showCanvasSplitMenu(event) {
+    const { x, y } = event;
+    showMenu(this.canvasSplitMenuItems(), { x: x + 1, y: y - 1 });
   }
 
   contextMenuHandler(event) {
     event.preventDefault();
+    // A menu on a canvas acts on the live pane, which a click has made it.
+    this.canvasSplit.menuPaneIndex = null;
 
     // The active tool gets the gesture first. The pens use it to end the
     // contour they are drawing, and for them a menu would be the wrong answer.
@@ -3960,6 +4027,24 @@ export class EditorController extends ViewController {
     this.sceneSettingsController.withSenderInfo({ senderID: this }, async () => {
       await this._setupFromWindowLocation();
     });
+  }
+
+  // A split pane's view, taken over by the live canvas. Every key of the
+  // view is set, so nothing of the view it replaces stays. A view without a
+  // view box is framed on its glyph once the glyph is laid out.
+  async applyPaneViewInfo(viewInfo) {
+    this.sceneController.autoViewBox = !viewInfo.viewBox;
+    const laidOut = this.sceneSettingsController.waitForKeyChange(
+      "positionedLines",
+      false,
+      1000
+    );
+    await this.sceneController.replaceSceneSettingsFromViewInfo(viewInfo);
+    if (!viewInfo.viewBox && this.sceneSettings.selectedGlyph?.isEditing) {
+      await laidOut;
+      this.zoomFit(false);
+    }
+    this.canvasController.requestUpdate();
   }
 
   async _setupFromWindowLocation() {

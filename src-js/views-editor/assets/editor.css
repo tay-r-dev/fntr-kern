@@ -336,6 +336,99 @@ body {
   overflow: hidden;
 }
 
+/* The canvas area: one slot while whole, two with a divider while split. */
+#canvas-split {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#canvas-split.split {
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+}
+
+.canvas-slot {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.canvas-split-divider,
+.canvas-slot:last-child {
+  display: none;
+}
+
+#canvas-split.split .canvas-split-divider,
+#canvas-split.split .canvas-slot:last-child {
+  display: block;
+}
+
+.canvas-split-divider {
+  width: 5px;
+  cursor: col-resize;
+  background-color: var(--horizontal-rule-color);
+  touch-action: none;
+}
+
+.canvas-pane {
+  position: absolute;
+  inset: 0;
+}
+
+/* An overview covers its slot. The canvas under it keeps its size, so its
+   view is where it was when the overview goes. */
+.canvas-slot.shows-overview > .canvas-pane {
+  visibility: hidden;
+}
+
+/* The live pane of a split: a bar along its top edge. */
+#canvas-split.split .canvas-slot.live:not(.shows-overview)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--foreground-color);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.canvas-pane-overview {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  background-color: var(--background-color);
+}
+
+.canvas-slot.shows-overview > .canvas-pane-overview {
+  display: flex;
+}
+
+/* Clear of the tool bar above and the sidebar tabs along the outer edges. */
+.canvas-slot:first-child > .canvas-pane-overview {
+  padding-left: 3.5em;
+}
+
+#canvas-split.split .canvas-slot:last-child > .canvas-pane-overview {
+  padding-right: 3.5em;
+}
+
+.canvas-pane-overview-search {
+  flex: none;
+  padding: 3.5em 1em 0.5em 1em;
+}
+
+.canvas-pane-overview-cells {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 1em 1em 1em;
+}
+
+.canvas-split-passive,
 #edit-canvas {
   position: absolute; /* but relative to canvas-container */
   padding: 0;
