@@ -868,11 +868,9 @@ export class DataTable extends HTMLElement {
   }
 
   // Every column but the last has a width: the one it was dragged to, else
-  // its descriptor's `width`. The last takes what is left, never less than its
-  // `minWidth` (48px by default), so the table always fits its box: when the
-  // box is too narrow for the widths, they shrink in proportion for now (the
-  // kept widths are not changed). A table whose columns have no widths at all
-  // shares its width among them as before.
+  // its descriptor's `width`. The last stretches to take what is left, never
+  // less than its `minWidth` (48px by default). A table whose columns have no
+  // widths at all shares its width among them as before.
   _applyColumnWidths() {
     if (!this._table || !this._columnWidthsStorageKey) {
       return;
@@ -893,20 +891,16 @@ export class DataTable extends HTMLElement {
     const box = this._scroll?.clientWidth || 0;
     const lastMin = last?.column.minWidth ?? 48;
     const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
-    const sum = widths.reduce((total, width) => total + (width || 0), 0);
-    // Every column gets an explicit width and together they are exactly the
-    // box: the last its minimum plus whatever the others leave, the others
-    // their own widths -- scaled down, for now, when the box cannot hold them
-    // and the last one's minimum.
-    const scale =
-      anyWidth && box > 0 && sum > box - lastMin ? (box - lastMin) / sum : 1;
+    // Every column but the last keeps exactly its own width, always; only the
+    // last stretches, to fill the box, never below its minimum. When the
+    // others do not fit, the table scrolls sideways -- nothing shrinks.
     let used = 0;
     fixed.forEach((entry, i) => {
       const th = entry.column._headerElement;
       if (!th.querySelector(":scope > .data-table-column-grip")) {
         th.appendChild(this._makeColumnGrip(entry.column, entry.index));
       }
-      const width = widths[i] ? Math.floor(widths[i] * scale) : null;
+      const width = widths[i] || null;
       th.style.width = width ? `${width}px` : "";
       used += width || 0;
     });
