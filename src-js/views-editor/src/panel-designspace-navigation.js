@@ -563,7 +563,8 @@ const DESIGNSPACE_PANEL_COLORS = {
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
   "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
   "ui-accordion-switch-border-color": ["#e9e9e9", "#3a3a3a"],
-  "ui-accordion-switch-text-color": ["#565656", "#c0c0c0"],
+  "ui-accordion-switch-text-color": ["#b4b4b4", "#8e8e8e"],
+  "ui-accordion-switch-hover-text-color": ["#565656", "#c0c0c0"],
 };
 
 export default class DesignspaceNavigationPanel extends Panel {

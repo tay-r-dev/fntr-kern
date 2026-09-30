@@ -8,6 +8,8 @@ import {
 import "./icon-button.js";
 import { showMenu } from "./menu-panel.js";
 import { selectRange, selectRow } from "./table-selection.js";
+import { themeColorCSS } from "./theme-support.js";
+import "./ui-handle.js";
 
 // The shared table (UI-REFACTOR.md §3, UI-NOMENCLATURE.md §14). Ticket 04
 // lifted its head, sort and select-all tick out of the kerning pair table.
@@ -32,6 +34,20 @@ import { selectRange, selectRow } from "./table-selection.js";
 // nothing new gets the ticket 04 table.
 
 const MAX_HIDEABLE_COLUMNS = 24;
+
+// The looks' colors (`look` = "data" or "select").
+const lookColors = {
+  "data-table-look-background-color": ["#fff", "#2c2c2c"],
+  "data-table-look-border-color": ["#e9e9e9", "#3a3a3a"],
+  "data-table-look-rule-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-heading-color": ["#b4b4b4", "#8e8e8e"],
+  "data-table-look-entry-color": ["#565656", "#c0c0c0"],
+  "data-table-look-entry-hover-color": ["#303030", "#e0e0e0"],
+  "data-table-look-additional-color": ["#b4b4b4", "#8e8e8e"],
+  "data-table-look-additional-hover-color": ["#8e8e8e", "#b4b4b4"],
+  "data-table-look-active-color": ["#f7f7f7", "#3a3a3a"],
+  "data-table-look-focus-border-color": ["#def280", "#8fae4a"],
+};
 
 const DATA_TABLE_STYLES = `
   :where(.data-table) {
@@ -163,37 +179,199 @@ const DATA_TABLE_STYLES = `
     overflow-y: auto;
   }
 
-  /* A 10px strip under the rows, with a short bar in its middle, so there is
-     something to see and to take hold of. */
+  /* The grip is the handle (Figma 379:22492) standing on the box's bottom
+     edge, over the last row. The row keeps room for it. */
   :where(.data-table-grip) {
-    height: 10px;
-    cursor: row-resize;
+    height: 0;
     position: relative;
     z-index: 1;
-    touch-action: none;
   }
 
-  :where(.data-table-grip)::after {
-    content: "";
+  :where(.data-table-grip) > ui-handle {
     position: absolute;
+    bottom: 0;
     left: 50%;
-    top: 3px;
-    width: 2.5em;
-    height: 4px;
-    margin-left: -1.25em;
-    border-radius: 2px;
-    background: currentColor;
-    opacity: 0.25;
+    transform: translateX(-50%);
   }
 
-  :where(.data-table-grip:hover)::after {
-    opacity: 0.6;
+  :where(data-table.data-table-resizable tbody tr:last-child td) {
+    padding-bottom: calc(0.15em + 6px);
   }
 
   :root.data-table-resizing {
     user-select: none;
     -webkit-user-select: none;
     cursor: row-resize;
+  }
+
+  /* A row's marker (the design's 2px stripe down its first cell's left
+     edge), in any look. */
+  :where(.data-table tr.data-table-row-marked > td:first-child) {
+    position: relative;
+  }
+
+  :where(.data-table tr.data-table-row-marked > td:first-child)::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: -1px;
+    width: 2px;
+    background: var(--data-table-marker-color, #ed6a3a);
+  }
+
+  :where(.data-table-status) {
+    box-sizing: border-box;
+    height: 18px;
+    width: 100%;
+    min-width: 31px;
+    border: 1px solid var(--data-table-look-background-color, #fff);
+    border-radius: 4px;
+  }
+
+  ${themeColorCSS(lookColors, "data-table")}
+
+  /* The looks (table/data, Figma 417:8097; table/select, Figma 417:8683):
+     a white box, ruled and rounded; a 24px head of small uppercase light
+     grey labels over a rule; 26px rows of thin grey entries, the light grey
+     fill on a selected (active) row. table/data rules every row and shows a
+     row's editable box and icons on hover; table/select rules only the head
+     and darkens a hovered row's text instead. */
+  data-table[look] > .data-table-scroll {
+    box-sizing: border-box;
+    border: 1px solid var(--data-table-look-border-color);
+    border-radius: 6px;
+    background-color: var(--data-table-look-background-color);
+    overflow-x: hidden;
+  }
+
+  data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
+    overflow: hidden;
+  }
+
+  data-table[look] .data-table {
+    font-size: inherit;
+  }
+
+  data-table[look] .data-table th,
+  data-table[look] .data-table td {
+    padding: 0 8px;
+    white-space: nowrap;
+    vertical-align: middle;
+    border-bottom: 1px solid var(--data-table-look-rule-color);
+  }
+
+  /* ui/table/heading */
+  data-table[look] .data-table th {
+    height: 24px;
+    box-sizing: border-box;
+    font: 400 semi-condensed 8px / 10px var(--ui-font-mono);
+    letter-spacing: var(--ui-tracking);
+    text-transform: uppercase;
+    color: var(--data-table-look-heading-color);
+  }
+
+  data-table[look] .data-table th.data-table-sort-active {
+    font-weight: 400;
+    background-color: var(--data-table-look-active-color);
+  }
+
+  /* ui/table/entry */
+  data-table[look] .data-table td {
+    height: 26px;
+    box-sizing: border-box;
+    font-family: var(--ui-font-mono);
+    font-size: 9px;
+    font-weight: 220;
+    font-stretch: 80%;
+    line-height: 10px;
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+    color: var(--data-table-look-entry-color);
+  }
+
+  data-table[look] .data-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  data-table[look].data-table-resizable .data-table tbody tr:last-child td {
+    height: 32px;
+    padding-bottom: 4px;
+  }
+
+  data-table[look] .data-table .data-table-row-selected {
+    background-color: var(--data-table-look-active-color);
+  }
+
+  data-table[look] .data-table-additional {
+    margin-left: 4px;
+    color: var(--data-table-look-additional-color);
+  }
+
+  data-table[look="select"] .data-table td {
+    border-bottom: none;
+  }
+
+  data-table[look="select"] .data-table tbody tr:hover td {
+    color: var(--data-table-look-entry-hover-color);
+  }
+
+  data-table[look="select"] .data-table tbody tr:hover .data-table-additional {
+    color: var(--data-table-look-additional-hover-color);
+  }
+
+  /* The row's icons: button/table icon, 18px, 4px apart; hidden at rest and
+     shown whole on the row's hover. */
+  data-table[look] .data-table-action {
+    width: 18px;
+    height: 18px;
+  }
+
+  data-table[look] .data-table-actions {
+    gap: 4px;
+  }
+
+  data-table[look] .data-table-action + .data-table-action {
+    margin-left: 4px;
+  }
+
+  data-table[look] .data-table-actions .data-table-action + .data-table-action {
+    margin-left: 0;
+  }
+
+  data-table[look] tr:hover .data-table-reveal-hover,
+  data-table[look] tr:focus-within .data-table-reveal-hover,
+  data-table[look] tr:hover .data-table-reveal-dim,
+  data-table[look] tr:focus-within .data-table-reveal-dim {
+    opacity: 1;
+  }
+
+  /* The editable entry (table/data "editable"): an 18px box, 6px in and
+     12px out, drawn on the row's hover, white on a selected row, lime-edged
+     while typing. */
+  data-table[look] .data-table .data-table-input,
+  data-table[look] .data-table .data-table-select {
+    height: 18px;
+    padding: 3px 12px 3px 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+  }
+
+  data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
+  data-table[look] .data-table tr:hover .data-table-select:not(:disabled) {
+    border-color: transparent;
+    background-color: var(--data-table-look-active-color);
+  }
+
+  data-table[look] .data-table .data-table-row-selected .data-table-input:not(:disabled),
+  data-table[look] .data-table .data-table-row-selected .data-table-select:not(:disabled) {
+    background-color: var(--data-table-look-background-color);
+  }
+
+  data-table[look] .data-table .data-table-input:focus,
+  data-table[look] .data-table .data-table-select:focus {
+    border-color: var(--data-table-look-focus-border-color);
+    background-color: var(--data-table-look-background-color);
   }
 
   ${Array.from(
@@ -222,13 +400,21 @@ function addDataTableStyles(element) {
 }
 
 // A row. `rowId` is what selection, windowing and `onRowClick` know it by.
-export function tableRow(rowId, cells, { className, title } = {}) {
+// `marker` draws the stripe down the first cell's left edge: true for the
+// design's orange, or a CSS color.
+export function tableRow(rowId, cells, { className, title, marker } = {}) {
   const tr = document.createElement("tr");
   if (rowId != null) {
     tr.dataset.rowId = rowId;
   }
   if (className) {
     tr.className = className;
+  }
+  if (marker) {
+    tr.classList.add("data-table-row-marked");
+    if (typeof marker === "string") {
+      tr.style.setProperty("--data-table-marker-color", marker);
+    }
   }
   if (title) {
     tr.title = title;
@@ -371,6 +557,26 @@ export function actionsCell(actions, { className } = {}) {
   return tableCell([box], { className });
 }
 
+// The lighter text after a cell's entry (the design's "additional info").
+export function additionalText(text) {
+  const span = document.createElement("span");
+  span.className = "data-table-additional";
+  span.textContent = text;
+  return span;
+}
+
+// A status cell's swatch (table/select "status"): an 18px rounded box of
+// `color` filling the cell.
+export function statusSwatch(color, { title } = {}) {
+  const swatch = document.createElement("div");
+  swatch.className = "data-table-status";
+  swatch.style.backgroundColor = color;
+  if (title) {
+    swatch.title = title;
+  }
+  return swatch;
+}
+
 // Text that a double-click makes selectable, so a name can be copied out of a
 // row without a drag across rows sweeping text along.
 export function copyableText(text, { className } = {}) {
@@ -390,6 +596,8 @@ export class DataTable extends HTMLElement {
   static rowAction = rowAction;
   static actionsCell = actionsCell;
   static copyableText = copyableText;
+  static additionalText = additionalText;
+  static statusSwatch = statusSwatch;
 
   constructor() {
     super();
@@ -517,12 +725,30 @@ export class DataTable extends HTMLElement {
   // under `heightStorageKey` when one is set.
   set resizable(value) {
     this._resizable = !!value;
+    this.classList.toggle("data-table-resizable", this._resizable);
     if (value) {
       this.scrollable = true;
     }
     if (this._grip) {
       this._grip.hidden = !value;
     }
+  }
+
+  // The design's look: "data" (table/data, every row ruled) or "select"
+  // (table/select, only the head ruled). Unset keeps the plain table. Row
+  // icons from `rowAction` draw as button/table icon in either look.
+  set look(value) {
+    this._look = value === "data" || value === "select" ? value : null;
+    if (this._look) {
+      this.setAttribute("look", this._look);
+    } else {
+      this.removeAttribute("look");
+    }
+    this._applyLookToActions();
+  }
+
+  get look() {
+    return this._look ?? null;
   }
 
   set heightStorageKey(key) {
@@ -775,9 +1001,12 @@ export class DataTable extends HTMLElement {
 
     this._scroll = html.div({ class: "data-table-scroll" }, [table]);
     this._scroll.addEventListener("scroll", () => this._scrolled());
-    this._grip = html.div({ class: "data-table-grip" });
+    const handle = html.createDomElement("ui-handle");
+    handle.addEventListener("handle-drag-start", () => this._startResize());
+    handle.addEventListener("handle-drag", (event) => this._resizeTo(event.detail.dy));
+    handle.addEventListener("handle-drag-end", () => this._endResize());
+    this._grip = html.div({ class: "data-table-grip" }, [handle]);
     this._grip.hidden = !this._resizable;
-    this._grip.addEventListener("pointerdown", (event) => this._startResize(event));
     this.append(this._scroll, this._grip);
 
     this._applyColumnVisibility();
@@ -794,6 +1023,7 @@ export class DataTable extends HTMLElement {
       this._tbody.appendChild(this._renderRow(this._items[index], index));
     }
     this._applySelectedRows();
+    this._applyLookToActions();
     if (this._selectable) {
       this._syncSelectAll();
     }
@@ -823,35 +1053,38 @@ export class DataTable extends HTMLElement {
     this.style.setProperty("--data-table-height", `${height}px`);
   }
 
-  _startResize(event) {
-    const grip = this._grip;
-    const initialHeight = this._scroll.getBoundingClientRect().height;
-    const initialY = event.clientY;
-    let height;
-    // No text selection and no native drag starts under the press.
-    event.preventDefault();
-    grip.setPointerCapture(event.pointerId);
+  // The handle captures the pointer and reports the drag; these follow it.
+  _startResize() {
+    this._resizeInitialHeight = this._scroll.getBoundingClientRect().height;
+    this._resizeHeight = undefined;
     document.documentElement.classList.add("data-table-resizing");
-    const onMove = (moveEvent) => {
-      height = Math.max(this._minHeight, initialHeight + moveEvent.clientY - initialY);
-      this._applyHeight(height);
-    };
-    const onEnd = () => {
-      grip.removeEventListener("pointermove", onMove);
-      grip.removeEventListener("pointerup", onEnd);
-      grip.removeEventListener("lostpointercapture", onEnd);
-      document.documentElement.classList.remove("data-table-resizing");
-      if (height !== undefined && this._heightStorageKey) {
-        try {
-          localStorage.setItem(this._heightStorageKey, height);
-        } catch {
-          // The height still applies for this page.
-        }
+  }
+
+  _resizeTo(dy) {
+    this._resizeHeight = Math.max(this._minHeight, this._resizeInitialHeight + dy);
+    this._applyHeight(this._resizeHeight);
+  }
+
+  _endResize() {
+    document.documentElement.classList.remove("data-table-resizing");
+    if (this._resizeHeight !== undefined && this._heightStorageKey) {
+      try {
+        localStorage.setItem(this._heightStorageKey, this._resizeHeight);
+      } catch {
+        // The height still applies for this page.
       }
-    };
-    grip.addEventListener("pointermove", onMove);
-    grip.addEventListener("pointerup", onEnd);
-    grip.addEventListener("lostpointercapture", onEnd);
+    }
+  }
+
+  _applyLookToActions() {
+    if (!this._tbody) {
+      return;
+    }
+    for (const button of this._tbody.querySelectorAll("icon-button.data-table-action")) {
+      if (!!button.table !== !!this._look) {
+        button.table = !!this._look;
+      }
+    }
   }
 
   _showColumnMenu(event) {

@@ -56,8 +56,10 @@ export class Accordion extends UnlitElement {
     overflow: auto;
   }
 
-  /* accordion switch (Figma 56:45): a grey header bar ruled above and below,
-     a 16px chevron, the h5 label, and the sections stacked with no gap. */
+  /* accordion switch (Figma 413:31167): a grey header bar ruled above and
+     below, a 16px chevron, the h5 label, and the sections stacked with no
+     gap. Open, the chevron points down; closed, up. The label is light grey
+     at rest and darkens on hover, in both. */
   :host([switch]) .ui-accordion-contents {
     gap: 0;
   }
@@ -75,7 +77,12 @@ export class Accordion extends UnlitElement {
     /* ui/heading/h5 */
     font: var(--ui-text-heading-h5);
     text-transform: none;
-    color: var(--ui-accordion-switch-text-color, #565656);
+    color: var(--ui-accordion-switch-text-color, #b4b4b4);
+    transition: color 120ms;
+  }
+
+  :host([switch]) .ui-accordion-item-header:hover {
+    color: var(--ui-accordion-switch-hover-text-color, #565656);
   }
 
   :host([switch]) .ui-accordion-item + .ui-accordion-item .ui-accordion-item-header {
@@ -90,9 +97,9 @@ export class Accordion extends UnlitElement {
     transform: rotate(180deg);
   }
 
-  /* Closed, the chevron keeps pointing down and fades. */
+  /* Closed, the chevron turns to point up. */
   :host([switch]) .ui-accordion-item-closed .open-close-icon {
-    opacity: 0.3;
+    transform: none;
   }
 
   :host([switch]) .ui-accordion-item:not(.ui-accordion-item-closed) .ui-accordion-item-content {

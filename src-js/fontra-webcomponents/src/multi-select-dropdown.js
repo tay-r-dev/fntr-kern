@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
+import "./indication-badge.js";
 import "./inline-svg.js";
 import { MenuItemDivider, showMenu } from "./menu-panel.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -53,9 +54,13 @@ const colors = {
     "rgba(0, 0, 0, 0.12)",
     "rgba(0, 0, 0, 0.4)",
   ],
+  // dropdown/menu_item (Figma 421:9846): grey text; a hovered item fills
+  // light grey; the chosen item of a one-choice list fills lime with darker
+  // text. A several-choice list marks its checked items with a check.
   "multi-select-dropdown-item-color": ["#565656", "#b0b0b0"],
-  "multi-select-dropdown-item-hover-background-color": ["#d5ed57", "#d5ed57"],
-  "multi-select-dropdown-item-hover-color": ["#303030", "#303030"],
+  "multi-select-dropdown-item-hover-background-color": ["#f7f7f7", "#3a3a3a"],
+  "multi-select-dropdown-item-active-background-color": ["#d5ed57", "#d5ed57"],
+  "multi-select-dropdown-item-active-color": ["#303030", "#303030"],
 };
 
 const listStyles = `
@@ -79,7 +84,10 @@ const listStyles = `
   }
 
   .context-menu-item {
-    padding: 4px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
     border-radius: 2px;
     color: var(--multi-select-dropdown-item-color);
   }
@@ -90,7 +98,41 @@ const listStyles = `
 
   .context-menu-item.enabled.selected {
     background-color: var(--multi-select-dropdown-item-hover-background-color);
-    color: var(--multi-select-dropdown-item-hover-color);
+    color: var(--multi-select-dropdown-item-color);
+  }
+
+  .item-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The check: the design's 7x5.5 tick, only on a checked item. */
+  .check-mark {
+    display: none;
+    flex: none;
+    width: 7px;
+    height: 5.5px;
+    font-size: 0;
+    background: url("/images/menu-check.svg") center / contain no-repeat;
+  }
+
+  .context-menu-item.checked .check-mark {
+    display: block;
+  }
+`;
+
+// A one-choice list shows no check: its chosen item is the lime one.
+const singleChoiceListStyles = `
+  .context-menu-item.checked .check-mark {
+    display: none;
+  }
+
+  .context-menu-item.checked,
+  .context-menu-item.enabled.selected.checked {
+    background-color: var(--multi-select-dropdown-item-active-background-color);
+    color: var(--multi-select-dropdown-item-active-color);
   }
 `;
 
@@ -147,10 +189,30 @@ export class MultiSelectDropdown extends UnlitElement {
       border-color: var(--multi-select-dropdown-hover-border-color);
     }
 
-    /* Pressed: the lime accent border from the Figma design's "press" state.
-       The "selecting" (open) state keeps the rest-state border. */
+    /* Pressed: white with the lime accent border, the Figma design's "press"
+       state. The "selecting" (open) state is white with the rest border. */
+    :host(:active) button:not(.icon-mode),
+    :host button.open:not(.icon-mode) {
+      background-color: var(--multi-select-dropdown-background-color);
+    }
+
     :host(:active) button {
       border-color: var(--multi-select-dropdown-active-border-color);
+    }
+
+    :host button.open:not(.icon-mode) {
+      border-color: var(--multi-select-dropdown-border-color);
+    }
+
+    /* Filled (dropdown/multi-select, Figma 421:12049): the lime
+       indication-badge before the label says something is chosen. */
+    indication-badge {
+      display: none;
+      flex: none;
+    }
+
+    button.filled:not(.icon-mode) indication-badge {
+      display: inline-block;
     }
 
     /* The chevron flips while the list is open or pressed, matching the
@@ -308,6 +370,7 @@ export class MultiSelectDropdown extends UnlitElement {
       this._icon
         ? [html.createDomElement("inline-svg", { src: this._icon })]
         : [
+            html.createDomElement("indication-badge"),
             this._labelSpan,
             html.createDomElement("inline-svg", {
               class: "chevron",
@@ -384,6 +447,9 @@ export class MultiSelectDropdown extends UnlitElement {
     );
     // The list takes the design's look here, not in the app-wide menu.
     this._menu.appendStyle(listStyles);
+    if (this._singleChoice) {
+      this._menu.appendStyle(singleChoiceListStyles);
+    }
     this._menu.style.minWidth = `${rect.width}px`;
   }
 

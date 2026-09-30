@@ -243,6 +243,9 @@ export class MenuPanel extends SimpleElement {
         if (hasSubMenu) {
           classNames.push("with-submenu");
         }
+        if (item.checked) {
+          classNames.push("checked");
+        }
         const itemElementContent = [
           html.div({ class: "check-mark" }, [item.checked ? "✓" : ""]),
           html.div({ class: "item-content" }, [

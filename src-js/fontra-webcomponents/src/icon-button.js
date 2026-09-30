@@ -28,6 +28,10 @@ const colors = {
     "rgba(255, 255, 255, 0.06)",
   ],
   "icon-button-press-background-color": ["#fafafa", "#3c3c3c"],
+  // button/table icon (Figma 411:28023): the same states in a table row,
+  // but hover lifts the face to white (the row under it may be the light
+  // grey), and the alert state's hover keeps the light grey.
+  "icon-button-table-hover-background-color": ["#fff", "#2c2c2c"],
   "icon-button-press-border-color": [
     "rgba(224, 224, 224, 0.31)",
     "rgba(255, 255, 255, 0.14)",
@@ -129,6 +133,27 @@ export class IconButton extends UnlitElement {
 
     button:disabled {
       color: var(--icon-button-icon-disabled-color);
+    }
+
+    /* button/table icon (Figma 411:28023): 16px, 18px in a table cell, the
+       icon inset 3px. */
+    :host([table]) button {
+      padding: 3px;
+      --icon-button-icon-size: 100%;
+    }
+
+    :host([table]:hover) button:not(:disabled):not(.icon-button-latch) {
+      background-color: var(--icon-button-table-hover-background-color);
+      border-color: transparent;
+    }
+
+    :host([table][badge]:hover) button:not(:disabled):not(.icon-button-latch) {
+      background-color: var(--icon-button-hover-background-color);
+    }
+
+    :host([table]:active) button:not(:disabled):not(.icon-button-latch) {
+      background-color: var(--icon-button-press-background-color);
+      border-color: var(--icon-button-press-border-color);
     }
 
     /* The "alert" state's badge: the design's 6px indication-badge at the
@@ -265,6 +290,7 @@ export class IconButton extends UnlitElement {
     label: { type: String },
     latch: { type: Boolean },
     badge: { type: Boolean },
+    table: { type: Boolean },
   };
 
   get disabled() {
@@ -385,10 +411,13 @@ export class IconButton extends UnlitElement {
       },
       children
     );
+    this.toggleAttribute("table", !!this.table);
+    this.toggleAttribute("badge", !!this.badge);
     const result = this.dropdown ? [this._button, this._card] : [this._button];
     if (this.badge) {
       const badge = html.createDomElement("indication-badge", {});
-      badge.size = "M";
+      // The table icon's alert dot is the small one.
+      badge.size = this.table ? "S" : "M";
       result.push(badge);
     }
     return result.length > 1 ? result : this._button;
