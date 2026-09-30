@@ -116,7 +116,9 @@ export function fitColumnWidths(widths, available, minimum = 24) {
       excess -= take;
     }
   }
-  return result.map((width) => Math.round(width));
+  // Down to whole pixels, so together they never exceed `available` (the
+  // tolerance keeps 42.9999999 at 43).
+  return result.map((width) => Math.floor(width + 1e-6));
 }
 
 // The columns' widths after their box changed by `delta` pixels: every column
@@ -128,8 +130,12 @@ export function spreadColumnWidths(widths, delta, minimum = 24) {
     return fitColumnWidths(widths, sum + delta, minimum);
   }
   if (delta > 0 && widths.length) {
-    const share = delta / widths.length;
-    return widths.map((width) => Math.round(width + share));
+    // Whole pixels, and never more than the growth: rounded one by one, the
+    // shares could add up to more, and the last column would pay for it.
+    const total = Math.floor(delta);
+    const base = Math.floor(total / widths.length);
+    const extra = total - base * widths.length;
+    return widths.map((width, index) => width + base + (index < extra ? 1 : 0));
   }
   return [...widths];
 }

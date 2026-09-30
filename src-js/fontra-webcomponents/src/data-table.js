@@ -1306,7 +1306,11 @@ export class DataTable extends HTMLElement {
         // column gives up its room first, down to its minimum; only what is
         // still over comes off the fixed columns, equally.
         let delta = box - previous;
-        if (delta < 0) {
+        if (delta > 0) {
+          // The last column takes an equal share too: the fixed columns get
+          // theirs, and the last fills what they leave, so it grows as much.
+          delta = (delta * current.length) / (current.length + 1);
+        } else if (delta < 0) {
           const sum = current.reduce((total, width) => total + width, 0);
           const lastMin = visible[visible.length - 1]?.column.minWidth ?? 48;
           const slack = Math.max(0, previous - sum - lastMin);

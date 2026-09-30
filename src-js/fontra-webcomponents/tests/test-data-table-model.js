@@ -155,4 +155,10 @@ describe("data-table-model", () => {
       60, 25, 25,
     ]);
   });
+
+  it("grows by whole pixels that add up to no more than the growth", () => {
+    // Rounded one by one, 10/3 each would hand out 12 for a growth of 10.
+    expect(spreadColumnWidths([10, 10, 10], 10)).to.deep.equal([14, 13, 13]);
+    expect(spreadColumnWidths([10, 10, 10], 7.5)).to.deep.equal([13, 12, 12]);
+  });
 });
