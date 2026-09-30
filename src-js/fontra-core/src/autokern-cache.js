@@ -143,6 +143,30 @@ export function setPairValue(cache, left, right, value) {
   return result;
 }
 
+// The outcome of remeasuring one pair, whatever it was. A value is stored as
+// setPairValue stores it. `null` -- the pair no longer kerns at all, or one of
+// its glyphs is gone -- drops the entry, except that a junk pair keeps its
+// mark (the designer's judgement outlives the shape) with the stale flag
+// cleared. Either way the entry is settled: a stale pair left as it was would
+// be asked for again by every rerun and never leave the stale list.
+export function settlePairMeasurement(cache, left, right, value) {
+  if (value !== null && value !== undefined) {
+    return setPairValue(cache, left, right, value);
+  }
+  const key = pairKey(left, right);
+  const existing = cache.get(key);
+  if (!existing) {
+    return cache;
+  }
+  const result = new Map(cache);
+  if (existing.junk) {
+    result.set(key, { ...existing, stale: false });
+  } else {
+    result.delete(key);
+  }
+  return result;
+}
+
 // Sets (or clears, when `junk` is false) a pair's junk flag. Returns a NEW
 // cache. Unmarking is supported deliberately (spec §4.2: "a mark... can be
 // found and undone").

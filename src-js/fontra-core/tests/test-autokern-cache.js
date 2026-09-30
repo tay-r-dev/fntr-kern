@@ -13,6 +13,7 @@ import {
   pairValueAfterMetricsChange,
   recalculateMetricsOnly,
   setPairValue,
+  settlePairMeasurement,
 } from "@fontra/core/autokern-cache.js";
 import { expect } from "chai";
 
@@ -501,5 +502,37 @@ describe("metrics-only recalculation", () => {
     const result = recalculateMetricsOnly(cache, {}, { A: metrics(500, 40, 460) });
     expect(result.recalculated).to.equal(0);
     expect(result.remaining).to.deep.equal(["A", "V"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// settlePairMeasurement: a remeasure always settles the entry, so a stale pair
+// cannot stay stale through every rerun.
+describe("settlePairMeasurement", () => {
+  const staleCache = () => {
+    let cache = setPairValue(createCache(), "A", "V", -40);
+    cache = markGlyphStale(cache, "A");
+    return cache;
+  };
+
+  it("stores a new value and clears the stale flag", () => {
+    const cache = settlePairMeasurement(staleCache(), "A", "V", -35);
+    expect(cache.get(pairKey("A", "V"))).to.include({ value: -35, stale: false });
+  });
+
+  it("drops a pair that no longer kerns rather than leaving it stale", () => {
+    const cache = settlePairMeasurement(staleCache(), "A", "V", null);
+    expect(cache.has(pairKey("A", "V"))).to.equal(false);
+  });
+
+  it("keeps a junk pair's mark when it no longer kerns", () => {
+    let cache = markPairJunk(staleCache(), "A", "V", true);
+    cache = settlePairMeasurement(cache, "A", "V", null);
+    expect(cache.get(pairKey("A", "V"))).to.include({ junk: true, stale: false });
+  });
+
+  it("leaves a pair with no entry alone when it does not kern", () => {
+    const cache = settlePairMeasurement(createCache(), "A", "V", null);
+    expect(cache.size).to.equal(0);
   });
 });

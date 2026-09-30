@@ -35,7 +35,7 @@ import {
   createCache,
   pairEnvelopesCanTouch,
   pairsForRerun,
-  setPairValue,
+  settlePairMeasurement,
 } from "@fontra/core/autokern-cache.js";
 import { AutokernEngine } from "@fontra/core/autokern-engine.js";
 
@@ -131,16 +131,13 @@ async function runJob(job) {
     const { left, right } = pairsToRun[i];
     const leftRaster = raster(left);
     const rightRaster = raster(right);
-    if (!leftRaster || !rightRaster) {
-      // A candidate/rerun entry the main thread didn't rasterize (should not
-      // happen for a conforming job, but never throw a whole run away for
-      // one missing raster).
-      continue;
-    }
-    const value = engine.kernPair(leftRaster, rightRaster);
-    if (value !== null) {
-      cache = setPairValue(cache, left, right, value);
-    }
+    // Every pair asked for is settled, one way or the other. Left as it was,
+    // a stale pair whose glyph is gone (no raster) or that no longer kerns
+    // (null) stayed stale, so every rerun asked for it again and the stale
+    // list never emptied.
+    const value =
+      leftRaster && rightRaster ? engine.kernPair(leftRaster, rightRaster) : null;
+    cache = settlePairMeasurement(cache, left, right, value);
     if (i % 25 === 0 || i === total - 1) {
       postMessage({ type: "progress", source, done: i + 1, total });
     }
