@@ -3750,7 +3750,9 @@ export class KerningViewController extends ViewController {
     this._pairTableQueryKey = queryKey;
     this._pairTableItems = [];
     this.updatePairTableLoadStatus();
-    tbody.textContent = "";
+    // No clearing of the body here: setRows replaces the rows itself, and it
+    // is the table that puts a field being edited back in focus -- emptied
+    // first, that field would already be gone.
     // Ledger §8.4: zero checked categories or zero checked relationships is
     // its own "nothing selected" empty state, distinct from "all" -- render
     // it directly and stop, rather than letting every row predicate above
