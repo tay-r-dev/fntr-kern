@@ -74,6 +74,7 @@ import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/range-slider.js";
 import "@fontra/web-components/segmented-control.js"; // for the Skeleton heading's Gizmo/Handles
+import "@fontra/web-components/ui-text-input.js"; // the Phrase card's input/text
 import {
   Accordion,
   groupAccordionHeaderButtons,
@@ -546,11 +547,6 @@ const DESIGNSPACE_PANEL_COLORS = {
   "ds-heading-color": ["#848484", "#a0a0a0"],
   "ds-label-color": ["#8e8e8e", "#9a9a9a"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
-  "ds-input-background-color": ["#f5f5f5", "#3a3a3a"],
-  "ds-input-border-color": ["#e0e0e0", "#555555"],
-  "ds-input-text-color": ["#8e8e8e", "#b0b0b0"],
-  "ds-input-focus-text-color": ["#151515", "#f0f0f0"],
-  "ds-input-focus-border-color": ["#def280", "#8fae4a"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
   "ds-checkmark-color": ["#e9e9e9", "#444444"],
   "ds-checkmark-border-color": ["rgba(21, 21, 21, 0.05)", "rgba(255, 255, 255, 0.05)"],
@@ -715,32 +711,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         height: 24px;
       }
 
-      /* input/text (Figma 379:22475): a grey tray with the white, lime-edged
-         box inside it while typing, drawn as insets on the one textarea. */
-      #designspace-phrase-textarea {
-        box-sizing: border-box;
-        width: 100%;
-        height: 60px;
-        padding: 11px 9px 3px;
-        border: none;
-        border-top: 1px solid var(--ds-input-border-color);
-        border-radius: 6px;
-        outline: none;
-        resize: vertical;
-        background-color: var(--ds-input-background-color);
-        color: var(--ds-input-text-color);
-        font: var(--ui-text-label-s);
-        letter-spacing: var(--ui-tracking);
-      }
-
-      #designspace-phrase-textarea:focus {
-        color: var(--ds-input-focus-text-color);
-        box-shadow:
-          inset 0 0 0 3px var(--ds-input-background-color),
-          inset 0 0 0 4px var(--ds-input-focus-border-color),
-          inset 0 0 0 100px var(--ds-card-background-color);
-      }
-
       /* The point labels card (Figma 381:23113). */
       .ds-popover {
         position: fixed;
@@ -892,10 +862,10 @@ export default class DesignspaceNavigationPanel extends Panel {
     // (Panel's constructor sets it first), so read the controller through
     // that instead.
     const sceneSettingsController = this.editorController.sceneSettingsController;
-    const textarea = html.createDomElement("textarea", {
+    // input/text (Figma 379:22475), several lines, with its resize handle.
+    const textarea = html.createDomElement("ui-text-input", {
       id: "designspace-phrase-textarea",
-      rows: 2,
-      wrap: "off",
+      multiline: true,
     });
     textarea.value = sceneSettingsController.model.text ?? "";
     textarea.addEventListener("input", () => {
@@ -1235,10 +1205,13 @@ export default class DesignspaceNavigationPanel extends Panel {
             style: "display: grid; grid-template-rows: 1fr auto auto; height: 100%;",
           },
           [
-            html.createDomElement("ui-list", { id: "sources-list" }),
+            // table/select (Figma 421:12696) with the add and delete keys
+            // under it.
+            selectLookList("sources-list"),
             html.createDomElement("add-remove-buttons", {
-              style: "padding: 0.5em 0 0 0;",
+              style: "padding: 4px 0 0 0;",
               id: "sources-list-add-remove-buttons",
+              textButtons: true,
             }),
             html.createDomElement("div", {
               id: "interpolation-error-info",
@@ -1265,10 +1238,11 @@ export default class DesignspaceNavigationPanel extends Panel {
             style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
           },
           [
-            html.createDomElement("ui-list", { id: "layers-list" }),
+            selectLookList("layers-list"),
             html.createDomElement("add-remove-buttons", {
-              style: "padding: 0.5em 0 0 0;",
+              style: "padding: 4px 0 0 0;",
               id: "source-layers-add-remove-buttons",
+              textButtons: true,
             }),
           ]
         ),
@@ -2616,13 +2590,13 @@ export default class DesignspaceNavigationPanel extends Panel {
           ["/tabler-icons/circle-dotted.svg", "/tabler-icons/circle-dot.svg"],
           true
         ),
-        width: "1.2em",
+        width: "18px",
       },
       {
         title: " ",
         key: "interpolationStatus",
         cellFactory: interpolationErrorCell,
-        width: "1.2em",
+        width: "18px",
       },
       {
         key: "formattedName",
@@ -2638,7 +2612,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           "/tabler-icons/eye-closed.svg",
           "/tabler-icons/eye.svg",
         ]),
-        width: "1.2em",
+        width: "18px",
       },
       {
         title: makeClickableIconHeader("/tabler-icons/pencil.svg", (event) =>
@@ -2663,7 +2637,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             return { newValue, selectItem: !selectedItem };
           }
         ),
-        width: "1.2em",
+        width: "18px",
       },
     ];
 
@@ -2678,7 +2652,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         title: translate("sidebar.designspace-navigation.glyph-sources.status"),
         key: "status",
         cellFactory: statusListCell,
-        width: "3em",
+        width: "31px",
         statusFieldDefinitions: statusFieldDefinitions,
         menuItems: statusFieldDefinitions.map((statusDef) => {
           return {
@@ -2693,7 +2667,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       title: " ",
       key: "interpolationContribution",
       cellFactory: interpolationContributionCell,
-      width: "1.2em",
+      width: "18px",
     });
     return columnDescriptions;
   }
@@ -4122,6 +4096,12 @@ function stripLocation(location, locationBase, fontSources) {
   return locationBase
     ? filterObject(location, (name, value) => baseLocation[name] !== value)
     : location;
+}
+
+function selectLookList(id) {
+  const list = html.createDomElement("ui-list", { id });
+  list.setAttribute("look", "select");
+  return list;
 }
 
 function makeIconCellFactory(

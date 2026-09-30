@@ -108,11 +108,69 @@
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 1em;
+  padding: 12px;
   border-right: 1px solid var(--horizontal-rule-color, #ccc);
+  background-color: var(--kerning-panel-background-color);
   display: flex;
   flex-direction: column;
-  gap: 0.75em;
+}
+
+/* The design's colours (Figma 421:14557), light and dark. */
+:root {
+  --kerning-panel-background-color-light: var(--fontra-theme-marker) #f5f5f5;
+  --kerning-panel-background-color-dark: #1e1e1e;
+  --kerning-panel-background-color: var(
+    --kerning-panel-background-color-light,
+    var(--kerning-panel-background-color-dark)
+  );
+  --kerning-card-background-color-light: var(--fontra-theme-marker) #fff;
+  --kerning-card-background-color-dark: #2a2a2a;
+  --kerning-card-background-color: var(
+    --kerning-card-background-color-light,
+    var(--kerning-card-background-color-dark)
+  );
+  --kerning-card-border-color-light: var(--fontra-theme-marker) rgba(0, 0, 0, 0.03);
+  --kerning-card-border-color-dark: rgba(255, 255, 255, 0.05);
+  --kerning-card-border-color: var(
+    --kerning-card-border-color-light,
+    var(--kerning-card-border-color-dark)
+  );
+  --kerning-heading-color-light: var(--fontra-theme-marker) #848484;
+  --kerning-heading-color-dark: #a0a0a0;
+  --kerning-heading-color: var(
+    --kerning-heading-color-light,
+    var(--kerning-heading-color-dark)
+  );
+  --kerning-label-color-light: var(--fontra-theme-marker) #303030;
+  --kerning-label-color-dark: #e0e0e0;
+  --kerning-label-color: var(
+    --kerning-label-color-light,
+    var(--kerning-label-color-dark)
+  );
+  --kerning-checkmark-color-light: var(--fontra-theme-marker) #e9e9e9;
+  --kerning-checkmark-color-dark: #444;
+  --kerning-checkmark-color: var(
+    --kerning-checkmark-color-light,
+    var(--kerning-checkmark-color-dark)
+  );
+  --kerning-checkmark-hover-color-light: var(--fontra-theme-marker) #d9d9d9;
+  --kerning-checkmark-hover-color-dark: #555;
+  --kerning-checkmark-hover-color: var(
+    --kerning-checkmark-hover-color-light,
+    var(--kerning-checkmark-hover-color-dark)
+  );
+}
+
+/* The white card: 14px corners, a 3% edge, 8px in, 8px between its parts. */
+.kerning-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background-color: var(--kerning-card-background-color);
+  background-clip: padding-box;
+  border: 1px solid var(--kerning-card-border-color);
+  border-radius: 14px;
 }
 
 /* §1.2: the middle column, two rows -- the scene on top, the class-panel
@@ -401,9 +459,6 @@
 
 #kerning-phrase-input {
   width: 100%;
-  box-sizing: border-box;
-  min-height: 3em;
-  resize: vertical;
 }
 
 #kerning-preset-select {
@@ -478,7 +533,7 @@
 #kerning-pairtable-controls {
   display: flex;
   flex-direction: column;
-  gap: 0.35em;
+  gap: 12px;
 }
 
 #kerning-pairtable-glyph {
@@ -496,6 +551,17 @@
   gap: 0.5em;
 }
 
+/* Figma 421:14731 / 421:14567 / 421:14596: the switches 8px apart, the
+   dropdowns and the text keys 2px apart. */
+#kerning-pairtable-switches {
+  gap: 8px;
+}
+
+#kerning-pairtable-filters,
+#kerning-pairtable-actions {
+  gap: 2px;
+}
+
 /* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
    bold weight is its only visual distinction, not a separate structure. */
 .kerning-pairtable-summary-row {
@@ -511,33 +577,63 @@
   gap: 0.5em;
 }
 
+/* ui/heading/h2 */
 #kerning-pairtable-title {
   margin: 0;
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking);
+  text-transform: uppercase;
+  color: var(--kerning-heading-color);
+  opacity: 0.4;
 }
 
 /* Task 8, spec F19: Default / Potential exceptions tabs, replacing the old
    four bucket sections (F11). Ticket 12: drawn as one pill, the active half
    filled, rather than the plain underline this used when the tabs sat above
    the table. */
-#kerning-pairtable-tabs {
-  display: flex;
-  gap: 0;
-  border: 1px solid var(--horizontal-rule-color, #ccc);
-  border-radius: 1em;
-  overflow: hidden;
-}
+/* The tabs are the heading's segmented control now (kerning.html). */
 
-.kerning-pairtable-tab {
+/* checkmark (Figma 421:14733), the editor's designspace checkmark: a 14px
+   light box, the lime check when on, ui/label/S beside it. */
+.kerning-checkmark-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   cursor: pointer;
-  border: none;
-  background: transparent;
-  padding: 0.25em 0.75em;
-  margin: 0;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--kerning-label-color);
+  white-space: nowrap;
 }
 
-.kerning-pairtable-tab.kerning-pairtable-tab-active {
-  background: var(--ui-element-selected-background-color, #ccc);
-  font-weight: bold;
+.kerning-checkmark {
+  appearance: none;
+  box-sizing: border-box;
+  flex: none;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(21, 21, 21, 0.05);
+  border-bottom: none;
+  border-radius: 4px;
+  background: var(--kerning-checkmark-color) center / contain no-repeat;
+  cursor: pointer;
+}
+
+.kerning-checkmark-row:hover .kerning-checkmark {
+  background-color: var(--kerning-checkmark-hover-color);
+}
+
+.kerning-checkmark:checked,
+.kerning-checkmark-row:hover .kerning-checkmark:checked {
+  border: none;
+  background-color: transparent;
+  background-image: url("/images/checkbox-on-rest.svg");
+}
+
+.kerning-checkmark-row:hover .kerning-checkmark:checked {
+  background-image: url("/images/checkbox-on-hover.svg");
 }
 
 #kerning-derive-proposals {
@@ -771,23 +867,21 @@ tr:hover .kerning-pairtable-preview-toggle:hover,
    grouped member with no saved rule of its own) reads as the SAME class
    accent as its own class-summary row -- results-model.js's own
    rowRelationship groups it there too, not as a fourth category. */
-tr[data-kind="class-rule"],
-tr[data-kind="member-pair"] {
+/* table/data's marker (Figma 421:14577): the accent is a 2px stripe down
+   the row's first cell. */
+tr[data-kind="class-rule"] > td:first-child,
+tr[data-kind="member-pair"] > td:first-child {
   /* Plain #888, not var(--metrics-handle-color): that custom property is
      defined in editor.css, which this view never links (see backlog item 6's
      own note on why -- kerning.css carries copies of the handful of rules it
      actually needs instead). Referencing an unset variable here would still
      "work" via its fallback, silently, which is worse than just stating the
      color directly. */
-  border-left: 3px solid #888;
+  box-shadow: inset 2px 0 #888;
 }
 
-tr[data-kind="unique-pair"] {
-  border-left: 3px solid transparent;
-}
-
-tr[data-kind="pair-exception"] {
-  border-left: 3px solid var(--fontra-red-color, #c00);
+tr[data-kind="pair-exception"] > td:first-child {
+  box-shadow: inset 2px 0 var(--fontra-red-color, #c00);
 }
 
 /* Ticket 19: the Columns fieldset (and its own rule here) is gone -- Current,

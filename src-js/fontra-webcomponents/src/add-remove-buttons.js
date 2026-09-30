@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { InlineSVG } from "./inline-svg.js";
+import "./text-button.js";
 import { themeColorCSS } from "./theme-support.js";
 
 const colors = {
@@ -60,6 +61,10 @@ class AddRemoveButtons extends html.UnlitElement {
     button:focus {
       outline: none;
     }
+
+    .buttons-container.text-buttons {
+      gap: 2px;
+    }
   `;
 
   static properties = {
@@ -68,6 +73,11 @@ class AddRemoveButtons extends html.UnlitElement {
     disableAddButton: { type: Boolean },
     disableRemoveButton: { type: Boolean },
     hidden: { type: Boolean },
+    // The design's look (Figma 421:12727): two button/text S keys, "add"
+    // and "delete", 2px apart, in place of the round plus and minus.
+    textButtons: { type: Boolean },
+    addLabel: { type: String },
+    removeLabel: { type: String },
   };
 
   constructor() {
@@ -80,6 +90,25 @@ class AddRemoveButtons extends html.UnlitElement {
   }
 
   render() {
+    if (this.textButtons && !this.hidden) {
+      const key = (label, disabled, callback) => {
+        const button = html.createDomElement("text-button", {
+          label,
+          size: "S",
+          onclick: () => callback(),
+        });
+        button.disabled = disabled;
+        return button;
+      };
+      return html.div({ class: "buttons-container text-buttons" }, [
+        key(this.addLabel || "add", this.disableAddButton, () =>
+          this.addButtonCallback()
+        ),
+        key(this.removeLabel || "delete", this.disableRemoveButton, () =>
+          this.removeButtonCallback()
+        ),
+      ]);
+    }
     return this.hidden
       ? ""
       : html.div(

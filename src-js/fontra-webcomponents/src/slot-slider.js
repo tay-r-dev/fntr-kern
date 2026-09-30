@@ -224,7 +224,12 @@ export class SlotSlider extends UnlitElement {
       html.div({ class: "fillet bottom-left" }),
       html.div({ class: "well-body" }),
     ]);
-    const elements = [html.div({ class: "track" }), ...this._slots, this._well, this._thumb];
+    const elements = [
+      html.div({ class: "track" }),
+      ...this._slots,
+      this._well,
+      this._thumb,
+    ];
     this._place();
     return elements;
   }

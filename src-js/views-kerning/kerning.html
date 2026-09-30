@@ -41,115 +41,113 @@
       <div class="kerning-column sidebar-container kerning-left">
         <div class="sidebar-resize-gutter" data-grow-direction="right"></div>
         <div id="kerning-pairtable-section">
-          <!-- Ticket 12 (UI-REFACTOR.md §3.2): the title row -- Kerning, with
+          <!-- The white card on the grey column (Figma 421:14557). -->
+          <div class="kerning-card">
+            <!-- Ticket 12 (UI-REFACTOR.md §3.2): the title row -- Kerning, with
                the Default / Potential exceptions tabs at its right end,
                drawn as one pill with the active half filled. Placement and
                styling only: the tablist roles and setResultsTab (kerning.js)
                are unchanged, only moved up from below the filters. -->
-          <div id="kerning-pairtable-title-row">
-            <h2 id="kerning-pairtable-title">Kerning</h2>
-            <div id="kerning-pairtable-tabs" role="tablist">
-              <button
-                type="button"
-                class="kerning-pairtable-tab"
-                data-tab="default"
-                role="tab"
-                aria-selected="true"
-              >
-                Default
-              </button>
-              <button
-                type="button"
-                class="kerning-pairtable-tab"
-                data-tab="potential"
-                role="tab"
-                aria-selected="false"
-              >
-                Potential exceptions
-              </button>
+            <div id="kerning-pairtable-title-row">
+              <h2 id="kerning-pairtable-title">Kerning</h2>
+              <!-- The heading's pill segmented control (Figma 379:22418), the
+                 same one the editor's Phrase heading carries; kerning.js
+                 fills its two options. -->
+              <segmented-control id="kerning-pairtable-tabs" small></segmented-control>
             </div>
-          </div>
-          <div id="kerning-pairtable-controls">
-            <label for="kerning-pairtable-glyph">Glyph</label>
-            <input
-              type="text"
-              id="kerning-pairtable-glyph"
-              placeholder="A, Adieresis, @ClassName, o!"
-              title="One glyph: all its pairs. Multiple glyphs: pairs between them. A trailing ! shows a class member's own rows beside its class rule. Ctrl-click replaces; Ctrl+Shift-click toggles a glyph. Shift-click in preview narrows to adjacent pairs."
-            />
+            <div id="kerning-pairtable-controls">
+              <!-- input/text (Figma 421:14560): the design has no label; the
+                 hint names what goes in. -->
+              <ui-text-input
+                id="kerning-pairtable-glyph"
+                placeholder="A, Adieresis, @ClassName, o!"
+                title="One glyph: all its pairs. Multiple glyphs: pairs between them. A trailing ! shows a class member's own rows beside its class rule. Ctrl-click replaces; Ctrl+Shift-click toggles a glyph. Shift-click in preview narrows to adjacent pairs."
+              ></ui-text-input>
 
-            <span
-              id="kerning-pairtable-glyph-error"
-              class="kerning-pairtable-input-error"
-              role="status"
-            ></span>
+              <span
+                id="kerning-pairtable-glyph-error"
+                class="kerning-pairtable-input-error"
+                role="status"
+              ></span>
 
-            <!-- Ticket 14 (UI-REFACTOR.md §3.2, UI-NOMENCLATURE.md §14.1):
+              <!-- Ticket 14 (UI-REFACTOR.md §3.2, UI-NOMENCLATURE.md §14.1):
                  one row, in order: Only marked as a labeled toggle
                  (fontra-webcomponents/src/labeled-toggle.js), then
                  zero-current, group members and show hidden as checkboxes.
                  Same ids/behavior as before -- initPairTableSection in
                  kerning.js binds these exactly as it bound the four
                  scattered controls this replaces. -->
-            <div id="kerning-pairtable-switches">
-              <!-- The marks as a list. A mark is the exception to whatever
+              <div id="kerning-pairtable-switches">
+                <!-- The marks as a list. A mark is the exception to whatever
                    the global skip mode does, so this shows the pairs taken
                    out of the preview in ordinary mode and the pairs put into
                    it under skip-all (kerning.js's pairRowVisible). Its own
                    label text is set in JS (initPairTableSection) -- see
                    labeled-toggle.js's own note on why. -->
-              <labeled-toggle
-                id="kerning-pairtable-filter-only-marked"
-              ></labeled-toggle>
-              <!-- Task 5, spec F13: the exact `Current == 0 && Proposed !=
+                <labeled-toggle
+                  id="kerning-pairtable-filter-only-marked"
+                ></labeled-toggle>
+                <!-- Task 5, spec F13: the exact `Current == 0 && Proposed !=
                    0` predicate, independent of column visibility. Shorter
                    label, same mechanics. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-hide-zero-current" />
-                Zero-current
-                <span
-                  class="kerning-pairtable-filter-help"
-                  title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
-                  >?</span
-                ></label
-              >
-              <!-- Task 8, spec F22: broad exposure of every grouped member's
+                <label class="kerning-checkmark-row"
+                  ><input
+                    type="checkbox"
+                    class="kerning-checkmark"
+                    id="kerning-pairtable-hide-zero-current"
+                  />
+                  Zero-current
+                  <span
+                    class="kerning-pairtable-filter-help"
+                    title="Hides rows where the stored Current value is 0 but the Proposed suggestion is not. A stored zero can still be a real, explicit rule."
+                    >?</span
+                  ></label
+                >
+                <!-- Task 8, spec F22: broad exposure of every grouped member's
                    individual row at once. Shorter label, same mechanics. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-show-members" /> Group
-                members</label
-              >
-              <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
+                <label class="kerning-checkmark-row"
+                  ><input
+                    type="checkbox"
+                    class="kerning-checkmark"
+                    id="kerning-pairtable-show-members"
+                  />
+                  Group members</label
+                >
+                <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
                    reappear here with the distinguishable hidden styling
                    (kerning.css) plus their own restore (eye) action. -->
-              <label
-                ><input type="checkbox" id="kerning-pairtable-filter-hidden" /> Show
-                hidden</label
-              >
-            </div>
+                <label class="kerning-checkmark-row"
+                  ><input
+                    type="checkbox"
+                    class="kerning-checkmark"
+                    id="kerning-pairtable-filter-hidden"
+                  />
+                  Show hidden</label
+                >
+              </div>
 
-            <div id="kerning-pairtable-filters">
-              <!-- Ticket 18 (UI-REFACTOR.md §3.3): Side is a singleChoice
+              <div id="kerning-pairtable-filters">
+                <!-- Ticket 18 (UI-REFACTOR.md §3.3): Side is a singleChoice
                    multi-select-dropdown now, not a plain select -- first on
                    the row, same look as the other three dropdowns. -->
-              <div id="kerning-pairtable-filter-side-slot"></div>
-              <!-- Task 5, spec F16: the sign filter (negative/positive) is
+                <div id="kerning-pairtable-filter-side-slot"></div>
+                <!-- Task 5, spec F16: the sign filter (negative/positive) is
                    removed -- signs stay visible on Current/Proposed/Delta,
                    magnitude filtering is the Minimum/Maximum |Δ| pair
                    below. -->
-              <!-- Task 17, spec F01: the current/applied/stale filter is
+                <!-- Task 17, spec F01: the current/applied/stale filter is
                    removed entirely. Its replacement is the Stale glyphs
                    section (#kerning-stale-section) below, and a stale row's
                    own warning presentation (F23) always stays visible
                    regardless of any other filter. -->
-              <!-- Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is
+                <!-- Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is
                    gone -- Current, Proposed, Delta and Apply are now checked
                    entries in a context menu opened by right-clicking the
                    table header (initPairTableSection in kerning.js). Same
                    four filter keys, same display-only effect. -->
-              <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
+                <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
                    #kerning-pairtable-switches above. -->
-              <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
+                <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
                    multi-select filter -- reuses the Columns fieldset's own
                    "grouped checkboxes under a legend" idiom immediately
                    above, rather than a bespoke dropdown widget, for the
@@ -160,7 +158,7 @@
                    non-restrictive default. Replaces the old Hide
                    non-standalone/numbers/punctuation checkboxes (Backlog
                    item 3) entirely. -->
-              <!-- Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14):
+                <!-- Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14):
                    the always-open Unicode types fieldset is gone -- a
                    <multi-select-dropdown> (fontra-webcomponents/src/
                    multi-select-dropdown.js) is mounted here in
@@ -168,18 +166,18 @@
                    The non-Unicode note (Task 9, ledger §8.2) is now a
                    trailing entry inside the open list instead of a fieldset
                    sibling -- see updateNonUnicodeNote in kerning.js. -->
-              <div id="kerning-pairtable-filter-unicode-slot"></div>
-              <!-- Task 9, spec F14: Class relationship, the same
+                <div id="kerning-pairtable-filter-unicode-slot"></div>
+                <!-- Task 9, spec F14: Class relationship, the same
                    OR-combined multi-select idiom as Unicode types above.
                    All four checked by default -- new filter, no prior
                    equivalent to preserve, so "everything" is the
                    non-restrictive default. -->
-              <!-- Ticket 16 (UI-REFACTOR.md §3.3): the always-open Class
+                <!-- Ticket 16 (UI-REFACTOR.md §3.3): the always-open Class
                    relationship fieldset is gone -- a <multi-select-dropdown>
                    is mounted here in initPairTableSection, same four
                    buckets, same filter key. -->
-              <div id="kerning-pairtable-filter-relationships-slot"></div>
-              <!-- Ticket 17 (UI-REFACTOR.md §3.3): table Glyphset filter --
+                <div id="kerning-pairtable-filter-relationships-slot"></div>
+                <!-- Ticket 17 (UI-REFACTOR.md §3.3): table Glyphset filter --
                    single-choice, All by default (ledger §8.4), now a
                    <multi-select-dropdown> in singleChoice mode instead of a
                    plain select, same look as the other three dropdowns on
@@ -188,33 +186,33 @@
                    this control does not offer an "add a glyphset" UI of its
                    own. Distinct from the Font mode preview glyphset selector
                    (F08/Task 13) -- neither changes the other. -->
-              <div id="kerning-pairtable-filter-glyphset-slot"></div>
-              <!-- Ticket 14: Show members (as "Group members") moved to
+                <div id="kerning-pairtable-filter-glyphset-slot"></div>
+                <!-- Ticket 14: Show members (as "Group members") moved to
                    #kerning-pairtable-switches above. -->
-              <!-- Backlog item 11: the old two-state sort toggle button is
+                <!-- Backlog item 11: the old two-state sort toggle button is
                    replaced by clicking a column header directly (one sort
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
-            </div>
+              </div>
 
-            <!-- Ticket 13 (UI-REFACTOR.md §3.2): Apply selected, Reset
+              <!-- Ticket 13 (UI-REFACTOR.md §3.2): Apply selected, Reset
                  selected to zero and Deselect moved below the table, under
                  the count line -- see #kerning-pairtable-actions below,
                  after .kerning-pairtable-group. -->
 
-            <!-- The Derive button, its tolerance field and the proposals
+              <!-- The Derive button, its tolerance field and the proposals
                  list moved to the class panel (design doc §1.2) -- see
                  #autokern-class-panel-slot below. Design doc §0: kern-row
                  clustering (the only tactic that used a tolerance) is
                  removed, so no tolerance control exists anywhere anymore. -->
-          </div>
+            </div>
 
-          <!-- Task 8, spec F19: Default / Potential exceptions tabs -- moved
+            <!-- Task 8, spec F19: Default / Potential exceptions tabs -- moved
                to the title row above by ticket 12. One row list, one table,
                kerning.js's renderPairTable decides ROW VISIBILITY from each
                row's kind/exposure/tab, not which of several tables to
                populate. See activeResultsTab / setResultsTab in kerning.js. -->
 
-          <!-- Task 8, spec F32: Glyph L (name) / Current / Proposed / Delta /
+            <!-- Task 8, spec F32: Glyph L (name) / Current / Proposed / Delta /
                Glyph R (name) / Exception / Hide, in that order. The tick
                lives inside the Glyph L cell (buildPairRowElement/
                buildClassSummaryRowElement in kerning.js) so it does not add
@@ -223,8 +221,8 @@
                not a separate display element (kerning.js's
                buildClassSummaryRowElement wires the same selectRow/tickRow
                mechanism buildPairRowElement uses). -->
-          <div class="kerning-pairtable-group">
-            <!-- Ticket 04 (UI-REFACTOR.md §3, UI-NOMENCLATURE.md §14): the
+            <div class="kerning-pairtable-group">
+              <!-- Ticket 04 (UI-REFACTOR.md §3, UI-NOMENCLATURE.md §14): the
                  table itself (head + tbody) is built by the shared
                  <data-table> component (fontra-webcomponents/src/data-table.js),
                  mounted here by initPairTableSection in kerning.js. Column
@@ -232,34 +230,38 @@
                  scroll box and its resize grip (ticket 22) all live in that
                  component; only the cells (buildPairRowElement/
                  buildClassSummaryRowElement) stay in kerning.js. -->
-            <div id="kerning-pairtable-table-mount"></div>
-            <!-- Ticket 20 (UI-REFACTOR.md §3.5): the table is a windowed
+              <div id="kerning-pairtable-table-mount"></div>
+              <!-- Ticket 20 (UI-REFACTOR.md §3.5): the table is a windowed
                  list -- Load next 100 is gone, and this line now counts
                  every row the filters admit (updatePairTableLoadStatus in
                  kerning.js), not the window. -->
-            <div class="kerning-pairtable-load-controls">
-              <span
-                id="kerning-pairtable-load-status"
-                role="status"
-                aria-live="polite"
-              ></span>
+              <div class="kerning-pairtable-load-controls">
+                <span
+                  id="kerning-pairtable-load-status"
+                  role="status"
+                  aria-live="polite"
+                ></span>
+              </div>
             </div>
-          </div>
 
-          <!-- Ticket 13 (UI-REFACTOR.md §3.2): "Apply selected, Reset
+            <!-- Ticket 13 (UI-REFACTOR.md §3.2): "Apply selected, Reset
                selected to zero and Deselect sit under the count line." Same
                ids, same behavior (resetSelectedPairRows/pressReset in
                kerning.js) -- moved here from above the tabs/table. -->
-          <div id="kerning-pairtable-actions">
-            <button id="kerning-pairtable-apply-selected" type="button">
-              Apply selected
-            </button>
-            <button id="kerning-pairtable-reset-zero" type="button">
-              Reset selected to zero
-            </button>
-            <!-- Task 3, spec F24: clears both the highlighted (preview) and
+            <div id="kerning-pairtable-actions">
+              <!-- button/text, size S (Figma 421:14596). -->
+              <text-button id="kerning-pairtable-apply-selected" size="S"
+                >Apply selected</text-button
+              >
+              <text-button id="kerning-pairtable-reset-zero" size="S"
+                >Reset selected to zero</text-button
+              >
+              <!-- Task 3, spec F24: clears both the highlighted (preview) and
                  ticked (action-target) selection layers. -->
-            <button id="kerning-pairtable-deselect" type="button">Deselect</button>
+              <text-button id="kerning-pairtable-deselect" size="S"
+                >Deselect</text-button
+              >
+            </div>
           </div>
         </div>
       </div>
@@ -587,11 +589,11 @@
                  initPhraseSection's own comment in kerning.js for why. -->
             <button id="kerning-preset-add-button" type="button">Add…</button>
             <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
-            <textarea
+            <ui-text-input
               id="kerning-phrase-input"
               placeholder="Type a phrase"
-              rows="3"
-            ></textarea>
+              multiline
+            ></ui-text-input>
 
             <!-- Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons
                  set the preview's scene alignment, exactly one on. Not a

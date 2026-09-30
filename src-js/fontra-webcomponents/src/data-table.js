@@ -322,20 +322,21 @@ const DATA_TABLE_STYLES = `
 
   /* The row's icons: button/table icon, 18px, 4px apart; hidden at rest and
      shown whole on the row's hover. */
-  data-table[look] .data-table-action {
+  data-table[look] tbody icon-button {
     width: 18px;
     height: 18px;
+    vertical-align: middle;
   }
 
   data-table[look] .data-table-actions {
     gap: 4px;
   }
 
-  data-table[look] .data-table-action + .data-table-action {
+  data-table[look] tbody icon-button + icon-button {
     margin-left: 4px;
   }
 
-  data-table[look] .data-table-actions .data-table-action + .data-table-action {
+  data-table[look] .data-table-actions icon-button + icon-button {
     margin-left: 0;
   }
 
@@ -1080,7 +1081,8 @@ export class DataTable extends HTMLElement {
     if (!this._tbody) {
       return;
     }
-    for (const button of this._tbody.querySelectorAll("icon-button.data-table-action")) {
+    // Every icon in a row, the cells' own included, is a table icon.
+    for (const button of this._tbody.querySelectorAll("icon-button")) {
       if (!!button.table !== !!this._look) {
         button.table = !!this._look;
       }

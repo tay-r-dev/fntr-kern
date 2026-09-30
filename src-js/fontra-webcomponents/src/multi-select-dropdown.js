@@ -211,7 +211,7 @@ export class MultiSelectDropdown extends UnlitElement {
       flex: none;
     }
 
-    button.filled:not(.icon-mode) indication-badge {
+    button.badged:not(.icon-mode) indication-badge {
       display: inline-block;
     }
 
@@ -341,6 +341,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set singleChoice(value) {
     this._singleChoice = !!value;
+    this._updateButtonClass();
   }
 
   get note() {
@@ -385,6 +386,11 @@ export class MultiSelectDropdown extends UnlitElement {
     return [
       this._icon ? "icon-mode" : "",
       this._items.some((item) => item.checked && !item.divider) ? "filled" : "",
+      // A one-choice dropdown shows its pick as its label; only a
+      // several-choice one flags a pick with the badge.
+      !this._singleChoice && this._items.some((item) => item.checked && !item.divider)
+        ? "badged"
+        : "",
       this._menu ? "open" : "",
     ]
       .join(" ")

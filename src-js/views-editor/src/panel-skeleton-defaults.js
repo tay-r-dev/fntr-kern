@@ -28,6 +28,7 @@ import {
   tableRow,
 } from "@fontra/web-components/data-table.js"; // for <data-table>, ticket 68
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
+import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
 import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 74
@@ -152,6 +153,11 @@ const SKELETON_SETTINGS_STYLES = `
 // right sidebar. It holds the generator setting Delete collapsing points and
 // the master-wide source defaults: the width presets, the serif presets and
 // the default caps. The defaults used to be hosted in the Metrics panel.
+// button/text, size S (Figma 414:31310).
+function textKey(label, onClick) {
+  return html.createDomElement("text-button", { label, size: "S", onclick: onClick });
+}
+
 export default class SkeletonSettingsPanel extends Panel {
   identifier = "skeleton-settings";
   iconPath = "/tabler-icons/bone.svg";
@@ -239,6 +245,8 @@ export default class SkeletonSettingsPanel extends Panel {
     this._appendStyle(SKELETON_SETTINGS_STYLES);
     this.widthPresetTable = html.createDomElement("data-table");
     this.widthPresetTable.tableClassName = "skeleton-presets-table";
+    // table/data (Figma 417:8097).
+    this.widthPresetTable.look = "data";
     this.widthPresetTable.columns = [
       { label: translate("sidebar.skeleton-settings.column.name") },
       { label: "" },
@@ -263,19 +271,17 @@ export default class SkeletonSettingsPanel extends Panel {
       // Ticket 70: New preset adds a row in the filtered master and case;
       // Preset from selection stores the selection's total and projection.
       html.div({ class: "skeleton-settings-filters" }, [
-        html.button({ onclick: () => this._addWidthPreset(null) }, [
-          translate("sidebar.skeleton-settings.new-preset"),
-        ]),
-        (this.widthPresetFromSelectionButton = html.button(
-          {
-            onclick: () => {
-              const captured = this._captureSelectionWidthPreset();
-              if (captured) {
-                this._addWidthPreset(captured);
-              }
-            },
-          },
-          [translate("sidebar.skeleton-settings.preset-from-selection")]
+        textKey(translate("sidebar.skeleton-settings.new-preset"), () =>
+          this._addWidthPreset(null)
+        ),
+        (this.widthPresetFromSelectionButton = textKey(
+          translate("sidebar.skeleton-settings.preset-from-selection"),
+          () => {
+            const captured = this._captureSelectionWidthPreset();
+            if (captured) {
+              this._addWidthPreset(captured);
+            }
+          }
         )),
       ]),
     ]);
@@ -283,6 +289,7 @@ export default class SkeletonSettingsPanel extends Panel {
     // master, built once and refilled on update.
     this.terminalPresetTable = html.createDomElement("data-table");
     this.terminalPresetTable.tableClassName = "skeleton-presets-table";
+    this.terminalPresetTable.look = "data";
     this.terminalPresetTable.columns = [
       { label: translate("sidebar.skeleton-settings.column.type") },
       { label: translate("sidebar.skeleton-settings.column.name") },
@@ -306,19 +313,17 @@ export default class SkeletonSettingsPanel extends Panel {
       // Ticket 73: New preset adds a row of the filtered kind, master and case;
       // Preset from selection stores the selected terminal's kind and shape.
       html.div({ class: "skeleton-settings-filters" }, [
-        html.button({ onclick: () => this._addTerminalPreset(null) }, [
-          translate("sidebar.skeleton-settings.new-preset"),
-        ]),
-        (this.terminalPresetFromSelectionButton = html.button(
-          {
-            onclick: () => {
-              const captured = this._captureSelectionTerminalPreset();
-              if (captured) {
-                this._addTerminalPreset(captured);
-              }
-            },
-          },
-          [translate("sidebar.skeleton-settings.preset-from-selection")]
+        textKey(translate("sidebar.skeleton-settings.new-preset"), () =>
+          this._addTerminalPreset(null)
+        ),
+        (this.terminalPresetFromSelectionButton = textKey(
+          translate("sidebar.skeleton-settings.preset-from-selection"),
+          () => {
+            const captured = this._captureSelectionTerminalPreset();
+            if (captured) {
+              this._addTerminalPreset(captured);
+            }
+          }
         )),
       ]),
     ]);
@@ -675,29 +680,40 @@ export default class SkeletonSettingsPanel extends Panel {
     // Ticket 72: the terminal table adds a Type dropdown.
     const type = withType ? dropdown("type") : null;
     const isFiltered = () => !!(state.master || state.case || state.type);
-    const current = html.button(
-      {
-        onclick: () => {
-          if (isFiltered()) {
-            state.master = null;
-            state.case = null;
-            if (withType) {
-              state.type = null;
-            }
-          } else {
-            state.master = this._getEffectiveSource().sourceId ?? null;
-            state.case = getSkeletonGlyphCase(
-              this.sceneController.sceneSettings?.selectedGlyphName
-            );
+    const current = textKey(
+      translate("sidebar.skeleton-settings.filter.current"),
+      () => {
+        if (isFiltered()) {
+          state.master = null;
+          state.case = null;
+          if (withType) {
+            state.type = null;
           }
-          onChange();
-        },
-      },
-      [translate("sidebar.skeleton-settings.filter.current")]
+        } else {
+          state.master = this._getEffectiveSource().sourceId ?? null;
+          state.case = getSkeletonGlyphCase(
+            this.sceneController.sceneSettings?.selectedGlyphName
+          );
+        }
+        onChange();
+      }
     );
     const option = (value, label, picked) => ({ value, label, checked: picked });
+    // The filters start on Current: the first refresh that knows the edited
+    // source sets the master and case, once.
+    let seeded = false;
     const refresh = () => {
-      current.textContent = translate(
+      if (!seeded) {
+        const sourceId = this._getEffectiveSource()?.sourceId;
+        if (sourceId) {
+          seeded = true;
+          state.master = sourceId;
+          state.case = getSkeletonGlyphCase(
+            this.sceneController.sceneSettings?.selectedGlyphName
+          );
+        }
+      }
+      current.label = translate(
         isFiltered()
           ? "sidebar.skeleton-settings.filter.reset"
           : "sidebar.skeleton-settings.filter.current"
@@ -830,17 +846,13 @@ export default class SkeletonSettingsPanel extends Panel {
   // Apply writes the row's preset to the selected skeleton points, as picking
   // it in the Selection tab does. With nothing selected it does nothing.
   _presetApplyButton(readOnly, onClick) {
-    return html.button(
-      {
-        class: "preset-apply",
-        disabled: readOnly,
-        onclick: (event) => {
-          event.stopPropagation();
-          onClick();
-        },
-      },
-      [translate("sidebar.skeleton-settings.apply")]
-    );
+    const button = textKey(translate("sidebar.skeleton-settings.apply"), (event) => {
+      event.stopPropagation();
+      onClick();
+    });
+    button.classList.add("preset-apply");
+    button.disabled = readOnly;
+    return button;
   }
 
   async _applyWidthPreset(preset) {

@@ -140,8 +140,14 @@ export class TextButton extends UnlitElement {
   }
 
   render() {
-    this.setAttribute("data-size", this.size === "S" ? "S" : "M");
-    const faceChildren = [this.label || ""];
+    // Markup may give the size as an attribute and the label as the
+    // element's text.
+    const size = this.size ?? this.getAttribute("size");
+    this.setAttribute("data-size", size === "S" ? "S" : "M");
+    const faceChildren = [this.label ?? this.textContent.trim()];
+    if (this.hasAttribute("disabled")) {
+      this._disabled = true;
+    }
     if (this.icon) {
       faceChildren.push(
         html.createDomElement("inline-svg", { class: "icon", src: this.icon })

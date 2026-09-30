@@ -24,7 +24,10 @@ const colors = {
   "ui-text-input-tray-color": ["#f5f5f5", "#3a3a3a"],
   "ui-text-input-tray-border-color": ["#e0e0e0", "#555"],
   "ui-text-input-hover-color": ["#f7f7f7", "#464646"],
-  "ui-text-input-hover-border-color": ["rgba(0, 0, 0, 0.08)", "rgba(255, 255, 255, 0.1)"],
+  "ui-text-input-hover-border-color": [
+    "rgba(0, 0, 0, 0.08)",
+    "rgba(255, 255, 255, 0.1)",
+  ],
   "ui-text-input-focus-color": ["#fff", "#2c2c2c"],
   "ui-text-input-focus-border-color": ["#def280", "#8fae4a"],
   "ui-text-input-text-color": ["#8e8e8e", "#8e8e8e"],
@@ -193,7 +196,26 @@ export class UITextInput extends UnlitElement {
     this._field?.select();
   }
 
+  // Markup may set placeholder, multiline and disabled as attributes; they
+  // are read once, on the first render.
+  _readAttributes() {
+    if (this._attributesRead) {
+      return;
+    }
+    this._attributesRead = true;
+    if (!this._placeholder && this.hasAttribute("placeholder")) {
+      this._placeholder = this.getAttribute("placeholder");
+    }
+    if (this.hasAttribute("multiline")) {
+      this._multiline = true;
+    }
+    if (this.hasAttribute("disabled")) {
+      this._disabled = true;
+    }
+  }
+
   render() {
+    this._readAttributes();
     const hadFocus = this.shadowRoot.activeElement === this._field;
     if (this._field) {
       this._value = this._field.value;

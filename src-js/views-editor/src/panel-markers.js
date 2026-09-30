@@ -14,6 +14,7 @@ import {
   tableRow,
 } from "@fontra/web-components/data-table.js"; // for <data-table>, tickets 62, 63, 66
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, tickets 64, 65
+import "@fontra/web-components/text-button.js";
 import {
   createGroup,
   deleteGroup,
@@ -201,6 +202,8 @@ export default class MarkersPanel extends Panel {
     trash.onclick = (event) => this.pressEraseSection(kind, event.currentTarget);
     const table = html.createDomElement("data-table");
     table.tableClassName = "markers-table";
+    // table/data (Figma 417:8097).
+    table.look = "data";
     table.columns = columns || [
       { label: translate("sidebar.markers.column.id") },
       { label: translate("sidebar.markers.column.nodes") },
@@ -229,6 +232,7 @@ export default class MarkersPanel extends Panel {
   _buildGroupSection() {
     const table = html.createDomElement("data-table");
     table.tableClassName = "markers-table";
+    table.look = "data";
     table.columns = [
       { label: translate("sidebar.markers.column.name") },
       { label: translate("sidebar.markers.column.count"), align: "right" },
@@ -244,9 +248,12 @@ export default class MarkersPanel extends Panel {
       empty,
       table,
       html.div({}, [
-        html.button({ onclick: () => this._createNextGroup() }, [
-          translate("sidebar.markers.new-group"),
-        ]),
+        // button/text, size S (Figma 414:31310).
+        html.createDomElement("text-button", {
+          label: translate("sidebar.markers.new-group"),
+          size: "S",
+          onclick: () => this._createNextGroup(),
+        }),
       ]),
     ]);
     return { element, table, empty, groups: [] };

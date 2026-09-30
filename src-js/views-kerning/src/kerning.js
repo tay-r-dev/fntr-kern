@@ -142,6 +142,9 @@ import { difference, union } from "@fontra/core/set-ops.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
 import { DataTable, editableCell } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
+import "@fontra/web-components/segmented-control.js";
+import "@fontra/web-components/text-button.js";
+import "@fontra/web-components/ui-text-input.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // for <icon-button>, the delete-class control
@@ -1256,6 +1259,7 @@ export class KerningViewController extends ViewController {
         const activeTag = document.activeElement?.tagName;
         if (
           activeTag === "TEXTAREA" ||
+          activeTag === "UI-TEXT-INPUT" ||
           activeTag === "INPUT" ||
           activeTag === "SELECT"
         ) {
@@ -2436,7 +2440,12 @@ export class KerningViewController extends ViewController {
       }
       // Not while typing: Escape in a field belongs to the field.
       const tagName = event.target?.tagName?.toLowerCase();
-      if (tagName === "input" || tagName === "textarea" || tagName === "select") {
+      if (
+        tagName === "input" ||
+        tagName === "textarea" ||
+        tagName === "select" ||
+        tagName === "ui-text-input"
+      ) {
         return;
       }
       this.clearPreviewPairSelection();
@@ -2660,6 +2669,8 @@ export class KerningViewController extends ViewController {
     // in this method.
     this._pairTable = html.createDomElement("data-table");
     this._pairTable.tableClassName = "kerning-pairtable-table";
+    // table/data (Figma 421:14557): every row ruled.
+    this._pairTable.look = "data";
     this._pairTable.tbodyId = "kerning-pairtable-body";
     this._pairTable.sortableClassName = "kerning-pairtable-sortable";
     this._pairTable.sortActiveClassName = "kerning-pairtable-sort-active";
@@ -2781,7 +2792,7 @@ export class KerningViewController extends ViewController {
     // selected and Reset selected (now a double-press-to-zero action)
     // remain.
     const resetZeroButton = document.querySelector("#kerning-pairtable-reset-zero");
-    this._resetZeroDefaultLabel = resetZeroButton.textContent;
+    this._resetZeroDefaultLabel = resetZeroButton.textContent.trim();
     this.resetArmedKey = null;
     resetZeroButton.addEventListener("click", () => this.resetSelectedPairRows());
 
@@ -2814,11 +2825,13 @@ export class KerningViewController extends ViewController {
     // this.activeResultsTab and rebuilds the one row list for whichever tab
     // is active.
     this.activeResultsTab = "default";
-    for (const tabButton of document.querySelectorAll(".kerning-pairtable-tab")) {
-      tabButton.addEventListener("click", () =>
-        this.setResultsTab(tabButton.dataset.tab)
-      );
-    }
+    const tabs = document.querySelector("#kerning-pairtable-tabs");
+    tabs.options = [
+      { value: "default", label: "Default" },
+      { value: "potential", label: "Potential exceptions" },
+    ];
+    tabs.value = "default";
+    tabs.addEventListener("change", (event) => this.setResultsTab(event.detail.value));
 
     // Ticket 04: the select-all tick's own wiring moved to
     // this._pairTable.onSelectAllChange above, alongside the rest of the
@@ -3052,10 +3065,9 @@ export class KerningViewController extends ViewController {
       return;
     }
     this.activeResultsTab = tab;
-    for (const tabButton of document.querySelectorAll(".kerning-pairtable-tab")) {
-      const active = tabButton.dataset.tab === tab;
-      tabButton.classList.toggle("kerning-pairtable-tab-active", active);
-      tabButton.setAttribute("aria-selected", active ? "true" : "false");
+    const tabs = document.querySelector("#kerning-pairtable-tabs");
+    if (tabs && tabs.value !== tab) {
+      tabs.value = tab;
     }
     this.renderPairTable();
   }
@@ -3201,9 +3213,9 @@ export class KerningViewController extends ViewController {
     }
     if (this.resetArmedKey) {
       const count = JSON.parse(this.resetArmedKey).length;
-      button.textContent = `Reset ${count} row${count === 1 ? "" : "s"} to 0 — press again`;
+      button.label = `Reset ${count} row${count === 1 ? "" : "s"} to 0 — press again`;
     } else {
-      button.textContent = this._resetZeroDefaultLabel;
+      button.label = this._resetZeroDefaultLabel;
     }
   }
 
@@ -6991,6 +7003,7 @@ export class KerningViewController extends ViewController {
         const activeTag = document.activeElement?.tagName;
         if (
           activeTag === "TEXTAREA" ||
+          activeTag === "UI-TEXT-INPUT" ||
           activeTag === "INPUT" ||
           activeTag === "SELECT"
         ) {
@@ -8220,7 +8233,12 @@ export class KerningViewController extends ViewController {
     // and typing before the action callback gets a chance to no-op.
     if (event.key === "Tab") {
       const activeTag = document.activeElement?.tagName;
-      if (activeTag === "TEXTAREA" || activeTag === "INPUT" || activeTag === "SELECT") {
+      if (
+        activeTag === "TEXTAREA" ||
+        activeTag === "UI-TEXT-INPUT" ||
+        activeTag === "INPUT" ||
+        activeTag === "SELECT"
+      ) {
         return;
       }
     }

@@ -13,6 +13,14 @@ const colors = {
   "row-foreground-color": ["black", "white"],
   "row-background-color": ["white", "#333"],
   "row-selected-background-color": ["#ddd", "#555"],
+  // table/select (Figma 417:8683), for look="select".
+  "select-look-background-color": ["#fff", "#2c2c2c"],
+  "select-look-border-color": ["#e9e9e9", "#3a3a3a"],
+  "select-look-rule-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
+  "select-look-heading-color": ["#b4b4b4", "#8e8e8e"],
+  "select-look-entry-color": ["#565656", "#c0c0c0"],
+  "select-look-entry-hover-color": ["#303030", "#e0e0e0"],
+  "select-look-active-color": ["#f7f7f7", "#3a3a3a"],
 };
 
 export class UIList extends UnlitElement {
@@ -170,6 +178,94 @@ export class UIList extends UnlitElement {
     input:read-only:focus {
       outline: none;
       background-color: unset;
+    }
+
+    /* look="select" (table/select, Figma 421:12696): the head and the rows
+       in one white box, ruled and rounded; a 24px head of small uppercase
+       light grey labels over a rule; 26px rows of thin grey entries with no
+       rules between them, darker on hover, the light grey fill on the
+       selected row. */
+    :host([look="select"]) {
+      gap: 0;
+      border: 1px solid var(--select-look-border-color);
+      border-radius: 6px;
+      overflow: hidden;
+      background-color: var(--select-look-background-color);
+    }
+
+    :host([look="select"]) .header-container {
+      border-bottom: 1px solid var(--select-look-rule-color);
+    }
+
+    :host([look="select"]) .header {
+      box-sizing: border-box;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      /* ui/table/heading */
+      font: 400 semi-condensed 8px / 10px var(--ui-font-mono);
+      letter-spacing: var(--ui-tracking);
+      text-transform: uppercase;
+      color: var(--select-look-heading-color);
+    }
+
+    :host([look="select"]) .header-cell.resizable {
+      border-right-color: transparent;
+    }
+
+    :host([look="select"]) .rows-container {
+      border: none;
+      background-color: var(--select-look-background-color);
+    }
+
+    :host([look="select"]) .row {
+      box-sizing: border-box;
+      align-items: center;
+      height: 26px;
+      padding: 0 8px;
+      border-top: none;
+      background-color: transparent;
+      color: var(--select-look-entry-color);
+      /* ui/table/entry */
+      font-family: var(--ui-font-mono);
+      font-size: 9px;
+      font-weight: 220;
+      font-stretch: 80%;
+      line-height: 10px;
+      letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
+    }
+
+    :host([look="select"]) .row:hover {
+      color: var(--select-look-entry-hover-color);
+    }
+
+    :host([look="select"]) .contents > .selected,
+    :host([look="select"]) .selected > input {
+      background-color: var(--select-look-active-color);
+    }
+
+    /* The row's icons: button/table icon's 12px glyph in an 18px slot. */
+    :host([look="select"]) .row inline-svg {
+      box-sizing: content-box;
+      width: 12px !important;
+      height: 12px !important;
+      padding: 3px;
+    }
+
+    /* table/select "status": an 18px swatch, 4px corners, a white edge. */
+    :host([look="select"]) .status-cell {
+      box-sizing: border-box;
+      height: 18px;
+      border: 1px solid var(--select-look-background-color);
+      border-radius: 4px;
+    }
+
+    :host([look="select"]) input {
+      font: inherit;
+      letter-spacing: inherit;
+      color: inherit;
+      background-color: transparent;
     }
     `;
 
