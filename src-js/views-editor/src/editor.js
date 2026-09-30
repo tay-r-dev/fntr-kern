@@ -82,6 +82,7 @@ import "@fontra/web-components/inline-svg.js";
 import { MenuItemDivider, showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import { parsePluginBasePath } from "@fontra/web-components/plugin-manager.js";
+import { parseSplitInfo } from "./canvas-split-model.js";
 import { CanvasSplit } from "./canvas-split.js";
 import { CJKDesignFrame } from "./cjk-design-frame.js";
 import {
@@ -3932,9 +3933,19 @@ export class EditorController extends ViewController {
     }
   }
 
-  enterCleanViewAndHandTool(event) {
-    this.canvasController.sceneView = this.cleanSceneView;
+  // The live canvas draws the clean view while Space is held, and while its
+  // split pane previews; the editing view otherwise.
+  updateLiveSceneView() {
+    this.canvasController.sceneView =
+      this._cleanViewHeld || this.canvasSplit.livePreview
+        ? this.cleanSceneView
+        : this.defaultSceneView;
     this.canvasController.requestUpdate();
+  }
+
+  enterCleanViewAndHandTool(event) {
+    this._cleanViewHeld = true;
+    this.updateLiveSceneView();
     this.canvasSplit.setCleanView(true);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.add("overlay-layer-hidden");
@@ -3948,8 +3959,8 @@ export class EditorController extends ViewController {
   }
 
   leaveCleanViewAndHandTool() {
-    this.canvasController.sceneView = this.defaultSceneView;
-    this.canvasController.requestUpdate();
+    this._cleanViewHeld = false;
+    this.updateLiveSceneView();
     this.canvasSplit.setCleanView(false);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.remove("overlay-layer-hidden");
@@ -4109,6 +4120,12 @@ export class EditorController extends ViewController {
     // Grab the autoViewBox state here, as it may get reset via isEditing
     const initialAutoViewBox = this.sceneController.autoViewBox;
 
+    // The split first, so the live view is fitted to the live pane.
+    const split = parseSplitInfo(viewInfo["split"]);
+    if (split) {
+      this.canvasSplit.restore(split);
+    }
+
     this.sceneModel.setGlyphLocations(viewInfo["glyphLocations"]);
     await this.sceneController.updateSceneSettingsFromViewInfo(viewInfo);
 
@@ -4140,6 +4157,10 @@ export class EditorController extends ViewController {
       return;
     }
     const viewInfo = this.sceneController.getViewInfoFromSceneSettings();
+    const split = this.canvasSplit.getSplitInfo();
+    if (split) {
+      viewInfo["split"] = split;
+    }
 
     const url = new URL(window.location);
     clearSearchParams(url.searchParams); /* clear legacy URL format */

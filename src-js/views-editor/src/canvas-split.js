@@ -25,7 +25,9 @@ import {
   openGlyphInPane,
   paneStateFromViewInfo,
   paneViewInfo,
+  previewTargetPane,
   showOverviewInPane,
+  splitInfo,
   splitPanes,
 } from "./canvas-split-model.js";
 import { getSceneSettingsDefaults } from "./scene-controller.js";
@@ -38,7 +40,6 @@ import { VisualizationContext, VisualizationLayers } from "./visualization-layer
 
 const MIN_PANE_WIDTH = 160;
 const RATIO_STORAGE_KEY = "fontra-canvas-split-ratio";
-const PREVIEW_STORAGE_KEY = "fontra-canvas-split-preview";
 
 // The settings the passive canvas takes from the live one: both panes show
 // the font at one location, set by the same text settings.
@@ -74,23 +75,83 @@ export class CanvasSplit {
     // The pane a context menu was opened on; the pane actions act on it.
     this.menuPaneIndex = null;
     this.ratio = readStoredRatio();
-    // The pane that is not live shows its glyphs filled (the preview) rather
-    // than as the editing view. Shift+Space turns it on and off.
-    this.preview = readStoredFlag(PREVIEW_STORAGE_KEY);
+    // Per pane (left, right): it shows its glyphs filled rather than as the
+    // editing view. Shift+Space turns it on and off for the pane under the
+    // pointer.
+    this.previews = [false, false];
     // Held Space: both panes show the clean view, as the live canvas does.
     this.cleanView = false;
+    // The pane under the pointer, or null.
+    this.hoveredIndex = null;
+    for (const [index, slot] of this.slots.entries()) {
+      slot.addEventListener("pointerenter", () => (this.hoveredIndex = index));
+      slot.addEventListener("pointerleave", () => {
+        if (this.hoveredIndex === index) {
+          this.hoveredIndex = null;
+        }
+      });
+    }
     this._setupDivider();
   }
 
+  // Whether the live canvas shows the preview.
+  get livePreview() {
+    return this.isSplit && this.previews[this.layout.live];
+  }
+
+  // Whether the passive canvas shows the preview.
+  get passivePreview() {
+    return this.isSplit && this.previews[1 - this.layout.live];
+  }
+
   togglePreview() {
-    this.preview = !this.preview;
-    storeFlag(PREVIEW_STORAGE_KEY, this.preview);
-    this.passive?.canvasController.requestUpdate();
+    if (!this.isSplit) {
+      return;
+    }
+    const index = previewTargetPane(this.layout, this.hoveredIndex);
+    if (index === null) {
+      return;
+    }
+    this.previews = this.previews.map((onOff, i) => (i === index ? !onOff : onOff));
+    this._showPreviews();
+    this._changed();
   }
 
   setCleanView(onOff) {
     this.cleanView = onOff;
     this.passive?.canvasController.requestUpdate();
+  }
+
+  _showPreviews() {
+    this.editor.updateLiveSceneView();
+    this.passive?.canvasController.requestUpdate();
+  }
+
+  // The split as the URL keeps it, or null while the canvas is whole.
+  getSplitInfo() {
+    return this.isSplit
+      ? splitInfo(this.layout, this.passive.getState(), this.previews)
+      : null;
+  }
+
+  // Puts back a split read from the URL (parseSplitInfo). The live view is
+  // the URL's own, set after this so it is fitted to the live pane.
+  restore({ layout, other, previews }) {
+    this.layout = layout;
+    this.previews = previews;
+    this.root.classList.add("split");
+    this._applyRatio();
+    this._ensurePassive();
+    this._render();
+    this._showPreviews();
+    if (other) {
+      this.passive.setState(other);
+    }
+  }
+
+  // The URL follows the split.
+  _changed() {
+    this.editor.updateWindowLocation();
   }
 
   get isSplit() {
@@ -140,11 +201,14 @@ export class CanvasSplit {
     }
     const viewBox = this.editor.canvasController.getViewBox();
     this.layout = splitPanes();
+    this.previews = [false, false];
     this.root.classList.add("split");
     this._applyRatio();
     this._ensurePassive();
     this._render();
+    this._showPreviews();
     this._keepLiveView(viewBox);
+    this._changed();
   }
 
   // A canvas that changes width keeps its origin, so what was in its middle
@@ -188,12 +252,14 @@ export class CanvasSplit {
       ]);
       this.layout = { ...this.layout, live: index };
       this._render();
+      this._showPreviews();
       this.passive.showView(liveInfo.viewBox ?? null);
       editor.showLiveView(passiveState.viewBox);
     } finally {
       releaseDrawing(canvases);
     }
     editor.canvasController.canvas.focus();
+    this._changed();
   }
 
   async openGlyph(index, paneState) {
@@ -204,6 +270,7 @@ export class CanvasSplit {
       await this.editor.applyPaneViewInfo(paneViewInfo(liveInfo, paneState));
       this.editor.showLiveView(paneState.viewBox);
       this.editor.canvasController.canvas.focus();
+      this._changed();
       return;
     }
     await this.passive.setState(paneState);
@@ -223,6 +290,7 @@ export class CanvasSplit {
     this.layout = { ...this.layout, panes: next.panes };
     this._render();
     this.overviews[index]?.focus();
+    this._changed();
   }
 
   // The split closes; the pane that stays fills the whole area.
@@ -236,11 +304,14 @@ export class CanvasSplit {
     }
     const viewBox = this.editor.canvasController.getViewBox();
     this.layout = null;
+    this.previews = [false, false];
     this.root.classList.remove("split");
     this.root.style.gridTemplateColumns = "";
     this._render();
+    this._showPreviews();
     this._keepLiveView(viewBox);
     this.editor.canvasController.canvas.focus();
+    this._changed();
   }
 
   canSeparatePane(index = this.targetPaneIndex) {
@@ -467,6 +538,7 @@ class PassivePane {
         }
       } else if (event.detail !== "set-view-box") {
         this.autoFit = false;
+        split._changed();
       }
     });
 
@@ -536,7 +608,7 @@ class PassivePane {
   _draw(model, controller) {
     const split = this.split;
     const layers =
-      split.preview || split.cleanView ? this.previewLayers : this.editingLayers;
+      split.passivePreview || split.cleanView ? this.previewLayers : this.editingLayers;
     drawLayersSafely(layers, new VisualizationContext(model, controller));
   }
 
@@ -587,6 +659,7 @@ class PassivePane {
       window.removeEventListener("mousemove", move, { capture: true });
       window.removeEventListener("mouseup", up, { capture: true });
       this.canvas.style.cursor = "";
+      this.split._changed();
     };
     window.addEventListener("mousemove", move, { capture: true });
     window.addEventListener("mouseup", up, { capture: true });
@@ -753,22 +826,6 @@ function releaseDrawing(canvasControllers) {
   for (const canvasController of canvasControllers) {
     delete canvasController.draw;
     canvasController.draw();
-  }
-}
-
-function readStoredFlag(key) {
-  try {
-    return localStorage.getItem(key) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function storeFlag(key, value) {
-  try {
-    localStorage.setItem(key, String(value));
-  } catch {
-    // Without storage the flag starts off next time.
   }
 }
 
