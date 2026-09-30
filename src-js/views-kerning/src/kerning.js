@@ -2462,12 +2462,12 @@ export class KerningViewController extends ViewController {
     // multi-select-dropdown instead of a plain select, first on the filter
     // row, same look as the other three dropdowns.
     const sideLabels = [
-      ["both", "Left or right"],
-      ["left", "Glyph on left"],
-      ["right", "Glyph on right"],
+      ["both", "left/right"],
+      ["left", "on left"],
+      ["right", "on right"],
     ];
     const sideDropdown = html.createDomElement("multi-select-dropdown", {
-      label: "Side",
+      label: "side",
       singleChoice: true,
       items: sideLabels.map(([value, label]) => ({
         value,
@@ -2478,6 +2478,8 @@ export class KerningViewController extends ViewController {
     sideDropdown.addEventListener("change", (event) => {
       this.autokernFiltersController.setItem("side", event.detail.checked[0]);
     });
+    // One width for every choice, so the row does not shift as it changes.
+    sideDropdown.id = "kerning-pairtable-filter-side";
     document
       .querySelector("#kerning-pairtable-filter-side-slot")
       .replaceWith(sideDropdown);
@@ -2497,7 +2499,7 @@ export class KerningViewController extends ViewController {
     // Ticket 14: a <labeled-toggle> now, not a plain checkbox -- its label
     // text is a JS property, not a markup attribute (labeled-toggle.js's own
     // note on why), so it is set here rather than in kerning.html.
-    onlyMarkedCheckbox.label = "Only marked";
+    onlyMarkedCheckbox.label = "marked only";
     onlyMarkedCheckbox.checked = filters.onlyMarked;
     onlyMarkedCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);
@@ -2508,11 +2510,13 @@ export class KerningViewController extends ViewController {
     const hideZeroCurrentCheckbox = document.querySelector(
       "#kerning-pairtable-hide-zero-current"
     );
-    hideZeroCurrentCheckbox.checked = filters.hideZeroCurrentSuggestions;
+    // "zero value": checked shows those rows, so it is the stored hide flag
+    // inverted.
+    hideZeroCurrentCheckbox.checked = !filters.hideZeroCurrentSuggestions;
     hideZeroCurrentCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(
         "hideZeroCurrentSuggestions",
-        hideZeroCurrentCheckbox.checked
+        !hideZeroCurrentCheckbox.checked
       );
     });
 
@@ -2680,7 +2684,7 @@ export class KerningViewController extends ViewController {
     // what happens to be in the window.
     this._pairTable.selectAllTitle = "Select every row the filters admit";
     this._pairTable.columns = [
-      { label: "Glyph L", sortKey: "glyph", sortable: true, selectAll: true },
+      { label: "L", sortKey: "glyph", sortable: true, selectAll: true },
       {
         label: "Current",
         key: "showCurrent",
@@ -2689,34 +2693,20 @@ export class KerningViewController extends ViewController {
         sortable: true,
         headerClassName: "kerning-pairtable-current-col",
       },
-      // Task 5, spec F13: Proposed is its own column, independently
-      // hideable from Current and Delta.
+      // Proposed carries the delta as its second entry (Figma 421:14584),
+      // so it is the column that sorts by delta.
       {
         label: "Proposed",
         key: "showProposed",
         hideable: true,
-        headerClassName: "kerning-pairtable-proposed-col",
-      },
-      {
-        label: "Delta",
-        key: "showSuggestion",
-        hideable: true,
         sortKey: "delta",
         sortable: true,
-        headerClassName: "kerning-pairtable-suggestion-col",
+        headerClassName: "kerning-pairtable-proposed-col",
       },
-      { label: "Glyph R", sortKey: "glyph", sortable: true },
-      // The row's one write action, as an icon in its own toggleable column
-      // (Columns > Apply). See kerning.html's old comment (now here) for
-      // what each row kind shows there.
-      {
-        label: "Apply",
-        key: "showApply",
-        hideable: true,
-        headerClassName: "kerning-pairtable-apply-col",
-      },
-      // F32's Hide action -- the eye control lives in this column.
-      { label: "Hide" },
+      { label: "R", sortKey: "glyph", sortable: true },
+      // One unlabelled actions column (Figma 421:14591): apply, the
+      // exception lock and the eye.
+      { label: "", headerClassName: "kerning-pairtable-apply-col" },
     ];
     // Backlog item 11: click a column header to sort by it, click again to
     // flip direction -- one sort UI (headers), not two (the old toggle
@@ -3802,7 +3792,7 @@ export class KerningViewController extends ViewController {
 
     // Ticket 19: the column menu's four entries, shown or hidden as whole
     // columns by the shared table -- header and cells alike.
-    for (const key of ["showCurrent", "showProposed", "showSuggestion", "showApply"]) {
+    for (const key of ["showCurrent", "showProposed"]) {
       this._pairTable?.setColumnVisible(key, filters[key]);
     }
 
@@ -4497,14 +4487,15 @@ export class KerningViewController extends ViewController {
     proposedCell.className = "kerning-pairtable-proposed-col";
     // The same mark a pair row carries, made once for the whole rule: every
     // pair the rule covers reads it (isPairMarkedForPreview).
-    proposedCell.appendChild(this.buildPreviewExclusionToggle({ left, right }));
     proposedCell.appendChild(buildValueSpan(median, stats.stale));
+    // table/data "entry (delta)": the delta is the proposed cell's lighter
+    // second entry (Figma 421:14585), not a column of its own.
+    const deltaText = document.createElement("span");
+    deltaText.className = "data-table-additional kerning-pairtable-delta";
+    deltaText.append("(", buildValueSpan(median - group.current, stats.stale), ")");
+    proposedCell.appendChild(deltaText);
+    proposedCell.appendChild(this.buildPreviewExclusionToggle({ left, right }));
     tr.appendChild(proposedCell);
-
-    const deltaCell = document.createElement("td");
-    deltaCell.className = "kerning-pairtable-suggestion-col";
-    deltaCell.appendChild(buildValueSpan(median - group.current, stats.stale));
-    tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
     const rightLabel = document.createElement("span");
@@ -4544,14 +4535,13 @@ export class KerningViewController extends ViewController {
     applyCell.appendChild(applyButton);
     tr.appendChild(applyCell);
 
-    // F32's hide-action column. Task 11, ledger §8.5 (APPROVED): hiding a
+    // F32's hide action, in the actions cell. Task 11, ledger §8.5 (APPROVED): hiding a
     // class-summary row hides only this displayed aggregate row -- it never
     // cascades to its exposed members or saved exceptions, each of which is
     // hidden (or not) through its own separate rowId in
     // this.autokernCache's per-pair `junk` field, not this Set.
     const hidden = this.hiddenClassRuleIds.has(id);
     tr.classList.toggle("kerning-pairtable-row-hidden", hidden);
-    const hideCell = document.createElement("td");
     const hideButton = document.createElement("icon-button");
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
@@ -4577,8 +4567,8 @@ export class KerningViewController extends ViewController {
       event.stopPropagation();
       this.toggleClassRuleHidden(id, !hidden);
     };
-    hideCell.appendChild(hideButton);
-    tr.appendChild(hideCell);
+    // The eye shares the actions cell with apply.
+    applyCell.appendChild(hideButton);
 
     return tr;
   }
@@ -6123,14 +6113,15 @@ export class KerningViewController extends ViewController {
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     const proposedCell = document.createElement("td");
     proposedCell.className = "kerning-pairtable-proposed-col";
-    proposedCell.appendChild(this.buildPreviewExclusionToggle(row));
     proposedCell.appendChild(buildValueSpan(display.proposed, display.stale));
+    // table/data "entry (delta)": the delta is the proposed cell's lighter
+    // second entry (Figma 421:14585), not a column of its own.
+    const deltaText = document.createElement("span");
+    deltaText.className = "data-table-additional kerning-pairtable-delta";
+    deltaText.append("(", buildValueSpan(display.delta, display.stale), ")");
+    proposedCell.appendChild(deltaText);
+    proposedCell.appendChild(this.buildPreviewExclusionToggle(row));
     tr.appendChild(proposedCell);
-
-    const deltaCell = document.createElement("td");
-    deltaCell.className = "kerning-pairtable-suggestion-col";
-    deltaCell.appendChild(buildValueSpan(display.delta, display.stale));
-    tr.appendChild(deltaCell);
 
     const rightCell = document.createElement("td");
     const rightLabel = document.createElement("span");
@@ -6250,7 +6241,6 @@ export class KerningViewController extends ViewController {
     // 10's lock/Remove-exception cell already established (kerning.css's
     // tr:hover/tr:focus-within rule), not a second one.
     tr.classList.toggle("kerning-pairtable-row-hidden", !!row.hidden);
-    const hideCell = document.createElement("td");
     const hideButton = document.createElement("icon-button");
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
@@ -6279,8 +6269,8 @@ export class KerningViewController extends ViewController {
         await this.togglePairJunk(target.left, target.right, !row.hidden);
       }
     };
-    hideCell.appendChild(hideButton);
-    tr.appendChild(hideCell);
+    // The eye shares the actions cell with apply and the lock.
+    applyCell.appendChild(hideButton);
 
     return tr;
   }
@@ -7677,11 +7667,7 @@ export class KerningViewController extends ViewController {
     if (!previewPairs.length && fallbackPairs?.length) {
       previewPairs = fallbackPairs;
     }
-    this._glyphFilterError.textContent =
-      filter.error ||
-      (truncated || this._classSummaryTruncationCount
-        ? "Preview capped at 100 pairs total, up to 50 per class. Load table rows below."
-        : "");
+    this._glyphFilterError.textContent = filter.error || "";
     if (previewPairs.length) {
       // Selecting a row feeds pair-mode preview but never switches the mode
       // to it. Which mode is on screen is the designer's own choice, made on

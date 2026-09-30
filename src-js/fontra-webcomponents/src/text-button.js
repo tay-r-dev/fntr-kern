@@ -14,7 +14,7 @@ import { themeColorCSS } from "./theme-support.js";
 // the grey, so the face reads as lifted. press: the key sinks -- a 2px darker
 // rule on top and at the sides, none under -- and the label turns lime.
 //
-// `size` is "M" (24px, label 10/12) or "S" (18px, label 8/10); `label`,
+// `size` is "M" (24px, label 10/12) or "S" (19px, label 10/10); `label`,
 // `icon` (an SVG path), `size` and `disabled` are plain JS properties, the
 // convention every UnlitElement component in this tree uses. A click on the
 // host is the button's click.
@@ -63,8 +63,8 @@ export class TextButton extends UnlitElement {
     }
 
     :host([data-size="S"]) button {
-      height: 18px;
-      font: 320 condensed 8px / 10px var(--ui-font-mono);
+      height: 19px;
+      font: 320 condensed 10px / 10px var(--ui-font-mono);
     }
 
     .face {

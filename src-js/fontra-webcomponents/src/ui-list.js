@@ -209,8 +209,33 @@ export class UIList extends UnlitElement {
       color: var(--select-look-heading-color);
     }
 
+    /* Header and rows are different sizes of type, so every width and gap
+       here is in px: an em width would come out narrower in the head than
+       in the rows, and the labels would drift from their columns. */
+    :host([look="select"]) {
+      --column-header-divider-thickness: 0px;
+      --column-header-divider-right-margin: 0px;
+    }
+
     :host([look="select"]) .header-cell.resizable {
-      border-right-color: transparent;
+      border-right: none;
+    }
+
+    :host([look="select"]) .list-cell,
+    :host([look="select"]) .text-cell,
+    :host([look="select"]) .text-cell-header {
+      padding: 0 4px;
+    }
+
+    :host([look="select"]) .list-cell {
+      align-items: center;
+    }
+
+    /* A header's icon sits over its column's icons: 12px, 3px in. */
+    :host([look="select"]) .text-cell-header .clickable-icon-header {
+      width: 12px !important;
+      height: 12px !important;
+      margin-left: 3px;
     }
 
     :host([look="select"]) .rows-container {

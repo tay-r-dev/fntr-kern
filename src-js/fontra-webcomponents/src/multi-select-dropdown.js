@@ -320,10 +320,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set label(value) {
     this._label = value || "";
-    if (this._labelSpan) {
-      this._labelSpan.textContent = this._label;
-      this._labelSpan.title = this._label;
-    }
+    this._updateLabel();
   }
 
   get items() {
@@ -353,7 +350,8 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   render() {
-    this._labelSpan = html.span({ class: "label", title: this._label }, [this._label]);
+    this._labelSpan = html.span({ class: "label" });
+    this._updateLabel();
     this._button = html.createDomElement(
       "button",
       {
@@ -397,7 +395,29 @@ export class MultiSelectDropdown extends UnlitElement {
       .trim();
   }
 
+  // A one-choice dropdown reads as its pick; a several-choice one, a
+  // one-choice one with nothing picked, and a pick flagged `showsLabel` (an
+  // "All") read as the label.
+  _displayLabel() {
+    if (this._singleChoice) {
+      const picked = this._items.find((item) => item.checked && !item.divider);
+      if (picked && !picked.showsLabel) {
+        return picked.label ?? String(picked.value);
+      }
+    }
+    return this._label;
+  }
+
+  _updateLabel() {
+    if (this._labelSpan) {
+      const text = this._displayLabel();
+      this._labelSpan.textContent = text;
+      this._labelSpan.title = text;
+    }
+  }
+
   _updateButtonClass() {
+    this._updateLabel();
     if (this._button) {
       this._button.className = this._buttonClass();
     }

@@ -698,7 +698,13 @@ export default class SkeletonSettingsPanel extends Panel {
         onChange();
       }
     );
-    const option = (value, label, picked) => ({ value, label, checked: picked });
+    // "All" leaves the dropdown reading as its field name (Master, Case, Type).
+    const option = (value, label, picked) => ({
+      value,
+      label,
+      checked: picked,
+      showsLabel: value === ALL,
+    });
     // The filters start on Current: the first refresh that knows the edited
     // source sets the master and case, once.
     let seeded = false;

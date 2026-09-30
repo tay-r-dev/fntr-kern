@@ -195,7 +195,7 @@ const DATA_TABLE_STYLES = `
   }
 
   :where(data-table.data-table-resizable tbody tr:last-child td) {
-    padding-bottom: calc(0.15em + 6px);
+    padding-bottom: calc(0.15em + 14px);
   }
 
   :root.data-table-resizing {
@@ -295,8 +295,8 @@ const DATA_TABLE_STYLES = `
   }
 
   data-table[look].data-table-resizable .data-table tbody tr:last-child td {
-    height: 32px;
-    padding-bottom: 4px;
+    height: 40px;
+    padding-bottom: 12px;
   }
 
   data-table[look] .data-table .data-table-row-selected {

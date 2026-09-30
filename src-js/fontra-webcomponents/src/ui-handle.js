@@ -10,17 +10,18 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 // move reports {dy} since the press in event.detail; "handle-drag-end"
 // follows the release.
 //
-// `size` is "M" (28x8, the default) or "S" (26x7, the one input/text
+// `size` is "M" (56x16, the default) or "S" (52x14, the one input/text
 // carries), a plain JS property like every UnlitElement component here.
 export class UIHandle extends UnlitElement {
+  // Drawn at twice the design's size, so it is easy to take hold of.
   static styles = `
     :host {
       display: block;
-      width: 28px;
-      height: 8px;
+      width: 56px;
+      height: 16px;
       cursor: row-resize;
       touch-action: none;
-      background: url("/images/handle-rest.svg") center bottom / 28px 8.5px no-repeat;
+      background: url("/images/handle-rest.svg") center bottom / 56px 17px no-repeat;
       /* The SVG's shadow sits above its box. */
       overflow: visible;
     }
@@ -28,20 +29,20 @@ export class UIHandle extends UnlitElement {
     :host(:hover),
     :host([dragging]) {
       background-image: url("/images/handle-hover.svg");
-      background-size: 28px 9px;
+      background-size: 56px 18px;
     }
 
     :host([data-size="S"]) {
-      width: 26px;
-      height: 7px;
+      width: 52px;
+      height: 14px;
       background-image: url("/images/handle-input.svg");
-      background-size: 26px 8px;
+      background-size: 52px 16px;
     }
 
     :host([data-size="S"]:hover),
     :host([data-size="S"][dragging]) {
       background-image: url("/images/handle-hover.svg");
-      background-size: 26px 8.4px;
+      background-size: 52px 16.8px;
     }
   `;
 
