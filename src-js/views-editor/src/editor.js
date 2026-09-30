@@ -157,6 +157,8 @@ import Panel from "./panel.js";
 
 const MIN_CANVAS_SPACE = 200;
 
+const PREVIEW_MODE_STORAGE_KEY = "fontra-editor-preview-mode";
+
 const PASTE_BEHAVIOR_REPLACE = "replace";
 const PASTE_BEHAVIOR_ADD = "add";
 
@@ -365,6 +367,18 @@ export class EditorController extends ViewController {
     this.canvasController.canvas.addEventListener("pointerdown", (event) =>
       this.pointerDownHandler(event)
     );
+    // Before the canvas's own handlers see the press.
+    this.canvasController.canvas.parentElement.addEventListener(
+      "mousedown",
+      (event) => this.previewMouseDown(event),
+      { capture: true }
+    );
+    try {
+      this._previewMode = localStorage.getItem(PREVIEW_MODE_STORAGE_KEY) === "true";
+    } catch {
+      this._previewMode = false;
+    }
+    this.updateLiveSceneView();
     this.canvasController.canvas.addEventListener("pointerup", (event) =>
       this.pointerUpHandler(event)
     );
@@ -764,12 +778,8 @@ export class EditorController extends ViewController {
         defaultShortCuts: [{ baseKey: "Space", shiftKey: true }],
       },
       (event) => {
-        if (!this.canvasSplit.isSplit) {
-          if (event) {
-            this.enterCleanViewAndHandTool(event);
-          }
-        } else if (!event?.repeat) {
-          this.canvasSplit.togglePreview();
+        if (!event?.repeat) {
+          this.setPreviewMode(!this.previewMode);
         }
       }
     );
@@ -3933,14 +3943,58 @@ export class EditorController extends ViewController {
     }
   }
 
-  // The live canvas draws the clean view while Space is held, and while its
-  // split pane previews; the editing view otherwise.
+  // The live canvas draws the clean view while Space is held, and in the
+  // black preview; the editing view otherwise.
   updateLiveSceneView() {
     this.canvasController.sceneView =
-      this._cleanViewHeld || this.canvasSplit.livePreview
+      this._cleanViewHeld || this.previewMode
         ? this.cleanSceneView
         : this.defaultSceneView;
     this.canvasController.requestUpdate();
+  }
+
+  // The black preview: every canvas shows its glyphs filled. Shift+Space
+  // turns it on and off; a double-click on a glyph turns it off and opens
+  // that glyph.
+  get previewMode() {
+    return !!this._previewMode;
+  }
+
+  setPreviewMode(onOff) {
+    this._previewMode = onOff;
+    try {
+      localStorage.setItem(PREVIEW_MODE_STORAGE_KEY, String(onOff));
+    } catch {
+      // Without storage the preview starts off next time.
+    }
+    this.updateLiveSceneView();
+    this.canvasSplit.previewChanged();
+  }
+
+  // In the black preview a left click edits nothing, so nothing changes out
+  // of sight. The hand still pans. A double-click on a glyph leaves the
+  // preview and opens that glyph for editing.
+  previewMouseDown(event) {
+    if (
+      !this.previewMode ||
+      event.button !== 0 ||
+      this.selectedToolIdentifier === "hand-tool"
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.detail < 2) {
+      return;
+    }
+    const glyph = this.sceneModel.glyphAtPoint(
+      this.canvasController.localPoint(event),
+      false
+    );
+    if (glyph) {
+      this.setPreviewMode(false);
+      this.sceneSettings.selectedGlyph = { ...glyph, isEditing: true };
+    }
   }
 
   enterCleanViewAndHandTool(event) {

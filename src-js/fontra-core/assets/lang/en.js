@@ -157,7 +157,7 @@ export const strings = {
   "canvas.pane-font-overview": "Font overview",
   "canvas.separate-pane": "Separate pane",
   "canvas.split": "Split canvas",
-  "canvas.toggle-pane-preview": "Preview the other pane",
+  "canvas.toggle-pane-preview": "Black preview",
   "canvas.unsplit": "Unsplit canvas",
   "composition.button.attach": "Attach",
   "composition.button.build": "Build",

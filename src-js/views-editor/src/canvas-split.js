@@ -25,7 +25,6 @@ import {
   openGlyphInPane,
   paneStateFromViewInfo,
   paneViewInfo,
-  previewTargetPane,
   showOverviewInPane,
   splitInfo,
   splitPanes,
@@ -75,46 +74,9 @@ export class CanvasSplit {
     // The pane a context menu was opened on; the pane actions act on it.
     this.menuPaneIndex = null;
     this.ratio = readStoredRatio();
-    // Per pane (left, right): it shows its glyphs filled rather than as the
-    // editing view. Shift+Space turns it on and off for the pane under the
-    // pointer.
-    this.previews = [false, false];
     // Held Space: both panes show the clean view, as the live canvas does.
     this.cleanView = false;
-    // The pane under the pointer, or null.
-    this.hoveredIndex = null;
-    for (const [index, slot] of this.slots.entries()) {
-      slot.addEventListener("pointerenter", () => (this.hoveredIndex = index));
-      slot.addEventListener("pointerleave", () => {
-        if (this.hoveredIndex === index) {
-          this.hoveredIndex = null;
-        }
-      });
-    }
     this._setupDivider();
-  }
-
-  // Whether the live canvas shows the preview.
-  get livePreview() {
-    return this.isSplit && this.previews[this.layout.live];
-  }
-
-  // Whether the passive canvas shows the preview.
-  get passivePreview() {
-    return this.isSplit && this.previews[1 - this.layout.live];
-  }
-
-  togglePreview() {
-    if (!this.isSplit) {
-      return;
-    }
-    const index = previewTargetPane(this.layout, this.hoveredIndex);
-    if (index === null) {
-      return;
-    }
-    this.previews = this.previews.map((onOff, i) => (i === index ? !onOff : onOff));
-    this._showPreviews();
-    this._changed();
   }
 
   setCleanView(onOff) {
@@ -122,28 +84,24 @@ export class CanvasSplit {
     this.passive?.canvasController.requestUpdate();
   }
 
-  _showPreviews() {
-    this.editor.updateLiveSceneView();
+  // The editor's black preview went on or off.
+  previewChanged() {
     this.passive?.canvasController.requestUpdate();
   }
 
   // The split as the URL keeps it, or null while the canvas is whole.
   getSplitInfo() {
-    return this.isSplit
-      ? splitInfo(this.layout, this.passive.getState(), this.previews)
-      : null;
+    return this.isSplit ? splitInfo(this.layout, this.passive.getState()) : null;
   }
 
   // Puts back a split read from the URL (parseSplitInfo). The live view is
   // the URL's own, set after this so it is fitted to the live pane.
-  restore({ layout, other, previews }) {
+  restore({ layout, other }) {
     this.layout = layout;
-    this.previews = previews;
     this.root.classList.add("split");
     this._applyRatio();
     this._ensurePassive();
     this._render();
-    this._showPreviews();
     if (other) {
       this.passive.setState(other);
     }
@@ -201,12 +159,10 @@ export class CanvasSplit {
     }
     const viewBox = this.editor.canvasController.getViewBox();
     this.layout = splitPanes();
-    this.previews = [false, false];
     this.root.classList.add("split");
     this._applyRatio();
     this._ensurePassive();
     this._render();
-    this._showPreviews();
     this._keepLiveView(viewBox);
     this._changed();
   }
@@ -252,7 +208,6 @@ export class CanvasSplit {
       ]);
       this.layout = { ...this.layout, live: index };
       this._render();
-      this._showPreviews();
       this.passive.showView(liveInfo.viewBox ?? null);
       editor.showLiveView(passiveState.viewBox);
     } finally {
@@ -304,11 +259,9 @@ export class CanvasSplit {
     }
     const viewBox = this.editor.canvasController.getViewBox();
     this.layout = null;
-    this.previews = [false, false];
     this.root.classList.remove("split");
     this.root.style.gridTemplateColumns = "";
     this._render();
-    this._showPreviews();
     this._keepLiveView(viewBox);
     this.editor.canvasController.canvas.focus();
     this._changed();
@@ -608,7 +561,9 @@ class PassivePane {
   _draw(model, controller) {
     const split = this.split;
     const layers =
-      split.passivePreview || split.cleanView ? this.previewLayers : this.editingLayers;
+      this.editor.previewMode || split.cleanView
+        ? this.previewLayers
+        : this.editingLayers;
     drawLayersSafely(layers, new VisualizationContext(model, controller));
   }
 
@@ -630,6 +585,24 @@ class PassivePane {
     }
     if (event.button !== 0) {
       split.activate(index);
+      return;
+    }
+    // In the black preview a click edits nothing; a double-click on a glyph
+    // leaves the preview and opens that glyph here for editing.
+    if (editor.previewMode) {
+      event.preventDefault();
+      if (event.detail >= 2) {
+        const glyph = this.sceneModel.glyphAtPoint(
+          this.canvasController.localPoint(event),
+          false
+        );
+        if (glyph) {
+          this.settings.selection = new Set();
+          this.settings.selectedGlyph = { ...glyph, isEditing: true };
+          editor.setPreviewMode(false);
+          split.activate(index);
+        }
+      }
       return;
     }
     let release = null;

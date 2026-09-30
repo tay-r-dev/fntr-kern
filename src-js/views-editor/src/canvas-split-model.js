@@ -119,17 +119,10 @@ export function completeViewInfo(viewInfo, persistentSettings, defaults) {
   return complete;
 }
 
-// The pane Shift+Space toggles the preview of: the one under the pointer, or
-// the live one when the pointer is over neither. An overview has none.
-export function previewTargetPane(layout, hoveredIndex) {
-  const index = hoveredIndex ?? layout.live;
-  return layout.panes[index] === PANE_CANVAS ? index : null;
-}
-
-// The split as the URL keeps it, beside the live view: the layout, the other
-// pane's view when it shows a canvas, and which panes preview.
-export function splitInfo(layout, otherState, previews) {
-  const info = { panes: [...layout.panes], live: layout.live, previews: [...previews] };
+// The split as the URL keeps it, beside the live view: the layout and the
+// other pane's view when it shows a canvas.
+export function splitInfo(layout, otherState) {
+  const info = { panes: [...layout.panes], live: layout.live };
   if (layout.panes[1 - layout.live] === PANE_CANVAS) {
     info.other = otherState;
   }
@@ -153,6 +146,5 @@ export function parseSplitInfo(info) {
     panes[1 - info.live] === PANE_CANVAS
       ? paneStateFromViewInfo(info.other ?? {})
       : null;
-  const previews = [0, 1].map((index) => info.previews?.[index] === true);
-  return { layout, other, previews };
+  return { layout, other };
 }

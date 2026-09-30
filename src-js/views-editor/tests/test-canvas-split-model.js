@@ -8,7 +8,6 @@ import {
   openGlyphInPane,
   paneStateFromViewInfo,
   parseSplitInfo,
-  previewTargetPane,
   splitInfo,
   paneViewInfo,
   showOverviewInPane,
@@ -231,24 +230,6 @@ describe("canvas split model", () => {
     });
   });
 
-  describe("previewTargetPane", () => {
-    const layout = { panes: [PANE_CANVAS, PANE_CANVAS], live: 0 };
-
-    it("is the pane under the pointer, live or not", () => {
-      expect(previewTargetPane(layout, 0)).to.equal(0);
-      expect(previewTargetPane(layout, 1)).to.equal(1);
-    });
-
-    it("is the live pane when the pointer is over neither", () => {
-      expect(previewTargetPane({ ...layout, live: 1 }, null)).to.equal(1);
-    });
-
-    it("is none when the pane under the pointer shows the overview", () => {
-      const withOverview = { panes: [PANE_CANVAS, PANE_OVERVIEW], live: 0 };
-      expect(previewTargetPane(withOverview, 1)).to.equal(null);
-    });
-  });
-
   describe("splitInfo and parseSplitInfo", () => {
     const layout = { panes: [PANE_CANVAS, PANE_CANVAS], live: 1 };
     const other = {
@@ -259,19 +240,15 @@ describe("canvas split model", () => {
     };
 
     it("round-trips a split", () => {
-      const info = splitInfo(layout, other, [true, false]);
+      const info = splitInfo(layout, other);
       expect(parseSplitInfo(JSON.parse(JSON.stringify(info)))).to.deep.equal({
         layout,
         other,
-        previews: [true, false],
       });
     });
 
     it("leaves out the other pane's view when it shows the overview", () => {
-      const info = splitInfo({ panes: [PANE_CANVAS, PANE_OVERVIEW], live: 0 }, other, [
-        false,
-        false,
-      ]);
+      const info = splitInfo({ panes: [PANE_CANVAS, PANE_OVERVIEW], live: 0 }, other);
       expect(info).to.not.have.key("other");
       expect(parseSplitInfo(info).other).to.equal(null);
     });
@@ -283,11 +260,10 @@ describe("canvas split model", () => {
       expect(parseSplitInfo({ panes: ["canvas", "canvas"], live: 2 })).to.equal(null);
     });
 
-    it("fills missing previews and a missing pane view", () => {
+    it("fills a missing pane view", () => {
       expect(parseSplitInfo({ panes: ["canvas", "canvas"], live: 0 })).to.deep.equal({
         layout: { panes: [PANE_CANVAS, PANE_CANVAS], live: 0 },
         other: { text: "", selectedGlyph: null, selection: [], viewBox: null },
-        previews: [false, false],
       });
     });
   });
