@@ -1231,3 +1231,24 @@ data-table[look]
   opacity: 1;
   pointer-events: auto;
 }
+
+/* The actions stay on screen whatever the widths come to: pinned to the
+   box's right edge, over anything the row might otherwise scroll under. */
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col,
+data-table[look] .kerning-pairtable-table th:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background-color: var(--data-table-look-background-color);
+}
+
+data-table[look] .kerning-pairtable-table th:last-child {
+  z-index: 2;
+}
+
+data-table[look]
+  .kerning-pairtable-table
+  tr.data-table-row-selected
+  td.kerning-pairtable-apply-col {
+  background-color: var(--data-table-look-active-color);
+}

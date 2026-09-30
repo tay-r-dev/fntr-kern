@@ -885,23 +885,35 @@ export class DataTable extends HTMLElement {
     const anyWidth = fixed.some((entry) => widthOf(entry) != null);
 
     if (last) {
-      // The flexing column has no handle and no width of its own.
+      // The flexing column has no handle.
       last.column._headerElement
         .querySelector(":scope > .data-table-column-grip")
         ?.remove();
-      last.column._headerElement.style.width = "";
     }
+    const box = this._scroll?.clientWidth || 0;
+    const lastMin = last?.column.minWidth ?? 48;
     const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
     const sum = widths.reduce((total, width) => total + (width || 0), 0);
-    const available = (this._scroll?.clientWidth || 0) - (last?.column.minWidth ?? 48);
-    const scale = anyWidth && available > 0 && sum > available ? available / sum : 1;
+    // Every column gets an explicit width and together they are exactly the
+    // box: the last its minimum plus whatever the others leave, the others
+    // their own widths -- scaled down, for now, when the box cannot hold them
+    // and the last one's minimum.
+    const scale =
+      anyWidth && box > 0 && sum > box - lastMin ? (box - lastMin) / sum : 1;
+    let used = 0;
     fixed.forEach((entry, i) => {
       const th = entry.column._headerElement;
       if (!th.querySelector(":scope > .data-table-column-grip")) {
         th.appendChild(this._makeColumnGrip(entry.column, entry.index));
       }
-      th.style.width = widths[i] ? `${Math.floor(widths[i] * scale)}px` : "";
+      const width = widths[i] ? Math.floor(widths[i] * scale) : null;
+      th.style.width = width ? `${width}px` : "";
+      used += width || 0;
     });
+    if (last) {
+      last.column._headerElement.style.width =
+        anyWidth && box > 0 ? `${Math.max(lastMin, box - used)}px` : "";
+    }
     this._table.style.minWidth = "";
   }
 
