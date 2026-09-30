@@ -25,7 +25,7 @@ const colors = {
 
 const SNAP_DISTANCE = 4;
 // Half the widest thumb: the thumb's centre never leaves the track.
-const INSET = 5.5;
+const INSET = 6.5;
 
 export class SlotSlider extends UnlitElement {
   static styles = `
@@ -34,7 +34,7 @@ export class SlotSlider extends UnlitElement {
     :host {
       display: block;
       position: relative;
-      height: 16px;
+      height: 18px;
       min-width: 40px;
       cursor: pointer;
       touch-action: none;
@@ -50,7 +50,7 @@ export class SlotSlider extends UnlitElement {
       position: absolute;
       left: 0;
       right: 0;
-      top: 6px;
+      top: 7px;
       height: 4px;
       border-radius: 1px;
       background-color: var(--slot-slider-track-color);
@@ -61,23 +61,23 @@ export class SlotSlider extends UnlitElement {
     .slot {
       position: absolute;
       top: 3px;
-      width: 9px;
-      height: 10px;
-      margin-left: -4.5px;
-      background: url("/images/slider-slot.svg") center / 9px 10px no-repeat;
+      width: 11px;
+      height: 12px;
+      margin-left: -5.5px;
+      background: url("/images/slider-slot.svg") center / 11px 12px no-repeat;
     }
 
     .thumb {
       position: absolute;
       top: 50%;
       box-sizing: border-box;
-      width: 9px;
-      height: 9px;
-      margin-left: -4.5px;
+      width: 11px;
+      height: 11px;
+      margin-left: -5.5px;
       transform: translateY(-50%);
       border-radius: 50%;
       background-color: var(--slot-slider-thumb-color);
-      /* The 11px grey ring under the 9px dot, and the dot's own soft
+      /* The 13px grey ring under the 11px dot, and the dot's own soft
          shadow. */
       box-shadow:
         0 0 2px var(--slot-slider-thumb-shadow-color),
@@ -88,17 +88,17 @@ export class SlotSlider extends UnlitElement {
       display: none;
       position: absolute;
       top: 2px;
-      width: 13px;
-      height: 12px;
-      margin-left: -6.5px;
+      width: 15px;
+      height: 14px;
+      margin-left: -7.5px;
     }
 
     .well-body {
       position: absolute;
       left: 2px;
       top: 0;
-      width: 9px;
-      height: 12px;
+      width: 11px;
+      height: 14px;
       border-radius: 3px;
       background-color: var(--slot-slider-track-color);
     }
@@ -112,24 +112,24 @@ export class SlotSlider extends UnlitElement {
 
     .fillet.top-left {
       left: 0;
-      top: 2px;
+      top: 3px;
     }
 
     .fillet.top-right {
-      left: 11px;
-      top: 2px;
+      left: 13px;
+      top: 3px;
       transform: scaleX(-1);
     }
 
     .fillet.bottom-right {
-      left: 11px;
-      top: 8px;
+      left: 13px;
+      top: 9px;
       transform: rotate(180deg);
     }
 
     .fillet.bottom-left {
       left: 0;
-      top: 8px;
+      top: 9px;
       transform: scaleY(-1);
     }
 
@@ -138,9 +138,9 @@ export class SlotSlider extends UnlitElement {
     }
 
     :host([in-slot]) .thumb {
-      width: 7px;
-      height: 10px;
-      margin-left: -3.5px;
+      width: 9px;
+      height: 12px;
+      margin-left: -4.5px;
       border-radius: 2px;
       box-shadow: 0 0 2px var(--slot-slider-thumb-shadow-color);
     }
