@@ -2801,9 +2801,15 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     const glyphAxes = varGlyphController ? foldNLIAxes(varGlyphController.axes) : [];
     // A slot wherever one of the glyph's sources sits on the axis.
-    const sourceLocations = (varGlyphController?.sources || []).map(
-      (source) => source.location || {}
+    // A source stores only the axes where it differs from the default, so
+    // the default fills the rest.
+    const glyphAxisDefaults = Object.fromEntries(
+      glyphAxes.map((axis) => [axis.name, axis.defaultValue])
     );
+    const sourceLocations = (varGlyphController?.sources || []).map((source) => ({
+      ...glyphAxisDefaults,
+      ...source.location,
+    }));
     this.glyphAxesElement.axisStops = Object.fromEntries(
       glyphAxes.map((axis) => [
         axis.name,

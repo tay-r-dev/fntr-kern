@@ -164,10 +164,18 @@ function setupFontAxisSliders(
     axesSourceSpace = mapAxesFromUserSpaceToSourceSpace(axes);
     // The slot slider (Figma 421:15034): a slot wherever a font source sits
     // on the axis, in the coordinates the sliders show.
-    const sourceLocations = Object.values(fontController.sources || {}).map((source) =>
-      settings.fontAxesUseSourceCoordinates
-        ? source.location || {}
-        : mapBackward(source.location || {}, axes)
+    // A source stores only the axes where it differs from the default, so
+    // the default fills the rest -- the default source (Regular) included.
+    const sourceSpaceDefaults = Object.fromEntries(
+      axesSourceSpace.map((axis) => [axis.name, axis.defaultValue])
+    );
+    const sourceLocations = Object.values(fontController.sources || {}).map(
+      (source) => {
+        const location = { ...sourceSpaceDefaults, ...source.location };
+        return settings.fontAxesUseSourceCoordinates
+          ? location
+          : mapBackward(location, axes);
+      }
     );
     locationElement.axisStops = Object.fromEntries(
       axes.map((axis) => [
