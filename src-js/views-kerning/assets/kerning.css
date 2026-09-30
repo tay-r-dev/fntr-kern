@@ -1224,8 +1224,8 @@ data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col > * + *
 
 /* Every icon in a row behaves the same: hidden at rest, whole on the row's
    hover or focus, darker under the pointer (icon-button's own hover). The
-   ones that state something stay shown -- a saved exception's lock, a class
-   rule's lock, a pair's mark, a hidden row's eye. */
+   ones that state something stay shown -- an exception's open lock, a
+   pair's mark, a hidden row's eye. */
 data-table[look] .kerning-pairtable-table tbody icon-button {
   opacity: 0;
   pointer-events: none;
@@ -1234,7 +1234,6 @@ data-table[look] .kerning-pairtable-table tbody icon-button {
 data-table[look] .kerning-pairtable-table tbody tr:hover icon-button,
 data-table[look] .kerning-pairtable-table tbody tr:focus-within icon-button,
 data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-exception-saved,
-data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-class-lock,
 data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-preview-excluded,
 data-table[look]
   .kerning-pairtable-table

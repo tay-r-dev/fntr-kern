@@ -4599,19 +4599,8 @@ export class KerningViewController extends ViewController {
       applyButton.onclick = () => this.applyFoldedParentRow(group, median);
     }
     applyCell.appendChild(applyButton);
-    // The lock's slot: a class rule is the rule itself, so its lock is the
-    // closed one, always shown, a state rather than an action.
-    const classLock = document.createElement("icon-button");
-    classLock.className =
-      "kerning-pairtable-exception-indicator kerning-pairtable-class-lock";
-    classLock.src = "/tabler-icons/lock.svg";
-    classLock.setAttribute("aria-label", `Class rule ${left} × ${right}`);
-    classLock.setAttribute(
-      "data-tooltip",
-      "Class rule: every pair of these classes reads this value unless it has its own exception."
-    );
-    classLock.onclick = (event) => event.stopPropagation();
-    applyCell.appendChild(classLock);
+    // The lock's slot: a class rule has none, but the eye keeps its place.
+    applyCell.appendChild(actionSlotSpacer());
     tr.appendChild(applyCell);
 
     // F32's hide action, in the actions cell. Task 11, ledger §8.5 (APPROVED): hiding a
@@ -6272,7 +6261,7 @@ export class KerningViewController extends ViewController {
         const removeButton = document.createElement("icon-button");
         removeButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
-        removeButton.src = "/tabler-icons/lock.svg";
+        removeButton.src = "/tabler-icons/lock-open-2.svg";
         removeButton.setAttribute(
           "aria-label",
           `Remove pair exception for ${row.left} × ${row.right}`
@@ -6297,7 +6286,7 @@ export class KerningViewController extends ViewController {
         const lockButton = document.createElement("icon-button");
         lockButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-create";
-        lockButton.src = "/tabler-icons/lock-open-2.svg";
+        lockButton.src = "/tabler-icons/lock.svg";
         lockButton.setAttribute(
           "aria-label",
           `Create a pair exception for ${row.left} × ${row.right}`
