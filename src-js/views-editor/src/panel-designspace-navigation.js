@@ -384,6 +384,13 @@ const SNAPPING_TUNING_CONTROLS = [
     max: 6000,
     step: 50,
   },
+  {
+    path: "startTravelPixels",
+    label: "Free travel at drag start (px)",
+    min: 0,
+    max: 60,
+    step: 1,
+  },
   { path: "overruleMargin", label: "Overrule margin", min: 1, max: 4, step: 0.05 },
   { path: "overruleFrames", label: "Overrule frames", min: 1, max: 20, step: 1 },
   {

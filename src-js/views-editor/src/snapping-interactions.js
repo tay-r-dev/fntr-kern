@@ -683,6 +683,19 @@ export class SnappingSession {
     }
     this._refreshIfStale();
     const pixelUnit = this.sceneController.onePixelUnit;
+    // The dead zone at the start of a drag. Once left, it does not come back.
+    if (!this._startLeft) {
+      this._startCursor ??= { x: cursor.x, y: cursor.y };
+      const travel =
+        Math.hypot(cursor.x - this._startCursor.x, cursor.y - this._startCursor.y) /
+        (pixelUnit || 1);
+      if (travel < SNAP_PARAMETERS.startTravelPixels) {
+        this._speed(cursor);
+        this._clearPublished();
+        return { x: 0, y: 0 };
+      }
+      this._startLeft = true;
+    }
     // The candidate set is built against the cursor once per frame, and every point is
     // then resolved against that one set.
     const candidates = collectCandidates(this.scene, cursor, {

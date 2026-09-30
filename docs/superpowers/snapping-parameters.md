@@ -139,6 +139,24 @@ moving out of tolerance or switching snapping off.
 Set it above the top of the slider's useful range to switch the gesture off and
 rely on the release floor alone.
 
+## Free travel at drag start (px)
+
+**Default 12.** How far the cursor must travel from where the drag started before
+snapping engages. Measured in screen pixels, like the reach.
+
+A point usually starts on guides from its neighbours. Without this zone, a snap on
+the first frame holds the point where it stands, and a small move does nothing.
+Inside the zone the point follows the cursor freely and no ring shows. After the
+cursor leaves the zone once, snapping works as normal for the rest of the drag,
+including a return to the start.
+
+Only the pointer tool's drag has this zone (`SnappingSession.resolveSet`). The pen
+and the skeleton pen snap on hover, so they have no drag start.
+
+- **At 0:** the old behavior. The first frame can snap.
+- **Too small:** the neighbours' guides still catch the point before it leaves them.
+- **Too large:** a short, deliberate drag onto a nearby guide does not snap.
+
 ## Overrule margin
 
 **Default 1.6.** How much stronger a rival must be before it can take a snap you
@@ -191,10 +209,12 @@ almost everywhere. Only the nearest source above, below, left and right survives
 Metrics and guides you placed are never culled this way. There are few of them,
 and you put them there.
 
-The cull runs **once per kind**, not once over all points. An outline point a
-hair nearer than a skeleton point does not take the skeleton's place in the
-list, or raising the skeleton weight would not be enough to reach something
-standing behind a closer point.
+The cull runs **once per kind**, not once over all points (`collectCandidates`).
+A point of one kind does not hide the nearest point of another kind, or raising
+a weight would not be enough to reach a kind that stands behind a closer one.
+
+The neighbours of the dragged points are exempt (`alwaysKeep`). They are what the
+designer aligns to, so a nearer point elsewhere must not hide them.
 
 ## Candidate cap
 
@@ -204,67 +224,94 @@ Kept in weight order, then distance order, so the cap takes the least useful
 candidates first. You should not need to touch it. If you hit it, lower the
 collection radius instead.
 
-## The eleven reaches
+## The seven kinds
 
-One per kind of candidate, as a **multiple of the master reach** above. The
-pixels each one comes to are shown beside its slider, and they all move when you
-move the master reach.
+A kind is a **direction, not a source** (`KIND` in `snapping.js`). A metric, a
+guide you placed, a point's own ray and a skeleton rib end all pull the same when
+they run the same way. The source decides only how the line is drawn: a metric
+or a placed guide draws solid (`permanent`), a derived ray draws faint. Three
+kinds are not directions. Each is a class of source that you switch on and off
+as a whole.
 
-This is the knob to use when a kind should grab from further away without also
-winning ties it ought to lose. Raising a weight does both at once, which is why
-it is the wrong tool for that job.
+| Kind                  | Weight | What it is                                                          |
+| --------------------- | ------ | ------------------------------------------------------------------- |
+| Upright               | 1.0    | Any horizontal or vertical line: metrics, guides, point rays, edges |
+| Diagonal              | 0.8    | Any slanted line: slanted guides and edges. Off by default          |
+| Crossing              | 1.05   | Where two lines meet. Just above either line alone                  |
+| Off-curve point       | 0.7    | Rays from handles. Off by default                                   |
+| Curve projection      | 1.0    | A curve carried past its own end. Off by default                    |
+| Own generated outline | 0      | The outline the drag is making. Collected, and never wins at 0      |
+| Alignment band        | 0.3    | The overshoot bands of the alignment zones                          |
 
-Worked example: metrics that catch early without overpowering a nearby guide.
-Set **Reach: metric** to 2 and leave every weight alone. The baseline now pulls
-from twice as far, and a guide at the same distance still beats it.
+A metric and a guide you placed no longer outrank a derived ray. They are all
+"upright" or "diagonal". An older version of this guide described clusters by
+source (metric, placed, derived, skeleton). That model is gone.
 
-- **Below 1:** that kind only engages when you are already close. Useful for the
-  bands, and for slanted smart guides, which are the usual source of snaps
-  nobody asked for.
-- **Above 1:** that kind catches early. Useful for metrics, which are the lines
-  a designer aims at deliberately.
-
-## The eleven weights
-
-The relative worth of each kind of candidate. They only decide near-ties: a light
-candidate close to the cursor still beats a heavy one far away.
-
-They are clustered rather than evenly spread, so that one rule survives:
-**a guide you placed beats a guide the editor invented.**
-
-| Cluster               | Default weights | Meaning                                   |
-| --------------------- | --------------- | ----------------------------------------- |
-| Metric                | 1.0             | Baseline, x-height, cap height            |
-| Guides you placed     | 0.84 – 0.76     | Crossing, then right angle, then slant    |
-| Guides derived        | 0.52 – 0.40     | Crossing, then right angle, then slant    |
-| Skeleton and rib ends | 0.36            | The centerline's own points, and rib ends |
-| Other                 | 0.3             | Ascender, descender, overshoot bands      |
-| Own generated outline | 0               | The outline the drag is currently making  |
-
-Inside each cluster two rules hold: a crossing beats a single line, and a right
-angle beats a slant.
-
-**Skeleton and rib ends** sit just under the derived guides on purpose. A
-centerline is construction. It should be reachable without outranking the
-outline the designer can actually see.
-
-**Own generated outline** is the geometry that follows the very point being
-dragged: move a skeleton point and its outline moves with it. It is collected
-and reported in the readout, and at weight 0 it never wins. Raise it when you
-want to place a skeleton point by the edge it is producing rather than by the
-centerline. Everything else the skeleton generated — the parts not following
-this drag — is ordinary outline and answers to the smart weights.
+**Own generated outline** is the geometry that follows the point being dragged:
+move a skeleton point and its outline moves with it. Raise its weight to place a
+skeleton point by the edge it makes rather than by the centerline. The rest of
+the generated outline is ordinary outline and answers to the other kinds.
 
 A weight of 0 means it: a weightless line is also refused as one half of a
-crossing, so a kind cannot come back in at the intersection weight through a
-side door.
+crossing, so a kind cannot come back in through the crossing weight.
 
-**Raising a weight to get more reach is the wrong move.** It also changes who wins
-ties. If a kind needs to grab from further away while still losing ties, use its
-own reach above.
+## Weights
 
-One consequence, accepted rather than fixed: a guide you placed near the working
-area suppresses the derived guides around it. Placing a guide is not free.
+The relative worth of each kind. They decide only near-ties: a light candidate
+close to the cursor still beats a heavy one far away.
+
+**Raising a weight to get more reach is the wrong move.** It also changes who
+wins ties. Use the kind's own reach below.
+
+## Reaches
+
+One per kind, as a **multiple of the master reach** above. The readout beside
+each slider shows the multiple.
+
+This is the knob to use when a kind must grab from further away without also
+winning ties it must lose. Raising a weight does both at once.
+
+- **Below 1:** that kind engages only when you are already close. Useful for the
+  bands and for diagonals, which are the usual source of snaps nobody asked for.
+- **Above 1:** that kind catches early. Useful for curve projections, which you
+  aim at on purpose.
+
+## Switches
+
+These sit in the same panel as the numbers, and **Reset to defaults** resets them
+too.
+
+- **Diagonals (shift+R).** Offers the diagonal kind. Hold the "snap to diagonals
+  only" key to get diagonals and nothing else, whatever the switch says.
+- **Off-curve points cast rays.** Offers the off-curve kind. A handle states a
+  direction rather than a place, so it is off by default.
+- **Curve projections (hold T).** Offers the curve-projection kind. Hold the
+  "snap to curve projections only" key to get projections and nothing else. If
+  both keys are down, projections win.
+- **Projection length (segments).** How far a projection runs past each end, in
+  the curve's own parameter. 1 doubles the curve.
+
+## Modifier snapping (debug)
+
+A separate accordion, one switch per modified drag (`dragSnapPolicy`). A modified
+drag states its own geometry, and a magnet that moves the point fights it. So
+every switch is off by default, except one.
+
+| Switch                               | Default | Drag                                               |
+| ------------------------------------ | ------- | -------------------------------------------------- |
+| Alt                                  | off     | Alt drag (equalize)                                |
+| Alt: corners snap                    | **on**  | Alt drag where every dragged point is a corner     |
+| Snap during a fixed-rib drag (D / S) | off     | D and S. Also shown in "Snapping and smart guides" |
+| Z (tangent rib)                      | off     | Z                                                  |
+| X (tension-aware)                    | off     | X                                                  |
+| C (power tension-aware)              | off     | C                                                  |
+| A (independent rib)                  | off     | A                                                  |
+| V (point slide)                      | off     | V                                                  |
+| B (handle length)                    | off     | B                                                  |
+
+A corner has no tangent for Alt to hold, so an Alt drag of corners only snaps
+like a plain drag. The switches are read on every frame, so a key pressed in the
+middle of a drag takes effect on the next frame.
 
 ---
 

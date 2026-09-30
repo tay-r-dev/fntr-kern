@@ -231,6 +231,10 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   overruleFrames: 4,
   acquireSpeedPixels: 600,
   escapeSpeedPixels: 1400,
+  // A dragged point usually starts on guides from its neighbours, so a snap on
+  // the first frame holds it where it stands. The drag snaps nothing until the
+  // cursor has travelled this far from where it went down.
+  startTravelPixels: 12,
   // Switches, held as 0 or 1 so that they persist and reset through the same
   // path every other number does.
   //
