@@ -447,10 +447,10 @@ export class KerningViewController extends ViewController {
 
     this.visualizationLayers = new VisualizationLayers(
       [
-        // The selected and hovered glyph read as a dot under the glyph here,
+        // The selected and hovered glyph read as an underline here,
         // not the editor's outline.
         ...visualizationLayerDefinitions.map(
-          (definition) => GLYPH_DOT_LAYERS[definition.identifier] || definition
+          (definition) => GLYPH_UNDERLINE_LAYERS[definition.identifier] || definition
         ),
         this.buildAutokernSuggestionVisualizationLayerDefinition(),
         this.buildCurrentKerningNumbersLayerDefinition(),
@@ -8333,58 +8333,59 @@ function buildValueSpan(value, unreliable) {
 // A copy of editor.js's (unexported) newVisualizationLayersSettings, with our
 // own localStorage prefix -- sharing the editor's key would let this view's
 // layer toggles bleed into the editor's and vice versa.
-// The kerning view's glyph selection: a dot centred under the glyph, a gap
-// below its lowest point (or the baseline, if the glyph sits above it) --
-// dark for the selected glyph, grey for the hovered one. The layer it
+// The kerning view's glyph selection: a light grey 2px underline across the
+// glyph's advance, a gap below its lowest point (or the baseline, if the
+// glyph sits above it) -- a lighter grey for the hovered glyph. The layer it
 // replaces also paints the glyph itself (the context layer leaves the
 // selected glyph out), so this one fills it too, just without the outline.
-function drawGlyphDot({ context, positionedGlyph, parameters }) {
+function drawGlyphUnderline({ context, positionedGlyph, parameters }) {
   const glyph = positionedGlyph.glyph;
   context.fillStyle = glyph.errors?.length
     ? parameters.errorColor
     : parameters.fillColor;
   context.fill(glyph.flattenedPath2d);
   const bottom = Math.min(0, glyph.bounds?.yMin ?? 0);
-  context.fillStyle = parameters.dotColor;
-  context.beginPath();
-  context.arc(
-    glyph.xAdvance / 2,
-    bottom - parameters.dotGap - parameters.dotRadius,
-    parameters.dotRadius,
+  context.fillStyle = parameters.underlineColor;
+  context.fillRect(
     0,
-    2 * Math.PI
+    bottom - parameters.underlineGap - parameters.underlineThickness,
+    glyph.xAdvance,
+    parameters.underlineThickness
   );
-  context.fill();
 }
 
-function glyphDotLayer(identifier, name, selection, dotColor, dotColorDark) {
+function glyphUnderlineLayer(identifier, name, selection, underlineColor, darkColor) {
   return {
     identifier,
     name,
     selectionFunc: glyphSelector(selection),
     selectionFilter: (positionedGlyph) => !positionedGlyph.isEmpty,
     zIndex: 200,
-    screenParameters: { dotRadius: 3, dotGap: 8 },
-    colors: { dotColor, fillColor: "#000", errorColor: "#AAA" },
-    colorsDarkMode: { dotColor: dotColorDark, fillColor: "#FFF", errorColor: "#999" },
-    draw: drawGlyphDot,
+    screenParameters: { underlineThickness: 2, underlineGap: 8 },
+    colors: { underlineColor, fillColor: "#000", errorColor: "#AAA" },
+    colorsDarkMode: {
+      underlineColor: darkColor,
+      fillColor: "#FFF",
+      errorColor: "#999",
+    },
+    draw: drawGlyphUnderline,
   };
 }
 
-const GLYPH_DOT_LAYERS = {
-  "fontra.selected.glyph": glyphDotLayer(
+const GLYPH_UNDERLINE_LAYERS = {
+  "fontra.selected.glyph": glyphUnderlineLayer(
     "fontra.selected.glyph",
     "Selected glyph",
     "selected",
-    "#303030",
-    "#e0e0e0"
+    "#d9d9d9",
+    "#555"
   ),
-  "fontra.hovered.glyph": glyphDotLayer(
+  "fontra.hovered.glyph": glyphUnderlineLayer(
     "fontra.hovered.glyph",
     "Hovered glyph",
     "hovered",
-    "#b4b4b4",
-    "#777"
+    "#ececec",
+    "#444"
   ),
 };
 
