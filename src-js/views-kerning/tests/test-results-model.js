@@ -10,6 +10,8 @@ import {
   countMedianContributors,
   diffRerunTargets,
   explicitPairExists,
+  glyphTypeMatches,
+  isComposedGlyph,
   getStaleGlyphNames,
   isStaleAsyncResult,
   passesNumericFilters,
@@ -248,5 +250,32 @@ describe("results-model", () => {
     it("not stale for an empty contributor set", () => {
       expect(aggregateStale([])).to.equal(false);
     });
+  });
+});
+
+describe("composed glyphs as their own type", () => {
+  const glyph = (components, contours) => ({
+    components: new Array(components).fill({ name: "x" }),
+    path: { numContours: contours },
+  });
+
+  it("calls a glyph of components and no outline of its own composed", () => {
+    expect(isComposedGlyph(glyph(2, 0))).to.equal(true);
+    expect(isComposedGlyph(glyph(0, 2))).to.equal(false);
+    expect(isComposedGlyph(glyph(1, 1))).to.equal(false);
+    expect(isComposedGlyph(null)).to.equal(false);
+  });
+
+  it("matches a composed glyph only by the composed type", () => {
+    const glyphMap = { acircumflex: [0xe2], a: [0x61] };
+    const composed = new Set(["acircumflex"]);
+    expect(glyphTypeMatches("acircumflex", ["lowercase"], glyphMap, composed)).to.equal(
+      false
+    );
+    expect(glyphTypeMatches("acircumflex", ["composed"], glyphMap, composed)).to.equal(
+      true
+    );
+    expect(glyphTypeMatches("a", ["lowercase"], glyphMap, composed)).to.equal(true);
+    expect(glyphTypeMatches("a", ["composed"], glyphMap, composed)).to.equal(false);
   });
 });

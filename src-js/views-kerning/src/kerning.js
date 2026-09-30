@@ -196,6 +196,8 @@ import {
   flattenPairAddresses,
   getStaleGlyphNames,
   glyphMatchesCategory,
+  glyphTypeMatches,
+  isComposedGlyph,
   hiddenFromCacheEntry,
   isStaleAsyncResult,
   pairMatchesGlyphset,
@@ -2384,6 +2386,7 @@ export class KerningViewController extends ViewController {
         "symbols",
         "marks",
         "numbers",
+        "composed",
       ],
       // relationships defaults to all four buckets checked -- F14 is a new
       // filter with no prior equivalent, so "everything" is the only
@@ -2415,6 +2418,18 @@ export class KerningViewController extends ViewController {
     this.autokernFiltersController.synchronizeWithLocalStorage(
       "fontra-kerning-pairtable-filters."
     );
+    // "composed" is a newer type. A stored choice from before it existed
+    // gets it once, so composed glyphs do not vanish on their own.
+    try {
+      const addedKey = "fontra-kerning-types-composed-added";
+      const types = this.autokernFiltersController.model.unicodeTypes || [];
+      if (!localStorage.getItem(addedKey) && !types.includes("composed")) {
+        this.autokernFiltersController.setItem("unicodeTypes", [...types, "composed"]);
+      }
+      localStorage.setItem(addedKey, "1");
+    } catch {
+      // Without storage the default (which has it) applies.
+    }
     // Task 8, spec F11: a browser that used the pre-Task-8 four-bucket
     // "grouping" filter or the "foldClasses" toggle has those keys
     // persisted in localStorage; synchronizeWithLocalStorage above restores
@@ -2568,6 +2583,7 @@ export class KerningViewController extends ViewController {
       ["marks", "Combining diacritics"],
       ["numbers", "Numbers"],
       ["non-unicode", "Non-Unicode glyphs"],
+      ["composed", "Composed glyphs"],
     ];
     this._unicodeTypesDropdown = html.createDomElement("multi-select-dropdown", {
       label: "types",
@@ -2909,6 +2925,7 @@ export class KerningViewController extends ViewController {
     // event for exactly that moment; used here rather than inventing a
     // view-level dispose() this codebase has no other caller for.
     window.addEventListener("pagehide", () => this.disposeKerningChangeSubscription());
+    this.initComposedGlyphTracking();
 
     this.renderPairTable();
   }
@@ -4144,9 +4161,14 @@ export class KerningViewController extends ViewController {
   }
 
   pairMatchesTypes(left, right) {
+    // A composed glyph is its own type (glyphTypeMatches).
+    const types = [...this._unicodeTypesSet];
     const matches = (name) =>
-      [...this._unicodeTypesSet].some((category) =>
-        glyphMatchesCategory(name, category, this.fontController.glyphMap)
+      glyphTypeMatches(
+        name,
+        types,
+        this.fontController.glyphMap,
+        this._composedGlyphNames
       );
     // With one focus glyph, types describe its partners. Otherwise both
     // members must be included. Unencoded glyphs use the actual font map.
@@ -4159,6 +4181,40 @@ export class KerningViewController extends ViewController {
       );
     }
     return matches(left) && matches(right);
+  }
+
+  // Which glyphs are composed -- components and no outline of their own --
+  // at the default location, for the types filter. Recounted when a glyph
+  // changes or the glyph list does; the table redraws when the set changes.
+  async updateComposedGlyphNames() {
+    const names = new Set();
+    for (const glyphName of Object.keys(this.fontController.glyphMap || {})) {
+      const instance = await this.fontController.getGlyphInstance(glyphName, {});
+      if (isComposedGlyph(instance?.instance ?? instance)) {
+        names.add(glyphName);
+      }
+    }
+    const previous = this._composedGlyphNames;
+    this._composedGlyphNames = names;
+    if (
+      !previous ||
+      previous.size !== names.size ||
+      [...names].some((name) => !previous.has(name))
+    ) {
+      this.renderPairTable();
+    }
+  }
+
+  initComposedGlyphTracking() {
+    this._composedGlyphNames = new Set();
+    let scheduled = null;
+    const schedule = () => {
+      clearTimeout(scheduled);
+      scheduled = setTimeout(() => this.updateComposedGlyphNames(), 300);
+    };
+    this.fontController.addChangeListener({ glyphs: null }, schedule, false);
+    this.fontController.addChangeListener({ glyphMap: null }, schedule, false);
+    this.updateComposedGlyphNames();
   }
 
   updateNonUnicodeNote() {

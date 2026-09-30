@@ -455,3 +455,27 @@ export function passesNumericFilters(row, filters) {
   }
   return true;
 }
+
+// A glyph built only from components, with no outline of its own
+// (acircumflex = a + circumflexcomb). `instance` is a glyph instance (its
+// `components` and `path`); a missing one is not composed.
+export function isComposedGlyph(instance) {
+  return (
+    !!instance &&
+    (instance.components?.length ?? 0) > 0 &&
+    (instance.path?.numContours ?? 0) === 0
+  );
+}
+
+// Whether a glyph belongs to any of the checked `types`. A composed glyph is
+// its own type: it matches "composed" and nothing else, so picking lowercase
+// alone leaves out acircumflex. `composedNames` is the set of composed glyphs.
+export function glyphTypeMatches(glyphName, types, glyphMap, composedNames) {
+  if (composedNames?.has(glyphName)) {
+    return types.includes("composed");
+  }
+  return types.some(
+    (category) =>
+      category !== "composed" && glyphMatchesCategory(glyphName, category, glyphMap)
+  );
+}
