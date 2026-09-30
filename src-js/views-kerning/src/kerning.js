@@ -4563,6 +4563,8 @@ export class KerningViewController extends ViewController {
       applyButton.onclick = () => this.applyFoldedParentRow(group, median);
     }
     applyCell.appendChild(applyButton);
+    // The lock's slot: a class rule has none, but the eye keeps its place.
+    applyCell.appendChild(actionSlotSpacer());
     tr.appendChild(applyCell);
 
     // F32's hide action, in the actions cell. Task 11, ledger §8.5 (APPROVED): hiding a
@@ -6208,6 +6210,7 @@ export class KerningViewController extends ViewController {
       acceptButton.onclick = () =>
         this.createPairException(row.left, row.right, row.suggestion);
       applyCell.appendChild(acceptButton);
+      applyCell.appendChild(actionSlotSpacer());
     } else if (hasApplicableClass) {
       // F12: the lock only ever appears "for an individual pair with
       // applicable class kerning" -- a fully unique pair (neither side
@@ -6263,6 +6266,9 @@ export class KerningViewController extends ViewController {
         };
         applyCell.appendChild(lockButton);
       }
+    } else {
+      // No class to except from: an empty lock slot, so the eye stays put.
+      applyCell.appendChild(actionSlotSpacer());
     }
     tr.appendChild(applyCell);
 
@@ -7703,6 +7709,11 @@ export class KerningViewController extends ViewController {
       // to it. Which mode is on screen is the designer's own choice, made on
       // the chips -- a click in the table used to take it away from them.
       this.setPreviewPairs(previewPairs);
+    } else if (this._selectedPairText) {
+      // Deselecting keeps the pair on screen: only picking another pair
+      // changes what pair mode shows, and nothing here falls back to the
+      // phrase.
+      return;
     } else {
       this._selectedPairText = null;
       this._selectedPairLeft = null;
@@ -8345,6 +8356,14 @@ function buildValueSpan(value, unreliable) {
 // A copy of editor.js's (unexported) newVisualizationLayersSettings, with our
 // own localStorage prefix -- sharing the editor's key would let this view's
 // layer toggles bleed into the editor's and vice versa.
+// An empty slot the size of a row icon, standing in for an action a row does
+// not have, so every action sits in the same column on every row.
+function actionSlotSpacer() {
+  const spacer = document.createElement("span");
+  spacer.className = "kerning-pairtable-action-spacer";
+  return spacer;
+}
+
 // The kerning view's glyph selection: a light grey 2px underline across the
 // glyph's advance, a gap below its lowest point (or the baseline, if the
 // glyph sits above it) -- a lighter grey for the hovered glyph. The layer it

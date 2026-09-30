@@ -1217,3 +1217,20 @@ tr:hover .kerning-pairtable-reset-value:hover,
   margin-left: 4px;
   margin-right: 0;
 }
+
+/* An action a row does not have still takes its slot (actionSlotSpacer in
+   kerning.js), so apply, lock and eye line up down the column. */
+.kerning-pairtable-action-spacer {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+
+.kerning-pairtable-table tbody td.kerning-pairtable-apply-col {
+  white-space: nowrap;
+}
+
+.kerning-pairtable-table tbody td.kerning-pairtable-apply-col > * + * {
+  margin-left: 4px;
+}
