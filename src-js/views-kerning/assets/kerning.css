@@ -1159,29 +1159,32 @@ kerning-handle.negative {
   display: none;
 }
 
-/* The pair table flexes with its panel: fixed layout, Current and the
-   actions at the width their contents need, L, Proposed and R sharing the
-   rest. Every cell stays one line; what does not fit ends in an ellipsis
-   (a glyph name's full text is its title). */
+/* The pair table fills its panel: fixed layout, L, Current, Proposed and R
+   at their own widths (resizable, see the table's columnWidthsStorageKey),
+   and the actions column taking the rest, its buttons to the right. It never
+   gets narrower than its three buttons (min-width below; the table scrolls
+   sideways past that). Every cell stays one line; what does not fit ends in
+   an ellipsis (a glyph name's full text is its title). */
 .kerning-pairtable-table {
   table-layout: fixed;
+  min-width: 332px;
 }
 
 .kerning-pairtable-table th:nth-child(1),
 .kerning-pairtable-table th:nth-child(4) {
-  width: 22%;
+  width: 56px;
 }
 
 .kerning-pairtable-table th:nth-child(2) {
-  width: 72px;
+  width: 64px;
 }
 
 .kerning-pairtable-table th:nth-child(3) {
-  width: 34%;
+  width: 96px;
 }
 
-.kerning-pairtable-table th:nth-child(5) {
-  width: 60px;
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col {
+  text-align: right;
 }
 
 .kerning-pairtable-table th,

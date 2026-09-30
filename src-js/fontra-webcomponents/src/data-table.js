@@ -868,18 +868,27 @@ export class DataTable extends HTMLElement {
   }
 
   // Sized columns are fixed: once any column has a stored width, every
-  // visible column is held at its own width and the table is exactly as wide
-  // as they add up to, left-aligned. Resizing one then moves only the columns
-  // to its right; none of the others give or take width. With no stored
-  // widths the table fills its box and the columns share it, as before.
+  // visible column but the last holds its own width, and the last one takes
+  // whatever the table has left, never less than its `minWidth` (48px by
+  // default). The table still fills its box, so resizing one column moves the
+  // ones to its right and only the last gives or takes the difference. With
+  // no stored widths the columns share the table as before.
   _applyColumnWidths() {
     if (!this._table || !this._columnWidthsStorageKey) {
       return;
     }
     const sized = Object.keys(this._columnWidths || {}).length > 0;
+    const visible = this._visibleColumns();
+    const last = visible[visible.length - 1];
     let total = 0;
-    for (const { column, index } of this._visibleColumns()) {
+    for (const { column, index } of visible) {
       const th = column._headerElement;
+      if (column === last?.column) {
+        // The flexing column has no handle and no width of its own.
+        th.querySelector(":scope > .data-table-column-grip")?.remove();
+        th.style.width = "";
+        continue;
+      }
       if (!th.querySelector(":scope > .data-table-column-grip")) {
         th.appendChild(this._makeColumnGrip(column, index));
       }
@@ -893,14 +902,18 @@ export class DataTable extends HTMLElement {
       th.style.width = sized ? `${width}px` : "";
       total += sized ? width : 0;
     }
-    this._table.style.width = sized ? `${total}px` : "";
+    // Past its minimum the last column cannot shrink, so the table scrolls.
+    this._table.style.minWidth = sized
+      ? `${total + (last?.column.minWidth ?? 48)}px`
+      : "";
   }
 
   // Holds every visible column at the width it has on screen now, so the
   // first drag fixes the others where they are.
   _snapshotColumnWidths() {
     const widths = { ...this._columnWidths };
-    for (const { column, index } of this._visibleColumns()) {
+    const visible = this._visibleColumns();
+    for (const { column, index } of visible.slice(0, -1)) {
       const id = this._columnId(column, index);
       if (!widths[id]) {
         widths[id] = Math.round(column._headerElement.getBoundingClientRect().width);
