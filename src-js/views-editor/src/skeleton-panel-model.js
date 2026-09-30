@@ -540,6 +540,9 @@ export function summarizeSkeletonCapSelection(selectedPoints) {
     capBallEasing: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallEasing ?? null)
     ),
+    capBallEaseCurvature: reduceValues(
+      selectedPoints.map((entry) => entry.point.capBallEaseCurvature ?? null)
+    ),
     capBallSide: reduceValues(
       selectedPoints.map((entry) => entry.point.capBallSide ?? null)
     ),
