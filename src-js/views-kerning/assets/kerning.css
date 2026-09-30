@@ -762,7 +762,8 @@ tr:focus-within .kerning-pairtable-exception-create {
    editable cell (it reads as text until the row is hovered). Narrow, so the
    reset icon fits beside it. */
 .kerning-pairtable-current-input {
-  width: 4.5em;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 /* A row's Apply action. Same sizing and the SAME row-hover reveal as the
@@ -1208,16 +1209,6 @@ tr:hover .kerning-pairtable-reset-value:hover,
   user-select: text;
 }
 
-/* The in-cell buttons (reset beside Current, the mark beside Proposed) keep
-   to the cell's right edge, not to the end of the text; the float lets the
-   value and its delta read from the left as before. */
-.kerning-pairtable-table .kerning-pairtable-reset-indicator,
-.kerning-pairtable-table .kerning-pairtable-preview-toggle {
-  float: right;
-  margin-left: 4px;
-  margin-right: 0;
-}
-
 /* An action a row does not have still takes its slot (actionSlotSpacer in
    kerning.js), so apply, lock and eye line up down the column. */
 .kerning-pairtable-action-spacer {
@@ -1240,19 +1231,51 @@ tr:hover .kerning-pairtable-reset-value:hover,
   display: none;
 }
 
-/* L and R (columns 1 and 4): a long glyph or class name ends in an ellipsis
-   instead of widening the table, which pushed the in-cell buttons onto a
-   second line and made rows jump between one and two lines tall. The full
-   name is in the cell's title. */
-.kerning-pairtable-table tbody td:nth-child(1),
-.kerning-pairtable-table tbody td:nth-child(4) {
-  max-width: 80px;
+/* The pair table flexes with its panel: fixed layout, Current and the
+   actions at the width their contents need, L, Proposed and R sharing the
+   rest. Every cell stays one line; what does not fit ends in an ellipsis
+   (a glyph name's full text is its title). */
+.kerning-pairtable-table {
+  table-layout: fixed;
+}
+
+.kerning-pairtable-table th:nth-child(1),
+.kerning-pairtable-table th:nth-child(4) {
+  width: 22%;
+}
+
+.kerning-pairtable-table th:nth-child(2) {
+  width: 72px;
+}
+
+.kerning-pairtable-table th:nth-child(3) {
+  width: 34%;
+}
+
+.kerning-pairtable-table th:nth-child(5) {
+  width: 82px;
+}
+
+.kerning-pairtable-table th,
+.kerning-pairtable-table td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* The in-cell buttons (reset in Current, the mark in Proposed) are pinned to
+   the cell's right edge, out of the text's flow, so they can never wrap onto
+   a second line; the cell keeps room for them. */
 .kerning-pairtable-table td.kerning-pairtable-current-col,
 .kerning-pairtable-table td.kerning-pairtable-proposed-col {
-  white-space: nowrap;
+  position: relative;
+  padding-right: 30px;
+}
+
+.kerning-pairtable-table .kerning-pairtable-reset-indicator,
+.kerning-pairtable-table .kerning-pairtable-preview-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  margin: -9px 0 0;
 }
