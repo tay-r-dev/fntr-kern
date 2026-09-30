@@ -1291,7 +1291,17 @@ export class DataTable extends HTMLElement {
         ({ column }, i) => this._columnWidths?.[ids[i]] ?? column.width ?? null
       );
       if (current.every((width) => width != null)) {
-        const next = spreadColumnWidths(current, box - previous);
+        // Growing: every fixed column gains the same. Shrinking: the last
+        // column gives up its room first, down to its minimum; only what is
+        // still over comes off the fixed columns, equally.
+        let delta = box - previous;
+        if (delta < 0) {
+          const sum = current.reduce((total, width) => total + width, 0);
+          const lastMin = visible[visible.length - 1]?.column.minWidth ?? 48;
+          const slack = Math.max(0, previous - sum - lastMin);
+          delta = Math.min(0, delta + slack);
+        }
+        const next = spreadColumnWidths(current, delta);
         this._columnWidths = { ...this._columnWidths };
         ids.forEach((id, i) => (this._columnWidths[id] = next[i]));
         this._storeColumnWidths();
