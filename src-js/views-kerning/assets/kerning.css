@@ -1207,3 +1207,13 @@ tr:hover .kerning-pairtable-reset-value:hover,
 .kerning-pairtable-table [data-selectable-name] {
   user-select: text;
 }
+
+/* The in-cell buttons (reset beside Current, the mark beside Proposed) keep
+   to the cell's right edge, not to the end of the text; the float lets the
+   value and its delta read from the left as before. */
+.kerning-pairtable-table .kerning-pairtable-reset-indicator,
+.kerning-pairtable-table .kerning-pairtable-preview-toggle {
+  float: right;
+  margin-left: 4px;
+  margin-right: 0;
+}

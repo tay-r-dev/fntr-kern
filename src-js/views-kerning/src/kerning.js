@@ -1909,6 +1909,11 @@ export class KerningViewController extends ViewController {
     );
   }
 
+  // A mark made on this very pair, not inherited from its class rule.
+  pairHasOwnMark(left, right, source = this.autokernSource) {
+    return this.previewMarkSet().has(rowId(source, left, right));
+  }
+
   // Is this pair left out of the suggestion preview? Ordinary mode: only a
   // marked pair is out. Skip-all mode: every pair is out except a marked one.
   isPairExcludedFromPreview(left, right, source = this.autokernSource) {
@@ -3957,9 +3962,16 @@ export class KerningViewController extends ViewController {
           rowVisibleForHiddenState(item.hidden, filters.showHidden)
         );
       }
-      return tab === "potential"
-        ? rowVisibleInPotential(item.row)
-        : rowVisibleInDefault(item.row, exposedNames, showIndividualMembers);
+      if (tab === "potential") {
+        return rowVisibleInPotential(item.row);
+      }
+      // Marked only lists every pair carrying a mark of its own, exposed or
+      // not -- a member pair under a class rule is otherwise hidden until its
+      // glyph is typed or members is on, so a marked one went missing.
+      if (filters.onlyMarked && this.pairHasOwnMark(item.row.left, item.row.right)) {
+        return true;
+      }
+      return rowVisibleInDefault(item.row, exposedNames, showIndividualMembers);
     });
 
     // Backlog item 11's column sort, now applied to the WHOLE flat list
