@@ -2697,9 +2697,9 @@ export class KerningViewController extends ViewController {
     this._pairTable.columns = [
       { label: "L", sortKey: "glyph", sortable: true, selectAll: true },
       {
+        // Always shown: the stored value is what every other number reads
+        // against, so it is not in the column menu.
         label: "Current",
-        key: "showCurrent",
-        hideable: true,
         sortKey: "current",
         sortable: true,
         headerClassName: "kerning-pairtable-current-col",
@@ -3815,8 +3815,21 @@ export class KerningViewController extends ViewController {
 
     // Ticket 19: the column menu's four entries, shown or hidden as whole
     // columns by the shared table -- header and cells alike.
-    for (const key of ["showCurrent", "showProposed"]) {
-      this._pairTable?.setColumnVisible(key, filters[key]);
+    this._pairTable?.setColumnVisible("showProposed", filters.showProposed);
+    // Delta is the Proposed cell's second entry, not a column: the menu
+    // shows or hides it (showSuggestion) across the table.
+    this._pairTable?.table?.classList.toggle(
+      "kerning-pairtable-hide-delta",
+      filters.showSuggestion === false
+    );
+    if (this._pairTable) {
+      this._pairTable.extraMenuItems = [
+        {
+          key: "showSuggestion",
+          label: "Delta",
+          visible: filters.showSuggestion !== false,
+        },
+      ];
     }
 
     // Backlog item 11: keeps the header label/arrow in sync with the

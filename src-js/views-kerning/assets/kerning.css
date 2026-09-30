@@ -1234,3 +1234,8 @@ tr:hover .kerning-pairtable-reset-value:hover,
 .kerning-pairtable-table tbody td.kerning-pairtable-apply-col > * + * {
   margin-left: 4px;
 }
+
+/* Delta off in the header menu (showSuggestion): the "(delta)" entry goes. */
+.kerning-pairtable-hide-delta .kerning-pairtable-delta {
+  display: none;
+}

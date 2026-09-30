@@ -1197,23 +1197,33 @@ export class DataTable extends HTMLElement {
 
   _showColumnMenu(event) {
     const hideable = this._columns.filter((column) => column.hideable && column.key);
-    if (!hideable.length) {
+    // `extraMenuItems`: toggles that are not whole columns (a part of a
+    // cell, say), as [{key, label, visible}]; they go to onColumnToggle too.
+    const extra = this.extraMenuItems || [];
+    if (!hideable.length && !extra.length) {
       return;
     }
     event.preventDefault();
+    const toggle = (key, visible, isColumn) => {
+      if (this.onColumnToggle) {
+        this.onColumnToggle(key, visible);
+      } else if (isColumn) {
+        this.setColumnVisible(key, visible);
+      }
+    };
     showMenu(
-      hideable.map((column) => ({
-        title: column.label,
-        checked: column.visible !== false,
-        callback: () => {
-          const visible = column.visible === false;
-          if (this.onColumnToggle) {
-            this.onColumnToggle(column.key, visible);
-          } else {
-            this.setColumnVisible(column.key, visible);
-          }
-        },
-      })),
+      [
+        ...hideable.map((column) => ({
+          title: column.label,
+          checked: column.visible !== false,
+          callback: () => toggle(column.key, column.visible === false, true),
+        })),
+        ...extra.map((item) => ({
+          title: item.label,
+          checked: item.visible !== false,
+          callback: () => toggle(item.key, item.visible === false, false),
+        })),
+      ],
       event
     );
   }
