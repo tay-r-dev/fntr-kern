@@ -4726,8 +4726,10 @@ describe("simplify and harmonize serif easings", () => {
     expect(on(stem())).to.deep.equal(off(stem()));
   });
 
+  // At easing 0.5: the rounding follows the pieces it joins, and at 0.75 this
+  // one no longer fits one curve within the bound.
   it("still merges a forced-angle serif that fits within the shape bound", () => {
-    const data = stem();
+    const data = stem({ easeDistance: 0.5 });
     data.contours[0].points.length = 4;
     Object.assign(data.contours[0], { defaultWidth: 10, singleSided: false });
     const serif = data.contours[0].points[0].serif;
@@ -5011,5 +5013,112 @@ describe("a one-sided serif with a negative height", () => {
       expect(Math.min(...xs), sides).to.be.at.most(-29.5);
       expect(Math.max(...xs), sides).to.be.at.least(29.5);
     }
+  });
+});
+
+// Easing rounds the corner between the wall and the bracket, and only that:
+// the rounding may add black in the corner, never take black out of the stem.
+// Reported on the h of skeletron: the wall there bends, so its tangent at the
+// release crossed the foot line 16 units inside the stem, and handles aimed at
+// that crossing drew the rounding into the stem.
+describe("serif easing on a bending wall", () => {
+  const glyph = (easeDistance, tipThickness) => {
+    const half = {
+      wingLength: 20,
+      tipThickness,
+      wingSlope: 0,
+      reach: 0,
+      tension: 0.74,
+      concavity: 1,
+      easeDistance,
+      easeCurvature: 1,
+    };
+    return generateFromSkeleton({
+      contours: [
+        {
+          id: 41,
+          closed: false,
+          singleSided: "left",
+          defaultWidth: 80,
+          points: [
+            {
+              id: 2,
+              x: 106,
+              y: 179,
+              capStyle: "serif",
+              width: { left: 37, right: 37, linked: true, tied: true },
+              serif: { axisMode: "perpendicular", left: half, right: half },
+            },
+            { id: 3, x: 105, y: 328, type: "cubic" },
+            { id: 4, x: 281, y: 381, type: "cubic" },
+            { id: 5, x: 375, y: 252, width: { left: 8, right: 13, linked: false } },
+          ],
+        },
+      ],
+    });
+  };
+
+  const polygon = (result) => {
+    const points = result.contours[0].points;
+    const out = [];
+    const n = points.length;
+    for (let i = 0; i < n; i++) {
+      if (points[i].type) continue;
+      const a = points[(i + 1) % n],
+        b = points[(i + 2) % n],
+        c = points[(i + 3) % n];
+      if (a.type && b.type) {
+        const curve = new Bezier(points[i], a, b, c);
+        for (let j = 0; j < 40; j++) out.push(curve.get(j / 40));
+      } else out.push(points[i]);
+    }
+    return out;
+  };
+  const inside = (p, poly) => {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i],
+        b = poly[j];
+      if (
+        a.y > p.y !== b.y > p.y &&
+        p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x
+      )
+        hit = !hit;
+    }
+    return hit;
+  };
+  const edgeDistance = (p, poly) => {
+    let best = Infinity;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[j],
+        b = poly[i];
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const t = Math.max(
+        0,
+        Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy || 1))
+      );
+      best = Math.min(best, Math.hypot(p.x - a.x - dx * t, p.y - a.y - dy * t));
+    }
+    return best;
+  };
+
+  it("never cuts into the stroke the easing rounds", () => {
+    for (const tipThickness of [-67, 0, 30])
+      for (const easeDistance of [0.1, 0.22, 0.5]) {
+        const plain = polygon(glyph(0, tipThickness));
+        for (const p of polygon(glyph(easeDistance, tipThickness))) {
+          // A point of the eased outline that lies inside the plain stroke is
+          // a cut into the stem. One curve fitted to a long bending run cannot
+          // follow it exactly, so up to 4 units remain at easing 0.5; handles
+          // aimed at the tangent crossing cut 31.
+          if (inside(p, plain)) {
+            expect(
+              edgeDistance(p, plain),
+              `height ${tipThickness} easing ${easeDistance} at ${p.x.toFixed(1)},${p.y.toFixed(1)}`
+            ).to.be.below(4.5);
+          }
+        }
+      }
   });
 });

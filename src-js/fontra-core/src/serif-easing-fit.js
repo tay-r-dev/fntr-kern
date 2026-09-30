@@ -44,8 +44,9 @@ function distanceToRun(point, samples) {
 
 // A strictly convex two-variable fit: endpoints and tangent directions stay
 // fixed, only positive bounded handle lengths vary. Unlike pattern search,
-// its unique answer varies continuously as the source curves move.
-export function fitSerifEasing(cubics, startDirection, endDirection, preceding) {
+// its unique answer varies continuously as the source curves move. Returns the
+// two handle lengths, zero included, or null where the run has no chord.
+export function fitRunHandleLengths(cubics, startDirection, endDirection) {
   const start = cubics[0][0],
     end = cubics.at(-1)[3];
   const chord = distance(start, end);
@@ -94,7 +95,6 @@ export function fitSerifEasing(cubics, startDirection, endDirection, preceding) 
       aa * a * a + 2 * ab * a * b + bb * b * b - 2 * ar * a - 2 * br * b;
     candidates.sort((a, b) => energy(a) - energy(b));
     [h0, h1] = candidates[0];
-    if (h0 < 1e-6 || h1 < 1e-6) return null;
 
     const fitted = sampleRun([[start, along(start, d0, h0), along(end, d1, h1), end]]);
     const fittedLength = fitted.at(-1).length;
@@ -107,6 +107,15 @@ export function fitSerifEasing(cubics, startDirection, endDirection, preceding) 
       return (j - 1 + (b > a ? (target - a) / (b - a) : 0)) / 64;
     });
   }
+  return { h0, h1, start, end, d0, d1, samples, total, limit };
+}
+
+export function fitSerifEasing(cubics, startDirection, endDirection, preceding) {
+  const fit = fitRunHandleLengths(cubics, startDirection, endDirection);
+  if (!fit) return null;
+  const { start, end, d0, d1, samples, total, limit } = fit;
+  let { h0, h1 } = fit;
+  if (h0 < 1e-6 || h1 < 1e-6) return null;
 
   if (preceding) {
     // Scale both fitted handles together to match incoming curvature. On a
