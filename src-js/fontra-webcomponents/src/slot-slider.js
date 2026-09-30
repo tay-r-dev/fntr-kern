@@ -158,9 +158,15 @@ export class SlotSlider extends UnlitElement {
     this._value = 0;
     this._stops = [];
     this._disabled = false;
-    this.tabIndex = 0;
     this.addEventListener("pointerdown", (event) => this._startDrag(event));
     this.addEventListener("keydown", (event) => this._keyDown(event));
+  }
+
+  // Focusable from here, not the constructor: an element made by
+  // document.createElement may not add attributes while it is built.
+  connectedCallback() {
+    this.tabIndex = this._disabled ? -1 : 0;
+    super.connectedCallback();
   }
 
   get min() {

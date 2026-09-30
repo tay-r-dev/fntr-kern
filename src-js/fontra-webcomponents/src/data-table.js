@@ -1052,6 +1052,7 @@ export class DataTable extends HTMLElement {
     if (!this._tbody || !this._items) {
       return;
     }
+    const focus = this._saveCellFocus();
     this._tbody.textContent = "";
     const end = windowEnd(this._windowStart, this._items.length, this._windowSize);
     for (let index = this._windowStart; index < end; index++) {
@@ -1062,7 +1063,59 @@ export class DataTable extends HTMLElement {
     if (this._selectable) {
       this._syncSelectAll();
     }
+    this._restoreCellFocus(focus);
     this.onRowsRender?.();
+  }
+
+  // A redraw replaces every row, so a field being edited -- stepped with the
+  // arrow keys, say, where each step writes and the write redraws -- would
+  // lose the focus. The row's id and the field's place in the row find it
+  // again in the new rows.
+  _saveCellFocus() {
+    const active = this.getRootNode().activeElement;
+    if (!active || !this._tbody.contains(active)) {
+      return null;
+    }
+    const tr = active.closest("tr[data-row-id]");
+    if (!tr) {
+      return null;
+    }
+    const fields = [...tr.querySelectorAll("input, select, textarea")];
+    let selectionStart = null;
+    let selectionEnd = null;
+    try {
+      selectionStart = active.selectionStart ?? null;
+      selectionEnd = active.selectionEnd ?? null;
+    } catch {
+      // Some field types have no text selection.
+    }
+    return {
+      rowId: tr.dataset.rowId,
+      index: fields.indexOf(active),
+      selectionStart,
+      selectionEnd,
+    };
+  }
+
+  _restoreCellFocus(focus) {
+    if (!focus || focus.index < 0) {
+      return;
+    }
+    const tr = [...this._tbody.querySelectorAll("tr[data-row-id]")].find(
+      (row) => row.dataset.rowId === focus.rowId
+    );
+    const field = tr?.querySelectorAll("input, select, textarea")[focus.index];
+    if (!field) {
+      return;
+    }
+    field.focus({ preventScroll: true });
+    try {
+      if (focus.selectionStart != null) {
+        field.setSelectionRange(focus.selectionStart, focus.selectionEnd);
+      }
+    } catch {
+      // A number field has no text selection to put back.
+    }
   }
 
   _scrolled() {
