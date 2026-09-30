@@ -447,7 +447,11 @@ export class KerningViewController extends ViewController {
 
     this.visualizationLayers = new VisualizationLayers(
       [
-        ...visualizationLayerDefinitions,
+        // The selected and hovered glyph read as a dot under the glyph here,
+        // not the editor's outline.
+        ...visualizationLayerDefinitions.map(
+          (definition) => GLYPH_DOT_LAYERS[definition.identifier] || definition
+        ),
         this.buildAutokernSuggestionVisualizationLayerDefinition(),
         this.buildCurrentKerningNumbersLayerDefinition(),
       ],
@@ -8329,6 +8333,55 @@ function buildValueSpan(value, unreliable) {
 // A copy of editor.js's (unexported) newVisualizationLayersSettings, with our
 // own localStorage prefix -- sharing the editor's key would let this view's
 // layer toggles bleed into the editor's and vice versa.
+// The kerning view's glyph selection: a dot centred under the glyph, a gap
+// below its lowest point (or the baseline, if the glyph sits above it) --
+// dark for the selected glyph, grey for the hovered one.
+function drawGlyphDot({ context, positionedGlyph, parameters }) {
+  const glyph = positionedGlyph.glyph;
+  const bottom = Math.min(0, glyph.bounds?.yMin ?? 0);
+  context.fillStyle = parameters.dotColor;
+  context.beginPath();
+  context.arc(
+    glyph.xAdvance / 2,
+    bottom - parameters.dotGap - parameters.dotRadius,
+    parameters.dotRadius,
+    0,
+    2 * Math.PI
+  );
+  context.fill();
+}
+
+function glyphDotLayer(identifier, name, selection, dotColor, dotColorDark) {
+  return {
+    identifier,
+    name,
+    selectionFunc: glyphSelector(selection),
+    selectionFilter: (positionedGlyph) => !positionedGlyph.isEmpty,
+    zIndex: 200,
+    screenParameters: { dotRadius: 3, dotGap: 8 },
+    colors: { dotColor },
+    colorsDarkMode: { dotColor: dotColorDark },
+    draw: drawGlyphDot,
+  };
+}
+
+const GLYPH_DOT_LAYERS = {
+  "fontra.selected.glyph": glyphDotLayer(
+    "fontra.selected.glyph",
+    "Selected glyph",
+    "selected",
+    "#303030",
+    "#e0e0e0"
+  ),
+  "fontra.hovered.glyph": glyphDotLayer(
+    "fontra.hovered.glyph",
+    "Hovered glyph",
+    "hovered",
+    "#b4b4b4",
+    "#777"
+  ),
+};
+
 function newVisualizationLayersSettings(visualizationLayers) {
   const settings = [];
   for (const definition of visualizationLayers.definitions) {
