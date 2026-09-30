@@ -157,8 +157,6 @@ import Panel from "./panel.js";
 
 const MIN_CANVAS_SPACE = 200;
 
-const PREVIEW_MODE_STORAGE_KEY = "fontra-editor-preview-mode";
-
 const PASTE_BEHAVIOR_REPLACE = "replace";
 const PASTE_BEHAVIOR_ADD = "add";
 
@@ -373,11 +371,6 @@ export class EditorController extends ViewController {
       (event) => this.previewMouseDown(event),
       { capture: true }
     );
-    try {
-      this._previewMode = localStorage.getItem(PREVIEW_MODE_STORAGE_KEY) === "true";
-    } catch {
-      this._previewMode = false;
-    }
     this.updateLiveSceneView();
     this.canvasController.canvas.addEventListener("pointerup", (event) =>
       this.pointerUpHandler(event)
@@ -779,7 +772,7 @@ export class EditorController extends ViewController {
       },
       (event) => {
         if (!event?.repeat) {
-          this.setPreviewMode(!this.previewMode);
+          this.canvasSplit.togglePreview();
         }
       }
     );
@@ -3943,32 +3936,16 @@ export class EditorController extends ViewController {
     }
   }
 
-  // The live canvas draws the clean view while Space is held, and in the
-  // black preview; the editing view otherwise.
+  // The live canvas draws its glyphs filled while its pane is in the black
+  // preview or Space is held over it (canvas-split.js); the editing view
+  // otherwise.
   updateLiveSceneView() {
-    this.canvasController.sceneView =
-      this._cleanViewHeld || this.previewMode
-        ? this.cleanSceneView
-        : this.defaultSceneView;
+    this.canvasController.sceneView = this.canvasSplit.showsPreview(
+      this.canvasSplit.liveSlot
+    )
+      ? this.cleanSceneView
+      : this.defaultSceneView;
     this.canvasController.requestUpdate();
-  }
-
-  // The black preview: every canvas shows its glyphs filled. Shift+Space
-  // turns it on and off; a double-click on a glyph turns it off and opens
-  // that glyph.
-  get previewMode() {
-    return !!this._previewMode;
-  }
-
-  setPreviewMode(onOff) {
-    this._previewMode = onOff;
-    try {
-      localStorage.setItem(PREVIEW_MODE_STORAGE_KEY, String(onOff));
-    } catch {
-      // Without storage the preview starts off next time.
-    }
-    this.updateLiveSceneView();
-    this.canvasSplit.previewChanged();
   }
 
   // In the black preview a left click edits nothing, so nothing changes out
@@ -3976,7 +3953,7 @@ export class EditorController extends ViewController {
   // preview and opens that glyph for editing.
   previewMouseDown(event) {
     if (
-      !this.previewMode ||
+      !this.canvasSplit.livePreview ||
       event.button !== 0 ||
       this.selectedToolIdentifier === "hand-tool"
     ) {
@@ -3992,14 +3969,12 @@ export class EditorController extends ViewController {
       false
     );
     if (glyph) {
-      this.setPreviewMode(false);
+      this.canvasSplit.setPreview(this.canvasSplit.liveSlot, false);
       this.sceneSettings.selectedGlyph = { ...glyph, isEditing: true };
     }
   }
 
   enterCleanViewAndHandTool(event) {
-    this._cleanViewHeld = true;
-    this.updateLiveSceneView();
     this.canvasSplit.setCleanView(true);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.add("overlay-layer-hidden");
@@ -4013,8 +3988,6 @@ export class EditorController extends ViewController {
   }
 
   leaveCleanViewAndHandTool() {
-    this._cleanViewHeld = false;
-    this.updateLiveSceneView();
     this.canvasSplit.setCleanView(false);
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.remove("overlay-layer-hidden");

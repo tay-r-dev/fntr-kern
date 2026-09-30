@@ -23,8 +23,10 @@ import {
   clampSplitRatio,
   closePane,
   openGlyphInPane,
+  paneAtPoint,
   paneStateFromViewInfo,
   paneViewInfo,
+  previewTargetPane,
   showOverviewInPane,
   splitInfo,
   splitPanes,
@@ -39,6 +41,7 @@ import { VisualizationContext, VisualizationLayers } from "./visualization-layer
 
 const MIN_PANE_WIDTH = 160;
 const RATIO_STORAGE_KEY = "fontra-canvas-split-ratio";
+const PREVIEWS_STORAGE_KEY = "fontra-canvas-split-previews";
 
 // The settings the passive canvas takes from the live one: both panes show
 // the font at one location, set by the same text settings.
@@ -74,18 +77,91 @@ export class CanvasSplit {
     // The pane a context menu was opened on; the pane actions act on it.
     this.menuPaneIndex = null;
     this.ratio = readStoredRatio();
-    // Held Space: both panes show the clean view, as the live canvas does.
+    // Per pane (left, right; the whole canvas is the left): the black
+    // preview, which Shift+Space turns on and off for the pane under the
+    // pointer.
+    this.previews = readStoredPreviews();
+    // Held Space shows the clean view in one pane: the one under the pointer,
+    // followed while the key is held.
     this.cleanView = false;
+    this.cleanIndex = null;
+    // The pointer's last position, to tell which pane a key acts on.
+    this.pointer = null;
+    window.addEventListener(
+      "pointermove",
+      (event) => {
+        this.pointer = { x: event.clientX, y: event.clientY };
+        if (this.cleanView) {
+          this._followCleanView();
+        }
+      },
+      { capture: true, passive: true }
+    );
     this._setupDivider();
+  }
+
+  get liveSlot() {
+    return this.layout?.live ?? 0;
+  }
+
+  get passiveSlot() {
+    return 1 - this.liveSlot;
+  }
+
+  // The pane under the pointer, or null (also while the canvas is whole).
+  paneUnderPointer() {
+    if (!this.isSplit) {
+      return null;
+    }
+    return paneAtPoint(
+      this.slots.map((slot) => slot.getBoundingClientRect()),
+      this.pointer
+    );
+  }
+
+  // Whether the pane draws its glyphs filled: its preview is on, or Space is
+  // held over it.
+  showsPreview(index) {
+    return this.previews[index] || (this.cleanView && this.cleanIndex === index);
+  }
+
+  // Whether the live canvas is in the black preview (where a click edits
+  // nothing).
+  get livePreview() {
+    return this.previews[this.liveSlot];
+  }
+
+  togglePreview() {
+    const index = previewTargetPane(this.layout, this.paneUnderPointer());
+    if (index !== null) {
+      this.setPreview(index, !this.previews[index]);
+    }
+  }
+
+  setPreview(index, onOff) {
+    this.previews = this.previews.map((value, i) => (i === index ? onOff : value));
+    storePreviews(this.previews);
+    this._showPreviews();
   }
 
   setCleanView(onOff) {
     this.cleanView = onOff;
-    this.passive?.canvasController.requestUpdate();
+    this.cleanIndex = onOff
+      ? previewTargetPane(this.layout, this.paneUnderPointer())
+      : null;
+    this._showPreviews();
   }
 
-  // The editor's black preview went on or off.
-  previewChanged() {
+  _followCleanView() {
+    const index = previewTargetPane(this.layout, this.paneUnderPointer());
+    if (index !== this.cleanIndex) {
+      this.cleanIndex = index;
+      this._showPreviews();
+    }
+  }
+
+  _showPreviews() {
+    this.editor.updateLiveSceneView();
     this.passive?.canvasController.requestUpdate();
   }
 
@@ -159,6 +235,9 @@ export class CanvasSplit {
     }
     const viewBox = this.editor.canvasController.getViewBox();
     this.layout = splitPanes();
+    // The new pane starts without the preview.
+    this.previews = [this.previews[0], false];
+    storePreviews(this.previews);
     this.root.classList.add("split");
     this._applyRatio();
     this._ensurePassive();
@@ -258,6 +337,9 @@ export class CanvasSplit {
       await this.activate(keep);
     }
     const viewBox = this.editor.canvasController.getViewBox();
+    // The pane that stays takes the whole canvas, and its preview with it.
+    this.previews = [this.previews[this.layout.live], false];
+    storePreviews(this.previews);
     this.layout = null;
     this.root.classList.remove("split");
     this.root.style.gridTemplateColumns = "";
@@ -347,6 +429,9 @@ export class CanvasSplit {
       this.passive.canvasController.setupSize();
       this.passive.canvasController.requestUpdate();
     }
+    // The live canvas may have moved to the other pane, and its preview is
+    // that pane's.
+    this.editor.updateLiveSceneView();
   }
 
   _place(element, slot) {
@@ -560,10 +645,9 @@ class PassivePane {
 
   _draw(model, controller) {
     const split = this.split;
-    const layers =
-      this.editor.previewMode || split.cleanView
-        ? this.previewLayers
-        : this.editingLayers;
+    const layers = split.showsPreview(split.passiveSlot)
+      ? this.previewLayers
+      : this.editingLayers;
     drawLayersSafely(layers, new VisualizationContext(model, controller));
   }
 
@@ -589,7 +673,7 @@ class PassivePane {
     }
     // In the black preview a click edits nothing; a double-click on a glyph
     // leaves the preview and opens that glyph here for editing.
-    if (editor.previewMode) {
+    if (split.previews[index]) {
       event.preventDefault();
       if (event.detail >= 2) {
         const glyph = this.sceneModel.glyphAtPoint(
@@ -599,7 +683,7 @@ class PassivePane {
         if (glyph) {
           this.settings.selection = new Set();
           this.settings.selectedGlyph = { ...glyph, isEditing: true };
-          editor.setPreviewMode(false);
+          split.setPreview(index, false);
           split.activate(index);
         }
       }
@@ -799,6 +883,23 @@ function releaseDrawing(canvasControllers) {
   for (const canvasController of canvasControllers) {
     delete canvasController.draw;
     canvasController.draw();
+  }
+}
+
+function readStoredPreviews() {
+  try {
+    const previews = JSON.parse(localStorage.getItem(PREVIEWS_STORAGE_KEY));
+    return [0, 1].map((index) => previews?.[index] === true);
+  } catch {
+    return [false, false];
+  }
+}
+
+function storePreviews(previews) {
+  try {
+    localStorage.setItem(PREVIEWS_STORAGE_KEY, JSON.stringify(previews));
+  } catch {
+    // Without storage the previews start off next time.
   }
 }
 

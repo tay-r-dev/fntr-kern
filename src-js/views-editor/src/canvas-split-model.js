@@ -148,3 +148,30 @@ export function parseSplitInfo(info) {
       : null;
   return { layout, other };
 }
+
+// The pane Space and Shift+Space act on: the one under the pointer, or the
+// live one when the pointer is over neither. An overview has none. While the
+// canvas is whole, its one canvas.
+export function previewTargetPane(layout, hoveredIndex) {
+  if (!layout) {
+    return 0;
+  }
+  const index = hoveredIndex ?? layout.live;
+  return layout.panes[index] === PANE_CANVAS ? index : null;
+}
+
+// The index of the pane box (as getBoundingClientRect gives it) that holds
+// the point, or null.
+export function paneAtPoint(rects, point) {
+  if (!point) {
+    return null;
+  }
+  const index = rects.findIndex(
+    (rect) =>
+      point.x >= rect.left &&
+      point.x < rect.right &&
+      point.y >= rect.top &&
+      point.y < rect.bottom
+  );
+  return index >= 0 ? index : null;
+}

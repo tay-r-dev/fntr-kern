@@ -9,7 +9,9 @@ import {
   paneStateFromViewInfo,
   parseSplitInfo,
   splitInfo,
+  paneAtPoint,
   paneViewInfo,
+  previewTargetPane,
   showOverviewInPane,
   splitPanes,
 } from "../src/canvas-split-model.js";
@@ -265,6 +267,47 @@ describe("canvas split model", () => {
         layout: { panes: [PANE_CANVAS, PANE_CANVAS], live: 0 },
         other: { text: "", selectedGlyph: null, selection: [], viewBox: null },
       });
+    });
+  });
+
+  describe("previewTargetPane", () => {
+    const layout = { panes: [PANE_CANVAS, PANE_CANVAS], live: 0 };
+
+    it("is the pane under the pointer, live or not", () => {
+      expect(previewTargetPane(layout, 0)).to.equal(0);
+      expect(previewTargetPane(layout, 1)).to.equal(1);
+    });
+
+    it("is the live pane when the pointer is over neither", () => {
+      expect(previewTargetPane({ ...layout, live: 1 }, null)).to.equal(1);
+    });
+
+    it("is none when the pane under the pointer shows the overview", () => {
+      const withOverview = { panes: [PANE_CANVAS, PANE_OVERVIEW], live: 0 };
+      expect(previewTargetPane(withOverview, 1)).to.equal(null);
+    });
+
+    it("is the one canvas while the canvas is whole", () => {
+      expect(previewTargetPane(null, null)).to.equal(0);
+      expect(previewTargetPane(null, 1)).to.equal(0);
+    });
+  });
+
+  describe("paneAtPoint", () => {
+    const rects = [
+      { left: 0, top: 0, right: 100, bottom: 50 },
+      { left: 105, top: 0, right: 200, bottom: 50 },
+    ];
+
+    it("is the pane whose box holds the point", () => {
+      expect(paneAtPoint(rects, { x: 10, y: 10 })).to.equal(0);
+      expect(paneAtPoint(rects, { x: 150, y: 10 })).to.equal(1);
+    });
+
+    it("is null over the divider, outside both, or with no point", () => {
+      expect(paneAtPoint(rects, { x: 102, y: 10 })).to.equal(null);
+      expect(paneAtPoint(rects, { x: 50, y: 80 })).to.equal(null);
+      expect(paneAtPoint(rects, null)).to.equal(null);
     });
   });
 });
