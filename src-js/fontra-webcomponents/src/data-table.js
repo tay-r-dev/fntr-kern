@@ -911,6 +911,23 @@ export class DataTable extends HTMLElement {
     this._table.style.minWidth = "";
   }
 
+  _maxColumnWidth(column) {
+    const visible = this._visibleColumns();
+    const last = visible[visible.length - 1];
+    let others = 0;
+    for (const entry of visible) {
+      if (entry.column === column || entry.column === last?.column) {
+        continue;
+      }
+      others +=
+        this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
+        entry.column.width ??
+        80;
+    }
+    const box = this._scroll?.clientWidth || 0;
+    return box > 0 ? box - (last?.column.minWidth ?? 48) - others : Infinity;
+  }
+
   _storeColumnWidths() {
     try {
       localStorage.setItem(
@@ -942,10 +959,15 @@ export class DataTable extends HTMLElement {
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");
       document.documentElement.classList.add("data-table-column-resizing");
+      // The widest this column can go: the box, less the last column's
+      // minimum and every other fixed column's width. The table never leaves
+      // its box, so with the last column at its minimum a column can only
+      // narrow.
+      const maxWidth = this._maxColumnWidth(column);
       const onMove = (moveEvent) => {
-        this._columnWidths[id] = resizedColumnWidth(
-          startWidth,
-          moveEvent.clientX - startX
+        this._columnWidths[id] = Math.min(
+          maxWidth,
+          resizedColumnWidth(startWidth, moveEvent.clientX - startX)
         );
         this._applyColumnWidths();
       };
