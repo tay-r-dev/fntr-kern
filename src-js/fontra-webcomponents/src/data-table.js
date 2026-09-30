@@ -861,21 +861,63 @@ export class DataTable extends HTMLElement {
     return column.key || column.label || column.sortKey || String(index);
   }
 
+  _visibleColumns() {
+    return this._columns
+      .map((column, index) => ({ column, index }))
+      .filter(({ column }) => column.visible !== false && column._headerElement);
+  }
+
+  // Sized columns are fixed: once any column has a stored width, every
+  // visible column is held at its own width and the table is exactly as wide
+  // as they add up to, left-aligned. Resizing one then moves only the columns
+  // to its right; none of the others give or take width. With no stored
+  // widths the table fills its box and the columns share it, as before.
   _applyColumnWidths() {
     if (!this._table || !this._columnWidthsStorageKey) {
       return;
     }
-    this._columns.forEach((column, index) => {
+    const sized = Object.keys(this._columnWidths || {}).length > 0;
+    let total = 0;
+    for (const { column, index } of this._visibleColumns()) {
       const th = column._headerElement;
-      if (!th) {
-        return;
-      }
-      const width = this._columnWidths?.[this._columnId(column, index)];
-      th.style.width = width ? `${width}px` : "";
       if (!th.querySelector(":scope > .data-table-column-grip")) {
         th.appendChild(this._makeColumnGrip(column, index));
       }
-    });
+      const id = this._columnId(column, index);
+      let width = this._columnWidths?.[id];
+      if (sized && !width) {
+        // A column shown after the others were sized has none of its own.
+        width = 80;
+        this._columnWidths[id] = width;
+      }
+      th.style.width = sized ? `${width}px` : "";
+      total += sized ? width : 0;
+    }
+    this._table.style.width = sized ? `${total}px` : "";
+  }
+
+  // Holds every visible column at the width it has on screen now, so the
+  // first drag fixes the others where they are.
+  _snapshotColumnWidths() {
+    const widths = { ...this._columnWidths };
+    for (const { column, index } of this._visibleColumns()) {
+      const id = this._columnId(column, index);
+      if (!widths[id]) {
+        widths[id] = Math.round(column._headerElement.getBoundingClientRect().width);
+      }
+    }
+    this._columnWidths = widths;
+  }
+
+  _storeColumnWidths() {
+    try {
+      localStorage.setItem(
+        this._columnWidthsStorageKey,
+        JSON.stringify(this._columnWidths)
+      );
+    } catch {
+      // The widths still apply for this page.
+    }
   }
 
   _makeColumnGrip(column, index) {
@@ -888,16 +930,19 @@ export class DataTable extends HTMLElement {
       }
       event.preventDefault();
       event.stopPropagation();
-      const th = column._headerElement;
-      const startWidth = th.getBoundingClientRect().width;
+      this._snapshotColumnWidths();
+      const id = this._columnId(column, index);
+      const startWidth = this._columnWidths[id];
       const startX = event.clientX;
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");
       document.documentElement.classList.add("data-table-column-resizing");
-      let width = startWidth;
       const onMove = (moveEvent) => {
-        width = resizedColumnWidth(startWidth, moveEvent.clientX - startX);
-        th.style.width = `${width}px`;
+        this._columnWidths[id] = resizedColumnWidth(
+          startWidth,
+          moveEvent.clientX - startX
+        );
+        this._applyColumnWidths();
       };
       const onEnd = () => {
         grip.removeEventListener("pointermove", onMove);
@@ -905,35 +950,18 @@ export class DataTable extends HTMLElement {
         grip.removeEventListener("lostpointercapture", onEnd);
         grip.classList.remove("dragging");
         document.documentElement.classList.remove("data-table-column-resizing");
-        this._columnWidths = {
-          ...this._columnWidths,
-          [this._columnId(column, index)]: width,
-        };
-        try {
-          localStorage.setItem(
-            this._columnWidthsStorageKey,
-            JSON.stringify(this._columnWidths)
-          );
-        } catch {
-          // The width still applies for this page.
-        }
+        this._storeColumnWidths();
       };
       grip.addEventListener("pointermove", onMove);
       grip.addEventListener("pointerup", onEnd);
       grip.addEventListener("lostpointercapture", onEnd);
     });
-    // A double-click gives the column back its own width.
+    // A double-click lets every column go back to sharing the table's width.
     grip.addEventListener("dblclick", (event) => {
       event.stopPropagation();
-      const { [this._columnId(column, index)]: _dropped, ...rest } =
-        this._columnWidths || {};
-      this._columnWidths = rest;
-      column._headerElement.style.width = "";
-      try {
-        localStorage.setItem(this._columnWidthsStorageKey, JSON.stringify(rest));
-      } catch {
-        // Nothing to keep.
-      }
+      this._columnWidths = {};
+      this._applyColumnWidths();
+      this._storeColumnWidths();
     });
     return grip;
   }
@@ -997,6 +1025,7 @@ export class DataTable extends HTMLElement {
     }
     column.visible = !!visible;
     this._applyColumnVisibility();
+    this._applyColumnWidths();
   }
 
   isColumnVisible(key) {

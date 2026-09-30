@@ -2429,6 +2429,10 @@ export class KerningViewController extends ViewController {
     // sortPairRows' own default-case delta sort forever without the header
     // ever showing as active -- reset the stored value itself so the
     // headers and the actual sort agree.
+    // "glyph" sorted L and R together; L sorts by the left glyph now.
+    if (this.autokernFiltersController.model.sortColumn === "glyph") {
+      this.autokernFiltersController.setItem("sortColumn", "left");
+    }
     if (this.autokernFiltersController.model.sortColumn === "state") {
       this.autokernFiltersController.setItem("sortColumn", "delta");
     }
@@ -2717,7 +2721,9 @@ export class KerningViewController extends ViewController {
     // what happens to be in the window.
     this._pairTable.selectAllTitle = "Select every row the filters admit";
     this._pairTable.columns = [
-      { label: "L", sortKey: "glyph", sortable: true, selectAll: true },
+      // Each head sorts by its own column, so the arrow shows on the one that
+      // drives the sort: L by the left glyph, R by the right one.
+      { label: "L", sortKey: "left", sortable: true, selectAll: true },
       {
         // Always shown: the stored value is what every other number reads
         // against, so it is not in the column menu.
@@ -2732,11 +2738,11 @@ export class KerningViewController extends ViewController {
         label: "Proposed",
         key: "showProposed",
         hideable: true,
-        sortKey: "delta",
+        sortKey: "proposed",
         sortable: true,
         headerClassName: "kerning-pairtable-proposed-col",
       },
-      { label: "R", sortKey: "glyph", sortable: true },
+      { label: "R", sortKey: "right", sortable: true },
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       { label: "", headerClassName: "kerning-pairtable-apply-col" },
@@ -3440,11 +3446,19 @@ export class KerningViewController extends ViewController {
     rows.sort((a, b) => {
       let cmp;
       switch (filters.sortColumn) {
+        case "left":
         case "glyph":
           cmp = (a.left + "\0" + a.right).localeCompare(b.left + "\0" + b.right);
           break;
+        case "right":
+          cmp = (a.right + "\0" + a.left).localeCompare(b.right + "\0" + b.left);
+          break;
         case "current":
           cmp = a.current - b.current;
+          break;
+        // Proposed is current + delta; an item carries those two.
+        case "proposed":
+          cmp = a.current + (a.delta ?? 0) - (b.current + (b.delta ?? 0));
           break;
         case "delta":
         default:
