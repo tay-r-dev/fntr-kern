@@ -1179,7 +1179,8 @@ export default class DesignspaceNavigationPanel extends Panel {
         open: true,
         content: html.createDomElement(
           "designspace-location",
-          { id: "glyph-axes", style: "height: 100%;" },
+          // The slot slider (Figma 421:15034 / 421:15066).
+          { id: "glyph-axes", style: "height: 100%;", look: "slot" },
           []
         ),
         auxiliaryHeaderElement: groupAccordionHeaderButtons([
@@ -2799,6 +2800,18 @@ export default class DesignspaceNavigationPanel extends Panel {
       await this.sceneModel.getSelectedVariableGlyphController();
 
     const glyphAxes = varGlyphController ? foldNLIAxes(varGlyphController.axes) : [];
+    // A slot wherever one of the glyph's sources sits on the axis.
+    const sourceLocations = (varGlyphController?.sources || []).map(
+      (source) => source.location || {}
+    );
+    this.glyphAxesElement.axisStops = Object.fromEntries(
+      glyphAxes.map((axis) => [
+        axis.name,
+        sourceLocations
+          .map((location) => location[axis.name])
+          .filter((value) => value != null),
+      ])
+    );
     this.glyphAxesElement.axes = glyphAxes;
     this.glyphAxesAccordionItem.hidden = !varGlyphController;
 

@@ -4,6 +4,7 @@ import { scheduleCalls } from "@fontra/core/utils.js";
 import {
   isLocationAtDefault,
   mapAxesFromUserSpaceToSourceSpace,
+  mapBackward,
 } from "@fontra/core/var-model.js";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import {
@@ -30,7 +31,7 @@ export function makeFontAxisAccordionItems(
     open: true,
     content: html.createDomElement(
       "designspace-location",
-      { id: "font-axes-ds-location", style: "height: 100%;" },
+      { id: "font-axes-ds-location", style: "height: 100%;", look: "slot" },
       []
     ),
     auxiliaryHeaderElement: groupAccordionHeaderButtons([
@@ -62,7 +63,7 @@ export function makeFontAxisAccordionItems(
     open: false,
     content: html.createDomElement(
       "designspace-location",
-      { id: "hidden-font-axes-ds-location", style: "height: 100%;" },
+      { id: "hidden-font-axes-ds-location", style: "height: 100%;", look: "slot" },
       []
     ),
     auxiliaryHeaderElement: groupAccordionHeaderButtons([
@@ -161,6 +162,21 @@ function setupFontAxisSliders(
   const update = () => {
     axes = filteredAxes();
     axesSourceSpace = mapAxesFromUserSpaceToSourceSpace(axes);
+    // The slot slider (Figma 421:15034): a slot wherever a font source sits
+    // on the axis, in the coordinates the sliders show.
+    const sourceLocations = Object.values(fontController.sources || {}).map((source) =>
+      settings.fontAxesUseSourceCoordinates
+        ? source.location || {}
+        : mapBackward(source.location || {}, axes)
+    );
+    locationElement.axisStops = Object.fromEntries(
+      axes.map((axis) => [
+        axis.name,
+        sourceLocations
+          .map((location) => location[axis.name])
+          .filter((value) => value != null),
+      ])
+    );
     locationElement.axes = settings.fontAxesUseSourceCoordinates
       ? axesSourceSpace
       : axes;

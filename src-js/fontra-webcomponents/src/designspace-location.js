@@ -1,6 +1,8 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement, htmlToElement } from "@fontra/core/html-utils.js";
+import "./compact-scrub-field.js";
 import { RangeSlider } from "./range-slider.js";
+import "./slot-slider.js";
 import { themeColorCSS } from "./theme-support.js";
 
 const colors = {
@@ -67,6 +69,52 @@ export class DesignspaceLocation extends UnlitElement {
     hr.spacer {
       border-top: unset;
     }
+
+    /* look="slot" (Figma 421:15034 / 421:15066): each axis is its name as a
+       caption, then its value field and the slot slider, the slots at the
+       axis's stops (where its sources sit). */
+    :host([look="slot"]) .grid-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .slot-axis {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ui/heading/h5 */
+    .slot-caption {
+      font: var(--ui-text-heading-h5);
+      letter-spacing: var(--ui-tracking);
+      color: var(--slot-caption-color, #8e8e8e);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+    }
+
+    .slot-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .slot-row compact-scrub-field {
+      flex: none;
+      width: 44px;
+    }
+
+    .slot-row slot-slider {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    :host([look="slot"]) .info-box {
+      margin-bottom: 0;
+    }
   `;
 
   constructor() {
@@ -78,7 +126,26 @@ export class DesignspaceLocation extends UnlitElement {
     axes: { type: Array },
     phantomAxes: { type: Array },
     onlyShowPhantomAxes: { type: Boolean },
+    // For look="slot": {axisName: [values]}, where each axis's slots go. An
+    // axis without an entry has slots at its minimum, default and maximum
+    // (or at its values, for a discrete axis).
+    axisStops: { type: Object },
   };
+
+  // "slot" draws each axis as a caption, a value field and a slot slider.
+  // Mirrored to the attribute, which the styles key on.
+  get look() {
+    return this.getAttribute("look");
+  }
+
+  set look(value) {
+    if (value) {
+      this.setAttribute("look", value);
+    } else {
+      this.removeAttribute("look");
+    }
+    this.requestUpdate();
+  }
 
   get model() {
     return this._controller.model;
@@ -177,6 +244,10 @@ export class DesignspaceLocation extends UnlitElement {
   }
 
   _setupAxis(elements, axis, phantomAxis) {
+    if (this.getAttribute("look") === "slot") {
+      this._setupSlotAxis(elements, axis, phantomAxis);
+      return;
+    }
     const modelValue = this.values[axis.name];
     const phantomModelValue = phantomAxis ? this.phantomValues[axis.name] : undefined;
 
@@ -245,6 +316,110 @@ export class DesignspaceLocation extends UnlitElement {
       parms.maxValue = axis.maxValue;
     }
     return html.createDomElement("range-slider", parms);
+  }
+
+  _setupSlotAxis(elements, axis, phantomAxis) {
+    const infoBox = html.div({ class: "info-box" }, [
+      axis.values?.length
+        ? `Default: ${axis.defaultValue} | Values: ${axis.values.join(", ")}`
+        : `Min: ${axis.minValue} | Default: ${axis.defaultValue} | Max: ${axis.maxValue}`,
+    ]);
+    const rows = [];
+    if (!this.onlyShowPhantomAxes) {
+      const row = this._createSlotRow(axis, this.values[axis.name]);
+      this._sliders[axis.name] = row.control;
+      rows.push(row.element);
+    }
+    if (phantomAxis) {
+      const row = this._createSlotRow(phantomAxis, this.phantomValues[axis.name], true);
+      this._phantomSliders[axis.name] = row.control;
+      rows.push(row.element);
+    }
+    elements.push(
+      html.div({ class: "slot-axis" }, [
+        html.div(
+          {
+            class: "slot-caption",
+            onclick: (event) => this._toggleInfoBox(infoBox, event),
+          },
+          [axis.name]
+        ),
+        ...rows,
+        infoBox,
+      ])
+    );
+  }
+
+  _slotStops(axis) {
+    const given = this.axisStops?.[axis.name];
+    const stops = given?.length
+      ? given
+      : axis.values?.length
+        ? axis.values
+        : [axis.minValue, axis.defaultValue, axis.maxValue];
+    return [...new Set(stops.filter((value) => value != null))].sort((a, b) => a - b);
+  }
+
+  // A value field and a slot slider that follow each other. `control` is
+  // what _setSliderValues writes a value to.
+  _createSlotRow(axis, modelValue, disabled = false) {
+    const discrete = !!axis.values?.length;
+    const minValue = discrete ? Math.min(...axis.values) : axis.minValue;
+    const maxValue = discrete ? Math.max(...axis.values) : axis.maxValue;
+    const value = modelValue ?? axis.defaultValue;
+
+    const field = html.createDomElement("compact-scrub-field");
+    field.scrubIcon = false;
+    field.minValue = minValue;
+    field.maxValue = maxValue;
+    field.defaultValue = axis.defaultValue;
+    field.value = value;
+    field.disabled = disabled;
+
+    const slider = html.createDomElement("slot-slider");
+    slider.min = minValue;
+    slider.max = maxValue;
+    slider.stops = this._slotStops(axis);
+    slider.discrete = discrete;
+    slider.value = value;
+    slider.disabled = disabled;
+
+    const commit = (newValue) => {
+      this._dispatchLocationChangedEvent(axis.name, newValue);
+    };
+    slider.addEventListener("input", (event) => {
+      field.value = event.detail.value;
+      if (this.continuous) {
+        commit(event.detail.value);
+      }
+    });
+    slider.addEventListener("change", (event) => {
+      field.value = event.detail.value;
+      commit(event.detail.value);
+    });
+    slider.addEventListener("dblclick", () => {
+      slider.value = axis.defaultValue;
+      field.value = axis.defaultValue;
+      commit(axis.defaultValue);
+    });
+    field.addEventListener("change", (event) => {
+      if (event.detail.cancelled) {
+        return;
+      }
+      slider.value = event.detail.value;
+      commit(event.detail.value);
+    });
+
+    const control = {
+      set value(newValue) {
+        field.value = newValue;
+        slider.value = newValue;
+      },
+      get value() {
+        return slider.value;
+      },
+    };
+    return { element: html.div({ class: "slot-row" }, [field, slider]), control };
   }
 
   _toggleInfoBox(infoBox, event) {

@@ -199,6 +199,15 @@ export class SlotSlider extends UnlitElement {
     this._place();
   }
 
+  // With `discrete`, a drag lands only on stops.
+  get discrete() {
+    return this._discrete ?? false;
+  }
+
+  set discrete(value) {
+    this._discrete = !!value;
+  }
+
   get disabled() {
     return this._disabled;
   }
@@ -270,6 +279,19 @@ export class SlotSlider extends UnlitElement {
     const rect = this.getBoundingClientRect();
     const usable = rect.width - 2 * INSET;
     const x = clientX - rect.left - INSET;
+    if (this.discrete && this._stops.length) {
+      // A discrete axis has no values between its stops: the nearest one.
+      let best = this._stops[0];
+      for (const stop of this._stops) {
+        if (
+          Math.abs(x - this._fraction(stop) * usable) <
+          Math.abs(x - this._fraction(best) * usable)
+        ) {
+          best = stop;
+        }
+      }
+      return best;
+    }
     for (const stop of this._stops) {
       if (Math.abs(x - this._fraction(stop) * usable) <= SNAP_DISTANCE) {
         return stop;
