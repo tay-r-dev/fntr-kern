@@ -1239,3 +1239,20 @@ tr:hover .kerning-pairtable-reset-value:hover,
 .kerning-pairtable-hide-delta .kerning-pairtable-delta {
   display: none;
 }
+
+/* L and R (columns 1 and 4): a long glyph or class name ends in an ellipsis
+   instead of widening the table, which pushed the in-cell buttons onto a
+   second line and made rows jump between one and two lines tall. The full
+   name is in the cell's title. */
+.kerning-pairtable-table tbody td:nth-child(1),
+.kerning-pairtable-table tbody td:nth-child(4) {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kerning-pairtable-table td.kerning-pairtable-current-col,
+.kerning-pairtable-table td.kerning-pairtable-proposed-col {
+  white-space: nowrap;
+}

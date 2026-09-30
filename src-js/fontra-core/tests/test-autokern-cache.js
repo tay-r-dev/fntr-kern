@@ -10,6 +10,7 @@ import {
   pairEnvelopesCanTouch,
   pairKey,
   pairsForRerun,
+  pruneMissingGlyphs,
   pairValueAfterMetricsChange,
   recalculateMetricsOnly,
   setPairValue,
@@ -534,5 +535,24 @@ describe("settlePairMeasurement", () => {
   it("leaves a pair with no entry alone when it does not kern", () => {
     const cache = settlePairMeasurement(createCache(), "A", "V", null);
     expect(cache.size).to.equal(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pruneMissingGlyphs: a glyph deleted from the font (an undone "compose all",
+// say) takes its pairs out of the cache, rather than leaving them stale for a
+// rerun that can never measure them.
+describe("pruneMissingGlyphs", () => {
+  it("drops every pair naming a glyph the font no longer has", () => {
+    let cache = setPairValue(createCache(), "A", "V", -40);
+    cache = setPairValue(cache, "Aacute", "V", -38);
+    cache = setPairValue(cache, "V", "Agrave", -36);
+    const pruned = pruneMissingGlyphs(cache, ["A", "V"]);
+    expect([...pruned.keys()]).to.deep.equal([pairKey("A", "V")]);
+  });
+
+  it("returns the same cache when nothing is missing", () => {
+    const cache = setPairValue(createCache(), "A", "V", -40);
+    expect(pruneMissingGlyphs(cache, ["A", "V", "W"])).to.equal(cache);
   });
 });

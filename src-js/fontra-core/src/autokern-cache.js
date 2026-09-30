@@ -583,3 +583,21 @@ export function candidatePairs(glyphNames, excludedGlyphNames, canTouchFn) {
   }
   return result;
 }
+
+// The cache without any pair naming a glyph outside `glyphNames` (the font's
+// glyphs). A deleted glyph -- an undone "compose all", say -- otherwise
+// leaves its pairs behind, marked stale by the deletion, and no rerun can
+// ever measure a glyph that is not there. Returns the same cache when nothing
+// is dropped, so a caller can tell whether to write it back.
+export function pruneMissingGlyphs(cache, glyphNames) {
+  const present = new Set(glyphNames);
+  let result = null;
+  for (const [key, entry] of cache) {
+    if (present.has(entry.left) && present.has(entry.right)) {
+      continue;
+    }
+    result ??= new Map(cache);
+    result.delete(key);
+  }
+  return result ?? cache;
+}

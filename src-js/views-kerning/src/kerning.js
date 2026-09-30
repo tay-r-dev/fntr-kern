@@ -86,6 +86,7 @@
 import {
   glyphNamesWithGeometryChange,
   markGlyphStale,
+  pruneMissingGlyphs,
   markPairJunk,
   markPairOverride,
   glyphNamesNotInCache,
@@ -1771,6 +1772,26 @@ export class KerningViewController extends ViewController {
   // -- an older read finishing after a newer one must not clobber it, and a
   // read begun for a source that is no longer selected must not be shown
   // under the new source's label.
+  // Drops the cached pairs of glyphs the font no longer has -- an undone
+  // "compose all" deletes a batch of glyphs, and the deletion used to leave
+  // their pairs stale for good, since no rerun can measure a glyph that is
+  // not there. Returns whether anything was dropped (and written back).
+  pruneCacheToFontGlyphs() {
+    const glyphMap = this.fontController.glyphMap;
+    // An empty glyph map is one not loaded yet, not a font with no glyphs;
+    // pruning against it would empty the cache.
+    if (!this.autokernCache?.size || !glyphMap || !Object.keys(glyphMap).length) {
+      return false;
+    }
+    const pruned = pruneMissingGlyphs(this.autokernCache, Object.keys(glyphMap));
+    if (pruned === this.autokernCache) {
+      return false;
+    }
+    this.autokernCache = pruned;
+    this.writeAutokernCacheToStorage();
+    return true;
+  }
+
   async loadAutokernCacheFromStorage() {
     const revisionAtStart = ++this.autokernCacheLoadRevision;
     const sourceIdentifierAtStart = this.autokernSource;
@@ -1805,6 +1826,7 @@ export class KerningViewController extends ViewController {
         )
       : new Map();
     this.autokernCache = this.applyStoredJunkMarksToCache(this.autokernCache);
+    this.pruneCacheToFontGlyphs();
     this.loadPreviewExclusions();
     // Spec 7.4's readout is a statement about the run that produced this
     // cache, so it is restored with it. Without this the panel read "Not yet
@@ -4544,6 +4566,7 @@ export class KerningViewController extends ViewController {
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-class-name";
     rightLabel.textContent = right;
+    rightLabel.title = right;
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
@@ -6138,6 +6161,7 @@ export class KerningViewController extends ViewController {
     // struck-through hidden-row name styling.
     leftLabel.className = "kerning-pairtable-glyph-name";
     leftLabel.textContent = row.left;
+    leftLabel.title = row.left;
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
@@ -6172,6 +6196,7 @@ export class KerningViewController extends ViewController {
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-glyph-name";
     rightLabel.textContent = row.right;
+    rightLabel.title = row.right;
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
@@ -7369,6 +7394,10 @@ export class KerningViewController extends ViewController {
 
     this.fontController.addChangeListener({ glyphMap: null }, () => {
       this.updateFontModeGlyphSections();
+      // A glyph deleted from the font takes its pairs out of the cache.
+      if (this.pruneCacheToFontGlyphs()) {
+        this.renderPairTable();
+      }
     });
 
     this.initFontModeAddToClassActions();
