@@ -1160,27 +1160,12 @@ kerning-handle.negative {
 }
 
 /* The pair table fills its panel: fixed layout, L, Current, Proposed and R
-   at their own widths (resizable, see the table's columnWidthsStorageKey),
-   and the actions column taking the rest, its buttons to the right. It never
-   gets narrower than its three buttons (min-width below; the table scrolls
-   sideways past that). Every cell stays one line; what does not fit ends in
-   an ellipsis (a glyph name's full text is its title). */
+   at their own widths (the column list in kerning.js, resizable), the
+   actions column taking the rest with its buttons to the right. Every cell
+   stays one line; what does not fit ends in an ellipsis (a glyph name's full
+   text is its title). */
 .kerning-pairtable-table {
   table-layout: fixed;
-  min-width: 332px;
-}
-
-.kerning-pairtable-table th:nth-child(1),
-.kerning-pairtable-table th:nth-child(4) {
-  width: 56px;
-}
-
-.kerning-pairtable-table th:nth-child(2) {
-  width: 64px;
-}
-
-.kerning-pairtable-table th:nth-child(3) {
-  width: 96px;
 }
 
 data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col {

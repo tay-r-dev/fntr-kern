@@ -867,59 +867,42 @@ export class DataTable extends HTMLElement {
       .filter(({ column }) => column.visible !== false && column._headerElement);
   }
 
-  // Sized columns are fixed: once any column has a stored width, every
-  // visible column but the last holds its own width, and the last one takes
-  // whatever the table has left, never less than its `minWidth` (48px by
-  // default). The table still fills its box, so resizing one column moves the
-  // ones to its right and only the last gives or takes the difference. With
-  // no stored widths the columns share the table as before.
+  // Every column but the last has a width: the one it was dragged to, else
+  // its descriptor's `width`. The last takes what is left, never less than its
+  // `minWidth` (48px by default), so the table always fits its box: when the
+  // box is too narrow for the widths, they shrink in proportion for now (the
+  // kept widths are not changed). A table whose columns have no widths at all
+  // shares its width among them as before.
   _applyColumnWidths() {
     if (!this._table || !this._columnWidthsStorageKey) {
       return;
     }
-    const sized = Object.keys(this._columnWidths || {}).length > 0;
     const visible = this._visibleColumns();
     const last = visible[visible.length - 1];
-    let total = 0;
-    for (const { column, index } of visible) {
-      const th = column._headerElement;
-      if (column === last?.column) {
-        // The flexing column has no handle and no width of its own.
-        th.querySelector(":scope > .data-table-column-grip")?.remove();
-        th.style.width = "";
-        continue;
-      }
-      if (!th.querySelector(":scope > .data-table-column-grip")) {
-        th.appendChild(this._makeColumnGrip(column, index));
-      }
-      const id = this._columnId(column, index);
-      let width = this._columnWidths?.[id];
-      if (sized && !width) {
-        // A column shown after the others were sized has none of its own.
-        width = 80;
-        this._columnWidths[id] = width;
-      }
-      th.style.width = sized ? `${width}px` : "";
-      total += sized ? width : 0;
-    }
-    // Past its minimum the last column cannot shrink, so the table scrolls.
-    this._table.style.minWidth = sized
-      ? `${total + (last?.column.minWidth ?? 48)}px`
-      : "";
-  }
+    const fixed = visible.filter(({ column }) => column !== last?.column);
+    const widthOf = ({ column, index }) =>
+      this._columnWidths?.[this._columnId(column, index)] ?? column.width ?? null;
+    const anyWidth = fixed.some((entry) => widthOf(entry) != null);
 
-  // Holds every visible column at the width it has on screen now, so the
-  // first drag fixes the others where they are.
-  _snapshotColumnWidths() {
-    const widths = { ...this._columnWidths };
-    const visible = this._visibleColumns();
-    for (const { column, index } of visible.slice(0, -1)) {
-      const id = this._columnId(column, index);
-      if (!widths[id]) {
-        widths[id] = Math.round(column._headerElement.getBoundingClientRect().width);
-      }
+    if (last) {
+      // The flexing column has no handle and no width of its own.
+      last.column._headerElement
+        .querySelector(":scope > .data-table-column-grip")
+        ?.remove();
+      last.column._headerElement.style.width = "";
     }
-    this._columnWidths = widths;
+    const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
+    const sum = widths.reduce((total, width) => total + (width || 0), 0);
+    const available = (this._scroll?.clientWidth || 0) - (last?.column.minWidth ?? 48);
+    const scale = anyWidth && available > 0 && sum > available ? available / sum : 1;
+    fixed.forEach((entry, i) => {
+      const th = entry.column._headerElement;
+      if (!th.querySelector(":scope > .data-table-column-grip")) {
+        th.appendChild(this._makeColumnGrip(entry.column, entry.index));
+      }
+      th.style.width = widths[i] ? `${Math.floor(widths[i] * scale)}px` : "";
+    });
+    this._table.style.minWidth = "";
   }
 
   _storeColumnWidths() {
@@ -943,9 +926,12 @@ export class DataTable extends HTMLElement {
       }
       event.preventDefault();
       event.stopPropagation();
-      this._snapshotColumnWidths();
       const id = this._columnId(column, index);
-      const startWidth = this._columnWidths[id];
+      const startWidth =
+        this._columnWidths?.[id] ??
+        column.width ??
+        Math.round(column._headerElement.getBoundingClientRect().width);
+      this._columnWidths = { ...this._columnWidths };
       const startX = event.clientX;
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");
@@ -1247,6 +1233,8 @@ export class DataTable extends HTMLElement {
     this._applyColumnVisibility();
     this._updateSortHeaders();
     this._applyColumnWidths();
+    // A narrower box shrinks the fixed columns so the last still fits.
+    new ResizeObserver(() => this._applyColumnWidths()).observe(this._scroll);
   }
 
   _renderWindow() {

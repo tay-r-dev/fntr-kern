@@ -2723,11 +2723,12 @@ export class KerningViewController extends ViewController {
     this._pairTable.columns = [
       // Each head sorts by its own column, so the arrow shows on the one that
       // drives the sort: L by the left glyph, R by the right one.
-      { label: "L", sortKey: "left", sortable: true, selectAll: true },
+      { label: "L", sortKey: "left", sortable: true, selectAll: true, width: 56 },
       {
         // Always shown: the stored value is what every other number reads
         // against, so it is not in the column menu.
         label: "Current",
+        width: 64,
         sortKey: "current",
         sortable: true,
         headerClassName: "kerning-pairtable-current-col",
@@ -2736,13 +2737,14 @@ export class KerningViewController extends ViewController {
       // so it is the column that sorts by delta.
       {
         label: "Proposed",
+        width: 96,
         key: "showProposed",
         hideable: true,
         sortKey: "proposed",
         sortable: true,
         headerClassName: "kerning-pairtable-proposed-col",
       },
-      { label: "R", sortKey: "right", sortable: true },
+      { label: "R", sortKey: "right", sortable: true, width: 56 },
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       // It takes the width the other columns leave, never less than its
