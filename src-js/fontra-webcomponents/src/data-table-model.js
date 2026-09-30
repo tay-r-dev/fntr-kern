@@ -52,3 +52,15 @@ export function parseCellValue(
   }
   return { valid: true, value: round ? Math.round(numeric) : numeric };
 }
+
+// An arrow key on a number cell: one `step` up or down, ten with Shift. Text
+// that is not a number steps from zero. The sum is rounded to the step's own
+// decimals, so 0.5 + 0.1 is 0.6, not 0.6000000000000001.
+export function stepCellValue(text, { step = 1, direction = 1, big = false } = {}) {
+  const current = Number(String(text ?? "").trim());
+  const base =
+    String(text ?? "").trim() !== "" && Number.isFinite(current) ? current : 0;
+  const value = base + direction * step * (big ? 10 : 1);
+  const decimals = (String(step).split(".")[1] || "").length;
+  return Number(value.toFixed(decimals));
+}

@@ -3,6 +3,7 @@ import {
   clampWindowStart,
   parseCellValue,
   scrollWindowShift,
+  stepCellValue,
   windowEnd,
 } from "./data-table-model.js";
 import "./icon-button.js";
@@ -497,6 +498,24 @@ export function editableCell({
   let committed = value ?? "";
   input.value = String(committed);
   input.addEventListener("keydown", (event) => {
+    // A number cell steps with the arrow keys -- ten steps with Shift, which
+    // the native field does not do -- and each step commits.
+    if (
+      type === "number" &&
+      (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+      !input.disabled
+    ) {
+      event.preventDefault();
+      input.value = String(
+        stepCellValue(input.value, {
+          step: step ?? 1,
+          direction: event.key === "ArrowUp" ? 1 : -1,
+          big: event.shiftKey,
+        })
+      );
+      input.dispatchEvent(new Event("change"));
+      return;
+    }
     if (event.key === "Enter") {
       input.blur();
     } else if (event.key === "Escape") {

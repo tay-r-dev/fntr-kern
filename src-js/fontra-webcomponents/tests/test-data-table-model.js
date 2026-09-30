@@ -3,6 +3,7 @@ import {
   clampWindowStart,
   parseCellValue,
   scrollWindowShift,
+  stepCellValue,
   windowEnd,
 } from "../src/data-table-model.js";
 
@@ -77,5 +78,18 @@ describe("data-table-model", () => {
       value: "Stem",
     });
     expect(parseCellValue("", {})).to.deep.equal({ valid: true, value: "" });
+  });
+
+  it("steps a number cell by its step, ten steps with Shift", () => {
+    expect(stepCellValue("12", { step: 1, direction: 1 })).to.equal(13);
+    expect(stepCellValue("12", { step: 1, direction: -1 })).to.equal(11);
+    expect(stepCellValue("12", { step: 1, direction: 1, big: true })).to.equal(22);
+    expect(stepCellValue("12", { step: 1, direction: -1, big: true })).to.equal(2);
+    expect(stepCellValue("0.5", { step: 0.1, direction: 1 })).to.equal(0.6);
+  });
+
+  it("steps from zero when the cell holds no number", () => {
+    expect(stepCellValue("", { step: 1, direction: 1 })).to.equal(1);
+    expect(stepCellValue("x", { step: 1, direction: -1, big: true })).to.equal(-10);
   });
 });
