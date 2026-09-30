@@ -2,6 +2,7 @@ import { expect } from "chai";
 import {
   clampWindowStart,
   fitColumnWidths,
+  spreadColumnWidths,
   parseCellValue,
   parseStoredColumnWidths,
   resizedColumnWidth,
@@ -130,5 +131,18 @@ describe("data-table-model", () => {
 
   it("stops at the minimum when even that does not fit", () => {
     expect(fitColumnWidths([56, 64], 20, 24)).to.deep.equal([24, 24]);
+  });
+
+  it("spreads a wider box equally over the columns", () => {
+    expect(spreadColumnWidths([56, 64, 96, 56], 40)).to.deep.equal([66, 74, 106, 66]);
+  });
+
+  it("takes a narrower box equally from the columns, down to the minimum", () => {
+    expect(spreadColumnWidths([56, 64, 96, 56], -40)).to.deep.equal([46, 54, 86, 46]);
+    expect(spreadColumnWidths([30, 60, 60], -40, 24)).to.deep.equal([24, 43, 43]);
+  });
+
+  it("leaves the widths alone when the box does not change", () => {
+    expect(spreadColumnWidths([56, 64], 0)).to.deep.equal([56, 64]);
   });
 });

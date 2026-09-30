@@ -3,6 +3,7 @@ import {
   clampWindowStart,
   fitColumnWidths,
   parseCellValue,
+  spreadColumnWidths,
   parseStoredColumnWidths,
   resizedColumnWidth,
   scrollWindowShift,
@@ -1273,8 +1274,30 @@ export class DataTable extends HTMLElement {
     this._applyColumnVisibility();
     this._updateSortHeaders();
     this._applyColumnWidths();
-    // A narrower box shrinks the fixed columns so the last still fits.
-    new ResizeObserver(() => this._applyColumnWidths()).observe(this._scroll);
+    // The box widening or narrowing is shared equally by the fixed columns,
+    // and kept; the last column changes width only when a column is dragged.
+    new ResizeObserver(() => this._boxResized()).observe(this._scroll);
+  }
+
+  _boxResized() {
+    const box = this._scroll?.clientWidth || 0;
+    const previous = this._lastBoxWidth;
+    this._lastBoxWidth = box;
+    if (this._columnWidthsStorageKey && previous > 0 && box > 0 && box !== previous) {
+      const visible = this._visibleColumns();
+      const fixed = visible.slice(0, -1);
+      const ids = fixed.map(({ column, index }) => this._columnId(column, index));
+      const current = fixed.map(
+        ({ column }, i) => this._columnWidths?.[ids[i]] ?? column.width ?? null
+      );
+      if (current.every((width) => width != null)) {
+        const next = spreadColumnWidths(current, box - previous);
+        this._columnWidths = { ...this._columnWidths };
+        ids.forEach((id, i) => (this._columnWidths[id] = next[i]));
+        this._storeColumnWidths();
+      }
+    }
+    this._applyColumnWidths();
   }
 
   _renderWindow() {

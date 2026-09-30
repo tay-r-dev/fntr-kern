@@ -116,3 +116,18 @@ export function fitColumnWidths(widths, available, minimum = 24) {
   }
   return result.map((width) => Math.round(width));
 }
+
+// The columns' widths after their box changed by `delta` pixels: every column
+// gains or gives up the same amount; giving up stops at `minimum`, the unmet
+// share going to the others (fitColumnWidths).
+export function spreadColumnWidths(widths, delta, minimum = 24) {
+  if (delta < 0) {
+    const sum = widths.reduce((total, width) => total + width, 0);
+    return fitColumnWidths(widths, sum + delta, minimum);
+  }
+  if (delta > 0 && widths.length) {
+    const share = delta / widths.length;
+    return widths.map((width) => Math.round(width + share));
+  }
+  return [...widths];
+}
