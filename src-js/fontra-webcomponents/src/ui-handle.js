@@ -25,7 +25,11 @@ export class UIHandle extends UnlitElement {
       height: 16px;
       cursor: row-resize;
       touch-action: none;
-      background: url("/images/handle-edge.svg") center bottom / 56px 17px no-repeat;
+      /* The SVG's tab stops half a unit above its box (the rest is shadow
+         room), so it is drawn a pixel lower: the tab's flat bottom then lies
+         on the owner's edge line and hides it, a bump on that edge. */
+      background: url("/images/handle-edge.svg") center bottom -1px / 56px 17px
+        no-repeat;
       /* The SVG's shadow sits above its box. */
       overflow: visible;
     }
