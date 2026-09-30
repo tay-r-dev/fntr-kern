@@ -4599,8 +4599,19 @@ export class KerningViewController extends ViewController {
       applyButton.onclick = () => this.applyFoldedParentRow(group, median);
     }
     applyCell.appendChild(applyButton);
-    // The lock's slot: a class rule has none, but the eye keeps its place.
-    applyCell.appendChild(actionSlotSpacer());
+    // The lock's slot: a class rule is the rule itself, so its lock is the
+    // closed one, always shown, a state rather than an action.
+    const classLock = document.createElement("icon-button");
+    classLock.className =
+      "kerning-pairtable-exception-indicator kerning-pairtable-class-lock";
+    classLock.src = "/tabler-icons/lock.svg";
+    classLock.setAttribute("aria-label", `Class rule ${left} × ${right}`);
+    classLock.setAttribute(
+      "data-tooltip",
+      "Class rule: every pair of these classes reads this value unless it has its own exception."
+    );
+    classLock.onclick = (event) => event.stopPropagation();
+    applyCell.appendChild(classLock);
     tr.appendChild(applyCell);
 
     // F32's hide action, in the actions cell. Task 11, ledger §8.5 (APPROVED): hiding a

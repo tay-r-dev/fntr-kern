@@ -288,9 +288,9 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-heading-color);
   }
 
+  /* The sort is told by its arrow; the head keeps one colour. */
   data-table[look] .data-table th.data-table-sort-active {
     font-weight: 400;
-    background-color: var(--data-table-look-active-color);
   }
 
   /* ui/table/entry */

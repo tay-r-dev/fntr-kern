@@ -738,25 +738,10 @@
   display: inline-flex;
 }
 
-/* F12: "An inherited pair's lock is muted until hover or focus." Revealed by
-   the row's own hover/focus, not the button's, so keyboard users tabbing
-   into the row's checkbox also see it -- not just the lock itself. */
-.kerning-pairtable-exception-create {
-  opacity: 0.35;
-}
-
-tr:hover .kerning-pairtable-exception-create,
-tr:focus-within .kerning-pairtable-exception-create {
-  opacity: 1;
-}
-
 /* A saved exception is a state, not only an action, so its closed lock is
    always visible and carries the same red the row's own left bar does
    (tr[data-kind="pair-exception"] below). The icon inherits currentColor,
    so coloring the host is enough. */
-.kerning-pairtable-exception-saved {
-  color: var(--fontra-red-color, #c00);
-}
 
 /* Backlog item 14: the Current cell's in-place editor, the shared table's
    editable cell (it reads as text until the row is hovered). Narrow, so the
@@ -777,22 +762,6 @@ tr:focus-within .kerning-pairtable-exception-create {
   display: inline-flex;
 }
 
-.kerning-pairtable-apply-class {
-  opacity: 0;
-  pointer-events: none;
-}
-
-tr:hover .kerning-pairtable-apply-class,
-tr:focus-within .kerning-pairtable-apply-class {
-  opacity: 0.35;
-  pointer-events: auto;
-}
-
-tr:hover .kerning-pairtable-apply-class:hover,
-tr:focus-within .kerning-pairtable-apply-class:focus {
-  opacity: 1;
-}
-
 /* Task 11, spec F10: the eye/eye-closed hide-action control in the Hide
    column (buildPairRowElement/buildClassSummaryRowElement). Same sizing as
    the Exception column's own indicator, and the SAME row-hover/focus reveal
@@ -802,15 +771,6 @@ tr:focus-within .kerning-pairtable-apply-class:focus {
   width: 1.1em;
   height: 1.1em;
   display: inline-flex;
-}
-
-.kerning-pairtable-hide-action {
-  opacity: 0.35;
-}
-
-tr:hover .kerning-pairtable-hide-action,
-tr:focus-within .kerning-pairtable-hide-action {
-  opacity: 1;
 }
 
 /* The mark ahead of a proposed value: is this pair drawn on the canvas while
@@ -823,22 +783,6 @@ tr:focus-within .kerning-pairtable-hide-action {
   height: 1.1em;
   display: inline-flex;
   vertical-align: middle;
-  margin-right: 0.35em;
-  opacity: 0;
-}
-
-tr:hover .kerning-pairtable-preview-toggle,
-tr:focus-within .kerning-pairtable-preview-toggle {
-  opacity: 0.35;
-}
-
-tr:hover .kerning-pairtable-preview-toggle:hover,
-.kerning-pairtable-preview-toggle:focus {
-  opacity: 1;
-}
-
-.kerning-pairtable-preview-excluded {
-  opacity: 1;
 }
 
 /* Task 11, spec F17: "hidden rows reappear... with a distinguishable hidden
@@ -1180,18 +1124,6 @@ kerning-handle.negative {
   height: 1.1em;
   display: inline-flex;
   vertical-align: middle;
-  margin-left: 0.35em;
-  opacity: 0;
-}
-
-tr:hover .kerning-pairtable-reset-value,
-tr:focus-within .kerning-pairtable-reset-value {
-  opacity: 0.35;
-}
-
-tr:hover .kerning-pairtable-reset-value:hover,
-.kerning-pairtable-reset-value:focus {
-  opacity: 1;
 }
 
 /* Rows are UI, not a document: a click-drag across them selects rows, so it
@@ -1249,7 +1181,7 @@ tr:hover .kerning-pairtable-reset-value:hover,
 }
 
 .kerning-pairtable-table th:nth-child(5) {
-  width: 66px;
+  width: 60px;
 }
 
 .kerning-pairtable-table th,
@@ -1270,16 +1202,16 @@ data-table[look] .kerning-pairtable-table td.kerning-pairtable-proposed-col {
   padding-right: 30px;
 }
 
-/* The actions: 4px in from each side, 2px between icons, never cut off --
+/* The actions: 2px in from each side, 1px between icons, never cut off --
    three 18px slots fit the column exactly, so no ellipsis can take one. */
 data-table[look] .kerning-pairtable-table th:nth-child(5),
 data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col {
-  padding: 0 4px;
+  padding: 0 2px;
   text-overflow: clip;
 }
 
 data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col > * + * {
-  margin-left: 2px;
+  margin-left: 1px;
 }
 
 .kerning-pairtable-table .kerning-pairtable-reset-indicator,
@@ -1288,4 +1220,27 @@ data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col > * + *
   right: 8px;
   top: 50%;
   margin: -9px 0 0;
+}
+
+/* Every icon in a row behaves the same: hidden at rest, whole on the row's
+   hover or focus, darker under the pointer (icon-button's own hover). The
+   ones that state something stay shown -- a saved exception's lock, a class
+   rule's lock, a pair's mark, a hidden row's eye. */
+data-table[look] .kerning-pairtable-table tbody icon-button {
+  opacity: 0;
+  pointer-events: none;
+}
+
+data-table[look] .kerning-pairtable-table tbody tr:hover icon-button,
+data-table[look] .kerning-pairtable-table tbody tr:focus-within icon-button,
+data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-exception-saved,
+data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-class-lock,
+data-table[look] .kerning-pairtable-table tbody .kerning-pairtable-preview-excluded,
+data-table[look]
+  .kerning-pairtable-table
+  tbody
+  .kerning-pairtable-row-hidden
+  .kerning-pairtable-hide-action {
+  opacity: 1;
+  pointer-events: auto;
 }
