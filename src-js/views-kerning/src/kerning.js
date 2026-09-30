@@ -2790,6 +2790,8 @@ export class KerningViewController extends ViewController {
     this._pairTable.minHeight = 120;
     this._pairTable.resizable = true;
     this._pairTable.heightStorageKey = "fontra-kerning-pairtable-table-height";
+    // Drag a head cell's right edge to size its column; kept across reloads.
+    this._pairTable.columnWidthsStorageKey = "fontra-kerning-pairtable-column-widths";
     // A double-click makes a glyph or class name selectable, so it can be
     // copied without a drag across rows sweeping text along.
     this._pairTable.copyableSelector =

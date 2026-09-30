@@ -2,6 +2,8 @@ import * as html from "@fontra/core/html-utils.js";
 import {
   clampWindowStart,
   parseCellValue,
+  parseStoredColumnWidths,
+  resizedColumnWidth,
   scrollWindowShift,
   stepCellValue,
   windowEnd,
@@ -207,6 +209,46 @@ const DATA_TABLE_STYLES = `
     padding-bottom: calc(0.15em + 14px);
   }
 
+  /* Column resize (columnWidthsStorageKey): a handle on each head cell's
+     right edge; a hairline shows on hover and while dragging. */
+  :where(.data-table th) {
+    position: relative;
+  }
+
+  .data-table-column-grip {
+    position: absolute;
+    /* Inside the cell, which may clip what overflows it. */
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 6px;
+    z-index: 2;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  .data-table-column-grip::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    right: 0;
+    width: 1px;
+    background: currentColor;
+    opacity: 0;
+  }
+
+  .data-table-column-grip:hover::after,
+  .data-table-column-grip.dragging::after {
+    opacity: 0.35;
+  }
+
+  :root.data-table-column-resizing {
+    user-select: none;
+    -webkit-user-select: none;
+    cursor: col-resize;
+  }
+
   :root.data-table-resizing {
     user-select: none;
     -webkit-user-select: none;
@@ -251,7 +293,8 @@ const DATA_TABLE_STYLES = `
     border: 1px solid var(--data-table-look-border-color);
     border-radius: 6px;
     background-color: var(--data-table-look-background-color);
-    overflow-x: hidden;
+    /* A column dragged wider than the box scrolls sideways. */
+    overflow-x: auto;
   }
 
   data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
@@ -799,6 +842,102 @@ export class DataTable extends HTMLElement {
     return this._look ?? null;
   }
 
+  // Columns can be resized by dragging a head cell's right edge, and the
+  // widths are kept under this key, so they survive a reload. Unset, the
+  // columns cannot be dragged.
+  set columnWidthsStorageKey(key) {
+    this._columnWidthsStorageKey = key;
+    let stored = null;
+    try {
+      stored = key ? localStorage.getItem(key) : null;
+    } catch {
+      stored = null;
+    }
+    this._columnWidths = parseStoredColumnWidths(stored);
+    this._applyColumnWidths();
+  }
+
+  _columnId(column, index) {
+    return column.key || column.label || column.sortKey || String(index);
+  }
+
+  _applyColumnWidths() {
+    if (!this._table || !this._columnWidthsStorageKey) {
+      return;
+    }
+    this._columns.forEach((column, index) => {
+      const th = column._headerElement;
+      if (!th) {
+        return;
+      }
+      const width = this._columnWidths?.[this._columnId(column, index)];
+      th.style.width = width ? `${width}px` : "";
+      if (!th.querySelector(":scope > .data-table-column-grip")) {
+        th.appendChild(this._makeColumnGrip(column, index));
+      }
+    });
+  }
+
+  _makeColumnGrip(column, index) {
+    const grip = html.div({ class: "data-table-column-grip" });
+    // A click on the grip is not a click on the head (no sort).
+    grip.addEventListener("click", (event) => event.stopPropagation());
+    grip.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const th = column._headerElement;
+      const startWidth = th.getBoundingClientRect().width;
+      const startX = event.clientX;
+      grip.setPointerCapture(event.pointerId);
+      grip.classList.add("dragging");
+      document.documentElement.classList.add("data-table-column-resizing");
+      let width = startWidth;
+      const onMove = (moveEvent) => {
+        width = resizedColumnWidth(startWidth, moveEvent.clientX - startX);
+        th.style.width = `${width}px`;
+      };
+      const onEnd = () => {
+        grip.removeEventListener("pointermove", onMove);
+        grip.removeEventListener("pointerup", onEnd);
+        grip.removeEventListener("lostpointercapture", onEnd);
+        grip.classList.remove("dragging");
+        document.documentElement.classList.remove("data-table-column-resizing");
+        this._columnWidths = {
+          ...this._columnWidths,
+          [this._columnId(column, index)]: width,
+        };
+        try {
+          localStorage.setItem(
+            this._columnWidthsStorageKey,
+            JSON.stringify(this._columnWidths)
+          );
+        } catch {
+          // The width still applies for this page.
+        }
+      };
+      grip.addEventListener("pointermove", onMove);
+      grip.addEventListener("pointerup", onEnd);
+      grip.addEventListener("lostpointercapture", onEnd);
+    });
+    // A double-click gives the column back its own width.
+    grip.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      const { [this._columnId(column, index)]: _dropped, ...rest } =
+        this._columnWidths || {};
+      this._columnWidths = rest;
+      column._headerElement.style.width = "";
+      try {
+        localStorage.setItem(this._columnWidthsStorageKey, JSON.stringify(rest));
+      } catch {
+        // Nothing to keep.
+      }
+    });
+    return grip;
+  }
+
   set heightStorageKey(key) {
     this._heightStorageKey = key;
     let stored;
@@ -1065,6 +1204,7 @@ export class DataTable extends HTMLElement {
 
     this._applyColumnVisibility();
     this._updateSortHeaders();
+    this._applyColumnWidths();
   }
 
   _renderWindow() {

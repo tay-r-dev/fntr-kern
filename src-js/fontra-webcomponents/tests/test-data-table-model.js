@@ -2,6 +2,8 @@ import { expect } from "chai";
 import {
   clampWindowStart,
   parseCellValue,
+  parseStoredColumnWidths,
+  resizedColumnWidth,
   scrollWindowShift,
   stepCellValue,
   windowEnd,
@@ -91,5 +93,23 @@ describe("data-table-model", () => {
   it("steps from zero when the cell holds no number", () => {
     expect(stepCellValue("", { step: 1, direction: 1 })).to.equal(1);
     expect(stepCellValue("x", { step: 1, direction: -1, big: true })).to.equal(-10);
+  });
+
+  it("reads stored column widths, keeping only sane pixel values", () => {
+    expect(parseStoredColumnWidths('{"L":80,"R":64.5}')).to.deep.equal({
+      L: 80,
+      R: 64.5,
+    });
+    expect(parseStoredColumnWidths('{"L":"wide","R":-4,"C":0}')).to.deep.equal({});
+    expect(parseStoredColumnWidths("not json")).to.deep.equal({});
+    expect(parseStoredColumnWidths(null)).to.deep.equal({});
+    expect(parseStoredColumnWidths("[1,2]")).to.deep.equal({});
+  });
+
+  it("resizes a column by the drag, never below its minimum", () => {
+    expect(resizedColumnWidth(80, 20)).to.equal(100);
+    expect(resizedColumnWidth(80, -70)).to.equal(24);
+    expect(resizedColumnWidth(80, -70, 40)).to.equal(40);
+    expect(resizedColumnWidth(80, 0.4)).to.equal(80);
   });
 });
