@@ -1222,10 +1222,6 @@ tr:hover .kerning-pairtable-reset-value:hover,
   white-space: nowrap;
 }
 
-.kerning-pairtable-table tbody td.kerning-pairtable-apply-col > * + * {
-  margin-left: 4px;
-}
-
 /* Delta off in the header menu (showSuggestion): the "(delta)" entry goes. */
 .kerning-pairtable-hide-delta .kerning-pairtable-delta {
   display: none;
@@ -1253,7 +1249,7 @@ tr:hover .kerning-pairtable-reset-value:hover,
 }
 
 .kerning-pairtable-table th:nth-child(5) {
-  width: 82px;
+  width: 66px;
 }
 
 .kerning-pairtable-table th,
@@ -1266,10 +1262,24 @@ tr:hover .kerning-pairtable-reset-value:hover,
 /* The in-cell buttons (reset in Current, the mark in Proposed) are pinned to
    the cell's right edge, out of the text's flow, so they can never wrap onto
    a second line; the cell keeps room for them. */
-.kerning-pairtable-table td.kerning-pairtable-current-col,
-.kerning-pairtable-table td.kerning-pairtable-proposed-col {
+/* Prefixed with data-table[look], or the look's own cell padding outranks
+   these and the button lands on the text. */
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-current-col,
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-proposed-col {
   position: relative;
   padding-right: 30px;
+}
+
+/* The actions: 4px in from each side, 2px between icons, never cut off --
+   three 18px slots fit the column exactly, so no ellipsis can take one. */
+data-table[look] .kerning-pairtable-table th:nth-child(5),
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col {
+  padding: 0 4px;
+  text-overflow: clip;
+}
+
+data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col > * + * {
+  margin-left: 2px;
 }
 
 .kerning-pairtable-table .kerning-pairtable-reset-indicator,
