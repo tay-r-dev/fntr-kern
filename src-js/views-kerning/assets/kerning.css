@@ -629,11 +629,11 @@
 .kerning-checkmark-row:hover .kerning-checkmark:checked {
   border: none;
   background-color: transparent;
-  background-image: url("/images/checkbox-on-rest.svg");
+  background-image: url("../../fontra-core/assets/images/checkbox-on-rest.svg");
 }
 
 .kerning-checkmark-row:hover .kerning-checkmark:checked {
-  background-image: url("/images/checkbox-on-hover.svg");
+  background-image: url("../../fontra-core/assets/images/checkbox-on-hover.svg");
 }
 
 #kerning-derive-proposals {
