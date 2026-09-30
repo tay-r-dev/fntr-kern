@@ -341,6 +341,26 @@ export class MultiSelectDropdown extends UnlitElement {
     this._updateButtonClass();
   }
 
+  // A one-choice dropdown reads as its pick unless `showPick` is false; then
+  // it keeps its label and flags a pick other than a `showsLabel` one (an
+  // "All") with the badge, as a several-choice dropdown does.
+  get showPick() {
+    return this._showPick ?? true;
+  }
+
+  set showPick(value) {
+    this._showPick = !!value;
+    this._updateButtonClass();
+  }
+
+  _isBadged() {
+    const picked = this._items.filter((item) => item.checked && !item.divider);
+    if (!this._singleChoice) {
+      return picked.length > 0;
+    }
+    return !this.showPick && picked.some((item) => !item.showsLabel);
+  }
+
   get note() {
     return this._note;
   }
@@ -384,11 +404,7 @@ export class MultiSelectDropdown extends UnlitElement {
     return [
       this._icon ? "icon-mode" : "",
       this._items.some((item) => item.checked && !item.divider) ? "filled" : "",
-      // A one-choice dropdown shows its pick as its label; only a
-      // several-choice one flags a pick with the badge.
-      !this._singleChoice && this._items.some((item) => item.checked && !item.divider)
-        ? "badged"
-        : "",
+      this._isBadged() ? "badged" : "",
       this._menu ? "open" : "",
     ]
       .join(" ")
@@ -399,7 +415,7 @@ export class MultiSelectDropdown extends UnlitElement {
   // one-choice one with nothing picked, and a pick flagged `showsLabel` (an
   // "All") read as the label.
   _displayLabel() {
-    if (this._singleChoice) {
+    if (this._singleChoice && this.showPick) {
       const picked = this._items.find((item) => item.checked && !item.divider);
       if (picked && !picked.showsLabel) {
         return picked.label ?? String(picked.value);

@@ -1207,9 +1207,3 @@ tr:hover .kerning-pairtable-reset-value:hover,
 .kerning-pairtable-table [data-selectable-name] {
   user-select: text;
 }
-
-/* Side: one width for every choice (left/right, on left, on right), so the
-   filter row does not shift as it changes. ch is the dropdown's own font. */
-#kerning-pairtable-filter-side {
-  --multi-select-dropdown-width: calc(10ch + 30px);
-}

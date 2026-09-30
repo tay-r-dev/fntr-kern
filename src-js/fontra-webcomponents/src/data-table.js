@@ -179,6 +179,14 @@ const DATA_TABLE_STYLES = `
     overflow-y: auto;
   }
 
+  /* The head stays put while the rows scroll under it. */
+  :where(data-table.data-table-scrollable thead th) {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: var(--background-color, #fff);
+  }
+
   /* The grip is the handle (Figma 379:22492) standing on the box's bottom
      edge, over the last row. The row keeps room for it. */
   :where(.data-table-grip) {
@@ -261,6 +269,14 @@ const DATA_TABLE_STYLES = `
     border-bottom: 1px solid var(--data-table-look-rule-color);
   }
 
+  /* A collapsed border does not travel with a sticky head, so the head's
+     rule is drawn inside it instead. */
+  data-table[look] .data-table th {
+    background-color: var(--data-table-look-background-color);
+    border-bottom: none;
+    box-shadow: inset 0 -1px var(--data-table-look-rule-color);
+  }
+
   /* ui/table/heading */
   data-table[look] .data-table th {
     height: 24px;
@@ -322,9 +338,21 @@ const DATA_TABLE_STYLES = `
 
   /* The row's icons: button/table icon, 18px, 4px apart; hidden at rest and
      shown whole on the row's hover. */
+  /* Every icon in a row is the glyph sources' size: a 12px glyph in an
+     18px slot, whether it is a button or a plain icon. */
   data-table[look] tbody icon-button {
     width: 18px;
     height: 18px;
+    vertical-align: middle;
+    --icon-button-icon-size: 12px;
+  }
+
+  data-table[look] tbody td > inline-svg,
+  data-table[look] tbody td > span > inline-svg {
+    box-sizing: content-box;
+    width: 12px;
+    height: 12px;
+    padding: 3px;
     vertical-align: middle;
   }
 
@@ -990,6 +1018,12 @@ export class DataTable extends HTMLElement {
       const selection = window.getSelection();
       selection.removeAllRanges();
       selection.addRange(range);
+    });
+
+    // Rows a caller appends itself get the table icons too.
+    new MutationObserver(() => this._applyLookToActions()).observe(tbody, {
+      childList: true,
+      subtree: true,
     });
 
     const table = html.createDomElement("table", { class: this._tableClasses() }, [

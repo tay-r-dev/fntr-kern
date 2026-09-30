@@ -2,47 +2,38 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 
 // handle (Figma 379:22492): the small white tab with a 4x2 dot grid that
 // sits on the bottom edge of a resizable box -- a table's scroll box, a
-// multi-line text input. It grows a little and its shadow deepens on hover
-// ("hover3"). The two looks are the design's own SVGs.
+// multi-line text input. Its look is the design's rest SVG with a hairline
+// added round the top and sides and a slightly deeper shadow
+// (/images/handle-edge.svg); the owner keeps it above its own edge.
 //
 // The element only draws. Its owner places it (centred on its bottom edge)
 // and listens for "handle-drag": pointerdown captures the pointer, and every
 // move reports {dy} since the press in event.detail; "handle-drag-end"
 // follows the release.
 //
-// `size` is "M" (56x16, the default) or "S" (52x14, the one input/text
+// `size` is "M" (56x16, the default) or "S" (52x15, the one input/text
 // carries), a plain JS property like every UnlitElement component here.
 export class UIHandle extends UnlitElement {
-  // Drawn at twice the design's size, so it is easy to take hold of.
+  // Drawn at twice the design's size, so it is easy to take hold of, with a
+  // hairline round its top and sides and a soft shadow, so it reads as a tab
+  // laid over the field's edge. It does not change on hover.
   static styles = `
     :host {
       display: block;
+      z-index: 2;
       width: 56px;
       height: 16px;
       cursor: row-resize;
       touch-action: none;
-      background: url("/images/handle-rest.svg") center bottom / 56px 17px no-repeat;
+      background: url("/images/handle-edge.svg") center bottom / 56px 17px no-repeat;
       /* The SVG's shadow sits above its box. */
       overflow: visible;
     }
 
-    :host(:hover),
-    :host([dragging]) {
-      background-image: url("/images/handle-hover.svg");
-      background-size: 56px 18px;
-    }
-
     :host([data-size="S"]) {
       width: 52px;
-      height: 14px;
-      background-image: url("/images/handle-input.svg");
-      background-size: 52px 16px;
-    }
-
-    :host([data-size="S"]:hover),
-    :host([data-size="S"][dragging]) {
-      background-image: url("/images/handle-hover.svg");
-      background-size: 52px 16.8px;
+      height: 15px;
+      background-size: 52px 15.8px;
     }
   `;
 

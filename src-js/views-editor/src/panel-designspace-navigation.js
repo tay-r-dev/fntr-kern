@@ -2482,7 +2482,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this.sourceLayersList.appendStyle(LIST_HEADER_ANIMATION_STYLE);
     this.sourceLayersList.showHeader = true;
     this.sourceLayersList.columnDescriptions = [
-      { title: "layer name", key: "shortName", width: "135px" },
+      { title: "layer name", key: "shortName", width: "151px" },
       {
         title: makeClickableIconHeader("/tabler-icons/eye.svg", (event) => {
           const addLayers = !this.sourceLayersList.items.some((item) => item.visible);
@@ -2601,7 +2601,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       {
         key: "formattedName",
         title: translate("sidebar.designspace-navigation.glyph-sources.name"),
-        width: "108px",
+        width: "124px",
       },
       {
         title: makeClickableIconHeader("/tabler-icons/eye.svg", (event) =>
@@ -2652,7 +2652,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         title: translate("sidebar.designspace-navigation.glyph-sources.status"),
         key: "status",
         cellFactory: statusListCell,
-        width: "31px",
+        width: "47px",
         statusFieldDefinitions: statusFieldDefinitions,
         menuItems: statusFieldDefinitions.map((statusDef) => {
           return {

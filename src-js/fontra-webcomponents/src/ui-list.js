@@ -221,10 +221,26 @@ export class UIList extends UnlitElement {
       border-right: none;
     }
 
+    /* Each cell is exactly its column's width, padding included, so an
+       icon column carries no padding and a text column its 8px (table/select
+       "px 8") without the two drifting apart between head and rows. */
     :host([look="select"]) .list-cell,
     :host([look="select"]) .text-cell,
     :host([look="select"]) .text-cell-header {
-      padding: 0 4px;
+      box-sizing: border-box;
+      flex: none;
+      padding: 0;
+    }
+
+    :host([look="select"]) .text-cell,
+    :host([look="select"]) .text-cell-header:not(:has(.clickable-icon-header)),
+    :host([look="select"]) .list-cell:has(.status-cell) {
+      padding: 0 8px;
+    }
+
+    :host([look="select"]) .header,
+    :host([look="select"]) .row {
+      padding: 0 8px;
     }
 
     :host([look="select"]) .list-cell {

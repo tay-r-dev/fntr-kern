@@ -2469,17 +2469,18 @@ export class KerningViewController extends ViewController {
     const sideDropdown = html.createDomElement("multi-select-dropdown", {
       label: "side",
       singleChoice: true,
+      // The label stays; a side other than both is flagged by the badge.
+      showPick: false,
       items: sideLabels.map(([value, label]) => ({
         value,
         label,
         checked: filters.side === value,
+        showsLabel: value === "both",
       })),
     });
     sideDropdown.addEventListener("change", (event) => {
       this.autokernFiltersController.setItem("side", event.detail.checked[0]);
     });
-    // One width for every choice, so the row does not shift as it changes.
-    sideDropdown.id = "kerning-pairtable-filter-side";
     document
       .querySelector("#kerning-pairtable-filter-side-slot")
       .replaceWith(sideDropdown);
@@ -2534,7 +2535,7 @@ export class KerningViewController extends ViewController {
       ["non-unicode", "Non-Unicode glyphs"],
     ];
     this._unicodeTypesDropdown = html.createDomElement("multi-select-dropdown", {
-      label: "Unicode types",
+      label: "types",
       items: unicodeTypeLabels.map(([value, label]) => ({
         value,
         label,
@@ -2558,7 +2559,7 @@ export class KerningViewController extends ViewController {
       ["exceptions", "Class exceptions"],
     ];
     const relationshipsDropdown = html.createDomElement("multi-select-dropdown", {
-      label: "Class relationship",
+      label: "pair type",
       items: relationshipLabels.map(([value, label]) => ({
         value,
         label,
@@ -2600,7 +2601,7 @@ export class KerningViewController extends ViewController {
     // dropdowns on this row.
     const glyphsetSettings = this.tableGlyphsetSettingsController.model;
     const glyphsetItems = [
-      { value: "", label: "All", checked: !filters.tableGlyphsetId },
+      { value: "", label: "All", checked: !filters.tableGlyphsetId, showsLabel: true },
     ];
     for (const info of Object.values({
       ...glyphsetSettings.projectGlyphSets,
@@ -2619,8 +2620,9 @@ export class KerningViewController extends ViewController {
       });
     }
     const glyphsetDropdown = html.createDomElement("multi-select-dropdown", {
-      label: "Glyphset",
+      label: "glyphset",
       singleChoice: true,
+      showPick: false,
       items: glyphsetItems,
     });
     document
@@ -3124,7 +3126,17 @@ export class KerningViewController extends ViewController {
   // draws. Ctrl or Cmd picks one out without disturbing the rest. A plain
   // click selects this row alone and becomes the anchor for the next chain.
   selectRowFromClick(id, event) {
-    if (event.shiftKey && this._selectionAnchorId) {
+    const additive = event.ctrlKey || event.metaKey;
+    if (
+      !event.shiftKey &&
+      !additive &&
+      this.resultSelection.selected.size === 1 &&
+      this.resultSelection.selected.has(id)
+    ) {
+      // A plain click on the one selected row deselects it.
+      this.resultSelection = deselectAll();
+      this._selectionAnchorId = null;
+    } else if (event.shiftKey && this._selectionAnchorId) {
       this.resultSelection = selectRange(
         this.resultSelection,
         this._selectionAnchorId,
