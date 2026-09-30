@@ -2748,8 +2748,8 @@ export class KerningViewController extends ViewController {
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       // It takes the width the other columns leave, never less than its
-      // three 18px buttons, 1px apart, 2px in from each side.
-      { label: "", headerClassName: "kerning-pairtable-apply-col", minWidth: 60 },
+      // three 18px buttons, 1px apart, 2px in on the left and 7px on the right.
+      { label: "", headerClassName: "kerning-pairtable-apply-col", minWidth: 65 },
     ];
     // Backlog item 11: click a column header to sort by it, click again to
     // flip direction -- one sort UI (headers), not two (the old toggle
