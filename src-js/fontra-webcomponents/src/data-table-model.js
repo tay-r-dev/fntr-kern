@@ -92,3 +92,27 @@ export function parseStoredColumnWidths(text) {
 export function resizedColumnWidth(startWidth, dx, minimum = 24) {
   return Math.max(minimum, Math.round(startWidth + dx));
 }
+
+// Widths that fit `available`: when they add up to more, every column gives
+// up the same amount. A column that reaches `minimum` gives what it can, and
+// its unmet share goes to the others. When even the minimums do not fit,
+// every column is at its minimum.
+export function fitColumnWidths(widths, available, minimum = 24) {
+  const result = [...widths];
+  let excess = result.reduce((sum, width) => sum + width, 0) - available;
+  while (excess > 1e-6) {
+    const free = result
+      .map((width, index) => index)
+      .filter((index) => result[index] > minimum);
+    if (!free.length) {
+      break;
+    }
+    const share = excess / free.length;
+    for (const index of free) {
+      const take = Math.min(share, result[index] - minimum);
+      result[index] -= take;
+      excess -= take;
+    }
+  }
+  return result.map((width) => Math.round(width));
+}

@@ -1,6 +1,7 @@
 import * as html from "@fontra/core/html-utils.js";
 import {
   clampWindowStart,
+  fitColumnWidths,
   parseCellValue,
   parseStoredColumnWidths,
   resizedColumnWidth,
@@ -891,16 +892,19 @@ export class DataTable extends HTMLElement {
     const box = this._scroll?.clientWidth || 0;
     const lastMin = last?.column.minWidth ?? 48;
     const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
-    // Every column but the last keeps exactly its own width, always; only the
-    // last stretches, to fill the box, never below its minimum. When the
-    // others do not fit, the table scrolls sideways -- nothing shrinks.
+    // Every column but the last keeps its own width; only the last stretches,
+    // to fill the box, never below its minimum. When the box is too narrow
+    // for them and that minimum, every fixed column gives up the same amount
+    // (fitColumnWidths) -- on screen only; the kept widths come back when the
+    // box widens.
+    const shown = anyWidth && box > 0 ? fitColumnWidths(widths, box - lastMin) : widths;
     let used = 0;
     fixed.forEach((entry, i) => {
       const th = entry.column._headerElement;
       if (!th.querySelector(":scope > .data-table-column-grip")) {
         th.appendChild(this._makeColumnGrip(entry.column, entry.index));
       }
-      const width = widths[i] || null;
+      const width = shown[i] || null;
       th.style.width = width ? `${width}px` : "";
       used += width || 0;
     });
@@ -950,11 +954,19 @@ export class DataTable extends HTMLElement {
       event.preventDefault();
       event.stopPropagation();
       const id = this._columnId(column, index);
-      const startWidth =
-        this._columnWidths?.[id] ??
-        column.width ??
-        Math.round(column._headerElement.getBoundingClientRect().width);
+      // A drag starts from what is on screen: the fixed columns' shown widths
+      // (shrunk to fit a narrow box, maybe) become their kept ones.
+      const visible = this._visibleColumns();
+      const lastColumn = visible[visible.length - 1]?.column;
       this._columnWidths = { ...this._columnWidths };
+      for (const entry of visible) {
+        if (entry.column !== lastColumn) {
+          this._columnWidths[this._columnId(entry.column, entry.index)] = Math.round(
+            entry.column._headerElement.getBoundingClientRect().width
+          );
+        }
+      }
+      const startWidth = this._columnWidths[id];
       const startX = event.clientX;
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");

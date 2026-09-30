@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import {
   clampWindowStart,
+  fitColumnWidths,
   parseCellValue,
   parseStoredColumnWidths,
   resizedColumnWidth,
@@ -111,5 +112,23 @@ describe("data-table-model", () => {
     expect(resizedColumnWidth(80, -70)).to.equal(24);
     expect(resizedColumnWidth(80, -70, 40)).to.equal(40);
     expect(resizedColumnWidth(80, 0.4)).to.equal(80);
+  });
+
+  it("leaves widths that fit as they are", () => {
+    expect(fitColumnWidths([56, 64, 96, 56], 300)).to.deep.equal([56, 64, 96, 56]);
+  });
+
+  it("takes the same amount off every column when they do not fit", () => {
+    // 272 into 232: 40 over, 10 off each.
+    expect(fitColumnWidths([56, 64, 96, 56], 232)).to.deep.equal([46, 54, 86, 46]);
+  });
+
+  it("shares a column's unmet share among the others once it hits the minimum", () => {
+    // 150 into 110: 40 over. 30 can give 6; the rest give 34 between them.
+    expect(fitColumnWidths([30, 60, 60], 110, 24)).to.deep.equal([24, 43, 43]);
+  });
+
+  it("stops at the minimum when even that does not fit", () => {
+    expect(fitColumnWidths([56, 64], 20, 24)).to.deep.equal([24, 24]);
   });
 });
