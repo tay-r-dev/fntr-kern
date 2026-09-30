@@ -370,6 +370,7 @@ export class DesignspaceLocation extends UnlitElement {
 
     const field = html.createDomElement("compact-scrub-field");
     field.scrubIcon = false;
+    field.integer = true;
     field.minValue = minValue;
     field.maxValue = maxValue;
     field.defaultValue = axis.defaultValue;
@@ -381,6 +382,7 @@ export class DesignspaceLocation extends UnlitElement {
     slider.max = maxValue;
     slider.stops = this._slotStops(axis);
     slider.discrete = discrete;
+    slider.integer = true;
     slider.value = value;
     slider.disabled = disabled;
 

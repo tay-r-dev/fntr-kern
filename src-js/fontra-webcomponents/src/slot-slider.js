@@ -205,6 +205,15 @@ export class SlotSlider extends UnlitElement {
     this._place();
   }
 
+  // With `integer`, a value between stops is a whole number.
+  get integer() {
+    return this._integer ?? false;
+  }
+
+  set integer(value) {
+    this._integer = !!value;
+  }
+
   // With `discrete`, a drag lands only on stops.
   get discrete() {
     return this._discrete ?? false;
@@ -304,7 +313,10 @@ export class SlotSlider extends UnlitElement {
       }
     }
     const fraction = usable > 0 ? Math.min(1, Math.max(0, x / usable)) : 0;
-    return this._min + fraction * (this._max - this._min);
+    const value = this._min + fraction * (this._max - this._min);
+    return this.integer
+      ? Math.min(this._max, Math.max(this._min, Math.round(value)))
+      : value;
   }
 
   _setValue(value, eventType) {
@@ -342,7 +354,10 @@ export class SlotSlider extends UnlitElement {
     if (this._disabled) {
       return;
     }
-    const step = ((this._max - this._min) / 100) * (event.shiftKey ? 10 : 1);
+    let step = ((this._max - this._min) / 100) * (event.shiftKey ? 10 : 1);
+    if (this.integer) {
+      step = event.shiftKey ? 10 : 1;
+    }
     let value;
     switch (event.key) {
       case "ArrowLeft":
