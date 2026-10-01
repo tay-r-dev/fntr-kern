@@ -184,6 +184,9 @@ function capValuesFromField(name, value) {
   if (name === "balleasing") {
     return { capBallEasing: Math.min(Math.max(Number(value) / 100, 0), 1) };
   }
+  if (name === "ballcurvature") {
+    return { capBallEaseCurvature: Math.min(Math.max(Number(value) / 100, 0), 1) };
+  }
   if (name === "ballside") {
     return { capBallSide: value };
   }
@@ -870,14 +873,19 @@ export default class SkeletonParametersPanel {
     this.capFields.radius = this._makeCapField("radius", "cap-radius");
     this.capFields.tension = this._makeCapField("tension", "cap-tension");
     this.roundedRow = fieldRow([this.capFields.radius, this.capFields.tension]);
-    // Ticket 55: the Ball section, Size, Shape and Ease, each in percent.
+    // Ticket 55: the Ball section, Size and Shape, then the easing as Distance
+    // and Curvature, as the serif's easing states it. Each in percent.
     this.capFields.ball = this._makeCapField("ball", "cap-ball");
     this.capFields.ballshape = this._makeCapField("ballshape", "cap-ball-shape");
     this.capFields.balleasing = this._makeCapField("balleasing", "cap-ball-easing");
-    this.ballRow = fieldRow([
-      this.capFields.ball,
-      this.capFields.ballshape,
+    this.capFields.ballcurvature = this._makeCapField(
+      "ballcurvature",
+      "cap-ball-ease-curvature"
+    );
+    this.ballRow = fieldRow([this.capFields.ball, this.capFields.ballshape]);
+    this.ballEaseRow = fieldRow([
       this.capFields.balleasing,
+      this.capFields.ballcurvature,
     ]);
 
     // Ticket 61: Corner rounding as two chained rows, Distance and Curvature,
@@ -1335,12 +1343,13 @@ export default class SkeletonParametersPanel {
       ball: Math.round(DEFAULT_CAP_BALL_RATIO * 100),
       ballshape: Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
       balleasing: Math.round(DEFAULT_CAP_BALL_EASING * 100),
+      ballcurvature: Math.round(DEFAULT_CAP_BALL_EASE_CURVATURE * 100),
     };
     return this._makeCompactField(`cap:${name}`, labelKey, {
       defaultValue: capDefaults[name],
       // The ranged fields read as sliders: radius its 20 positions, roundness
       // and the ball easing their percent runs.
-      slider: ["radius", "tension", "balleasing"].includes(name),
+      slider: ["radius", "tension", "balleasing", "ballcurvature"].includes(name),
       scrub: (valueStream, startValue) =>
         name === "distance"
           ? nudgePanelCapParameterStream(
@@ -2400,10 +2409,21 @@ export default class SkeletonParametersPanel {
         percentOf(cap.capBallEasing, DEFAULT_CAP_BALL_EASING),
         { minValue: 0, maxValue: CAP_BALL_EASING_MAX }
       );
+      this._refreshCompactField(
+        this.capFields.ballcurvature,
+        "cap:ballcurvature",
+        percentOf(cap.capBallEaseCurvature, DEFAULT_CAP_BALL_EASE_CURVATURE),
+        { minValue: 0, maxValue: 100 }
+      );
       formContents.push({
         type: "single-icon",
         element: this.ballRow,
         layoutKey: "ballRow",
+      });
+      formContents.push({
+        type: "single-icon",
+        element: this.ballEaseRow,
+        layoutKey: "ballEaseRow",
       });
       formContents.push({
         type: "select",

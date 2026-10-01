@@ -1,3 +1,4 @@
+import { fitRunHandleLengths } from "./serif-easing-fit.js";
 import * as vector from "./vector.js";
 
 // A serif whose axis runs along the stroke has no wings to speak of and no
@@ -458,9 +459,28 @@ export function makeSerifWall(points) {
   const stemAtDepth = (depth) =>
     depth < start.v ? { u: start.u, v: depth } : pointAt(parameterAtDepth(depth));
 
+  // The wall between two parameters, as one cubic in frame coordinates.
+  const piece = (from, to) => {
+    // A straight wall is two points; as a cubic its handles sit at the thirds.
+    const [p0, p1, p2, p3] =
+      points.length === 2
+        ? [
+            points[0],
+            lerpUV(points[0], points[1], 1 / 3),
+            lerpUV(points[0], points[1], 2 / 3),
+            points[1],
+          ]
+        : points;
+    const upTo = to >= 1 ? [p0, p1, p2, p3] : splitCubic(p0, p1, p2, p3, to).first;
+    return from <= 0
+      ? upTo
+      : splitCubic(...upTo, Math.min(from / Math.max(to, 1e-12), 1)).second;
+  };
+
   return {
     pointAt,
     tangentAt,
+    piece,
     stemAtDepth,
     pointAtLength,
     parameterAtSignedLength,
@@ -559,6 +579,83 @@ export function boundedEasingHandles(
     }
   }
   return { startLen: startLen * curvature, endLen: endLen * curvature };
+}
+
+function easingHandleLengths({
+  wall,
+  junctionLength,
+  releaseLength,
+  releaseParameter,
+  bracketPiece,
+  flankDirection,
+  bracketDirection,
+  scale,
+}) {
+  const xy = ({ u, v }) => ({ x: u, y: v });
+  const line = (a, b) => [a, lerpUV(a, b, 1 / 3), lerpUV(a, b, 2 / 3), b];
+  const reversed = (cubic) => [...cubic].reverse();
+  // From the release down to the junction: the real wall, then, where the
+  // junction stands below the rib end, the straight run beneath it.
+  const run = [];
+  const junctionOnWall = Math.max(junctionLength, 0);
+  if (releaseLength > junctionOnWall) {
+    run.push(
+      reversed(
+        wall.piece(wall.parameterAtSignedLength(junctionOnWall), releaseParameter)
+      )
+    );
+  }
+  if (junctionLength < 0) {
+    run.push(
+      line(
+        wall.pointAtLength(Math.min(releaseLength, 0)),
+        wall.pointAtLength(junctionLength)
+      )
+    );
+  }
+  // Out along the bracket from the junction to where the easing stops on it.
+  run.push(reversed(bracketPiece));
+  const fit = fitRunHandleLengths(
+    run.map((cubic) => cubic.map(xy)),
+    xy(flankDirection),
+    xy(bracketDirection)
+  );
+  if (!fit) {
+    return { startLen: 0, endLen: 0 };
+  }
+  // No handle past the point where the two handle lines cross, the ceiling
+  // every handle here keeps. A long wall run against a short stretch of
+  // bracket otherwise sent the wall's handle past the foot line, and the
+  // rounding hooked under it.
+  const start = run[0][0];
+  const end = run.at(-1)[3];
+  const a = normalize(flankDirection);
+  const b = normalize(bracketDirection);
+  const cross = (p, q) => p.u * q.v - p.v * q.u;
+  const denominator = cross(a, b);
+  const delta = subUV(end, start);
+  let startCap = Infinity;
+  let endCap = Infinity;
+  if (Math.abs(denominator) > 1e-12) {
+    const reachStart = cross(delta, b) / denominator;
+    const reachEnd = cross(delta, a) / denominator;
+    if (reachStart > 0 && reachEnd > 0) {
+      startCap = reachStart;
+      endCap = reachEnd;
+    }
+  }
+  // Nor past the length of its own side of the piece it replaces. A run far
+  // longer down the wall than out along the bracket otherwise made the fit
+  // hold the wall with a long handle and turn too hard at the foot, 2 units
+  // into the stem.
+  const lengthOf = (cubics) =>
+    cubics.reduce((sum, cubic) => sum + buildLengthTable(cubic).total, 0);
+  const wallArm = lengthOf(run.slice(0, -1));
+  const bracketArm = lengthOf(run.slice(-1));
+  return {
+    startLen: Math.min(fit.h0, startCap, wallArm) * scale,
+    endLen: Math.min(fit.h1, endCap, bracketArm) * scale,
+  };
 }
 
 // One half-serif, entirely in frame coordinates. `side` is +1 for the left half
@@ -746,13 +843,24 @@ export function buildHalfSerif({ side, wall, params }) {
       .slice(1)
       .map((point) => subUV(point, easeOnBracket))
       .find((direction) => lengthUV(direction) > 1e-12) ?? subUV(junction, tipTop);
-  const { startLen, endLen } = boundedEasingHandles(
-    release,
+  // The rounding eases the two curves it joins into each other: its handles
+  // are fitted to the piece it replaces, down the wall from the release to the
+  // junction and out along the bracket to its end, with both end directions
+  // held. At full curvature it follows that piece, and less curvature eases it
+  // toward the straight chamfer. Handles aimed at where the two end directions
+  // cross drew a new corner instead, and where the wall bends that crossing
+  // sits inside the stem: 16 units in on the h of skeletron, which the
+  // rounding dipped into.
+  const { startLen, endLen } = easingHandleLengths({
+    wall,
+    junctionLength,
+    releaseLength,
+    releaseParameter,
+    bracketPiece: bracket.second,
     flankDirection,
-    easeOnBracket,
     bracketDirection,
-    easeCurvature * easeShare
-  );
+    scale: easeCurvature * easeShare,
+  });
   const easeFlankHandle = alongUV(release, flankDirection, startLen);
   const easeBracketHandle = alongUV(easeOnBracket, bracketDirection, endLen);
 

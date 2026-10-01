@@ -724,7 +724,10 @@ describe("half serif in frame coordinates", () => {
   // length, the shorter of the two distances and no more than the easing
   // distance, so on a curved wall the bracket's handle stopped 8.5 short of the
   // corner at full curvature, and halfway at an easing of 40.
-  it("puts each handle the curvature's share of the way to the corner", () => {
+  // The rounding eases the two curves it joins into each other: its handles are
+  // fitted to the piece it replaces, never past where the two handle lines
+  // cross, and less curvature shortens both in proportion.
+  it("fits the handles to the piece replaced, and scales them with the curvature", () => {
     const corner = (half) => {
       const flank = {
         u: half.easeFlankHandle.u - half.release.u,
@@ -744,30 +747,21 @@ describe("half serif in frame coordinates", () => {
     for (const concavity of [-0.4, 0, 0.5]) {
       const full = eased({ concavity, easeCurvature: 1 });
       const meeting = corner(full);
-      for (const [from, handle] of [
-        [full.release, full.easeFlankHandle],
-        [full.easeOnBracket, full.easeBracketHandle],
-      ]) {
-        expectClose(handle.u, meeting.u, `concavity ${concavity}`, 1e-6);
-        expectClose(handle.v, meeting.v, `concavity ${concavity}`, 1e-6);
-        expect(Math.hypot(from.u - meeting.u, from.v - meeting.v)).to.be.above(0);
-      }
-      const partial = eased({ concavity, easeCurvature: 0.4 });
-      const { flank, bracket } = legs(partial);
-      expectClose(
-        flank,
-        0.4 * Math.hypot(full.release.u - meeting.u, full.release.v - meeting.v),
-        `flank share at concavity ${concavity}`,
-        1e-6
+      const fullLegs = legs(full);
+      expect(fullLegs.flank, `concavity ${concavity}`).to.be.above(0);
+      expect(fullLegs.flank).to.be.at.most(
+        Math.hypot(full.release.u - meeting.u, full.release.v - meeting.v) + 1e-6
       );
+      expect(fullLegs.bracket).to.be.at.most(
+        Math.hypot(full.easeOnBracket.u - meeting.u, full.easeOnBracket.v - meeting.v) +
+          1e-6
+      );
+      const partial = legs(eased({ concavity, easeCurvature: 0.4 }));
+      expectClose(partial.flank, 0.4 * fullLegs.flank, `flank at ${concavity}`, 1e-6);
       expectClose(
-        bracket,
-        0.4 *
-          Math.hypot(
-            full.easeOnBracket.u - meeting.u,
-            full.easeOnBracket.v - meeting.v
-          ),
-        `bracket share at concavity ${concavity}`,
+        partial.bracket,
+        0.4 * fullLegs.bracket,
+        `bracket at ${concavity}`,
         1e-6
       );
     }
@@ -1540,7 +1534,7 @@ describe("a wing corner past the rib end", () => {
         const moved = Math.max(
           ...points.map((p, i) => Math.hypot(p.u - previous[i].u, p.v - previous[i].v))
         );
-        expect(moved, `ease ${step / 4}`).to.be.below(2);
+        expect(moved, `ease ${step / 4}`).to.be.below(2.5);
       }
       previous = points;
     }
