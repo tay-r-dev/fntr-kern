@@ -6,7 +6,6 @@ import {
   registerActionInfo,
 } from "@fontra/core/actions.js";
 import { Backend } from "@fontra/core/backend-api.js";
-import { clearBulbSlideMemory } from "@fontra/core/bulb-geometry.js";
 import { CanvasController } from "@fontra/core/canvas-controller.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
@@ -355,13 +354,6 @@ export class EditorController extends ViewController {
     );
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
     window.addEventListener("keyup", (event) => this.keyUpHandler(event));
-    // A bulb entry follows its previous slide only within one gesture, on the
-    // canvas or on a panel slider. The next gesture starts it afresh. Release
-    // cannot clear it: the mouse-up is itself the drag's last frame and is
-    // regenerated after the browser's pointerup.
-    for (const type of ["pointerdown", "keydown"])
-      window.addEventListener(type, () => clearBulbSlideMemory(), { capture: true });
-
     this.canvasController.canvas.addEventListener("pointerdown", (event) =>
       this.pointerDownHandler(event)
     );

@@ -10,6 +10,7 @@ import {
 } from "@fontra/core/point-slide.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
+  CAP_BALL_EDIT_ROLES,
   bulbRoleOfSide,
   getSkeletonCapBallEdit,
   getSkeletonData,
@@ -353,6 +354,7 @@ function createGeneratedSlideTargetEntries(
   const item = findGeneratedSlideItem(selection);
   const skeletonData = getSkeletonData(layerGlyph);
   if (!item || !skeletonData || !initialPointer || !session) return [];
+  if (item.bulbRole && item.bulbRole !== "neck") return [];
   const address = resolveSkeletonAddressAcrossLayers(
     referenceSkeletonData || skeletonData,
     skeletonData,
@@ -403,6 +405,18 @@ function createGeneratedSlideTargetEntries(
   if (!adjacent.previous && !adjacent.next) return [];
   const forward = generatedSlideForward(contour, found, item);
   const point = contour.points[found.index];
+  const projectedShare = (pointer) => {
+    const destination = chooseSlideInterval(adjacent, pointer, point);
+    if (!destination) return null;
+    const share = destination.side === "next" ? destination.t : 1 - destination.t;
+    return destination.side === forward ? share : -share;
+  };
+  // Harmonization can move N off its preferred V-slide curve. Calibrate at
+  // mouse-down, so a still grab of an already edited neck preserves its value.
+  const initialShare = item.bulbRole
+    ? (projectedShare(vector.roundVector(initialPointer)) ?? 0)
+    : 0;
+  const originalShare = read(address.point) ?? 0;
 
   const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layerGlyph);
   let rollbackChange = null;
@@ -419,10 +433,10 @@ function createGeneratedSlideTargetEntries(
             x: initialPointer.x + delta.x,
             y: initialPointer.y + delta.y,
           });
-          const destination = chooseSlideInterval(adjacent, pointer, point);
-          if (!destination) return null;
-          const share = destination.side === "next" ? destination.t : 1 - destination.t;
-          value = destination.side === forward ? share : -share;
+          const share = projectedShare(pointer);
+          if (share === null) return null;
+          value = item.bulbRole ? originalShare + share - initialShare : share;
+          if (item.bulbRole) value = Math.max(-0.8, Math.min(0.8, value));
           session.generatedSlide = value;
         } else {
           value = session.generatedSlide;
@@ -447,7 +461,7 @@ function createGeneratedSlideTargetEntries(
 // along the skeleton: its left side is emitted in skeleton order, its right
 // side backwards. A bulb point's share runs from the outer wall to the inner,
 // which is the contour's own order where the next bulb point follows it.
-const BULB_ORDER = ["entry", "bottom", "side", "neck", "release"];
+const BULB_ORDER = CAP_BALL_EDIT_ROLES;
 function generatedSlideForward(contour, found, item) {
   if (!item.bulbRole) return item.side === "left" ? "next" : "previous";
   const onCurveOrigin = (step) => {

@@ -1,6 +1,7 @@
-import { makeSlideCandidate } from "./point-slide.js";
-import { applyHandleScales, solveNearestHandleScales } from "./harmonize-nearest.js";
+import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
+import { bulbEndCurvature, harmonizeBulb } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
+import { makeSlideCandidate } from "./point-slide.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
 // The forward half has radius R; Shape stretches only the rear half.
@@ -52,84 +53,6 @@ export function makeBulbBall({ outer, inner, outerDirection, radius, shape }) {
   };
 }
 
-// Arc length along the ball from theta `a` to `b` (a < b), by Simpson's rule on
-// the ellipse's speed. The two halves have different along radii, so the speed
-// is taken per half and the seam at cos = 0 is continuous.
-export function ballArcLength(ball, a, b, steps = 64) {
-  const speed = (theta) => {
-    const along = Math.cos(theta) < -1e-10 ? ball.rearRadius : ball.radius;
-    return Math.hypot(
-      -ball.ex.x * along * Math.sin(theta) + ball.ey.x * ball.radius * Math.cos(theta),
-      -ball.ex.y * along * Math.sin(theta) + ball.ey.y * ball.radius * Math.cos(theta)
-    );
-  };
-  const h = (b - a) / steps;
-  let sum = speed(a) + speed(b);
-  for (let i = 1; i < steps; i++) sum += (i % 2 ? 4 : 2) * speed(a + i * h);
-  return (sum * h) / 3;
-}
-
-// The theta reached by walking `length` back along the ball from `from`, never
-// past `limit`. Arc length rises strictly as theta falls, so bisection is exact
-// and continuous in every input.
-export function thetaBackAlongBall(ball, from, length, limit) {
-  if (!(length > 0) || !(from > limit)) return from;
-  if (ballArcLength(ball, limit, from) <= length) return limit;
-  let low = limit,
-    high = from;
-  for (let i = 0; i < 40; i++) {
-    const middle = (low + high) / 2;
-    if (ballArcLength(ball, middle, from) > length) low = middle;
-    else high = middle;
-  }
-  return (low + high) / 2;
-}
-
-// The designer's edits to a bulb's own points, applied after the bulb is built,
-// the way a rib nudge is an emission step and never an input to construction.
-// `stations` run from the outer wall to the inner, each an on-curve with the
-// handle before it and after it (either may be null). A slide moves the
-// on-curve along its tangent; the carried part moves both handles with it; the
-// two lengths move each handle along its own line. Directions are read before
-// anything moves, so the order the stations are edited in does not matter.
-export function applyBulbPointEdits(stations, edits) {
-  const plan = stations.map(({ role, point, before, after }) => {
-    const unit = (from, to) => {
-      const d = vector.subVectors(to, from);
-      const length = Math.hypot(d.x, d.y);
-      return length > 1e-9 ? { x: d.x / length, y: d.y / length } : null;
-    };
-    const tangent =
-      (before && after && unit(before, after)) ||
-      (after && unit(point, after)) ||
-      (before && unit(before, point));
-    return {
-      edit: edits?.[role],
-      point,
-      before,
-      after,
-      tangent,
-      beforeAxis:
-        (before && unit(point, before)) ??
-        (tangent && vector.mulVectorScalar(tangent, -1)),
-      afterAxis: (after && unit(point, after)) ?? tangent,
-    };
-  });
-  for (const { edit, point, before, after, tangent, beforeAxis, afterAxis } of plan) {
-    if (!edit || !tangent) continue;
-    const move = (target, direction, distance) => {
-      if (!target || !direction || !distance) return;
-      target.x += direction.x * distance;
-      target.y += direction.y * distance;
-    };
-    move(point, tangent, edit.slide);
-    move(before, tangent, edit.carry);
-    move(after, tangent, edit.carry);
-    move(before, beforeAxis, edit.in);
-    move(after, afterAxis, edit.out);
-  }
-}
-
 // Glyph-axis extrema of the two half ellipses. The rear half may have a
 // different along radius, so each candidate is accepted only on its own half.
 export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {
@@ -151,256 +74,217 @@ export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {
   return result.sort((a, b) => a.theta - b.theta);
 }
 
-// The ball has three points after the entry: the bottom, the side apex and the
-// neck attachment. The bottom is the glyph-axis extreme nearest the ball's
-// front (theta 0). The side apex is the next glyph-axis extreme after it, toward
-// the neck, so the segment between them is a true quarter of the ball. Both
-// have their handles on their axis. The bottom changes axis when the ball's
-// front turns past a diagonal. A stop past the neck attachment collapses onto
-// it, so the point count holds; the neck starts after the side apex.
-export function bulbStops(ball, thetaEnd) {
-  const extremes = bulbApexes(ball, -Math.PI, 2 * Math.PI);
-  let bottom = extremes.reduce(
-    (best, e) => (!best || Math.abs(e.theta) < Math.abs(best.theta) ? e : best),
-    null
-  ) ?? { theta: 0, axis: undefined };
-  const clamp = (stop) =>
-    stop.theta <= -Math.PI / 2 || stop.theta >= thetaEnd
-      ? { theta: Math.min(Math.max(stop.theta, -Math.PI / 2), thetaEnd) }
-      : stop;
-  const side = extremes.find((e) => e.theta > bottom.theta + 1e-9) ?? {
-    theta: thetaEnd,
-  };
-  return [clamp(bottom), clamp(side)];
+const sub = vector.subVectors;
+const unit = (v) => {
+  const length = Math.hypot(v.x, v.y);
+  return length > 1e-10 ? vector.mulVectorScalar(v, 1 / length) : { x: 0, y: 1 };
+};
+const offset = (p, t, d) => ({ x: p.x + t.x * d, y: p.y + t.y * d });
+const handle = (p, t, length) => ({ ...offset(p, t, length), type: "cubic" });
+const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
+
+export function bulbCubic(points) {
+  if (points.length === 4) return points.map((p) => ({ ...p }));
+  const [a, b] = points;
+  return [
+    { ...a },
+    { ...vector.interpolateVectors(a, b, 1 / 3), type: "cubic" },
+    { ...vector.interpolateVectors(a, b, 2 / 3), type: "cubic" },
+    { ...b },
+  ];
 }
 
-// Each segment is the standard circle-cubic of its piece of the ball. At the
-// transition between front/rear halves a single cubic blends their endpoint
-// tangents.
-export function buildBulbArc(ball, thetaEnd) {
-  const endDirection = ball.tangentAt(thetaEnd);
-  const endAxis =
-    Math.abs(endDirection.x) < 1e-10
-      ? "x"
-      : Math.abs(endDirection.y) < 1e-10
-        ? "y"
-        : undefined;
-  const stops = [...bulbStops(ball, thetaEnd), { theta: thetaEnd, axis: endAxis }];
-  const points = [];
-  let a = -Math.PI / 2,
-    previousAxis;
-  const derivative = (theta, middle) => {
-    const rear =
-      Math.cos(theta) < -1e-10 ||
-      (Math.abs(Math.cos(theta)) < 1e-10 && Math.cos(middle) < 0);
-    const along = rear ? ball.rearRadius : ball.radius;
-    return {
-      x:
-        -ball.ex.x * along * Math.sin(theta) +
-        ball.ey.x * ball.radius * Math.cos(theta),
-      y:
-        -ball.ex.y * along * Math.sin(theta) +
-        ball.ey.y * ball.radius * Math.cos(theta),
-    };
-  };
-  for (const { theta: b, axis } of stops) {
-    const start = ball.at(a),
-      end = ball.at(b);
-    const k = (4 / 3) * Math.tan((b - a) / 4),
-      d0 = derivative(a, (a + b) / 2),
-      d1 = derivative(b, (a + b) / 2);
-    const h0 = { x: start.x + k * d0.x, y: start.y + k * d0.y, type: "cubic" };
-    const h1 = { x: end.x - k * d1.x, y: end.y - k * d1.y, type: "cubic" };
-    if (previousAxis) h0[previousAxis] = start[previousAxis];
-    if (axis) h1[axis] = end[axis];
-    points.push(h0, h1, { ...end, smooth: true, skipColinear: true });
-    a = b;
-    previousAxis = axis;
-  }
-  return points;
-}
-
-// The ball after the bottom point stays an exact piece of the ball. Only the
-// slid segment adjusts, in handle length: its bottom handle meets the ball's
-// quarter at the bottom point and its entry handle meets the wall at the entry.
-// Each changes the other end's bend a little, so the two alternate until both
-// hold. The wall is untouched and the bottom handle stays on its axis.
-const JOIN_ROUNDS = 40;
-function harmonizeSlidSegment(points) {
-  const result = points.map((p) => ({ ...p }));
-  const settle = (join, dials, slot) => {
-    const stencil = result.slice(join - 3, join + 4);
-    const solved = solveNearestHandleScales(stencil, { dials });
-    const placed = applyHandleScales(stencil, solved.scales);
-    result[join - 3 + slot] = {
-      ...result[join - 3 + slot],
-      x: placed[slot].x,
-      y: placed[slot].y,
-    };
-    return solved.status === "skipped";
-  };
-  for (let round = 0; round < JOIN_ROUNDS; round++) {
-    // A round where both joins already hold changes nothing: stop there.
-    const bottomHeld = result.length >= 10 ? settle(6, [0, 1, 0, 0], 2) : true;
-    const entryHeld = settle(3, [0, 0, 1, 0], 4);
-    if (bottomHeld && entryHeld) break;
-  }
-  return result;
-}
-
-// Signed curvature and speed of a cubic at t.
-function curvatureAt([p0, p1, p2, p3], t) {
-  const u = 1 - t;
-  const d1x =
-    3 * (u * u * (p1.x - p0.x) + 2 * u * t * (p2.x - p1.x) + t * t * (p3.x - p2.x));
-  const d1y =
-    3 * (u * u * (p1.y - p0.y) + 2 * u * t * (p2.y - p1.y) + t * t * (p3.y - p2.y));
-  const d2x = 6 * (u * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x));
-  const d2y = 6 * (u * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y));
-  const speed = Math.hypot(d1x, d1y);
-  return { k: speed > 1e-12 ? (d1x * d2y - d1y * d2x) / speed ** 3 : 0, speed };
-}
-
-// How far the entry may slide, as the parameter of the segment it slides on:
-// up the wall's last segment, or into the ball's first segment.
-const SLIDE_LIMIT = 0.9;
-const SLIDE_STEPS = 20;
-const REFINE_STEPS = 12;
-
-// The slide chosen for each bulb during the current gesture. A drag asks for
-// the match nearest the previous frame's, so the entry moves smoothly even when
-// the match it follows travels far. The editor clears this when the next
-// pointer or key press starts a gesture; after that the rest rule applies.
-// ponytail: keyed by skeleton point, not by glyph; two glyphs regenerated in one
-// gesture with the same point ids would share a slide.
-const slideMemory = new Map();
-export function clearBulbSlideMemory() {
-  slideMemory.clear();
-}
-
-// The parameter where a cubic's tangent has no component along `axis`, nearest
-// `from` within [low, high]: where the curve turns horizontal or vertical.
-function axisTurn([p0, p1, p2, p3], axis, from, low, high) {
-  const a = p1[axis] - p0[axis],
-    b = p2[axis] - p1[axis],
-    c = p3[axis] - p2[axis];
-  // The derivative's coordinate is a(1-t)^2 + 2b(1-t)t + ct^2.
+// E is an x-extreme of the existing wall, never the anchor used to grow the
+// preferred ball. De Casteljau retains that wall exactly; it is not a fit.
+// A terminal segment with no vertical tangent cannot supply an orthogonal E.
+// Keep its wall and publish the incompatibility instead of secretly bending it.
+export function bulbEntry(wall) {
+  const [p0, p1, p2, p3] = wall;
+  const a = p1.x - p0.x,
+    b = p2.x - p1.x,
+    c = p3.x - p2.x;
   const A = a - 2 * b + c,
     B = 2 * (b - a),
     C = a;
-  const roots = [];
-  if (Math.abs(A) < 1e-12) {
-    if (Math.abs(B) > 1e-12) roots.push(-C / B);
+  const tolerance = 1e-10 * Math.max(1, Math.abs(a), Math.abs(b), Math.abs(c));
+  let roots = [];
+  if (Math.abs(A) < tolerance) {
+    if (Math.abs(B) > tolerance) roots = [-C / B];
   } else {
-    const d = B * B - 4 * A * C;
-    if (d >= 0)
-      roots.push((-B - Math.sqrt(d)) / (2 * A), (-B + Math.sqrt(d)) / (2 * A));
-  }
-  return roots
-    .filter((t) => t >= low - 1e-12 && t <= high + 1e-12)
-    .sort((x, y) => Math.abs(x - from) - Math.abs(y - from))[0];
-}
-
-// The entry's ideal place: the glyph-axis extreme before the bottom point, on
-// the wall's last segment or on the ball's first segment, whichever is nearer
-// the rib. Its axis is the other one from the bottom's. As a slide: positive up
-// the wall, negative into the ball, 0 at the rib.
-function entryApexSlide(contour, bottomAxis) {
-  if (!bottomAxis) return 0;
-  const axis = bottomAxis === "x" ? "y" : "x";
-  const points = contour.points;
-  const onWall = axisTurn(points.slice(0, 4), axis, 1, 1 - SLIDE_LIMIT, 1);
-  const onBall = axisTurn(points.slice(3, 7), axis, 0, 0, SLIDE_LIMIT);
-  const up = onWall === undefined ? Infinity : 1 - onWall;
-  const down = onBall === undefined ? Infinity : onBall;
-  if (!Number.isFinite(up) && !Number.isFinite(down)) return 0;
-  return up <= down ? up : -down;
-}
-
-// Slide the entry with the editor's V-slide, the way a designer drags it by
-// hand: up the wall, or into the ball. The piece it passes is cut exactly and
-// the other side refits to keep drawing the old path. The entry starts from its
-// ideal place, the extreme before the bottom point, and stops at the curvature
-// match nearest to it. During a drag it stops at the match nearest the
-// previous frame's instead. Where nothing matches, it stops at the closest
-// match. The slid segment's two handle lengths then close what is left.
-export function slideBulbEntry(wall, arc, { key, bottomAxis } = {}) {
-  if (wall.length !== 4 || arc.length < 3) return null;
-  const contour = { points: [...wall, ...arc.slice(0, 3)], isClosed: false };
-  const sample = (s) => {
-    const points =
-      s === 0
-        ? contour.points
-        : s > 0
-          ? makeSlideCandidate(contour, 3, "previous", 1 - s)?.points
-          : makeSlideCandidate(contour, 3, "next", -s)?.points;
-    if (!points) return null;
-    const kWall = Math.abs(curvatureAt(points.slice(0, 4), 1).k);
-    const kBall = Math.abs(curvatureAt(points.slice(3, 7), 0).k);
-    if (!Number.isFinite(kWall) || !Number.isFinite(kBall)) return null;
-    return { s, points, g: (kBall - kWall) / Math.max(kBall, kWall, 1e-12) };
-  };
-  const remembered = key !== undefined ? slideMemory.get(key) : undefined;
-  const reference = remembered ?? entryApexSlide(contour, bottomAxis);
-
-  const samples = [];
-  for (let i = -SLIDE_STEPS; i <= SLIDE_STEPS; i++) {
-    const e = sample((SLIDE_LIMIT * i) / SLIDE_STEPS);
-    if (e) samples.push(e);
-  }
-  const refineRoot = (low, high) => {
-    for (let j = 0; j < REFINE_STEPS; j++) {
-      const middle = sample((low.s + high.s) / 2);
-      if (!middle) break;
-      if (Math.sign(middle.g) === Math.sign(low.g)) low = middle;
-      else high = middle;
+    const discriminant = B * B - 4 * A * C;
+    if (discriminant >= 0) {
+      const q = -0.5 * (B + (B < 0 ? -1 : 1) * Math.sqrt(discriminant));
+      roots = Math.abs(q) > tolerance ? [q / A, C / q] : [-B / (2 * A)];
     }
-    return Math.abs(low.g) < Math.abs(high.g) ? low : high;
-  };
-  const refineDip = (low, high) => {
-    // Golden-section search for the smallest mismatch between two samples.
-    const r = (Math.sqrt(5) - 1) / 2;
-    let best = null;
-    for (let j = 0; j < REFINE_STEPS; j++) {
-      const c = sample(high.s - r * (high.s - low.s)),
-        d = sample(low.s + r * (high.s - low.s));
-      if (!c || !d) break;
-      for (const e of [c, d]) if (!best || Math.abs(e.g) < Math.abs(best.g)) best = e;
-      if (Math.abs(c.g) < Math.abs(d.g)) high = d;
-      else low = c;
-    }
-    return best;
-  };
-  let chosen = null;
-  for (let i = 1; i < samples.length; i++) {
-    const [a, b] = [samples[i - 1], samples[i]];
-    if (a.g * b.g > 0) continue;
-    // Skip brackets farther from the reference than the best root so far.
-    const near = Math.min(Math.abs(a.s - reference), Math.abs(b.s - reference));
-    if (chosen && near > Math.abs(chosen.s - reference)) continue;
-    const root = a.g === 0 ? a : b.g === 0 ? b : refineRoot(a, b);
-    if (!chosen || Math.abs(root.s - reference) < Math.abs(chosen.s - reference))
-      chosen = root;
   }
-  // During a drag, a match can merge with its neighbor and vanish. The closest
-  // near-match continues from where they merged, so it competes on distance too.
-  if (remembered !== undefined)
-    for (let i = 1; i + 1 < samples.length; i++) {
-      const [a, b, c] = [samples[i - 1], samples[i], samples[i + 1]];
-      if (Math.abs(b.g) > Math.abs(a.g) || Math.abs(b.g) > Math.abs(c.g)) continue;
-      if (a.g * b.g <= 0 || b.g * c.g <= 0) continue;
-      if (chosen && Math.abs(b.s - reference) >= Math.abs(chosen.s - reference))
-        continue;
-      chosen = refineDip(a, c) ?? b;
-    }
-  if (!chosen && samples.length)
-    chosen = samples.reduce((best, e) => (Math.abs(e.g) < Math.abs(best.g) ? e : best));
-  if (!chosen) return null;
-  if (key !== undefined) slideMemory.set(key, chosen.s);
-  const points = harmonizeSlidSegment([...chosen.points, ...arc.slice(3)]);
+  if (Math.abs(c) <= tolerance) roots.push(1);
+  const t = roots.filter((t) => t > 1e-4 && t <= 1 + 1e-10).sort((a, b) => b - a)[0];
+  if (t === undefined)
+    return { wall: wall.map((p) => ({ ...p })), t: 1, orthogonal: false };
+  const first = splitCubicAt(wall, Math.min(t, 1)).first;
   return {
-    wall: points.slice(0, 4),
-    arc: points.slice(4),
-    s: chosen.s,
+    wall: first.map((p, i) => ({ ...wall[i], ...p })),
+    t: Math.min(t, 1),
+    orthogonal: true,
+  };
+}
+
+function ballExtreme(ball, axis, sign) {
+  const candidates = [
+    ...bulbApexes(ball, -Math.PI, Math.PI),
+    { theta: -Math.PI / 2 },
+    { theta: Math.PI / 2 },
+  ].map(({ theta }) => ball.at(theta));
+  return candidates.reduce((a, b) => (sign * b[axis] > sign * a[axis] ? b : a));
+}
+
+// Wall is ordered toward the rib, inner is ordered from its rib toward W.
+// Only the terminal inner segment is replaced. W and all subsequent on-curves
+// survive with their identities, independent of ball/wall intersections.
+export function buildFourPointBulb({
+  wall,
+  inner,
+  next = null,
+  radius,
+  shape,
+  easing,
+  easeCurvature = 0.55,
+  edits = null,
+}) {
+  wall = bulbCubic(wall);
+  inner = bulbCubic(inner);
+  const rib = wall[3];
+  const ball = makeBulbBall({
+    outer: rib,
+    inner: inner[0],
+    outerDirection: unit(sub(rib, wall[2])),
+    radius,
+    shape,
+  });
+  if (!ball) return null;
+  const entry = bulbEntry(wall);
+  const E = entry.wall[3];
+  const tE = unit(sub(E, entry.wall[2]));
+  const down = Math.sign(tE.y || ball.ex.y || -1);
+  const across = Math.sign(ball.ey.x || -ball.ex.y || -1);
+  const B = ballExtreme(ball, "y", down);
+  const C = ballExtreme(ball, "x", across);
+  const tB = { x: across, y: 0 },
+    tC = { x: 0, y: -down };
+  const W = inner[3];
+  // Rear radius sets a preferred neck position on one fixed inner-wall span.
+  // Keep a little lateral room beyond C for the return curve. This continuous
+  // clamp replaces the old last-intersection search; no wall segment is eaten
+  // as Size or Shape changes. The shared solve can move N within 15% of R.
+  const terminalSpeed = 3 * vector.distance(inner[0], inner[1]);
+  const q = clamp(ball.rearRadius / Math.max(terminalSpeed, radius), 0.02, 0.8);
+  const onWall = cubicPointAt(inner, q);
+  const N = { ...onWall };
+  N.x =
+    across < 0
+      ? Math.max(N.x, C.x + 0.15 * radius)
+      : Math.min(N.x, C.x - 0.15 * radius);
+  const neckWall = splitCubicAt(inner, q).second;
+  let tN = unit(sub(neckWall[1], onWall));
+  const angle = clamp(edits?.neck?.turn ?? 0, -Math.PI / 2, Math.PI / 2);
+  tN = {
+    x: tN.x * Math.cos(angle) - tN.y * Math.sin(angle),
+    y: tN.x * Math.sin(angle) + tN.y * Math.cos(angle),
+  };
+  const tW = unit(sub(W, inner[2]));
+  const body = 0.5522847498307936;
+  const neckScale = 0.5 + 0.5 * clamp(easeCurvature / 0.55, 0, 2);
+  let points = [
+    E,
+    handle(E, tE, body * Math.max(Math.abs(B.y - E.y), 0.05 * radius)),
+    handle(B, tB, -body * Math.max(Math.abs(B.x - E.x), 0.05 * radius)),
+    B,
+    handle(B, tB, body * Math.max(Math.abs(C.x - B.x), 0.05 * radius)),
+    handle(C, tC, -body * Math.max(Math.abs(C.y - B.y), 0.05 * radius)),
+    C,
+    handle(C, tC, vector.distance(C, N) / 3),
+    handle(N, tN, -vector.distance(C, N) / 3),
+    N,
+    handle(N, tN, neckScale * vector.distance(onWall, neckWall[1])),
+    handle(W, tW, -vector.distance(neckWall[2], W)),
+    W,
+  ];
+  const vslide = clamp(edits?.neck?.vslide ?? 0, -0.8, 0.8);
+  if (vslide) {
+    const slid = makeSlideCandidate(
+      { points, isClosed: false },
+      9,
+      vslide < 0 ? "previous" : "next",
+      vslide < 0 ? 1 + vslide : vslide
+    );
+    if (slid) {
+      points = slid.points;
+      tN = unit(sub(points[10], points[8]));
+      // The manual slide supplies N's preferred location. Reassert the fixed
+      // axes at C and W before the joint solve adjusts lengths.
+      points[7] = handle(points[6], tC, vector.distance(points[6], points[7]));
+      points[11] = handle(points[12], tW, -vector.distance(points[12], points[11]));
+    }
+  }
+  // Edits change the preferred construction before harmonization. E remains
+  // coupled to the exact wall split. Its incoming length is not an independent
+  // dial: changing it alone would change the wall itself.
+  const roles = ["entry", "bottom", "side", "neck"];
+  const tangents = [tE, tB, tC, tN];
+  for (let k = 0; k < 4; k++) {
+    const edit = edits?.[roles[k]];
+    if (!edit) continue;
+    const i = 3 * k,
+      t = tangents[k];
+    const originalAnchor = { ...points[i] };
+    const slide = k ? clamp(edit.slide ?? 0, -0.2 * radius, 0.2 * radius) : 0;
+    const carry = k ? clamp(edit.carry ?? 0, -0.2 * radius, 0.2 * radius) : 0;
+    Object.assign(points[i], offset(points[i], t, slide));
+    if (k === 3) {
+      Object.assign(
+        points[i],
+        offset(
+          points[i],
+          { x: -t.y, y: t.x },
+          clamp(edit.normal ?? 0, -0.2 * radius, 0.2 * radius)
+        )
+      );
+    }
+    for (const [h, sign, slot] of [
+      [i - 1, -1, "in"],
+      [i + 1, 1, "out"],
+    ]) {
+      if (h < 0) continue;
+      const length = Math.max(
+        0,
+        vector.distance(points[h], originalAnchor) +
+          (edit[slot] ?? 0) +
+          sign * (carry - slide)
+      );
+      points[h] = handle(points[i], t, sign * length);
+    }
+  }
+  const preferred = points.map((p) => ({ ...p }));
+  const result = harmonizeBulb({
+    points,
+    wall: entry.wall,
+    nextCurvature: next
+      ? bulbEndCurvature(bulbCubic(next))
+      : bulbEndCurvature(inner, true),
+    radius,
+    neckScale: easing,
+    movePoints: true,
+    turnNeck: true,
+  });
+  points = result.points;
+  return {
+    ...result,
+    points,
+    preferred,
+    wall: entry.wall,
+    ball,
+    tangents: [tE, tB, tC, result.neckTangent],
+    entryParameter: entry.t,
+    orthogonalEntry: entry.orthogonal,
   };
 }

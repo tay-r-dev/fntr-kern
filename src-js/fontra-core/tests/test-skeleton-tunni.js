@@ -994,14 +994,15 @@ describe("the curvature gizmo at a bulb terminal", () => {
             // only exists on a cubic, and on a straight stroke that segment is a
             // line — there would be nothing to address either way.
             points: [
-              makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
-              makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
-              makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+              makeSkeletonPoint({ id: 1, x: 0, y: 200 }),
+              makeSkeletonPoint({ id: 2, x: 300, y: 200, type: "cubic" }),
+              makeSkeletonPoint({ id: 3, x: 360, y: 100, type: "cubic" }),
               makeSkeletonPoint({
                 id: 4,
-                x: 430,
-                y: 90,
+                x: 340,
+                y: 0,
                 capStyle: "drop",
+                capBallSide: "right",
                 ...capFields,
               }),
             ],
@@ -1024,9 +1025,14 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(necks).to.have.length(1);
     // The neck's two handles and its ball end belong to the cap. Its stem end is
     // the stem's own on-curve, which keeps its own owner.
-    for (const entry of necks[0].provenance.slice(0, 3)) {
+    for (const entry of necks[0].provenance.slice(1, 3)) {
       expect(entry.skeletonPointId).to.equal(4);
     }
+    expect(
+      necks[0].provenance.some(
+        (entry) => entry.bulbRole === "neck" && entry.skeletonPointId === 4
+      )
+    ).to.equal(true);
     expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
     expect(necks[0].provenance[2].capCurvatureField).to.equal("capBallEaseCurvature");
   });
@@ -1052,7 +1058,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
       expect(target.pointId).to.equal(4);
       found.add(`${target.side}/${target.role}`);
     }
-    for (const role of ["entry", "bottom", "side", "neck", "release"])
+    for (const role of ["entry", "bottom", "side", "neck"])
       for (const slot of ["onCurve", "in", "out"])
         expect(found.has(`bulb-${role}/${slot}`), `${role} ${slot}`).to.equal(true);
   });
@@ -1077,55 +1083,55 @@ describe("the curvature gizmo at a bulb terminal", () => {
     return layer;
   }
 
-  it("slides a bulb point along its tangent and carries only its own handles", () => {
-    for (const role of ["entry", "bottom", "side", "neck", "release"]) {
-      const plain = makeBulbGlyph({ capBallEasing: 0.5 });
-      const before = bulbPosition(plain, role, "in");
-      const after = bulbPosition(plain, role, "out");
-      const tangent = {
-        x: (after.x - before.x) / Math.hypot(after.x - before.x, after.y - before.y),
-        y: (after.y - before.y) / Math.hypot(after.x - before.x, after.y - before.y),
-      };
-      for (const carry of [0, 6]) {
-        const edited = editedBulbGlyph(role, { slide: 6, carry });
-        const moved = [];
-        for (let i = 0; i < plain.path.numPoints; i++) {
-          const a = plain.path.getPoint(i),
-            b = edited.path.getPoint(i);
-          // An unedited entry's join takes the whole-unit placement that keeps
-          // the comb even; a hand edit takes the nearest. Either way within a
-          // unit, so only a larger move is the edit's own.
-          if (Math.hypot(a.x - b.x, a.y - b.y) > Math.SQRT2) moved.push(i);
+  it("treats point and handle edits as preferences while retaining apex axes", () => {
+    const plain = makeBulbGlyph({ capBallEasing: 0.5 });
+    for (const role of ["bottom", "side", "neck"]) {
+      for (const values of [{ slide: 6, carry: 6 }, { in: 5 }, { out: 5 }]) {
+        const edited = editedBulbGlyph(role, values);
+        expect(edited.path.coordinates).to.not.deep.equal(plain.path.coordinates);
+        expect(bulbPosition(edited, "entry", "onCurve")).to.deep.equal(
+          bulbPosition(plain, "entry", "onCurve")
+        );
+        expect(bulbPosition(edited, "entry", "in")).to.deep.equal(
+          bulbPosition(plain, "entry", "in")
+        );
+        for (const [apex, axis] of [
+          ["entry", "x"],
+          ["bottom", "y"],
+          ["side", "x"],
+        ]) {
+          const point = bulbPosition(edited, apex, "onCurve");
+          for (const slot of ["in", "out"])
+            expect(bulbPosition(edited, apex, slot)[axis]).to.be.closeTo(
+              point[axis],
+              1e-8
+            );
         }
-        const onCurve = bulbPosition(edited, role, "onCurve");
-        const start = bulbPosition(plain, role, "onCurve");
-        // Both positions are on whole units.
-        expect(onCurve.x - start.x, role).to.be.closeTo(6 * tangent.x, 1);
-        expect(onCurve.y - start.y, role).to.be.closeTo(6 * tangent.y, 1);
-        expect(moved, `${role} carry ${carry}`).to.have.length(carry ? 3 : 1);
       }
     }
   });
 
-  it("lengthens a bulb handle along its own line and moves nothing else", () => {
-    for (const role of ["entry", "bottom", "side", "neck", "release"])
-      for (const slot of ["in", "out"]) {
-        const plain = makeBulbGlyph({ capBallEasing: 0.5 });
-        const edited = editedBulbGlyph(role, { [slot]: 5 });
-        const anchor = bulbPosition(plain, role, "onCurve");
-        const a = bulbPosition(plain, role, slot),
-          b = bulbPosition(edited, role, slot);
-        const length = (p) => Math.hypot(p.x - anchor.x, p.y - anchor.y);
-        // Both handles are on whole units.
-        expect(length(b) - length(a), `${role} ${slot}`).to.be.closeTo(5, Math.SQRT2);
-        let moved = 0;
-        for (let i = 0; i < plain.path.numPoints; i++) {
-          const p = plain.path.getPoint(i),
-            q = edited.path.getPoint(i);
-          if (Math.hypot(p.x - q.x, p.y - q.y) > Math.SQRT2) moved++;
-        }
-        expect(moved, `${role} ${slot}`).to.equal(1);
-      }
+  it("keeps E and its incoming handle coupled to the exact wall", () => {
+    const plain = makeBulbGlyph({ capBallEasing: 0.5 });
+    const edited = editedBulbGlyph("entry", { slide: 6, carry: 6, in: 5 });
+    expect(edited.path.coordinates).to.deep.equal(plain.path.coordinates);
+    for (const [create, key, behavior] of [
+      [
+        createEditableGeneratedPointTargetEntries,
+        "editableGeneratedPoint/80/4/bulb-entry",
+        "rib-tangent",
+      ],
+      [
+        createEditableGeneratedHandleTargetEntries,
+        "editableGeneratedHandle/80/4/bulb-entry/in",
+        "generated-handle-move",
+      ],
+    ])
+      expect(
+        create(plain, new Set([key]), behavior, {
+          referenceSkeletonData: getSkeletonData(plain),
+        })
+      ).to.have.length(0);
   });
 
   // The drag itself: Z slides and carries, Z with Alt slides alone, a plain
@@ -1206,7 +1212,21 @@ describe("the curvature gizmo at a bulb terminal", () => {
       const p = bulbPosition(moved, "neck", slot);
       return Math.hypot(p.x - newAnchor.x, p.y - newAnchor.y);
     };
-    expect(lengthOf("in")).to.be.closeTo(lengthOf("out"), 1);
+    // Equalize sets equal preferred lengths; the shared G2 solve may compensate.
+    expect(edits(moved).neck.out).to.equal(7);
+    expect(edits(moved).neck.in).to.equal(
+      Math.round(
+        length +
+          7 -
+          Math.hypot(
+            bulbPosition(plain, "neck", "in").x - anchor.x,
+            bulbPosition(plain, "neck", "in").y - anchor.y
+          )
+      )
+    );
+    expect(Number.isFinite(lengthOf("in") + lengthOf("out"))).to.equal(true);
+    applyChange(z.layer, z.entries[0].rollbackChange);
+    expect(z.layer.path.coordinates).to.deep.equal(plain.path.coordinates);
   });
 
   // The ball's own three segments carry a curvature gizmo each, which writes the
@@ -1242,7 +1262,6 @@ describe("the curvature gizmo at a bulb terminal", () => {
     editSkeleton(layer, (skeleton) => {
       const point = skeleton.contours[0].points.find((p) => p.id === 4);
       setSkeletonCapBallEdit(point, "neck", { out: 8 });
-      setSkeletonCapBallEdit(point, "release", { in: -4 });
     });
     const neck = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
       (segment) => segment.provenance[1]?.capCurvatureField
@@ -1298,7 +1317,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
   // is a separate curve now, not merged into it.
   // At easing 1 the release reaches the wall's far on-curve and the piece
   // collapses, which offers no gizmo.
-  it("keeps both wall gizmos and their construction snapshots at every easing", () => {
+  it("keeps the outer wall gizmo and gives the replaced inner span to the neck", () => {
     for (const capBallEasing of [0, 0.5, 0.9]) {
       const layer = makeBulbGlyph({ capBallEasing, capBallSide: "left" });
       const walls = buildGeneratedTunniSegments(
@@ -1306,11 +1325,11 @@ describe("the curvature gizmo at a bulb terminal", () => {
         layer.path
       ).filter((segment) => !segment.bulb && !segment.provenance[1]?.capCurvatureField);
       expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
-      expect(walls.filter((segment) => segment.side === "right")).to.have.length(1);
+      expect(walls.filter((segment) => segment.side === "right")).to.have.length(0);
       const snapshots = walls.filter((segment) =>
         segment.provenance.some((entry) => entry?.constructionSegment)
       );
-      expect(snapshots).to.have.length(2);
+      expect(snapshots).to.have.length(1);
       expect(snapshots.some((segment) => segment.side === "left")).to.equal(true);
     }
   });
@@ -1369,9 +1388,9 @@ describe("the curvature gizmo at a bulb terminal", () => {
   }
 
   const curvedPoints = [
-    makeSkeletonPoint({ id: 1, x: 60, y: 250 }),
-    makeSkeletonPoint({ id: 2, x: 160, y: 110, type: "cubic" }),
-    makeSkeletonPoint({ id: 3, x: 300, y: 60, type: "cubic" }),
+    makeSkeletonPoint({ id: 1, x: 0, y: 200 }),
+    makeSkeletonPoint({ id: 2, x: 300, y: 200, type: "cubic" }),
+    makeSkeletonPoint({ id: 3, x: 360, y: 100, type: "cubic" }),
     makeSkeletonPoint({ id: 4, x: 430, y: 90 }),
   ];
 

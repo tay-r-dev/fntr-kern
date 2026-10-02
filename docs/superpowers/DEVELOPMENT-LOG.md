@@ -2045,6 +2045,59 @@ files contain 109 passing checks. All 72 comparison settings and the page
 toggles ran without DOM script errors; default/maximum outlines were rendered
 and inspected. Live editor/browser QA and the running bundler remain manual.
 
+### Four owned bulb points and a joint solve (2026-10-02)
+
+The designer fixed the topology at E, B, C and N, with W remaining the next
+existing wall point. The ball still grows from the skeleton rib. E is selected
+on the outer wall afterwards, using its x-derivative root and exact subdivision.
+The retained single-sided wall therefore follows the source curve. Its original
+construction remains published for the wall gizmo.
+
+The old entry V-slide search, remembered gesture solution, inner-wall crossing
+scan, separate release point and whole-unit entry search are removed. The inner
+terminal span becomes N–W; the rest of the wall remains. The three body apexes
+have vertical/horizontal/vertical handles. Signed curvature is solved jointly
+at all five joins, with eight lengths and bounded point movement. The C–N
+inflection is permitted. Its handles must not use the convex quarter's tangent
+triangle bound.
+
+**The numerical failure that delayed this change:** penalizing relative handle
+length changes selected very different solutions on neighboring slider frames.
+A neck seed behind C also sent small balls into the wrong curvature branch.
+The final construction gives the neck lateral room at C, prefers small physical
+movement, and tightens curvature after that preference settles. Both N handles
+scale with Easing. Cancelling their common factor in the neck equation gives
+one finite limiting solve at zero, where the emitted handles collapse.
+
+Edits now set preferred geometry before harmonization, so moving a handle can
+move neighboring handles too. N has normal movement, a shared tangent turn and
+V-slide. E and its incoming handle stay coupled to the wall. The old release
+edit address is removed. V-slide projection is calibrated at mouse-down using
+the same pointer rounding as later frames, so a still grab of an already edited
+neck preserves its stored value. Gizmos without a forward tangent intersection
+are not offered. The neck gizmo states a change from its published construction
+tension, preserving its target on a still grab.
+
+**Precision exception:** the solved bulb and boundary wall curves retain
+fractional coordinates. Independent whole-unit rounding would destroy the
+exact split and matching comb. Ordinary generated points retain the grid rule.
+
+**Verification:** 2975 core tests pass. The three supplied realized bulbs are
+checked at all five signed-curvature joins, with scale/reflection checks. The
+generator tests the exact emitted single-sided wall, start/end and reflected
+terminals, four stable role addresses, the zero-easing limit and history
+independence. Four 101-sample parameter sweeps check topology, axis handles,
+relative comb steps below 0.001 and per-sample point travel below 5 units.
+Editor entry tests cover target storage, still grabs and rollback. Nine
+Size/Easing outlines were rendered and inspected. No bundle was run.
+
+**Limits:** this is a bounded numerical construction, not a universal existence
+proof. A wall without a vertical tangent cannot satisfy exact-wall and orthogonal
+E simultaneously; it stays intact and publishes that conflict. The residual is
+published when the handle/movement bounds prevent G2. Changing the skeleton so
+that a different derivative root appears can still change the entry choice.
+Live canvas review remains with the designer's running watcher.
+
 ### Fixture gap
 
 No golden fixture moved for the corner rounding rework, the corpus carries no

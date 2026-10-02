@@ -539,47 +539,63 @@ plus the tip points. It takes the handle lengths from a tension parameter. The *
 cap that does not simply close the two side ends. It trims a length off each side first, and
 splices its own terminal on. See §8.
 
-The **drop** cap (the bulb) is constructed at the outer endpoint rib end.
-The rib anchors the ball; the emitted entry is then V-slid toward the next ball
-point until the wall and ball have matching tangent and curvature (2026-09-27).
+The **drop** cap grows a preferred ball from the outer endpoint rib end.
+Size sets its radius to half the stroke width times the ratio. Shape stretches
+the rear radius to `R * (1 + 1.4 * shape)`. Choosing the emitted entry does not
+move this construction anchor.
 
-`bulb-geometry.js` builds the ball in the rib frame. Its outward direction is
-the original outer wall tangent; its transverse direction follows the rib.
-An angle lock can shear that frame, so inner-wall intersections use its inverse.
+The bulb always has four owned on-curves, in outer-to-inner order:
 
-- **Size** sets R to half the stroke width times the ratio. The construction
-  extends R forward: half the diameter, as clarified by the designer. Orthogonal
-  arc cubics approximate that reach to normal circle-cubic accuracy.
-- **Shape** stretches the rear half to `R * (1 + 1.4 * shape)`; the front stays
-  fixed. Cubics crossing the two halves blend their endpoint tangents.
-- **Easing** keeps the existing inner-wall crossing, cut and neck. Zero gives a
-  crisp incision. Small balls that cannot reach the wall retain the bridge neck.
-  The designer explicitly exempted the neck attachment from the apex rule.
-- **Neck curvature** still uses `capBallEaseCurvature` and its construction
-  snapshot, so a still gizmo grab preserves the pin.
+| Point | Meaning | Freedom |
+| --- | --- | --- |
+| E | Horizontal wall apex | Exact wall subdivision; vertical handles. Its incoming length follows the cut. |
+| B | Bottom/top apex | Horizontal handles; bounded tangential slide; both lengths adjustable. |
+| C | Return-side horizontal apex | Vertical handles; bounded tangential slide; both lengths adjustable. |
+| N | Shared neck | Position, tangent, both lengths, and V-slide. Corner at zero easing; smooth above zero. |
 
-The intermediate ball on-curves are horizontal/vertical extrema in **glyph
-coordinates**, with exactly axis-aligned handles. No rib-frame poles are emitted
-as extra ball points. The entry and neck/incision remain join endpoints.
-The number of visible apexes can change as the arc rotates or the cut moves;
-total topology is not promised across those changes.
+W is the next existing inner-wall on-curve, not a fifth bulb point. The four
+spans are E–B, B–C, C–N and N–W. Only the terminal inner-wall segment is replaced;
+W and the rest of that wall retain their identities. Its following curvature,
+when available, is a boundary condition, and its incoming handle participates.
 
-The entry solve reuses `makeSlideCandidate` from `point-slide.js`. It scans for
-the first curvature crossing along the next arc, then bisects. Provisional
-candidates use fewer fit iterations; the emitted slide uses the normal full
-refit. Its kept ball piece is exact. If the next apex leaves too little room for
-a match, the shared nearest harmonizer adjusts only the preceding wall's handle
-lengths within its normal bounds. It never changes the retained ball arc. As in
-the existing harmonizer, opposite-bend joins compare curvature magnitudes.
-Degenerate or handle-limited cases keep the bounded result, not an extrapolation
-past the next apex.
+`bulb-geometry.js` grows the rib-based preference first, then solves the outer
+wall's x-derivative for E. De Casteljau subdivision keeps the retained wall
+exact. The neck seed uses one fixed inner-wall interval and a continuous lateral
+limit near C. There is no changing intersection count, consumed-segment count,
+previous-drag memory, or axis-role swap.
 
-Only the terminal outer segment is refit. Its preceding anchor and tangent stay
-fixed; the rest of that wall is unchanged. Its original construction segment is
-published on the slid entry, so the wall gizmo measures the curve its pin governs.
-The inner wall gizmo lives above the crisp incision at zero easing and moves onto
-the neck at positive easing. Cap provenance still prevents direct point/handle
-editing of the neck and its on-curve gizmo.
+`bulb-harmonization.js` solves eight handle lengths together with bounded B/C
+slides and N position/tangent adjustments. It matches **signed** curvature at
+E, B, C, N and W. B/C motion is limited to 15% of R along their tangent; N has
+15% of R per coordinate and 0.35 radians of automatic tangent adjustment. E and
+W stay fixed. Convex body handles stay inside their tangent triangles; C–N may
+inflect and has no such triangle constraint. A preference for small physical
+movement keeps the solution near the constructed ball.
+
+Easing multiplies both N handles. At zero both collapse, retaining N's corner
+and the same topology. Their common easing factor cancels from N's curvature
+equation, so the solve uses the same limiting equation at zero. Neck curvature
+changes its preferred outgoing length before the shared solve. This is a
+construction target, not an independent final tension pin.
+
+Z/Alt slides and handle-length edits also enter before harmonization. N additionally
+supports a plain drag in both directions, Shift+Z to turn its common tangent, and
+V-slide. E and its incoming handle cannot be moved independently of the wall.
+The neck gizmo publishes its construction tension and stored target; a still
+grab preserves that target, including after other edits. All writes use
+`editSkeleton`, including undo. The outer wall retains its original construction
+snapshot for its gizmo. The former inner-wall terminal gizmo belongs to N–W now.
+
+The solved bulb and its wall boundary curves deliberately retain fractional
+coordinates. Rounding them independently breaks exact subdivision, axis alignment
+and curvature continuity. Ordinary generated geometry still follows the grid rule.
+
+There are genuine constraint conflicts. A diagonal straight wall, for example,
+has no vertical tangent at which to place E. Such a case preserves the wall and
+publishes `bulbEntryOrthogonal: false`. A bounded solve that cannot match all
+joins publishes its residual in `bulbHarmonizationError`; it does not refit the
+outer wall to hide the mismatch. A vertical-tangent root appearing or disappearing
+on a different wall shape is not covered by the continuous parameter-sweep guarantee.
 
 ### Step 5 — Assembly
 
@@ -619,7 +635,8 @@ and they degrade colinearity at that size. The floor is `MIN_HANDLE_LENGTH`, plu
 `Math.max(along, 1)` clamp in `projectHandleOntoDirection`. **This is accepted, not a defect.**
 Ordinary on-curve points behave the same way at that scale, so the generated outline stays
 consistent with hand-drawn geometry. Do not "fix" it by raising the floor, and do not allow
-sub-unit handle coordinates.
+sub-unit handle coordinates in ordinary generation. The four-point bulb and its
+exact wall boundaries are the explicit exception described in Step 4.
 
 **Point-count stability is a hard constraint.** The generated point count must stay constant
 across parameter values, or cross-master interpolation breaks. Any change to outline geometry must

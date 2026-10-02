@@ -144,10 +144,9 @@ export const CAP_POINT_FIELDS = [
   "capDistance",
   "capBallRatio",
   "capBallShape",
-  // Bulb easing: how far back along the inner edge the neck starts, 0..1 as a
-  // fraction of the run to the next on-curve. Its curvature is the neck cubic's
-  // own tension, which the curvature gizmo reads and writes — a neck has no
-  // skeleton segment behind it, so it cannot live in `segmentCurvature`.
+  // Bulb easing scales both N handles from the corner limit to a smooth neck.
+  // The neck's curvature field is a preferred construction target; the shared
+  // G2 solve can compensate on either side. It has no skeleton segment pin.
   "capBallEasing",
   "capBallEaseCurvature",
 ];
@@ -158,24 +157,28 @@ export const CAP_CURVATURE_FIELDS = new Set(["capBallEaseCurvature"]);
 
 // A bulb's own points, which Z and Alt edit the way they edit any generated
 // point: the entry on the outer wall, the ball's bottom and side apexes, the
-// neck's start on the ball, and the release on the inner wall. They belong to
+// shared neck. W remains an existing wall point. The four bulb points belong to
 // the cap, not to a rib, so their edits live on the cap-owning point, one
 // block per point, in the cap's own order from the outer wall to the inner.
 //
 // `slide` moves the on-curve along its tangent, positive toward the inner
 // wall. `carry` is the part of it Z carried to the two handles. `in` and
 // `out` lengthen the handle before and after it, along the handle's own line.
-// All four are scalars, because every edit here keeps its line.
-export const CAP_BALL_EDIT_ROLES = Object.freeze([
-  "entry",
-  "bottom",
-  "side",
-  "neck",
-  "release",
-]);
+// These are preferred construction values, followed by the shared solve.
+// E and its incoming handle remain coupled to the exact wall cut.
+export const CAP_BALL_EDIT_ROLES = Object.freeze(["entry", "bottom", "side", "neck"]);
 // `vslide` is the V-slide: the share of a neighbouring segment's parameter the
-// point has slid into along the outline, positive toward the inner wall.
-const CAP_BALL_EDIT_FIELDS = Object.freeze(["slide", "carry", "in", "out", "vslide"]);
+// neck has slid into along the outline, positive toward the inner wall.
+// `normal` moves N across its tangent; `turn` rotates its shared tangent in radians.
+const CAP_BALL_EDIT_FIELDS = Object.freeze([
+  "slide",
+  "carry",
+  "in",
+  "out",
+  "vslide",
+  "normal",
+  "turn",
+]);
 const BULB_SIDE_PREFIX = "bulb-";
 
 // Bulb points ride in the side slot of the generated-point keys, so every
@@ -5890,10 +5893,9 @@ export function calculateGeneratedCurvatureEdits({
   // collapse tail either — a cap handle has no stored offset to put one on, so
   // the pin is the whole answer and a drag below its floor simply stops.
   //
-  // The neck's handles blend toward half its chord where its corner degenerates,
-  // so the drawn tension is the pin times a factor of the geometry, published on
-  // the handles. The pin is what was read divided by that factor, so a still
-  // grab stores the number already stored.
+  // The neck publishes the drawn construction tension and its stored value.
+  // Apply the gizmo's change to that value: the harmonizer is not a linear
+  // multiplier, and dividing by a guessed scale made still grabs move the bulb.
   // A ball segment states its answer as the two handles the drag arrived at.
   // The writer turns them into the bulb's handle lengths.
   if (isBulbBallSegment(provenance)) {
@@ -5907,7 +5909,16 @@ export function calculateGeneratedCurvatureEdits({
       skeletonPointId: start.skeletonPointId,
       side: start.side,
       capCurvatureField,
-      tension: scale > 0 ? tension / scale : tension,
+      tension: Number.isFinite(provenance[1]?.capCurvatureTension)
+        ? Math.max(
+            0,
+            provenance[1].capCurvatureValue +
+              tension -
+              provenance[1].capCurvatureTension
+          )
+        : scale > 0
+          ? tension / scale
+          : tension,
       collapse: [],
     };
   }
@@ -6071,6 +6082,11 @@ function computeGeneratedTunniSegments(skeletonData, path) {
         continue;
       }
       const bulbBall = isBulbBallSegment(provenance);
+      if (
+        (bulbBall || generatedSegmentCapCurvatureField(provenance)) &&
+        !hasForwardTangentIntersection(segment.points)
+      )
+        continue;
       const side = bulbBall ? null : provenance[0].side;
       if (
         !bulbBall &&

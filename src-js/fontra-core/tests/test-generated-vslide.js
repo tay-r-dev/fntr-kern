@@ -97,17 +97,6 @@ describe("V-slide of generated points", () => {
       expect(movedCount).to.be.greaterThan(0);
       expect(offGrid).to.be.at.most(1);
     }
-    // A bulb is drawn off the grid, and its later edits re-place the points
-    // beside it, so only the slid on-curve itself lands on whole units.
-    const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" };
-    const slid = generateFromSkeleton(
-      skeleton({}, { ...cap, capBallEdits: { side: { vslide: 0.271 } } })
-    );
-    const point = onCurve(
-      slid,
-      (m) => m?.bulbRole === "side" && m.bulbSlot === "onCurve"
-    );
-    expect(Number.isInteger(point.x) && Number.isInteger(point.y)).to.be.true;
   });
 
   it("slides the same way along the skeleton on both sides", () => {
@@ -124,23 +113,33 @@ describe("V-slide of generated points", () => {
     }
   });
 
-  it("slides a bulb point along the ball", () => {
-    const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" };
+  it("V-slides only the neck, keeping four bulb roles and the wall entry", () => {
+    const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "right" };
     const plain = generateFromSkeleton(skeleton({}, cap));
-    for (const role of ["bottom", "side", "neck"])
-      for (const value of [-0.3, 0.3]) {
-        const slid = generateFromSkeleton(
-          skeleton({}, { ...cap, capBallEdits: { [role]: { vslide: value } } })
-        );
-        const at = (result) =>
-          onCurve(result, (m) => m?.bulbRole === role && m.bulbSlot === "onCurve");
-        const moved = Math.hypot(at(slid).x - at(plain).x, at(slid).y - at(plain).y);
-        expect(moved, `${role} ${value}`).to.be.greaterThan(2);
-        expect(
-          departure(slid.contours[0].points, plain.contours[0].points),
-          `${role} ${value}`
-        ).to.be.below(1.5);
-      }
+    for (const value of [-0.3, 0.3]) {
+      const slid = generateFromSkeleton(
+        skeleton({}, { ...cap, capBallEdits: { neck: { vslide: value } } })
+      );
+      const at = (result, role) =>
+        onCurve(result, (m) => m?.bulbRole === role && m.bulbSlot === "onCurve");
+      expect(
+        Math.hypot(
+          at(slid, "neck").x - at(plain, "neck").x,
+          at(slid, "neck").y - at(plain, "neck").y
+        )
+      ).to.be.greaterThan(2);
+      expect(at(slid, "entry")).to.deep.equal(at(plain, "entry"));
+      expect(slid.contours[0].points).to.have.length(plain.contours[0].points.length);
+      expect(
+        slid.provenance[0].pointMap.filter((m) => m?.bulbSlot === "onCurve")
+      ).to.have.length(4);
+    }
+    for (const role of ["entry", "bottom", "side"]) {
+      const ignored = generateFromSkeleton(
+        skeleton({}, { ...cap, capBallEdits: { [role]: { vslide: 0.3 } } })
+      );
+      expect(ignored.contours).to.deep.equal(plain.contours);
+    }
   });
 });
 
@@ -223,8 +222,8 @@ describe("V-slide of generated points, through the editor's entry", () => {
     const layer = await layerWith(
       skeleton({}, { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" })
     );
-    const isBottom = (m) => m?.bulbRole === "bottom" && m.bulbSlot === "onCurve";
-    const start = pathPoint(layer, isBottom);
+    const isNeck = (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve";
+    const start = pathPoint(layer, isNeck);
     const side = pathPoint(
       layer,
       (m) => m?.bulbRole === "side" && m.bulbSlot === "onCurve"
@@ -233,12 +232,15 @@ describe("V-slide of generated points, through the editor's entry", () => {
       x: start.x + (side.x - start.x) * 0.3,
       y: start.y + (side.y - start.y) * 0.3,
     };
-    await drag(layer, "editableGeneratedPoint/1/8/bulb-bottom", start, pointer);
-    const end = pathPoint(layer, isBottom);
+    await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", start, pointer);
+    const end = pathPoint(layer, isNeck);
     expect(Math.hypot(end.x - start.x, end.y - start.y)).to.be.greaterThan(3);
     const edits = globalThis.__model
       .getSkeletonData(layer)
       .contours[0].points.find((p) => p.id === 8).capBallEdits;
-    expect(edits.bottom.vslide).to.be.greaterThan(0);
+    expect(edits.neck.vslide).to.be.below(0);
+    const before = [...layer.path.coordinates];
+    await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", end, end);
+    expect([...layer.path.coordinates]).to.deep.equal(before);
   });
 });

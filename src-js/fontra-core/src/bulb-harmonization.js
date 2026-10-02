@@ -29,7 +29,9 @@ export function harmonizeBulb({
   nextCurvature,
   radius,
   corner = false,
+  neckScale = 1,
   movePoints = false,
+  turnNeck = true,
 }) {
   const anchors = [0, 3, 6, 9, 12].map((i) => points[i]);
   const handles = [1, 2, 4, 5, 7, 8, 10, 11];
@@ -42,8 +44,8 @@ export function harmonizeBulb({
   );
   const scale = Math.max(radius, 1e-6);
   const targetEntry = bulbEndCurvature(wall, true);
-  const count = movePoints ? 13 : 8;
-  const place = (q) => {
+  const count = movePoints ? (turnNeck ? 13 : 12) : 8;
+  const place = (q, virtualNeck = false) => {
     const a = anchors.map((p) => ({ ...p }));
     const axes = directions.map((d) => ({ ...d }));
     if (movePoints) {
@@ -51,7 +53,7 @@ export function harmonizeBulb({
       a[2] = { ...a[2], ...shift(a[2], axes[4], 0.15 * scale * Math.tanh(q[9])) };
       a[3].x += 0.15 * scale * Math.tanh(q[10]);
       a[3].y += 0.15 * scale * Math.tanh(q[11]);
-      const turn = 0.35 * Math.tanh(q[12]);
+      const turn = turnNeck ? 0.35 * Math.tanh(q[12]) : 0;
       for (const k of [5, 6]) {
         const d = axes[k];
         axes[k] = {
@@ -73,46 +75,96 @@ export function harmonizeBulb({
       if (span < 2 && Math.abs(determinant) > 1e-10) {
         const reaches = [
           cross(chord, axes[k + 1]) / determinant,
-          cross(axes[k], chord) / determinant,
+          cross(chord, axes[k]) / determinant,
         ];
         if (reaches.every((r) => r > 0)) limits = reaches;
       }
       for (let j = k; j < k + 2; j++) {
+        const limit = Math.max(scale * 1e-6, limits[j - k]);
+        const floor = Math.min(0.02 * scale, 0.25 * lengths[j], 0.1 * limit);
+        const fraction = Math.min(
+          0.999999,
+          Math.max(1e-7, (lengths[j] - floor) / (limit - floor))
+        );
+        const odds = fraction / (1 - fraction);
         const length =
           lengths[j] === 0
             ? 0
-            : Math.min(
-                limits[j - k],
-                Math.max(scale * 1e-7, lengths[j] * Math.exp(q[j]))
-              );
-        Object.assign(placed[handles[j]], shift(a[anchorOf[j]], axes[j], length));
+            : floor +
+              ((limit - floor) * odds * Math.exp(q[j])) / (1 + odds * Math.exp(q[j]));
+        Object.assign(
+          placed[handles[j]],
+          shift(
+            a[anchorOf[j]],
+            axes[j],
+            length * (!virtualNeck && (j === 5 || j === 6) ? neckScale : 1)
+          )
+        );
       }
     }
     return placed;
   };
-  const residuals = (q) => {
-    const p = place(q);
+  // Multiply curvature equalities by their positive squared handle lengths.
+  // This removes divisions by shrinking handles from the solve. At N use the
+  // uncollapsed handles: the common easing squared cancels from both sides,
+  // including the limit at zero. Actual endpoint curvatures still verify the
+  // result; a collapsed or bounded span is never reported as an exact match.
+  const endData = (curve, end = false) => {
+    const p = end ? [...curve].reverse() : curve;
+    const d = vector.subVectors(p[1], p[0]);
+    const length = Math.hypot(d.x, d.y);
+    const tangent = vector.mulVectorScalar(unit(d), end ? -1 : 1);
+    return { bend: cross(tangent, vector.subVectors(p[2], p[0])), length };
+  };
+  const residuals = (q, measured = false) => {
+    const p = place(q),
+      virtual = place(q, true);
     const curves = [0, 3, 6, 9].map((i) => p.slice(i, i + 4));
-    const pairs = [[targetEntry, bulbEndCurvature(curves[0])]];
+    const first = endData(curves[0]);
+    const r = [(first.bend - 1.5 * targetEntry * first.length ** 2) / scale];
+    if (measured) r[0] = (bulbEndCurvature(curves[0]) - targetEntry) * scale;
     for (let i = 1; i < 4; i++) {
       if (i === 3 && corner) continue;
-      pairs.push([bulbEndCurvature(curves[i - 1], true), bulbEndCurvature(curves[i])]);
+      const left = i === 3 ? virtual.slice(6, 10) : curves[i - 1];
+      const right = i === 3 ? virtual.slice(9, 13) : curves[i];
+      const a = endData(left, true),
+        b = endData(right);
+      r.push(
+        measured
+          ? (bulbEndCurvature(left, true) - bulbEndCurvature(right)) * scale
+          : (a.bend * b.length ** 2 - b.bend * a.length ** 2) /
+              (scale * Math.max(1e-20, a.length ** 2 + b.length ** 2))
+      );
     }
-    if (Number.isFinite(nextCurvature))
-      pairs.push([bulbEndCurvature(curves[3], true), nextCurvature]);
-    return pairs.map(
-      ([a, b]) =>
-        ((a - b) * scale) / Math.max(1, Math.abs(a * scale), Math.abs(b * scale))
-    );
+    if (Number.isFinite(nextCurvature)) {
+      const last = endData(curves[3], true);
+      r.push(
+        measured
+          ? (bulbEndCurvature(curves[3], true) - nextCurvature) * scale
+          : (last.bend - 1.5 * nextCurvature * last.length ** 2) / scale
+      );
+    }
+    return r;
   };
   let q = Array(count).fill(0);
+  const initial = place(q, true);
+  const displacement = (q) =>
+    place(q, true).flatMap((p, i) => [
+      (p.x - initial[i].x) / scale,
+      (p.y - initial[i].y) / scale,
+    ]);
   const norm = (v) => dotArray(v, v);
-  // A small preference term picks the nearby solution of the underdetermined
-  // system. It is not a substitute for the five signed curvature conditions.
-  const merit = (q, r) => norm(r) + 1e-10 * norm(q);
-  for (let iteration = 0; iteration < 90; iteration++) {
-    const r = residuals(q);
-    const jacobian = r.map(() => Array(count).fill(0));
+  const merit = (q, weight) => norm(residuals(q)) + weight * norm(displacement(q));
+  // First prefer small physical displacement, then tighten the five joins.
+  // Penalizing log-length changes instead made a short neck handle as costly
+  // to move as the long wall handle, and selected visibly different solutions
+  // on neighboring slider samples. All iterations start from this frame's seed.
+  for (let iteration = 0; iteration < 140; iteration++) {
+    const r = residuals(q),
+      d = displacement(q);
+    const weight = iteration < 100 ? 1e-4 : 1e-9;
+    const jacobian = Array.from({ length: count }, () => []);
+    const motion = Array.from({ length: count }, () => []);
     const h = 1e-4;
     for (let k = 0; k < count; k++) {
       const plus = [...q],
@@ -121,38 +173,50 @@ export function harmonizeBulb({
       minus[k] -= h;
       const rp = residuals(plus),
         rm = residuals(minus);
-      r.forEach((_, i) => (jacobian[i][k] = (rp[i] - rm[i]) / (2 * h)));
+      const dp = displacement(plus),
+        dm = displacement(minus);
+      jacobian[k] = rp.map((v, i) => (v - rm[i]) / (2 * h));
+      motion[k] = dp.map((v, i) => (v - dm[i]) / (2 * h));
     }
-    const preference = q.map((v) => -0.04 * v);
     const matrix = jacobian.map((row, i) =>
-      jacobian.map((other, j) => dotArray(row, other) + (i === j ? 1e-8 : 0))
+      jacobian.map(
+        (other, j) =>
+          dotArray(row, other) +
+          weight * dotArray(motion[i], motion[j]) +
+          (i === j ? 1e-12 : 0)
+      )
     );
-    const rhs = r.map((v, i) => -v - dotArray(jacobian[i], preference));
-    const multipliers = solveLinear(matrix, rhs);
-    if (!multipliers) break;
-    const step = preference.map(
-      (v, k) => v + jacobian.reduce((sum, row, i) => sum + row[k] * multipliers[i], 0)
+    const rhs = jacobian.map(
+      (row, i) => -dotArray(row, r) - weight * dotArray(motion[i], d)
     );
-    const damping = Math.min(0.8, 0.35 / Math.max(...step.map(Math.abs), 1e-12));
-    const before = merit(q, r);
+    const step = solveLinear(matrix, rhs);
+    if (!step) break;
+    const damping = Math.min(0.8, 0.5 / Math.max(...step.map(Math.abs), 1e-12));
+    const before = merit(q, weight);
     for (let backtrack = 0; backtrack < 10; backtrack++) {
       const factor = damping / 2 ** backtrack;
       const trial = q.map((v, k) => Math.max(-8, Math.min(8, v + factor * step[k])));
-      if (merit(trial, residuals(trial)) <= before) {
+      if (merit(trial, weight) <= before) {
         q = trial;
         break;
       }
     }
   }
-  const error = Math.max(...residuals(q).map(Math.abs));
-  return { points: place(q), error, status: error < 1e-5 ? "matched" : "bounded" };
+  const error = Math.max(...residuals(q, true).map(Math.abs));
+  const virtual = place(q, true);
+  return {
+    points: place(q),
+    error,
+    status: error < 1e-5 ? "matched" : "bounded",
+    neckTangent: unit(vector.subVectors(virtual[10], virtual[8])),
+  };
 }
 
 function dotArray(a, b) {
   return a.reduce((sum, v, i) => sum + v * b[i], 0);
 }
 
-// The curvature system has at most five rows. Pivoting also makes a flat or
+// The normal system has at most thirteen rows. Pivoting also makes a flat or
 // collapsed span an ordinary bounded case, rather than emitting NaNs.
 function solveLinear(matrix, rhs) {
   const a = matrix.map((row, i) => [...row, rhs[i]]);

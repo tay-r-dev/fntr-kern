@@ -13,17 +13,11 @@ import {
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
 
-// A bulb's own points take Z and Alt the way every generated point does, and
-// write the cap's edit block rather than a rib's nudge. See the feature model,
-// the drop cap: the entry, the ball's bottom and side apexes, the neck's start
-// and the release are the cap's, and their edits are applied after the bulb is
-// built.
-//
-// On an on-curve, Z slides it along its tangent and carries its two handles;
-// Alt, with or without Z, slides it alone. A plain drag moves nothing: derived
-// geometry answers to a modifier. Both work in gizmo mode as well, where the
-// on-curves are still drawn and the handles are not. On a handle, Z (or an arrow key) lengthens it along
-// its own line, and Alt gives the handle across the on-curve the same length.
+// Bulb edits are preferred construction targets. The joint solve can adjust
+// other handles to retain the wall and smooth joins. E and its incoming handle
+// are coupled to the exact wall cut; the remaining points use Z/Alt tangential
+// slides. A plain neck drag can also move normally, and Shift+Z turns its shared
+// tangent. V-slide belongs only to N.
 
 export function isBulbSelectionItem(item) {
   return bulbRoleOfSide(`${item}`.split("/")[2]) !== null;
@@ -40,18 +34,32 @@ export function createBulbPointTargetEntries(
   if (
     !carry &&
     behaviorName !== "rib-tangent-interpolate" &&
-    behaviorName !== "rib-interpolate"
+    behaviorName !== "rib-interpolate" &&
+    behaviorName !== "rib-default"
   ) {
     return [];
   }
   const items = (parseSelection([...selection]).editableGeneratedPoint || [])
     .filter(isBulbSelectionItem)
-    .map((item) => parseEditableGeneratedPointKey(`editableGeneratedPoint/${item}`));
+    .map((item) => parseEditableGeneratedPointKey(`editableGeneratedPoint/${item}`))
+    .filter(
+      (item) =>
+        item.side !== "bulb-entry" &&
+        (behaviorName !== "rib-default" || item.side === "bulb-neck")
+    );
   return makeBulbEntries(layerGlyph, items, options, (station, stored) => (delta) => {
     const along = dot(delta, station.tangent);
     return {
       slide: Math.round(stored.slide + along),
       carry: carry ? Math.round(stored.carry + along) : stored.carry,
+      ...(behaviorName === "rib-default"
+        ? {
+            normal: Math.round(
+              stored.normal +
+                dot(delta, { x: -station.tangent.y, y: station.tangent.x })
+            ),
+          }
+        : {}),
     };
   });
 }
@@ -62,17 +70,19 @@ export function createBulbHandleTargetEntries(
   behaviorName,
   options
 ) {
-  if (behaviorName === "generated-handle-turn") {
-    // Every bulb point is smooth, and turning one handle would kink it.
-    return [];
-  }
+  const turn = behaviorName === "generated-handle-turn";
   const equalize =
     behaviorName?.startsWith("equalize") === true ||
     behaviorName === "alternate" ||
     behaviorName === "alternate-constrain";
   const items = (parseSelection([...selection]).editableGeneratedHandle || [])
     .filter(isBulbSelectionItem)
-    .map((item) => parseEditableGeneratedHandleKey(`editableGeneratedHandle/${item}`));
+    .map((item) => parseEditableGeneratedHandleKey(`editableGeneratedHandle/${item}`))
+    .filter(
+      (item) =>
+        !(item.side === "bulb-entry" && item.role === "in") &&
+        (!turn || item.side === "bulb-neck")
+    );
   return makeBulbEntries(layerGlyph, items, options, (station, stored, item) => {
     const slot = item.role;
     const other = slot === "in" ? "out" : "in";
@@ -81,6 +91,16 @@ export function createBulbHandleTargetEntries(
     const axis =
       unit(station.point, handle) ??
       (slot === "in" ? scale(station.tangent, -1) : station.tangent);
+    if (turn)
+      return (delta) => {
+        const a = { x: handle.x - station.point.x, y: handle.y - station.point.y };
+        const b = { x: a.x + delta.x, y: a.y + delta.y };
+        return {
+          turn:
+            stored.turn +
+            0.5 * Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y),
+        };
+      };
     return (delta) => {
       const along = dot(delta, axis);
       const values = { [slot]: Math.round(stored[slot] + along) };
@@ -184,10 +204,21 @@ function readStation(skeletonData, path, contourId, pointId, side) {
   if (!point) return null;
   const before = at("in");
   const after = at("out");
+  const address = findGeneratedPathAddress(
+    skeletonData,
+    contourId,
+    pointId,
+    side,
+    "onCurve"
+  );
+  const origin = skeletonData.generated?.find(
+    (entry) => entry.pathContourIndex === address?.pathContourIndex
+  )?.pointMap[address?.contourPointIndex];
   const tangent =
     (before && after && unit(before, after)) ||
     (after && unit(point, after)) ||
-    (before && unit(before, point));
+    (before && unit(before, point)) ||
+    origin?.bulbTangent;
   return { point, before, after, tangent };
 }
 
