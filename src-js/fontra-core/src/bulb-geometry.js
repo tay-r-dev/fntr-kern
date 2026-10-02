@@ -1,7 +1,7 @@
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature, harmonizeBulb } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
-import { makeSlideCandidate } from "./point-slide.js";
+import { makeSlideCandidate, projectPointToSegment } from "./point-slide.js";
 import { boundedEasingHandles } from "./serif-geometry.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
@@ -282,8 +282,8 @@ export function buildFourPointBulb({
   const retreat = easing * Math.min(0.55, 0.75 * room);
   const thetaA = thetaCut - retreat;
   const easeDistance = easing * Math.min(radius, 0.9 * arcLength(inner, cut, 1));
-  let cutParameter = wallParameterAtDistance(inner, cut, easeDistance);
-  let keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
+  const cutParameter = wallParameterAtDistance(inner, cut, easeDistance);
+  const keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
     ...inner[i],
     ...p,
   }));
@@ -322,10 +322,26 @@ export function buildFourPointBulb({
           neckShare
         ).points
       : returnAndNeck;
+  if (easing > 0) {
+    // The terminal cubic now also carries the wall. At small easing its
+    // tangent must start toward that wall, not back along the disappearing
+    // N-W fillet (which would loop when expanded into a whole wall span).
+    const tangent = ball.tangentAt(side.theta);
+    for (const [i, sign] of [[2, -1], [4, 1]]) {
+      merged[i] = handle(merged[3], tangent, sign * vector.distance(merged[i], merged[3]));
+    }
+  }
+  // W is only a fitting sample, never an emitted on-curve. Merge N-W and the
+  // retained W-Q wall into one cubic ending at the existing wall point Q.
+  const wallRun = [...merged.slice(3), ...keptInner.slice(1)];
+  const neckWall = coincident && easing === 0
+    ? keptInner
+    : makeSlideCandidate({ points: wallRun, isClosed: false }, 3, "previous", 0).points.slice(3);
   let points = [
     ...entry.firstArc,
     ...ballArc(ball, bottom.theta, side.theta).slice(1),
-    ...merged.slice(1),
+    ...merged.slice(1, 4),
+    ...neckWall.slice(1),
   ];
   points[9].smooth = easing > 0;
   points[9].skipColinear = true;
@@ -347,7 +363,7 @@ export function buildFourPointBulb({
   const roles = ["entry", "bottom", "side", "neck"];
   for (let k = 0; k < roles.length; k++) {
     const edit = edits?.[roles[k]];
-    if (!edit) continue;
+    if (!edit || !["slide", "normal", "turn", "in", "out", "carry"].some((field) => edit[field])) continue;
     const i = 3 * k,
       before = { ...points[i] };
     let tangent = tangents[k];
@@ -376,10 +392,30 @@ export function buildFourPointBulb({
           (edit[slot] ?? 0) +
           sign * ((k ? (edit.carry ?? 0) : 0) - slide)
       );
-      points[h] = handle(points[i], tangent, sign * length);
+      if (k === 3 && easing === 0) {
+        // A corner's two handle directions are independent, including after
+        // normalization has supplied a record containing only zero edits.
+        const direction = unit(sub(points[h], before));
+        const angle = clamp(edit.turn ?? 0, -Math.PI / 2, Math.PI / 2);
+        const rotated = { x: direction.x * Math.cos(angle) - direction.y * Math.sin(angle),
+          y: direction.x * Math.sin(angle) + direction.y * Math.cos(angle) };
+        points[h] = handle(points[i], rotated, length);
+      } else points[h] = handle(points[i], tangent, sign * length);
     }
   }
   const preferred = points.map((p) => ({ ...p }));
+  // The retained wall is a shape target as well as an endpoint condition.
+  // Matching curvature alone can select a very different N-Q control net.
+  const curveTargets = easing > 0 ? Array.from({ length: 8 }, (_, i) => {
+    const point = cubicPointAt(keptInner, i / 8);
+    const { t } = projectPointToSegment({ kind: "cubic", points: points.slice(9) }, point);
+    return { start: 9, t, point, weight: 100 * (i / 8) ** 2 };
+  }) : [];
+  if (easing > 0) for (let i = 1; i <= 8; i++) {
+    const point = cubicPointAt(returnArc, 0.7 * i / 8);
+    const { t } = projectPointToSegment({ kind: "cubic", points: points.slice(6, 10) }, point);
+    curveTargets.push({ start: 6, t, point, weight: 100 });
+  }
   // G2 is subordinate to retaining the ball, not permission to redraw it.
   // The B-C quarter stays within 4% of R of its ball preference. C-N includes
   // the transition, so its handles and N's position/angle must remain free.
@@ -396,50 +432,27 @@ export function buildFourPointBulb({
     wall: entry.wall,
     radius,
     corner: easing === 0,
-    nextCurvature: easing > 0 ? bulbEndCurvature(keptInner) : undefined,
+    nextCurvature: bulbEndCurvature(inner, true),
     movePoints: true,
     apexMotion: 0.04,
-    neckMotion: 0.35 * easing,
-    neckTurn: 1.2 * easing,
+    neckMotion: easing > 0 ? 0.35 : 0,
+    neckTurn: easing > 0 ? 1.2 : 0,
     neckForwardOnly: true,
+    preferenceWeights: { 9: 4, 10: 16, 11: 16 },
+    curveTargets,
     lengthBounds,
   });
   points = result.points;
   // Authorial V-slide runs on the emitted geometry and is not subsequently
-  // pulled back by the optimizer. The cut wall is never part of a refit.
+  // pulled back by the optimizer. Q remains the existing wall point.
   const v = clamp(edits?.neck?.vslide ?? 0, -0.8, 0.8);
   if (v) {
-    if (coincident && v > 0) {
-      const run = [...points.slice(0, 10), ...keptInner.slice(1)];
-      const candidate = makeSlideCandidate(
-        { points: run, isClosed: false },
-        9,
-        "next",
-        v
-      ).points;
-      keptInner = candidate.slice(9, 13);
-      cutParameter += (1 - cutParameter) * v;
-      const n = candidate[9];
-      points = [
-        ...candidate.slice(0, 10),
-        handle(n, tN, 0),
-        handle(n, tW, 0),
-        { ...n },
-      ];
-    } else if (coincident && v < 0) {
-      const split = splitCubicAt(points.slice(6, 10), 1 + v);
-      const attributes = points.slice(6, 10);
-      const first = split.first.map((p, i) => ({ ...attributes[i], ...p }));
-      const second = split.second.map((p, i) => ({ ...attributes[i], ...p }));
-      points = [...points.slice(0, 6), ...first, ...second.slice(1)];
-    } else {
-      points = makeSlideCandidate(
+    points = makeSlideCandidate(
         { points, isClosed: false },
         9,
         v < 0 ? "previous" : "next",
         v < 0 ? 1 + v : v
       ).points;
-    }
     // Restore the comb by adjusting lengths only. N's projected position and
     // tangent, and all other on-curves, are fixed during this second solve.
     Object.assign(
@@ -449,21 +462,21 @@ export function buildFourPointBulb({
         wall: entry.wall,
         radius,
         corner: easing === 0,
-        nextCurvature: easing > 0 ? bulbEndCurvature(keptInner) : undefined,
+        nextCurvature: bulbEndCurvature(inner, true),
         movePoints: false,
         lengthBounds,
       })
     );
     points = result.points;
   }
-  keptInner[0] = points[12];
   const neckTangent = unit(sub(points[9], points[8]));
   return {
     ...result,
     points,
     preferred,
     wall: entry.wall,
-    keptInner,
+    keptInner: [points[12]],
+    referenceWall: keptInner,
     ball,
     tangents: [...tangents.slice(0, 3), neckTangent],
     cutParameter,

@@ -1,4 +1,5 @@
 import * as vector from "./vector.js";
+import { cubicPointAt } from "./offset-contour.js";
 
 // Signed endpoint curvature, in traversal order. Comparing magnitudes would
 // accept a convex-to-concave jump as a match.
@@ -36,6 +37,8 @@ export function harmonizeBulb({
   neckMotion = 0.15,
   neckTurn = 0.35,
   neckForwardOnly = false,
+  preferenceWeights = null,
+  curveTargets = [],
 }) {
   const anchors = [0, 3, 6, 9, 12].map((i) => points[i]);
   const handles = [1, 2, 4, 5, 7, 8, 10, 11];
@@ -135,11 +138,19 @@ export function harmonizeBulb({
   };
   let q = Array(count).fill(0);
   const initial = place(q);
-  const displacement = (q) =>
-    place(q).flatMap((p, i) => [
-      (p.x - initial[i].x) / scale,
-      (p.y - initial[i].y) / scale,
+  const displacement = (q) => {
+    const placed = place(q);
+    const result = placed.flatMap((p, i) => [
+      ((p.x - initial[i].x) / scale) * Math.sqrt(preferenceWeights?.[i] ?? 1),
+      ((p.y - initial[i].y) / scale) * Math.sqrt(preferenceWeights?.[i] ?? 1),
     ]);
+    for (const target of curveTargets) {
+      const p = cubicPointAt(placed.slice(target.start, target.start + 4), target.t);
+      const weight = Math.sqrt(target.weight ?? 1) / scale;
+      result.push((p.x - target.point.x) * weight, (p.y - target.point.y) * weight);
+    }
+    return result;
+  };
   const norm = (v) => dotArray(v, v);
   const merit = (q, weight) => norm(residuals(q)) + weight * norm(displacement(q));
   // First prefer small physical displacement, then tighten the five joins.

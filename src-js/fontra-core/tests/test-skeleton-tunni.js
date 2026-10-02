@@ -1274,8 +1274,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(edit.tension).to.be.closeTo(0.5, 1e-3);
   });
 
-  it("keeps the crisp inner incision when easing is zero", () => {
-    expect(neckSegments({ capBallEasing: 0 })).to.have.length(0);
+  it("keeps a handled neck-to-wall span when easing is zero", () => {
+    expect(neckSegments({ capBallEasing: 0 })).to.have.length(1);
   });
 
   it("addresses a neck drag to the cap field, not to a side's pin", () => {
@@ -1313,9 +1313,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
     expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
   });
 
-  // The inner wall piece the cap cut keeps its gizmo at every easing: the neck
-  // is a separate curve now, not merged into it.
-  it("keeps both wall gizmos alongside the separate neck easing", () => {
+  it("keeps the outer wall gizmo and one combined neck-to-wall gizmo", () => {
     for (const capBallEasing of [0, 0.5, 0.9, 1]) {
       const layer = makeBulbGlyph({ capBallEasing, capBallSide: "left" });
       const walls = buildGeneratedTunniSegments(
@@ -1323,11 +1321,11 @@ describe("the curvature gizmo at a bulb terminal", () => {
         layer.path
       ).filter((segment) => !segment.bulb && !segment.provenance[1]?.capCurvatureField);
       expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
-      expect(walls.filter((segment) => segment.side === "right")).to.have.length(1);
+      expect(walls.filter((segment) => segment.side === "right")).to.have.length(0);
       const snapshots = walls.filter((segment) =>
         segment.provenance.some((entry) => entry?.constructionSegment)
       );
-      expect(snapshots).to.have.length(2);
+      expect(snapshots).to.have.length(1);
       expect(snapshots.some((segment) => segment.side === "left")).to.equal(true);
     }
   });

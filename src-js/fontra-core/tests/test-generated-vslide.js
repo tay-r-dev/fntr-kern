@@ -270,11 +270,13 @@ describe("V-slide of generated points, through the editor's entry", () => {
       const n = map.findIndex(
         (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
       );
-      const w = map.findIndex((m) => m?.bulbWallCut);
+      const q = map.findIndex((m) => m?.skeletonPointId === 5 &&
+        m.side === map[n].side && m.role === "onCurve" && !m.bulbRole);
       const start = at(n);
-      expect(Math.hypot(start.x - at(w).x, start.y - at(w).y)).to.be.below(1e-8);
-      const step = (n + 3) % map.length === w ? 1 : -1;
-      const wall = new Bezier(Array.from({ length: 4 }, (_, k) => at(w + k * step)));
+      expect(q).to.be.at.least(0);
+      const step = (n + 3) % map.length === q ? 1 : -1;
+      expect((n + 3 * step + map.length) % map.length).to.equal(q);
+      const wall = new Bezier(Array.from({ length: 4 }, (_, k) => at(n + k * step)));
       const pointer = wall.get(0.25);
       await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", start, pointer);
       const end = pathPoint(

@@ -406,18 +406,6 @@ function createGeneratedSlideTargetEntries(
   if (!adjacent.previous && !adjacent.next) return [];
   const forward = generatedSlideForward(contour, found, item);
   const point = contour.points[found.index];
-  // At zero easing N and the wall cut coincide. Project onto the retained
-  // wall beyond that zero-length connector, as the generator does for V.
-  if (
-    item.bulbRole === "neck" &&
-    adjacent[forward]?.points.every((p) => vector.distance(p, point) < 1e-8)
-  ) {
-    const direction = forward === "next" ? 1 : -1;
-    const wallIndex =
-      (found.index + 3 * direction + contour.points.length) % contour.points.length;
-    if (found.pointMap[wallIndex]?.bulbWallCut)
-      adjacent[forward] = getSlidableSegments(contour, wallIndex)[forward];
-  }
   const projectedShare = (pointer) => {
     const destination = chooseSlideInterval(adjacent, pointer, point);
     if (!destination) return null;

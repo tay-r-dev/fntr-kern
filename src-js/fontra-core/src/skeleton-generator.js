@@ -6598,17 +6598,14 @@ function buildDropCap({
     points[i].smooth = role !== "neck" || easing > 0;
     points[i].skipColinear = true;
   });
-  // W is a cut on the generated inner wall. Everything after it remains an
-  // exact subdivision of that wall, including its handle at the previous point.
+  // The neck joins Q, the existing inner-wall on-curve. No separate wall-cut
+  // point is emitted. Preserve Q's identity and every wall segment beyond it.
   const originalInner = awayFromRib(innerPiece.segmentPoints);
   points[12]._provenance = {
-    ...originalInner[0]._provenance,
-    bulbWallCut: true,
-    bulbWallParameter: result.cutParameter,
-    constructionSegment: innerPiece.segmentPoints.map(({ x, y }) => ({ x, y })),
+    ...originalInner.at(-1)._provenance,
   };
   points[12].skipColinear = true;
-  points[12].smooth = easing > 0;
+  points[12].smooth = originalInner.at(-1).smooth;
   result.keptInner[0] = points[12];
   const tension = calculateSegmentTension(
     points[10],
