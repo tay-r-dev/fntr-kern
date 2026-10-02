@@ -223,13 +223,21 @@ export class CanvasController {
       }
     } else {
       const scaleDown = clunkyScrollWheel ? 3 : 1;
+      const step = { x: 0, y: 0 };
       if (Math.abs(deltaX) > Math.abs(deltaY)) {
-        this.origin.x -= deltaX / scaleDown;
+        step.x = -deltaX / scaleDown;
       } else {
-        this.origin[event.shiftKey ? "x" : "y"] -= deltaY / scaleDown;
+        step[event.shiftKey ? "x" : "y"] = -deltaY / scaleDown;
       }
-      this.requestUpdate();
-      this._dispatchEvent("viewBoxChanged", "origin");
+      if (clunkyScrollWheel) {
+        // A wheel notch is one big jump; glide through it, as the zoom does.
+        this._glideScroll(step);
+      } else {
+        this.origin.x += step.x;
+        this.origin.y += step.y;
+        this.requestUpdate();
+        this._dispatchEvent("viewBoxChanged", "origin");
+      }
     }
   }
 
@@ -346,6 +354,42 @@ export class CanvasController {
       // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
       const share = 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
       this._doPinchMagnify(glide.anchor, Math.exp(remaining * share));
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // Eases the origin through the distance the notches still owe. A notch
+  // arriving mid-glide adds to that distance, so a fast spin is one continuous
+  // scroll. The glide moves the origin by increments, so a pan made by other
+  // means during it is kept.
+  _glideScroll(step) {
+    const glide = this._scrollGlide;
+    if (glide) {
+      glide.x += step.x;
+      glide.y += step.y;
+      return;
+    }
+    this._scrollGlide = { x: step.x, y: step.y, time: performance.now() };
+    const tick = (now) => {
+      const glide = this._scrollGlide;
+      const dt = Math.max(0, now - glide.time);
+      glide.time = now;
+      const done = Math.hypot(glide.x, glide.y) < 0.5;
+      // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
+      const share = done ? 1 : 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
+      const dx = glide.x * share;
+      const dy = glide.y * share;
+      glide.x -= dx;
+      glide.y -= dy;
+      this.origin.x += dx;
+      this.origin.y += dy;
+      this.requestUpdate();
+      this._dispatchEvent("viewBoxChanged", "origin");
+      if (done) {
+        delete this._scrollGlide;
+        return;
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
