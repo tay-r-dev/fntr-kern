@@ -451,15 +451,16 @@ export function buildFourPointBulb({
       curveTargets.push({ start, t, point, weight: index === 5 ? 16 : 8 });
     }
   });
-  // G2 is subordinate to retaining the ball, not permission to redraw it.
-  // The B-C quarter stays within 4% of R of its ball preference. C-N includes
-  // the transition, so its handles and N's position/angle must remain free.
+  // Keep apex motion small, but allow the body handles to distribute curvature.
+  // A 4%-of-R handle budget trapped nearly vertical entries between the flatter
+  // wall and round ball, leaving visible comb steps at E and B. Reference
+  // samples still select the closest shape among the harmonized candidates.
   const handleIndices = [1, 2, 4, 5, 7, 8, 10, 11],
     anchors = [0, 3, 3, 6, 6, 9, 9, 12];
   const lengthBounds = handleIndices.map((h, k) => {
     if (k < 2 || k > 3) return null;
     const length = vector.distance(points[h], points[anchors[k]]);
-    const budget = radius * 0.04;
+    const budget = radius * 0.4;
     return [Math.max(0.001 * radius, length - budget), length + budget];
   });
   const result = harmonizeBulb({
@@ -475,8 +476,8 @@ export function buildFourPointBulb({
     neckForwardOnly: true,
     preferenceWeights: { 9: 4, 10: 16, 11: 16 },
     curveTargets,
-    shapeWeight: 0.02,
-    maxIterations: 80,
+    shapeWeight: 0.00001,
+    maxIterations: 160,
     lengthBounds,
   });
   points = result.points;

@@ -2903,3 +2903,19 @@ outer skeleton cubic; next-rib width and distant-point edits retain the bulb
 with zero E/B/C/N movement and no preview markers; a terminal size edit activates
 preview. Easing 0 emits a corner; 0.01, 0.49 and 1 emit smooth vertical-tangent
 necks. Syntax checks only otherwise; no bundle or full test-suite run.
+
+
+### Near-vertical bulb curvature (2026-10-02)
+
+The supplied lslash(1) has a vertical incoming wall with much lower curvature
+than the ball. The 4%-of-radius body-handle limits prevented the joint solver
+from matching the entry and bottom joins. This was a bounded fit residual, not
+an angle-specific point-count change. Allow body handles 40% of radius while
+keeping apex motion at 4%; reduce the persistent reference penalty from 0.02 to
+0.00001 and allow 160 final-fit iterations. Preview and wall splice are unchanged.
+
+On the supplied glyph the normalized curvature residual drops from 0.43808 to
+0.00002513. Sampling the three bulb body spans against the supplied outline
+finds a maximum change of about 5.22 glyph units. Perturbing the terminal handle
+across vertical retains matched E/B/C joins. Corner N remains deliberately
+excluded at zero easing. No bundle or full-suite run for this iteration.
