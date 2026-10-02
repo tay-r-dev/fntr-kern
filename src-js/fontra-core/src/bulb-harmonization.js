@@ -29,9 +29,13 @@ export function harmonizeBulb({
   nextCurvature,
   radius,
   corner = false,
-  neckScale = 1,
   movePoints = false,
   turnNeck = true,
+  lengthBounds = null,
+  apexMotion = 0.15,
+  neckMotion = 0.15,
+  neckTurn = 0.35,
+  neckForwardOnly = false,
 }) {
   const anchors = [0, 3, 6, 9, 12].map((i) => points[i]);
   const handles = [1, 2, 4, 5, 7, 8, 10, 11];
@@ -45,15 +49,22 @@ export function harmonizeBulb({
   const scale = Math.max(radius, 1e-6);
   const targetEntry = bulbEndCurvature(wall, true);
   const count = movePoints ? (turnNeck ? 13 : 12) : 8;
-  const place = (q, virtualNeck = false) => {
+  const place = (q) => {
     const a = anchors.map((p) => ({ ...p }));
     const axes = directions.map((d) => ({ ...d }));
     if (movePoints) {
-      a[1] = { ...a[1], ...shift(a[1], axes[2], 0.15 * scale * Math.tanh(q[8])) };
-      a[2] = { ...a[2], ...shift(a[2], axes[4], 0.15 * scale * Math.tanh(q[9])) };
-      a[3].x += 0.15 * scale * Math.tanh(q[10]);
-      a[3].y += 0.15 * scale * Math.tanh(q[11]);
-      const turn = turnNeck ? 0.35 * Math.tanh(q[12]) : 0;
+      a[1] = { ...a[1], ...shift(a[1], axes[2], apexMotion * scale * Math.tanh(q[8])) };
+      a[2] = { ...a[2], ...shift(a[2], axes[4], apexMotion * scale * Math.tanh(q[9])) };
+      a[3].x += neckMotion * scale * Math.tanh(q[10]);
+      a[3].y += neckMotion * scale * Math.tanh(q[11]);
+      if (neckForwardOnly) {
+        // Pulling N back toward C creates a second, folded short-span solution.
+        // Automatic easing advances into the wall; authored edits set the seed.
+        const delta = vector.subVectors(a[3], anchors[3]);
+        const retreat = Math.min(0, delta.x * axes[4].x + delta.y * axes[4].y);
+        a[3] = { ...a[3], ...shift(a[3], axes[4], -retreat) };
+      }
+      const turn = turnNeck ? neckTurn * Math.tanh(q[12]) : 0;
       for (const k of [5, 6]) {
         const d = axes[k];
         axes[k] = {
@@ -80,8 +91,17 @@ export function harmonizeBulb({
         if (reaches.every((r) => r > 0)) limits = reaches;
       }
       for (let j = k; j < k + 2; j++) {
-        const limit = Math.max(scale * 1e-6, limits[j - k]);
-        const floor = Math.min(0.02 * scale, 0.25 * lengths[j], 0.1 * limit);
+        const limit = Math.max(
+          scale * 1e-6,
+          Math.min(limits[j - k], lengthBounds?.[j]?.[1] ?? Infinity)
+        );
+        const floor = Math.min(
+          0.999 * limit,
+          Math.max(
+            lengthBounds?.[j]?.[0] ?? 0,
+            Math.min(0.02 * scale, 0.25 * lengths[j], 0.1 * limit)
+          )
+        );
         const fraction = Math.min(
           0.999999,
           Math.max(1e-7, (lengths[j] - floor) / (limit - floor))
@@ -92,64 +112,31 @@ export function harmonizeBulb({
             ? 0
             : floor +
               ((limit - floor) * odds * Math.exp(q[j])) / (1 + odds * Math.exp(q[j]));
-        Object.assign(
-          placed[handles[j]],
-          shift(
-            a[anchorOf[j]],
-            axes[j],
-            length * (!virtualNeck && (j === 5 || j === 6) ? neckScale : 1)
-          )
-        );
+        Object.assign(placed[handles[j]], shift(a[anchorOf[j]], axes[j], length));
       }
     }
     return placed;
   };
-  // Multiply curvature equalities by their positive squared handle lengths.
-  // This removes divisions by shrinking handles from the solve. At N use the
-  // uncollapsed handles: the common easing squared cancels from both sides,
-  // including the limit at zero. Actual endpoint curvatures still verify the
-  // result; a collapsed or bounded span is never reported as an exact match.
-  const endData = (curve, end = false) => {
-    const p = end ? [...curve].reverse() : curve;
-    const d = vector.subVectors(p[1], p[0]);
-    const length = Math.hypot(d.x, d.y);
-    const tangent = vector.mulVectorScalar(unit(d), end ? -1 : 1);
-    return { bend: cross(tangent, vector.subVectors(p[2], p[0])), length };
-  };
-  const residuals = (q, measured = false) => {
-    const p = place(q),
-      virtual = place(q, true);
+  // Measure signed curvature directly. Multiplying by handle lengths made a
+  // short transition look solved while its visible comb still had a jump.
+  const residuals = (q) => {
+    const p = place(q);
     const curves = [0, 3, 6, 9].map((i) => p.slice(i, i + 4));
-    const first = endData(curves[0]);
-    const r = [(first.bend - 1.5 * targetEntry * first.length ** 2) / scale];
-    if (measured) r[0] = (bulbEndCurvature(curves[0]) - targetEntry) * scale;
+    const r = [(bulbEndCurvature(curves[0]) - targetEntry) * scale];
     for (let i = 1; i < 4; i++) {
       if (i === 3 && corner) continue;
-      const left = i === 3 ? virtual.slice(6, 10) : curves[i - 1];
-      const right = i === 3 ? virtual.slice(9, 13) : curves[i];
-      const a = endData(left, true),
-        b = endData(right);
       r.push(
-        measured
-          ? (bulbEndCurvature(left, true) - bulbEndCurvature(right)) * scale
-          : (a.bend * b.length ** 2 - b.bend * a.length ** 2) /
-              (scale * Math.max(1e-20, a.length ** 2 + b.length ** 2))
+        (bulbEndCurvature(curves[i - 1], true) - bulbEndCurvature(curves[i])) * scale
       );
     }
-    if (Number.isFinite(nextCurvature)) {
-      const last = endData(curves[3], true);
-      r.push(
-        measured
-          ? (bulbEndCurvature(curves[3], true) - nextCurvature) * scale
-          : (last.bend - 1.5 * nextCurvature * last.length ** 2) / scale
-      );
-    }
+    if (Number.isFinite(nextCurvature))
+      r.push((bulbEndCurvature(curves[3], true) - nextCurvature) * scale);
     return r;
   };
   let q = Array(count).fill(0);
-  const initial = place(q, true);
+  const initial = place(q);
   const displacement = (q) =>
-    place(q, true).flatMap((p, i) => [
+    place(q).flatMap((p, i) => [
       (p.x - initial[i].x) / scale,
       (p.y - initial[i].y) / scale,
     ]);
@@ -159,7 +146,8 @@ export function harmonizeBulb({
   // Penalizing log-length changes instead made a short neck handle as costly
   // to move as the long wall handle, and selected visibly different solutions
   // on neighboring slider samples. All iterations start from this frame's seed.
-  for (let iteration = 0; iteration < 140; iteration++) {
+  for (let iteration = 0; iteration < 240; iteration++) {
+    if (iteration >= 140 && Math.max(...residuals(q).map(Math.abs)) < 1e-6) break;
     const r = residuals(q),
       d = displacement(q);
     const weight = iteration < 100 ? 1e-4 : 1e-9;
@@ -202,13 +190,13 @@ export function harmonizeBulb({
       }
     }
   }
-  const error = Math.max(...residuals(q, true).map(Math.abs));
-  const virtual = place(q, true);
+  const error = Math.max(...residuals(q).map(Math.abs));
+  const solved = place(q);
   return {
-    points: place(q),
+    points: solved,
     error,
     status: error < 1e-5 ? "matched" : "bounded",
-    neckTangent: unit(vector.subVectors(virtual[10], virtual[8])),
+    neckTangent: unit(vector.subVectors(solved[10], solved[8])),
   };
 }
 

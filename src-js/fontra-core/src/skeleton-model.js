@@ -4458,7 +4458,9 @@ export function findGeneratedPathAddress(skeletonData, contourId, pointId, side,
       const provenance = pointMap[contourPointIndex];
       const matches = bulbRole
         ? provenance?.bulbRole === bulbRole && provenance.bulbSlot === role
-        : provenance?.side === side && provenance.role === role;
+        : provenance?.side === side &&
+          provenance.role === role &&
+          provenance.bulbRole !== "neck";
       if (provenance?.skeletonPointId === numericPointId && matches) {
         return {
           pathContourIndex: generatedEntry.pathContourIndex,

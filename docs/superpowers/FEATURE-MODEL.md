@@ -553,49 +553,43 @@ The bulb always has four owned on-curves, in outer-to-inner order:
 | C | Return-side horizontal apex | Vertical handles; bounded tangential slide; both lengths adjustable. |
 | N | Shared neck | Position, tangent, both lengths, and V-slide. Corner at zero easing; smooth above zero. |
 
-W is the next existing inner-wall on-curve, not a fifth bulb point. The four
-spans are E–B, B–C, C–N and N–W. Only the terminal inner-wall segment is replaced;
-W and the rest of that wall retain their identities. Its following curvature,
-when available, is a boundary condition, and its incoming handle participates.
+P is the outer-wall point before E. Its outgoing handle participates in the
+splice. When E lies on the wall, exact subdivision changes both wall handles.
+When E lies on the first ball arc, the shared V-slide fitter adjusts P–E,
+including P's handle, and retains the remaining ball arc. That second case is
+a fit; it does not promise exact equality with the original wall.
 
-`bulb-geometry.js` grows the rib-based preference first, then solves the outer
-wall's x-derivative for E. De Casteljau subdivision keeps the retained wall
-exact. The neck seed uses one fixed inner-wall interval and a continuous lateral
-limit near C. There is no changing intersection count, consumed-segment count,
-previous-drag memory, or axis-role swap.
+W is a cut on the terminal inner-wall cubic. W and the retained wall are a
+De Casteljau subdivision. The wall's previous on-curve remains in the outline.
+Both wall pieces keep their original construction snapshots and gizmos.
 
-`bulb-harmonization.js` solves eight handle lengths together with bounded B/C
-slides and N position/tangent adjustments. It matches **signed** curvature at
-E, B, C, N and W. B/C motion is limited to 15% of R along their tangent; N has
-15% of R per coordinate and 0.35 radians of automatic tangent adjustment. E and
-W stay fixed. Convex body handles stay inside their tangent triangles; C–N may
-inflect and has no such triangle constraint. A preference for small physical
-movement keeps the solution near the constructed ball.
+At zero easing N belongs to the ball. Where the ball meets the wall, N and W
+coincide; only their connector collapses. N retains its incoming ball handle
+and is a corner. As easing increases, the construction retreats its implicit
+shoulder along the ball and advances W along the inner wall. N moves into the
+transition between them. C–N fits the return arc and the start of that
+transition; N–W finishes it. The shoulder is not an emitted on-curve.
 
-Easing multiplies both N handles. At zero both collapse, retaining N's corner
-and the same topology. Their common easing factor cancels from N's curvature
-equation, so the solve uses the same limiting equation at zero. Neck curvature
-changes its preferred outgoing length before the shared solve. This is a
-construction target, not an independent final tension pin.
+The joint solve adjusts all eight handle lengths. B/C tangential motion and
+the B–C handle-length changes are bounded by 4% of R. N can move and turn within
+bounds that grow with easing. E and W remain fixed. Signed curvature is matched
+at E, B, C, N and W; N is excluded at zero easing. The small physical-displacement
+preference keeps the solve near the construction. A bounded result publishes
+its residual in `bulbHarmonizationError`; it is not a universal existence proof.
 
-Z/Alt slides and handle-length edits also enter before harmonization. N additionally
-supports a plain drag in both directions, Shift+Z to turn its common tangent, and
-V-slide. E and its incoming handle cannot be moved independently of the wall.
-The neck gizmo publishes its construction tension and stored target; a still
-grab preserves that target, including after other edits. All writes use
-`editSkeleton`, including undo. The outer wall retains its original construction
-snapshot for its gizmo. The former inner-wall terminal gizmo belongs to N–W now.
+Z/Alt movement and handle edits set the preference before harmonization. N also
+supports normal movement and Shift+Z tangent rotation. V-slide runs on the
+harmonized outline, followed by a handle-only solve with N's projected position
+fixed. At zero easing the editor projects through the coincident W onto the
+retained wall. A still grab preserves the stored value. All writes use
+`editSkeleton`, including undo. The neck gizmo publishes its construction
+snapshot and stored curvature target.
 
-The solved bulb and its wall boundary curves deliberately retain fractional
-coordinates. Rounding them independently breaks exact subdivision, axis alignment
-and curvature continuity. Ordinary generated geometry still follows the grid rule.
-
-There are genuine constraint conflicts. A diagonal straight wall, for example,
-has no vertical tangent at which to place E. Such a case preserves the wall and
-publishes `bulbEntryOrthogonal: false`. A bounded solve that cannot match all
-joins publishes its residual in `bulbHarmonizationError`; it does not refit the
-outer wall to hide the mismatch. A vertical-tangent root appearing or disappearing
-on a different wall shape is not covered by the continuous parameter-sweep guarantee.
+The solved bulb and its boundary wall curves retain fractional coordinates.
+Independent rounding would break exact subdivision and curvature continuity.
+Ordinary generated geometry still follows the grid rule. Entry roots and ball/
+wall contacts are chosen from the current geometry, without gesture memory;
+root changes on other skeleton shapes are not covered by the parameter sweeps.
 
 ### Step 5 — Assembly
 

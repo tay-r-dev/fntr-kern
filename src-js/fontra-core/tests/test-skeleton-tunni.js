@@ -1315,21 +1315,19 @@ describe("the curvature gizmo at a bulb terminal", () => {
 
   // The inner wall piece the cap cut keeps its gizmo at every easing: the neck
   // is a separate curve now, not merged into it.
-  // At easing 1 the release reaches the wall's far on-curve and the piece
-  // collapses, which offers no gizmo.
-  it("keeps the outer wall gizmo and gives the replaced inner span to the neck", () => {
-    for (const capBallEasing of [0, 0.5, 0.9]) {
+  it("keeps both wall gizmos alongside the separate neck easing", () => {
+    for (const capBallEasing of [0, 0.5, 0.9, 1]) {
       const layer = makeBulbGlyph({ capBallEasing, capBallSide: "left" });
       const walls = buildGeneratedTunniSegments(
         getSkeletonData(layer),
         layer.path
       ).filter((segment) => !segment.bulb && !segment.provenance[1]?.capCurvatureField);
       expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
-      expect(walls.filter((segment) => segment.side === "right")).to.have.length(0);
+      expect(walls.filter((segment) => segment.side === "right")).to.have.length(1);
       const snapshots = walls.filter((segment) =>
         segment.provenance.some((entry) => entry?.constructionSegment)
       );
-      expect(snapshots).to.have.length(1);
+      expect(snapshots).to.have.length(2);
       expect(snapshots.some((segment) => segment.side === "left")).to.equal(true);
     }
   });

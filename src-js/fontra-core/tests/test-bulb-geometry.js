@@ -48,13 +48,26 @@ function bulb(result) {
     map,
     indices,
     origin: map[indices[0]],
-    run: Array.from({ length: 16 }, (_, i) => at(i - 3)),
+    run: Array.from({ length: 19 }, (_, i) => at(i - 3)),
   };
 }
 function combStep(a, b) {
   const ka = new Bezier(a).curvature(1).k,
     kb = new Bezier(b).curvature(0).k;
   return Math.abs(ka - kb) / Math.max(1e-4, Math.abs(ka), Math.abs(kb));
+}
+function curveMovement(a, b) {
+  let largest = 0;
+  for (let i = 0; i + 3 < a.length; i += 3) {
+    const ca = new Bezier(a.slice(i, i + 4)),
+      cb = new Bezier(b.slice(i, i + 4));
+    for (let j = 0; j <= 20; j++) {
+      const p = ca.get(j / 20),
+        q = cb.get(j / 20);
+      largest = Math.max(largest, Math.hypot(p.x - q.x, p.y - q.y));
+    }
+  }
+  return largest;
 }
 function verifyApexes(run) {
   for (const [i, axis] of [
@@ -158,20 +171,82 @@ describe("four-point bulb construction", () => {
     ).to.be.greaterThan(10);
   });
 
-  it("has a continuous corner limit, with two collapsed handles only at zero easing", () => {
+  it("keeps N on the ball as a handled corner at zero easing", () => {
     const zero = bulb(generateFromSkeleton(specimen({ cap: { capBallEasing: 0 } })));
     expect(zero.run[12].smooth).to.not.equal(true);
-    for (const i of [11, 13]) {
-      expect(zero.run[i].x).to.equal(zero.run[12].x);
-      expect(zero.run[i].y).to.equal(zero.run[12].y);
-    }
+    expect(
+      Math.hypot(zero.run[11].x - zero.run[12].x, zero.run[11].y - zero.run[12].y)
+    ).to.be.greaterThan(1);
+    expect(zero.run[15].x).to.equal(zero.run[12].x);
+    expect(zero.run[15].y).to.equal(zero.run[12].y);
     const near = bulb(generateFromSkeleton(specimen({ cap: { capBallEasing: 1e-5 } })));
     expect(near.run[12].smooth).to.equal(true);
-    expect(
-      Math.max(
-        ...zero.run.map((p, i) => Math.hypot(p.x - near.run[i].x, p.y - near.run[i].y))
-      )
-    ).to.be.below(0.05);
+    expect(curveMovement(zero.run, near.run)).to.be.below(0.05);
+  });
+
+  it("uses P's outgoing handle when E moves onto the first ball arc", () => {
+    const wall = [
+      { x: 0, y: 100 },
+      { x: 30, y: 70, type: "cubic" },
+      { x: 60, y: 40, type: "cubic" },
+      { x: 90, y: 10 },
+    ];
+    const result = buildFourPointBulb({
+      wall,
+      radius: 50,
+      shape: 0,
+      easing: 0.5,
+      inner: [
+        { x: 33, y: -47 },
+        { x: 0, y: -10, type: "cubic" },
+        { x: -20, y: 20, type: "cubic" },
+        { x: -30, y: 30 },
+      ],
+    });
+    expect(result.entryBallParameter).to.be.within(0, 1);
+    expect(result.wall[0]).to.deep.equal(wall[0]);
+    expect(result.wall[1]).to.not.deep.equal(wall[1]);
+    expect(result.wall[2].x).to.be.closeTo(result.points[0].x, 1e-8);
+    expect(result.points[1].x).to.be.closeTo(result.points[0].x, 1e-8);
+  });
+
+  it("retains the round body and the exact inner wall in the reference configuration", () => {
+    // Approximate the curved walls in the annotated reference, in font axes.
+    const wall = [
+      { x: 547, y: -66 },
+      { x: 917, y: -66, type: "cubic" },
+      { x: 1182, y: -322, type: "cubic" },
+      { x: 785, y: -618 },
+    ];
+    const inner = [
+      { x: 685, y: -482 },
+      { x: 848, y: -322, type: "cubic" },
+      { x: 750, y: -145, type: "cubic" },
+      { x: 545, y: -145 },
+    ];
+    const source = new Bezier(inner);
+    let zero;
+    for (const easing of [0, 0.1, 0.3, 0.6, 1]) {
+      const r = buildFourPointBulb({ wall, inner, radius: 197, shape: 0, easing });
+      const body = new Bezier(r.points.slice(3, 7));
+      const retained = new Bezier(r.keptInner);
+      for (let i = 0; i <= 40; i++) {
+        const local = r.ball.localOf(body.get(i / 40));
+        expect(Math.abs(Math.hypot(local.u, local.v) - 1)).to.be.below(0.03);
+        const a = source.get(r.cutParameter + ((1 - r.cutParameter) * i) / 40);
+        const b = retained.get(i / 40);
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).to.be.below(1e-8);
+      }
+      expect(r.error, `easing=${easing}`).to.be.below(1e-5);
+      if (!easing) {
+        zero = r;
+        const local = r.ball.localOf(r.points[9]);
+        expect(Math.hypot(local.u, local.v)).to.be.closeTo(1, 1e-8);
+      } else {
+        expect(r.cutParameter).to.be.greaterThan(zero.cutParameter);
+        expect(r.points[9].y).to.be.greaterThan(zero.points[9].y);
+      }
+    }
   });
 
   it("does not depend on the previous glyph or slider history", () => {
@@ -183,7 +258,7 @@ describe("four-point bulb construction", () => {
   });
 
   it("keeps topology, curvature and point travel stable through parameter sweeps", function () {
-    this.timeout(30000);
+    this.timeout(90000);
     for (const field of [
       "capBallRatio",
       "capBallShape",
@@ -191,8 +266,11 @@ describe("four-point bulb construction", () => {
       "capBallEaseCurvature",
     ]) {
       let previous;
-      for (let i = 0; i <= 100; i++) {
-        const value = field === "capBallRatio" ? 0.5 + (2.5 * i) / 100 : i / 100;
+      // The circle/wall contact travels fastest as the diameter approaches
+      // the stroke width. Sample size at 0.005 intervals through that contact.
+      const steps = field === "capBallRatio" ? 500 : 100;
+      for (let i = 0; i <= steps; i++) {
+        const value = field === "capBallRatio" ? 0.5 + (2.5 * i) / steps : i / steps;
         const { points, run } = bulb(
           generateFromSkeleton(specimen({ cap: { [field]: value } }))
         );
@@ -200,25 +278,18 @@ describe("four-point bulb construction", () => {
         expect(
           points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
         ).to.equal(true);
-        for (let join = 3; join <= 12; join += 3) {
-          if (join === 12 && field === "capBallEasing" && i === 0) continue;
+        for (let join = 3; join <= 15; join += 3) {
+          if (join >= 12 && field === "capBallEasing" && i === 0) continue;
           expect(
             combStep(run.slice(join - 3, join + 1), run.slice(join, join + 4)),
             `${field}=${value}, join ${join}`
           ).to.be.below(0.001);
         }
         if (previous) {
-          expect(points.length).to.equal(previous.length);
-          expect(
-            Math.max(
-              ...points.map((p, k) =>
-                Math.hypot(p.x - previous[k].x, p.y - previous[k].y)
-              )
-            ),
-            `${field}=${value}`
-          ).to.be.below(5);
+          expect(points.length).to.equal(previous.count);
+          expect(curveMovement(run, previous.run), `${field}=${value}`).to.be.below(5);
         }
-        previous = points;
+        previous = { count: points.length, run };
       }
     }
   });

@@ -243,4 +243,46 @@ describe("V-slide of generated points, through the editor's entry", () => {
     await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", end, end);
     expect([...layer.path.coordinates]).to.deep.equal(before);
   });
+
+  it("V-slides a zero-easing corner neck into the retained wall", async () => {
+    for (const capBallSide of ["left", "right"]) {
+      const layer = await layerWith(
+        skeleton(
+          {},
+          {
+            capStyle: "drop",
+            capBallEasing: 0,
+            capBallSide,
+            capBallRatio: 2,
+          }
+        )
+      );
+      const data = globalThis.__model.getSkeletonData(layer);
+      const generated = data.generated[0];
+      const map = generated.pointMap;
+      const at = (i) =>
+        layer.path.getPoint(
+          layer.path.getAbsolutePointIndex(
+            generated.pathContourIndex,
+            (i + map.length) % map.length
+          )
+        );
+      const n = map.findIndex(
+        (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
+      );
+      const w = map.findIndex((m) => m?.bulbWallCut);
+      const start = at(n);
+      expect(Math.hypot(start.x - at(w).x, start.y - at(w).y)).to.be.below(1e-8);
+      const step = (n + 3) % map.length === w ? 1 : -1;
+      const wall = new Bezier(Array.from({ length: 4 }, (_, k) => at(w + k * step)));
+      const pointer = wall.get(0.25);
+      await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", start, pointer);
+      const end = pathPoint(
+        layer,
+        (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
+      );
+      expect(Math.hypot(end.x - start.x, end.y - start.y)).to.be.greaterThan(3);
+      expect(Math.hypot(end.x - pointer.x, end.y - pointer.y)).to.be.below(1.5);
+    }
+  });
 });

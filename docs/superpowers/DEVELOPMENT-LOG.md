@@ -2098,6 +2098,40 @@ published when the handle/movement bounds prevent G2. Changing the skeleton so
 that a different derivative root appears can still change the entry choice.
 Live canvas review remains with the designer's running watcher.
 
+### Ball shape, wall cut and neck correction (2026-10-02)
+
+The previous revision passed curvature checks while losing the ball shape. It
+also replaced the entire terminal inner-wall span, froze P's outgoing handle,
+and incorrectly collapsed both neck handles at zero easing. Those construction
+choices above are withdrawn.
+
+The reference drawing separates the initial ball from the easing. N is on the
+ball at zero easing and moves into the inner-wall transition as easing grows.
+The implementation now builds that reference first, then fits C–N through the
+return arc and the beginning of the transition. W is an exact cut of the inner
+wall, whose previous on-curve and remaining curve stay intact. The B–C quarter
+has explicit 4%-of-radius motion/length bounds. N can move and turn during the
+solve; fixing those degrees of freedom overconstrained the neck.
+
+P's outgoing handle now participates in the entry splice. An E on the wall uses
+an exact split; an E on the first ball arc uses the shared V-slide refit. The
+latter is an approximation and must not be described as an exact skeleton wall.
+
+N's incoming ball handle survives at zero easing. V-slide moves N on the emitted
+outline and then fixes its position during a handle-only harmonization. Its
+editor projection skips the collapsed connector to the retained wall at zero
+easing. Generic wall addresses exclude N, which has its own bulb address.
+
+Regression checks now measure the round body against the rib-grown ball, exact
+retained-wall samples, P's participation, the handled corner limit, all five
+signed-curvature joins, and the editor drag in both contour directions. Size is
+sampled more densely near circle/wall contact; travel checks measure the drawn
+curves rather than control-polygon motion alone. The earlier curvature-only
+checks were insufficient to verify the designer's intended shape.
+
+**Verification:** 2978 core tests pass. The reference-shaped outline was rendered
+at easing 0, 0.3, 0.6 and 1 and inspected against its initial ball. No bundle ran.
+
 ### Fixture gap
 
 No golden fixture moved for the corner rounding rework, the corpus carries no

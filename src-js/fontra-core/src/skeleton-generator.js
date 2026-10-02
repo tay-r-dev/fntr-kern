@@ -6558,7 +6558,6 @@ function buildDropCap({
   const result = buildFourPointBulb({
     wall,
     inner: awayFromRib(innerPiece.segmentPoints),
-    next: innerPieces[1] ? awayFromRib(innerPieces[1].segmentPoints) : null,
     radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
     shape: clampCapBallShape(capBallShape),
     easing,
@@ -6575,6 +6574,7 @@ function buildDropCap({
       ({ x, y }) => ({ x, y })
     ),
     bulbEntryParameter: result.entryParameter,
+    bulbEntryBallParameter: result.entryBallParameter,
     bulbEntryOrthogonal: result.orthogonalEntry,
     bulbHarmonizationError: result.error,
   };
@@ -6598,8 +6598,18 @@ function buildDropCap({
     points[i].smooth = role !== "neck" || easing > 0;
     points[i].skipColinear = true;
   });
-  // W is the existing inner-wall point, not a fifth bulb point. Its incoming
-  // handle belongs to the neck. The other half of its wall remains untouched.
+  // W is a cut on the generated inner wall. Everything after it remains an
+  // exact subdivision of that wall, including its handle at the previous point.
+  const originalInner = awayFromRib(innerPiece.segmentPoints);
+  points[12]._provenance = {
+    ...originalInner[0]._provenance,
+    bulbWallCut: true,
+    bulbWallParameter: result.cutParameter,
+    constructionSegment: innerPiece.segmentPoints.map(({ x, y }) => ({ x, y })),
+  };
+  points[12].skipColinear = true;
+  points[12].smooth = easing > 0;
+  result.keptInner[0] = points[12];
   const tension = calculateSegmentTension(
     points[10],
     points[9],
@@ -6629,17 +6639,12 @@ function buildDropCap({
       : [...result.wall].reverse().concat(outer.slice(outerPiece.segmentEndIndex + 1));
   const keptInner =
     position === "end"
-      ? [...inner.slice(0, innerPiece.segmentStartIndex), points[12]]
-      : [points[12], ...inner.slice(innerPiece.segmentEndIndex + 1)];
-  for (const p of [
-    ...result.wall,
-    ...points,
-    ...(innerPieces[1]?.segmentPoints ?? []),
-  ]) {
-    p._bulbExact = true;
-  }
-  // A following wall's first point is shared with the replacement W.
-  points[12]._bulbExact = true;
+      ? [
+          ...inner.slice(0, innerPiece.segmentStartIndex),
+          ...result.keptInner.slice().reverse(),
+        ]
+      : [...result.keptInner, ...inner.slice(innerPiece.segmentEndIndex + 1)];
+  for (const p of [...result.wall, ...points, ...result.keptInner]) p._bulbExact = true;
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =
     outerSide === fromSide ? points.slice(1, -1) : points.slice(1, -1).reverse();
