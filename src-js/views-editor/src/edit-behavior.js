@@ -1369,7 +1369,10 @@ const alternateRules = [
 // prettier-ignore
 const alternateConstrainRules = alternateRules.concat([
 
-  [    ANY|NIL,    SHA|OFF|UNS,SMO|UNS,    SHA|OFF|SEL,ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrev"],
+  // A handle only. A selected corner here is the end of the smooth point's
+  // straight; it moves on the axis like any Shift drag, and rotating it around
+  // the smooth point's far handle threw it off the axis.
+  [    ANY|NIL,    SHA|OFF|UNS,SMO|UNS,    OFF|SEL,    ANY|NIL,    ANY|NIL,    false,      "ConstrainAroundPrevPrev"],
 
   // Alt turns the opposite handle around the on-curve (RotateNextEqualLength),
   // so Shift snaps the dragged handle around the on-curve too. Snapping it

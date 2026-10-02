@@ -56,3 +56,61 @@ describe("Shift+Alt on the handle of an angled smooth point", () => {
     });
   }
 });
+
+// A corner at the end of a straight that leaves a smooth point, with one handle
+// of its own on the other side. Shift+Alt moves the corner on the axis like
+// any Shift drag; its own handle stays, as under Alt alone, and the smooth
+// point keeps its handle on the straight.
+function makeCornerAfterSmoothGlyph(reversed) {
+  const points = [
+    { x: 0, y: 0 },
+    { x: 20, y: 60, type: "cubic" },
+    { x: 60, y: 80, type: "cubic" },
+    { x: 100, y: 100, smooth: true },
+    { x: 200, y: 150 },
+    { x: 240, y: 150, type: "cubic" },
+    { x: 280, y: 100, type: "cubic" },
+    { x: 300, y: 0 },
+  ];
+  return {
+    path: VarPackedPath.fromUnpackedContours([
+      { isClosed: false, points: reversed ? [...points].reverse() : points },
+    ]),
+    components: [],
+    anchors: [],
+    guidelines: [],
+    backgroundImage: null,
+  };
+}
+
+describe("Shift+Alt on a one-handle corner", () => {
+  for (const reversed of [false, true])
+    for (const [delta, moved] of [
+      [
+        { x: 30, y: 7 },
+        { x: 30, y: 0 },
+      ],
+      [
+        { x: 5, y: -40 },
+        { x: 0, y: -40 },
+      ],
+    ]) {
+      it(`moves the corner on the axis and leaves its handle (delta ${delta.x},${delta.y}${reversed ? ", reversed" : ""})`, () => {
+        const glyph = makeCornerAfterSmoothGlyph(reversed);
+        const at = (index) => (reversed ? 7 - index : index);
+        const behavior = new EditBehaviorFactory(
+          glyph,
+          new Set([`point/${at(4)}`]),
+          false
+        ).getBehavior("alternate-constrain");
+        applyChange(glyph, behavior.makeChangeForDelta(delta));
+        const point = (index) => glyph.path.getPoint(at(index));
+
+        expect(point(4)).to.include({ x: 200 + moved.x, y: 150 + moved.y });
+        expect(point(5)).to.include({ x: 240, y: 150 });
+        expect(point(3)).to.include({ x: 100, y: 100 });
+        // The smooth point's handle stays on the straight it leaves.
+        expect(angle(point(2), point(3))).to.be.closeTo(angle(point(3), point(4)), 1);
+      });
+    }
+});
