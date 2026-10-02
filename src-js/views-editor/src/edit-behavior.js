@@ -125,6 +125,8 @@ class EditBehavior {
       return Math.round(value);
     };
     this.constrainDelta = behavior.constrainDelta || ((v) => v);
+    // What a dragged point may travel along. Handle angles keep constrainDelta.
+    this.constrainMoveDelta = behavior.constrainMoveDelta || this.constrainDelta;
     const [pointEditFuncs, participatingPointIndices] = makePointEditFuncs(
       contours,
       behavior
@@ -241,7 +243,7 @@ class EditBehavior {
     // to be constrained, but pin the handle angle based on the freely transformed
     // off-curve point.
     const pathChange = this._makeChangeForTransformFunc(
-      makePointTranslateFunction(this.constrainDelta(delta)),
+      makePointTranslateFunction(this.constrainMoveDelta(delta)),
       makePointTranslateFunction(delta)
     );
     const entryChanges = (this.targetEntries || [])
@@ -926,6 +928,13 @@ function* iterUntilNextOnCurvePoint(points, startIndex, isClosed) {
   }
 }
 
+// Horizontal or vertical: the larger component wins.
+export function constrainHorVer(vector) {
+  return Math.abs(vector.x) >= Math.abs(vector.y)
+    ? { ...vector, y: 0 }
+    : { ...vector, x: 0 };
+}
+
 export function constrainHorVerDiag(vector) {
   const constrainedVector = { ...vector };
   const ax = Math.abs(vector.x);
@@ -1406,10 +1415,13 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // Shift+Alt moves a point horizontally or vertically only; the handles it
+  // snaps around their on-curves still take 0, 45 and 90 degrees.
   "alternate-constrain": {
     matchTree: buildPointMatchTree(alternateConstrainRules),
     actions: actionFactories,
     constrainDelta: constrainHorVerDiag,
+    constrainMoveDelta: constrainHorVer,
   },
 
   "fixed-rib": {

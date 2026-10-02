@@ -1279,7 +1279,9 @@ export class PointerTool extends BaseTool {
         // no axis: the turn reads the cursor's angle around the on-curve.
         const constraint =
           event.shiftKey && behaviorName !== "generated-handle-turn"
-            ? constraintLineForDelta(rawDelta, snapStartPositions[0])
+            ? constraintLineForDelta(rawDelta, snapStartPositions[0], {
+                orthogonal: behaviorName === "alternate-constrain",
+              })
             : null;
         const snapPolicy = dragSnapPolicy(event, this, { cornersOnly });
         snapSession.suppressed = snapPolicy.suppressed;

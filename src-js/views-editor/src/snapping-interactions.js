@@ -19,7 +19,7 @@ import {
   roundSnapped,
 } from "@fontra/core/snapping.js";
 import { parseSelection } from "@fontra/core/utils.js";
-import { constrainHorVerDiag } from "./edit-behavior.js";
+import { constrainHorVer, constrainHorVerDiag } from "./edit-behavior.js";
 
 function segmentAngle(from, to) {
   return (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
@@ -195,11 +195,12 @@ function isOrthogonalAngle({ x, y }) {
 // Shift constrains the drag to a horizontal, a vertical or a diagonal. That axis
 // enters the resolver as a line through the anchor, so the gesture starts at one
 // degree of freedom and the snap only chooses where along it the point sits.
-export function constraintLineForDelta(delta, anchor) {
+// `orthogonal`: horizontal or vertical only, as Shift+Alt moves a point.
+export function constraintLineForDelta(delta, anchor, { orthogonal = false } = {}) {
   if (!anchor) {
     return null;
   }
-  const constrained = constrainHorVerDiag(delta);
+  const constrained = (orthogonal ? constrainHorVer : constrainHorVerDiag)(delta);
   if (!constrained.x && !constrained.y) {
     return null;
   }

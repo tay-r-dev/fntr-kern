@@ -114,3 +114,31 @@ describe("Shift+Alt on a one-handle corner", () => {
       });
     }
 });
+
+describe("Shift+Alt moves a point horizontally or vertically only", () => {
+  const drag = (name, delta) => {
+    const glyph = makeCornerAfterSmoothGlyph(false);
+    const behavior = new EditBehaviorFactory(
+      glyph,
+      new Set(["point/4"]),
+      false
+    ).getBehavior(name);
+    applyChange(glyph, behavior.makeChangeForDelta(delta));
+    return glyph.path.getPoint(4);
+  };
+
+  it("takes the larger axis where Shift alone would go diagonal", () => {
+    expect(drag("alternate-constrain", { x: 30, y: 25 })).to.include({
+      x: 230,
+      y: 150,
+    });
+    expect(drag("alternate-constrain", { x: -24, y: 30 })).to.include({
+      x: 200,
+      y: 180,
+    });
+  });
+
+  it("leaves plain Shift its diagonal", () => {
+    expect(drag("constrain", { x: 30, y: 26 })).to.include({ x: 228, y: 178 });
+  });
+});
