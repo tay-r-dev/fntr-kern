@@ -1285,8 +1285,8 @@ export class DataTable extends HTMLElement {
     this._applyColumnVisibility();
     this._updateSortHeaders();
     this._applyColumnWidths();
-    // The box widening or narrowing is shared equally by the fixed columns,
-    // and kept; the last column changes width only when a column is dragged.
+    // The box widening goes to the last column alone. Narrowing comes off the
+    // last column first, then equally off the fixed columns.
     new ResizeObserver(() => this._boxResized()).observe(this._scroll);
   }
 
@@ -1301,21 +1301,15 @@ export class DataTable extends HTMLElement {
       const current = fixed.map(
         ({ column }, i) => this._columnWidths?.[ids[i]] ?? column.width ?? null
       );
-      if (current.every((width) => width != null)) {
-        // Growing: every fixed column gains the same. Shrinking: the last
-        // column gives up its room first, down to its minimum; only what is
-        // still over comes off the fixed columns, equally.
-        let delta = box - previous;
-        if (delta > 0) {
-          // The last column takes an equal share too: the fixed columns get
-          // theirs, and the last fills what they leave, so it grows as much.
-          delta = (delta * current.length) / (current.length + 1);
-        } else if (delta < 0) {
-          const sum = current.reduce((total, width) => total + width, 0);
-          const lastMin = visible[visible.length - 1]?.column.minWidth ?? 48;
-          const slack = Math.max(0, previous - sum - lastMin);
-          delta = Math.min(0, delta + slack);
-        }
+      if (box < previous && current.every((width) => width != null)) {
+        // Growing goes to the last column alone; the fixed columns stay.
+        // Shrinking: the last column gives up its room first, down to its
+        // minimum; only what is still over comes off the fixed columns,
+        // equally.
+        const sum = current.reduce((total, width) => total + width, 0);
+        const lastMin = visible[visible.length - 1]?.column.minWidth ?? 48;
+        const slack = Math.max(0, previous - sum - lastMin);
+        const delta = Math.min(0, box - previous + slack);
         const next = spreadColumnWidths(
           current,
           delta,
