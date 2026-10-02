@@ -559,6 +559,14 @@ When E lies on the first ball arc, the shared V-slide fitter adjusts P–E,
 including P's handle, and retains the remaining ball arc. That second case is
 a fit; it does not promise exact equality with the original wall.
 
+When the orthogonal entry cannot harmonize within the body constraints, E may
+V-slide on the original outer wall or the existing first bulb span. The fallback
+solves only the E–B handle lengths against the retained wall and fixed B–C span.
+B and every control after it are unchanged. A wall-side move keeps P–E as an
+exact subdivision and allows E's tangent to follow the wall instead of remaining
+vertical. Candidate adjacent-span departure is limited to 2% of R; an unsuitable
+candidate is rejected rather than relaxing the body constraints.
+
 The reference shape is built first, with an implicit ball shoulder A and a
 wall cut W. Its retained W–Q wall is an exact subdivision of the generated wall.
 Q is the next existing inner-wall point and stays fixed during fitting. At zero,

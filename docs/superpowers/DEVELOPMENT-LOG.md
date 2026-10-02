@@ -2903,3 +2903,20 @@ outer skeleton cubic; next-rib width and distant-point edits retain the bulb
 with zero E/B/C/N movement and no preview markers; a terminal size edit activates
 preview. Easing 0 emits a corner; 0.01, 0.49 and 1 emit smooth vertical-tangent
 necks. Syntax checks only otherwise; no bundle or full test-suite run.
+
+
+### Entry V-slide instead of reshaping the ball (2026-10-02)
+
+Reverted the near-vertical change that widened body handles to 40% of R and
+weakened the shape penalty. The user rejected that deformation and authorized
+E to V-slide along the wall or ball when orthogonal entry cannot harmonize.
+
+The fallback keeps B and every control after B fixed. It searches wall-side and
+ball-side E positions, matching just E–B's endpoint curvatures to P–E and B–C.
+Wall-side candidates use exact subdivision of the original wall. E may have a
+nonvertical tangent. Candidates are ranked by adjacent-span departure and rejected
+above 2% of R; there is no widening of body handles or apex motion.
+
+The supplied near-vertical specimen chooses the outer wall. A focused regression
+checks exact retained-wall subdivision, unchanged downstream controls, four-point
+topology, and matched entry/bottom curvature. No bundle or full-suite run.

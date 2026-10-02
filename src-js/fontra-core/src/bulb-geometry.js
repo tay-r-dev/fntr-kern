@@ -1,3 +1,4 @@
+import { slideBulbEntryForCurvature } from "./bulb-entry-slide.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature, harmonizeBulb } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
@@ -506,6 +507,44 @@ export function buildFourPointBulb({
     );
     points = result.points;
   }
+  const entrySlide = slideBulbEntryForCurvature({
+    wall: entry.wall,
+    points,
+    radius,
+    sourceWall: wall,
+    sourceArc: first,
+  });
+  if (entrySlide) {
+    points = entrySlide.points;
+    entry.wall = entrySlide.wall;
+    entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
+    if (entrySlide.direction === "previous") {
+      entry.t = entrySlide.parameter;
+      entry.ballParameter = undefined;
+    } else if (entry.ballParameter !== undefined) {
+      entry.ballParameter += (1 - entry.ballParameter) * entrySlide.parameter;
+    }
+    tangents[0] = unit(sub(points[1], points[0]));
+    result.points = points;
+    const errors = [
+      Math.abs(
+        bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))
+      ),
+    ];
+    for (const join of [3, 6, ...(corner ? [] : [9])]) {
+      errors.push(
+        Math.abs(
+          bulbEndCurvature(points.slice(join - 3, join + 1), true) -
+            bulbEndCurvature(points.slice(join, join + 4))
+        )
+      );
+    }
+    errors.push(
+      Math.abs(bulbEndCurvature(points.slice(9), true) - bulbEndCurvature(inner, true))
+    );
+    result.error = Math.max(...errors) * radius;
+    result.status = result.error < 1e-5 ? "matched" : "bounded";
+  }
   const neckTangent = unit(sub(points[9], points[8]));
   return {
     ...result,
@@ -523,5 +562,6 @@ export function buildFourPointBulb({
     entryParameter: entry.t,
     entryBallParameter: entry.ballParameter,
     orthogonalEntry: entry.orthogonal,
+    entrySlide,
   };
 }
