@@ -551,7 +551,7 @@ The committed bulb has four owned on-curves, in outer-to-inner order:
 | E | Horizontal wall apex | Exact wall subdivision; vertical handles. Its incoming length follows the cut. |
 | B | Bottom/top apex | Horizontal handles; bounded tangential slide; both lengths adjustable. |
 | C | Return-side horizontal apex | Vertical handles; bounded tangential slide; both lengths adjustable. |
-| N | Shared neck / inner-wall cut | Travels along the inner wall; follows its tangent. Corner at zero, smooth with easing. |
+| N | Shared neck | Free position and tangent in the two-span preview fit. Corner at zero, smooth with easing. |
 
 P is the outer-wall point before E. Its outgoing handle participates in the
 splice. When E lies on the wall, exact subdivision changes both wall handles.
@@ -567,13 +567,12 @@ only P–E. Departure is measured against the original ball and wall, not a prio
 fit: candidates stay within 2% of R or improve an already larger authored
 reference error. This prevents a boxy fit from becoming its own reference.
 
-The reference shape is built first, with an implicit ball shoulder A and N on
-the original inner wall. N–Q is an exact subdivision; Q is the next existing wall
-point and stays fixed. Zero easing has a corner at the ball/wall intersection.
-With easing, N follows the wall's tangent and can travel almost to Q. The small
-endpoint margin prevents a coincident N/Q pair. Easing and its curvature setting
-control travel through the available wall length, rather than capping it at one
-ball radius. The preview keeps the complete original outer wall and rib junction.
+The reference shape is built first, with an implicit ball shoulder A and wall
+cut W. W–Q is an exact subdivision of the generated inner wall; Q is the next
+existing wall point and stays fixed. Zero easing has a corner at the ball/wall
+intersection. Easing and its curvature setting control W's travel through the
+available wall length. The preview keeps the original outer wall and rib junction.
+A and W are construction boundaries, not extra emitted neck points.
 
 During skeleton edits and panel gestures the generator emits this reference,
 including its construction points. Those points, handles and their gizmos are
@@ -588,18 +587,24 @@ does not rebuild it. The wall endpoint and its handle follow the changed rib;
 the bulb-owned points and handles remain fixed. Reuse comes from the current
 layer's path and provenance, rather than a global geometry cache.
 
-The final fit merges C–A–N into one transition cubic. Its two handle lengths
-match the fixed B–C curvature at C and the retained wall curvature at N. The
-body and N–Q are excluded from this solve. E has its separate entry fit. If a
-local solve cannot match the joins, its seed is retained and the remaining
-residual is published in `bulbHarmonizationError`.
+The final fit reduces C–A–W–Q to C–N–Q. It tries several N positions in the
+reference easing, then fits both neck-adjacent spans together. E/B/C, the body
+handles, and Q stay fixed during this solve. N can move and turn; its two handles
+remain collinear. Samples are reprojected to the candidate after each pass so
+a change of parameterization is not mistaken for a change of shape.
 
-Body edits still set the authored shape. Neck position edits are projected onto
-the generated wall; the tangent and wall-side handles are reconstructed from
-that wall instead of letting independent neck offsets deform it. V-slide moves
-N along the wall and refits only C–N. The gesture range is extended to 0.995 of
-the available span. All writes use `editSkeleton`, including undo. The neck gizmo
-publishes its construction snapshot and stored curvature target.
+The preview remains an independent, copied target. Curvature residuals at C, N
+and Q are balanced against that target, and bidirectional sampled departure
+checks guard the result. A curvature root may not arbitrarily distort C–N.
+This is an approximation: N–Q is now fitted, rather than exactly subdivided,
+and exact G2 is not guaranteed. Remaining curvature error is published through
+`bulbHarmonizationError`. Geometry after Q is unchanged. E retains its separate fit.
+
+Body edits still set the authored shape. Neck offsets bias the preferred
+position and handles, with the preview-shape objective taking priority. V-slide
+acts on the fitted C–N–Q pair through the shared point-slide fitter, retaining
+the traveled subcurve and refitting its neighbour. It keeps one N. All writes
+use `editSkeleton`, including undo.
 
 The solved bulb and its boundary wall curves retain fractional coordinates.
 Independent rounding would break exact subdivision and curvature continuity.

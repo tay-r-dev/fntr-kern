@@ -2948,3 +2948,28 @@ and 1 it retains the exact N–Q wall, keeps B–C unchanged, and moves N over 1
 units. Positive-easing neck joins match within 1e-7; E selects the wall. No bundle
 or full test-suite run. The manually corrected outline remains a visual reference,
 not a claim that every one of its coordinates is reproduced.
+
+
+### Fit the neck to the preview, not just its endpoint curvatures (2026-10-02)
+
+The supplied lslash(3) exposed the flaw in the wall-cut checkpoint. C–N's two
+handle lengths could match endpoint curvature while missing the correct preview
+by 14.42 units. Fixing N to the source wall left too little freedom to represent
+the return arc and easing in one cubic.
+
+The replacement fits C–N and N–Q together against the unmodified preview.
+Several easing positions seed the single N; it can move and turn during fitting.
+The body and Q stay fixed. Each pass reprojects the reference samples, and a
+bidirectional shape check guards against a curvature solve that redraws the
+outline. Saved neck offsets bias the fit rather than overriding that shape target.
+V-slide uses the shared two-span fitter. Zero remains a corner.
+
+Also separated the emitted control objects from the reference. Saved neck edits
+had been mutating the supposedly independent reference endpoint through shared
+objects, invalidating comparisons with the actual dragging preview.
+
+On the supplied geometry, sampled maximum C–N–Q departure drops from 14.42 to
+1.59 units, with RMS about 0.91. This is a bounded shape/curvature fit, not exact
+G2 and not exact wall subdivision. Three focused checks pass: preview fidelity
+and reference immutability; body/Q preservation and finite coordinates over
+five easing values; the existing entry-slide regression. No bundle/full suite.

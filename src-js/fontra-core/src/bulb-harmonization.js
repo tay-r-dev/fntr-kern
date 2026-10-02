@@ -41,6 +41,8 @@ export function harmonizeBulb({
   curveTargets = [],
   shapeWeight = null,
   maxIterations = 240,
+  fixedHandles = [],
+  preferredPoints = null,
 }) {
   const anchors = [0, 3, 6, 9, 12].map((i) => points[i]);
   const handles = [1, 2, 4, 5, 7, 8, 10, 11];
@@ -96,6 +98,7 @@ export function harmonizeBulb({
         if (reaches.every((r) => r > 0)) limits = reaches;
       }
       for (let j = k; j < k + 2; j++) {
+        if (fixedHandles.includes(handles[j])) continue;
         const limit = Math.max(
           scale * 1e-6,
           Math.min(limits[j - k], lengthBounds?.[j]?.[1] ?? Infinity)
@@ -143,8 +146,10 @@ export function harmonizeBulb({
   const displacement = (q) => {
     const placed = place(q);
     const result = placed.flatMap((p, i) => [
-      ((p.x - initial[i].x) / scale) * Math.sqrt(preferenceWeights?.[i] ?? 1),
-      ((p.y - initial[i].y) / scale) * Math.sqrt(preferenceWeights?.[i] ?? 1),
+      ((p.x - (preferredPoints ?? initial)[i].x) / scale) *
+        Math.sqrt(preferenceWeights?.[i] ?? 1),
+      ((p.y - (preferredPoints ?? initial)[i].y) / scale) *
+        Math.sqrt(preferenceWeights?.[i] ?? 1),
     ]);
     for (const target of curveTargets) {
       const p = cubicPointAt(placed.slice(target.start, target.start + 4), target.t);

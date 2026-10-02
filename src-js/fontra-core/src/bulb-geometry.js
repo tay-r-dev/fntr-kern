@@ -1,7 +1,5 @@
-import {
-  slideBulbEntryForCurvature,
-  matchCubicEndCurvatures,
-} from "./bulb-entry-slide.js";
+import { slideBulbEntryForCurvature } from "./bulb-entry-slide.js";
+import { fitBulbNeck } from "./bulb-neck-fit.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
@@ -284,8 +282,8 @@ export function buildFourPointBulb({
     (3 * Math.PI) / 2 - 0.02
   );
   const room = Math.max(0, thetaCut - side.theta - 0.02);
-  // Zero is a corner. With easing, N travels on the generated inner wall
-  // and follows its tangent; no orthogonal-neck or radius-sized travel limit.
+  // Zero is a corner. Positive easing first constructs the reference fillet;
+  // the editable neck is fitted to that outline below.
   const corner = easing === 0;
   const extent = corner ? 0 : easing;
   const retreat = extent * Math.min(0.55, 0.75 * room);
@@ -314,14 +312,13 @@ export function buildFourPointBulb({
   const returnArc = ballArc(ball, side.theta, thetaA);
   returnArc[3] = A;
   const easingCurve = [A, handle(A, tA, neck.startLen), handle(W, tW, -neck.endLen), W];
-  // N is the wall cut itself. Its outgoing span is the original wall,
-  // exactly subdivided; there is no extra emitted shoulder or wall-cut point.
+  // A and W are internal reference boundaries, not emitted neck points.
   const bodyArc = ballArc(ball, bottom.theta, side.theta);
   const referenceCurves = corner
     ? [first, bodyArc, returnArc, keptInner]
     : [first, bodyArc, returnArc, easingCurve, keptInner];
   const referencePoints = referenceCurves.flatMap((curve, i) =>
-    i ? curve.slice(1) : curve
+    (i ? curve.slice(1) : curve).map((p) => ({ ...p }))
   );
   const fittedReturn = corner
     ? returnArc
@@ -337,7 +334,7 @@ export function buildFourPointBulb({
     ...bodyArc.slice(1),
     ...fittedReturn.slice(1),
     ...fittedWall.slice(1),
-  ];
+  ].map((p) => ({ ...p }));
   points[9].smooth = !corner;
   points[9].skipColinear = true;
   for (const [i, axis] of [
@@ -372,6 +369,7 @@ export function buildFourPointBulb({
     tN,
   ];
   const roles = ["entry", "bottom", "side", "neck"];
+  const uneditedNeck = points.slice(8, 11).map((p) => ({ ...p }));
   for (let k = 0; k < roles.length; k++) {
     const edit = edits?.[roles[k]];
     if (
@@ -421,55 +419,35 @@ export function buildFourPointBulb({
       } else points[h] = handle(points[i], tangent, sign * length);
     }
   }
-  // Neck position edits resolve onto the source wall. Its outgoing handle
-  // and Q's incoming handle come from subdivision, not independent offsets.
-  let neckWallParameter = cutParameter;
-  const placeNeckOnWall = (t) => {
-    neckWallParameter = clamp(t, cut, 0.995);
-    const incomingVector = sub(points[8], points[9]);
-    const incomingLength = vector.distance(points[8], points[9]);
-    const retained = splitCubicAt(inner, neckWallParameter).second.map((p, i) => ({
-      ...inner[i],
-      ...p,
-    }));
-    points.splice(9, 4, ...retained);
-    points[9].smooth = !corner;
-    points[9].skipColinear = true;
-    points[8] = corner
-      ? {
-          ...points[8],
-          x: points[9].x + incomingVector.x,
-          y: points[9].y + incomingVector.y,
-        }
-      : handle(points[9], unit(sub(points[10], points[9])), -incomingLength);
-  };
-  const projection = projectPointToSegment({ kind: "cubic", points: inner }, points[9]);
-  placeNeckOnWall(projection.t);
   const preferred = points.map((p) => ({ ...p }));
-  // Preserve the body and retained wall. Only the transition cubic may
-  // change to harmonize the neck; a global solve would redraw both boundaries.
-  const result = { points, error: 0, status: "bounded" };
-  const harmonizeNeck = () => {
-    if (corner) return;
-    const transition = matchCubicEndCurvatures(
-      points.slice(6, 10),
-      bulbEndCurvature(points.slice(3, 7), true),
-      bulbEndCurvature(points.slice(9)),
-      radius
-    );
-    if (transition) points.splice(6, 4, ...transition);
-  };
-  harmonizeNeck();
-  // Authorial V-slide can traverse the entire remaining wall span.
+  let neckFit;
+  if (!corner) {
+    neckFit = fitBulbNeck({
+      points,
+      reference: referencePoints.slice(6),
+      wall: entry.wall,
+      radius,
+      nextCurvature: bulbEndCurvature(inner, true),
+      neckOffsets: points.slice(8, 11).map((p, i) => sub(p, uneditedNeck[i])),
+    });
+    points = neckFit.points;
+  }
+  // V-slide acts on the fitted pair. It retains the traveled subcurve and
+  // refits the other span, without introducing a second neck point.
   const v = clamp(edits?.neck?.vslide ?? 0, -0.995, 0.995);
   if (v) {
-    const t =
-      v < 0
-        ? cut + (neckWallParameter - cut) * (1 + v)
-        : neckWallParameter + (1 - neckWallParameter) * v;
-    placeNeckOnWall(t);
-    harmonizeNeck();
+    points = makeSlideCandidate(
+      { points, isClosed: false },
+      9,
+      v < 0 ? "previous" : "next",
+      v < 0 ? 1 + v : v
+    ).points;
   }
+  const neckWallParameter = projectPointToSegment(
+    { kind: "cubic", points: inner },
+    points[9]
+  ).t;
+  const result = { points, error: 0, status: "bounded" };
   const entrySlide = slideBulbEntryForCurvature({
     wall: entry.wall,
     points,
@@ -512,6 +490,7 @@ export function buildFourPointBulb({
     ...result,
     points,
     preferred,
+    neckFitDeparture: neckFit?.departure ?? 0,
     wall: entry.wall,
     keptInner: [points[12]],
     referencePoints,

@@ -1,65 +1,67 @@
 import { expect } from "chai";
 import { buildFourPointBulb } from "../src/bulb-geometry.js";
-import { bulbEndCurvature } from "../src/bulb-harmonization.js";
-import { splitCubicAt } from "../src/offset-contour.js";
+import { bulbNeckDeparture } from "../src/bulb-neck-fit.js";
 
-const wall = [
-  { x: 241, y: 471 },
-  { x: 369, y: 471, type: "cubic" },
-  { x: 449, y: 361, type: "cubic" },
-  { x: 427, y: 255 },
-];
-const inner = [
-  { x: 355, y: 270 },
-  { x: 378, y: 362, type: "cubic" },
-  { x: 326, y: 434, type: "cubic" },
-  { x: 235, y: 434 },
-];
+const cubic = (coordinates) =>
+  coordinates.map(([x, y], i) => ({
+    x,
+    y,
+    ...(i === 1 || i === 2 ? { type: "cubic" } : {}),
+  }));
+const options = {
+  wall: cubic([
+    [254, 498],
+    [373, 498],
+    [498, 447],
+    [441, 187],
+  ]),
+  inner: cubic([
+    [327, 212],
+    [386, 415],
+    [322, 435],
+    [248, 435],
+  ]),
+  radius: 99.45,
+  shape: 0,
+  easing: 0.32,
+  easeCurvature: 0.45,
+  edits: { bottom: { slide: -4, in: 17 }, neck: { slide: -3, normal: 24, out: -4 } },
+};
 const xy = (points) => points.map(({ x, y }) => ({ x, y }));
 
-describe("single bulb neck on the generated inner wall", () => {
-  it("preserves the wall and body while N travels beyond one bulb radius", () => {
-    for (const edits of [
-      null,
-      { bottom: { slide: -4, in: 17 }, neck: { normal: 16, slide: -19, out: -4 } },
-    ]) {
-      let body, firstNeck, lastNeck;
-      for (const easing of [0, 0.01, 0.41, 0.8, 1]) {
-        const result = buildFourPointBulb({
-          wall,
-          inner,
-          radius: 62.9,
-          shape: 0,
-          easing,
-          easeCurvature: 0.82,
-          edits,
-        });
-        const p = result.points;
-        expect(p.length).to.equal(13);
-        expect(xy(p.slice(9))).to.deep.equal(
-          xy(splitCubicAt(inner, result.cutParameter).second)
-        );
-        expect(p[12]).to.include(inner[3]);
-        if (body) expect(xy(p.slice(3, 7))).to.deep.equal(body);
-        body = xy(p.slice(3, 7));
-        firstNeck ??= p[9];
-        lastNeck = p[9];
-        if (easing) {
-          expect(p[9].smooth).to.equal(true);
-          expect(bulbEndCurvature(p.slice(6, 10), true)).to.be.closeTo(
-            bulbEndCurvature(p.slice(9)),
-            1e-7
-          );
-          expect(bulbEndCurvature(p.slice(3, 7), true)).to.be.closeTo(
-            bulbEndCurvature(p.slice(6, 10)),
-            1e-7
-          );
-        } else expect(p[9].smooth).to.equal(false);
-        expect(result.entrySlide?.direction).to.equal("previous");
-      }
+describe("bulb neck fitted against its preview", () => {
+  it("keeps the supplied C-N-Q outline within two units of the preview", () => {
+    const preview = buildFourPointBulb({ ...options, preview: true });
+    const result = buildFourPointBulb(options);
+    expect(result.points.length).to.equal(13);
+    expect(
+      bulbNeckDeparture(result.points.slice(6), preview.points.slice(6))
+    ).to.be.lessThan(2);
+    expect(xy(result.referencePoints)).to.deep.equal(xy(preview.points));
+    expect(result.points[12]).to.include(options.inner[3]);
+    const p = result.points;
+    const incoming = { x: p[9].x - p[8].x, y: p[9].y - p[8].y };
+    const outgoing = { x: p[10].x - p[9].x, y: p[10].y - p[9].y };
+    expect(incoming.x * outgoing.y - incoming.y * outgoing.x).to.be.closeTo(0, 1e-7);
+    expect(incoming.x * outgoing.x + incoming.y * outgoing.y).to.be.greaterThan(0);
+    const reference = JSON.stringify(result.referencePoints);
+    p[9].x += 100;
+    p[7].y += 100;
+    expect(JSON.stringify(result.referencePoints)).to.equal(reference);
+  });
+
+  it("retains the body, fixed wall endpoint and zero-easing corner", () => {
+    let body;
+    for (const easing of [0, 0.01, 0.41, 0.8, 1]) {
+      const result = buildFourPointBulb({ ...options, easing });
       expect(
-        Math.hypot(lastNeck.x - firstNeck.x, lastNeck.y - firstNeck.y)
-      ).to.be.greaterThan(100);
+        result.points.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))
+      ).to.equal(true);
+      expect(result.points.length).to.equal(13);
+      expect(result.points[9].smooth).to.equal(easing !== 0);
+      expect(result.points[12]).to.include(options.inner[3]);
+      if (body) expect(xy(result.points.slice(3, 7))).to.deep.equal(body);
+      body = xy(result.points.slice(3, 7));
     }
   });
 });
