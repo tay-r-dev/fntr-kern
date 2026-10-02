@@ -74,6 +74,42 @@ describe("V-slide of generated points", () => {
       }
   });
 
+  it("lands every point it moves on whole units, like a drawn V-slide", () => {
+    const cases = [
+      [{}, {}, { vSlide: { left: 0.337 } }, {}],
+      [{}, {}, { vSlide: { right: -0.413 } }, {}],
+    ];
+    for (const [plainMiddle, plainEnd, slidMiddle, slidEnd] of cases) {
+      const plain = generateFromSkeleton(skeleton(plainMiddle, plainEnd)).contours[0];
+      const slid = generateFromSkeleton(skeleton(slidMiddle, slidEnd)).contours[0];
+      // A smooth point keeps its handles on one line, so one handle beside it
+      // may be re-aimed off the grid; every other moved point is whole.
+      let movedCount = 0;
+      let offGrid = 0;
+      slid.points.forEach((point, i) => {
+        const before = plain.points[i];
+        if (point.x === before.x && point.y === before.y) return;
+        movedCount++;
+        if (Number.isInteger(point.x) && Number.isInteger(point.y)) return;
+        expect(point.type, `${i}`).to.equal("cubic");
+        offGrid++;
+      });
+      expect(movedCount).to.be.greaterThan(0);
+      expect(offGrid).to.be.at.most(1);
+    }
+    // A bulb is drawn off the grid, and its later edits re-place the points
+    // beside it, so only the slid on-curve itself lands on whole units.
+    const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" };
+    const slid = generateFromSkeleton(
+      skeleton({}, { ...cap, capBallEdits: { side: { vslide: 0.271 } } })
+    );
+    const point = onCurve(
+      slid,
+      (m) => m?.bulbRole === "side" && m.bulbSlot === "onCurve"
+    );
+    expect(Number.isInteger(point.x) && Number.isInteger(point.y)).to.be.true;
+  });
+
   it("slides the same way along the skeleton on both sides", () => {
     const plain = generateFromSkeleton(skeleton());
     const at = (result, side) =>

@@ -8,7 +8,11 @@ import {
   thetaBackAlongBall,
 } from "./bulb-geometry.js";
 import { gridKinkAllowance } from "./harmonization.js";
-import { getAdjacentSegments, makeSlideCandidate } from "./point-slide.js";
+import {
+  getAdjacentSegments,
+  makeSlideCandidate,
+  roundSlideCandidate,
+} from "./point-slide.js";
 import { fitSerifEasing } from "./serif-easing-fit.js";
 import { buildHandleDomain, solveNaturalHandles } from "./natural-handle-solver.js";
 import {
@@ -174,10 +178,12 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       simplifyEasing: options.simplifyEasing === true,
     });
     for (const generatedContour of generatedContours) {
-      settleSmoothFlags(generatedContour);
       const generatedContourIndex = contours.length;
       annotateGeneratedContourProvenance(generatedContour, skeletonContour);
       applyGeneratedVSlides(generatedContour, skeletonContour);
+      roundGeneratedPoints(generatedContour);
+      // Judged on the outline as it is emitted, on whole units.
+      settleSmoothFlags(generatedContour);
       publishConstructionAxes(generatedContour);
       contours.push(generatedContour);
       provenance.push({
@@ -193,6 +199,16 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
     }
   }
   return { contours, provenance };
+}
+
+// Every generated point lands on whole units, on-curve and off-curve, whatever
+// cap, corner, slide or pass made it. Stages round as they build, but not all
+// of them do; this is the one place that guarantees it.
+function roundGeneratedPoints(contour) {
+  for (const point of contour.points) {
+    point.x = Math.round(point.x);
+    point.y = Math.round(point.y);
+  }
 }
 
 function stripPointProvenance(contour) {
@@ -288,7 +304,9 @@ function slideGeneratedPoint(points, isClosed, index, value, forward) {
       constructionSegmentOut: snapshot(before.next),
     };
   }
-  candidate.points.forEach((moved, i) => {
+  // Whole units, like a V-slide on a drawn contour, with the smooth points it
+  // touched kept smooth.
+  roundSlideCandidate(contour, candidate).points.forEach((moved, i) => {
     points[i].x = moved.x;
     points[i].y = moved.y;
   });

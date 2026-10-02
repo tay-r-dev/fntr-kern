@@ -1,6 +1,6 @@
 import { Bezier } from "bezier-js";
 import { makeSlideCandidate } from "../src/point-slide.js";
-import { curvatureDiscontinuity } from "../src/harmonization.js";
+import { curvatureDiscontinuity, gridKinkAllowance } from "../src/harmonization.js";
 import { expect } from "chai";
 import { buildBulbArc, makeBulbBall, slideBulbEntry } from "../src/bulb-geometry.js";
 import { generateFromSkeleton } from "../src/skeleton-generator.js";
@@ -306,10 +306,16 @@ describe("rib-apex bulbs", function () {
           p = points[i];
         const u = { x: p.x - before.x, y: p.y - before.y },
           v = { x: after.x - p.x, y: after.y - p.y };
+        // Straight to within what whole units can bend.
         expect(
-          Math.abs(u.x * v.y - u.y * v.x) /
-            (Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
-        ).to.be.below(1e-10);
+          Math.asin(
+            Math.min(
+              1,
+              Math.abs(u.x * v.y - u.y * v.x) /
+                (Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y))
+            )
+          )
+        ).to.be.at.most(gridKinkAllowance(before, p, after));
         expect(u.x * v.x + u.y * v.y).to.be.greaterThan(0);
         const at = (n) => points[(i + n + points.length) % points.length];
         const incoming = [-3, -2, -1, 0].map(at),

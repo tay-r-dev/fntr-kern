@@ -36,6 +36,45 @@ describe("skeleton-generator golden master", () => {
     });
   }
 
+  // Every generated point, on-curve and off-curve, lands on whole units,
+  // whatever cap, corner, slide or pass made it.
+  it("emits every point on whole units", () => {
+    const bulbSkeleton = (end) => ({
+      contours: [
+        {
+          id: 1,
+          closed: false,
+          defaultWidth: 60,
+          points: [
+            { id: 2, x: 0, y: 0 },
+            { id: 3, x: 60, y: 120, type: "cubic" },
+            { id: 4, x: 180, y: 160, type: "cubic" },
+            { id: 5, x: 260, y: 160, smooth: true, vSlide: { left: 0.337 } },
+            { id: 6, x: 340, y: 160, type: "cubic" },
+            { id: 7, x: 440, y: 120, type: "cubic" },
+            { id: 8, x: 500, y: 0, ...end },
+          ],
+        },
+      ],
+    });
+    const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" };
+    const inputs = [
+      ...fixtures.map((fixture) => [fixture.name, fixture.canonical]),
+      ["bulb", bulbSkeleton(cap)],
+      ["bulb slid", bulbSkeleton({ ...cap, capBallEdits: { side: { vslide: 0.27 } } })],
+    ];
+    for (const [name, input] of inputs) {
+      for (const contour of generateFromSkeleton(input).contours) {
+        contour.points.forEach((point, i) => {
+          expect(
+            Number.isInteger(point.x) && Number.isInteger(point.y),
+            `${name} point ${i}: ${point.x}, ${point.y}`
+          ).to.be.true;
+        });
+      }
+    }
+  });
+
   it("outlineContourToPackedPath matches packContour", () => {
     const contour = fixtures[0].expectedContours[0];
     expect(outlineContourToPackedPath(contour)).to.deep.equal(packContour(contour));
@@ -213,22 +252,22 @@ describe("skeleton-generator provenance", () => {
     }
     for (const axes of axesByWidth.slice(1)) {
       for (const [index, axis] of axes.entries()) {
+        // Within what whole units let either handle express.
         expect(axis.angle, `axis ${index} angle`).to.be.closeTo(
           axesByWidth[0][index].angle,
-          1e-6
+          axis.gridDegrees + axesByWidth[0][index].gridDegrees
         );
       }
     }
   });
 
-  it("keeps generated handles exactly colinear across a smooth junction", () => {
+  it("keeps generated handles colinear across a smooth junction", () => {
     for (const halfWidth of [5, 12, 20, 35]) {
       for (const axis of smoothJunctionAxes(smoothJunctionSkeleton(halfWidth))) {
-        // Anti-parallel to within floating point, not merely within the 2.5 deg
-        // the old length-weighted gate allowed through.
-        expect(axis.misalignmentDegrees, `half-width ${halfWidth}`).to.be.closeTo(
-          0,
-          1e-6
+        // Anti-parallel to within what whole units can bend, not merely within
+        // the 2.5 deg the old length-weighted gate allowed through.
+        expect(axis.misalignmentDegrees, `half-width ${halfWidth}`).to.be.at.most(
+          axis.kinkGridDegrees
         );
       }
     }
@@ -313,7 +352,7 @@ describe("skeleton-generator provenance", () => {
         // Points back along the straight, so 180 deg away from it.
         expect(handle.angle, `half-width ${halfWidth} ${handle.side}`).to.be.closeTo(
           straightAngle - 180,
-          1e-6
+          handle.gridDegrees
         );
       }
     }
@@ -1597,6 +1636,8 @@ function straightControlledHandles(halfWidthAtFive, skeletonOverride = null) {
     handles.push({
       side,
       angle: (Math.atan2(handle.y - anchor.y, handle.x - anchor.x) * 180) / Math.PI,
+      // What whole units let this handle's direction be, in degrees.
+      gridDegrees: handleGridDegrees(anchor, handle),
     });
   }
   return handles;
@@ -1682,10 +1723,19 @@ function smoothJunctionAxes(skeleton) {
         misalignmentDegrees: Math.abs(
           (Math.abs(angleIn - angleOut) * 180) / Math.PI - 180
         ),
+        gridDegrees: handleGridDegrees(point, previous),
+        kinkGridDegrees: (gridKinkAllowance(previous, point, next) * 180) / Math.PI,
       });
     }
   }
   return axes;
+}
+
+// Whole units bend a handle's direction by up to atan(sqrt(2) / length): the
+// handle and its on-curve each round by up to half a unit on both axes.
+function handleGridDegrees(anchor, handle) {
+  const length = Math.hypot(handle.x - anchor.x, handle.y - anchor.y);
+  return (Math.atan(Math.SQRT2 / Math.max(length, Math.SQRT2)) * 180) / Math.PI;
 }
 
 function roundContours(contours) {
@@ -2876,13 +2926,15 @@ describe("skeleton-generator curvature pin round trip", () => {
 
   const adjusted = { 5: { leftIn: { x: 9.49, y: -28.46 } } };
 
+  // The gizmo reads the emitted handles, which are on whole units, so a still
+  // grab may land a handle on a neighbouring grid point and no further.
   for (const capStyle of ["butt", "serif"]) {
     it(`stays put when the gizmo is grabbed and not moved, ${capStyle} cap`, () => {
-      expect(grabMovement({ capStyle })).to.be.at.most(1);
+      expect(grabMovement({ capStyle })).to.be.at.most(Math.SQRT2);
     });
 
     it(`stays put when a handle was dragged first, ${capStyle} cap`, () => {
-      expect(grabMovement({ capStyle, offsets: adjusted })).to.be.at.most(1);
+      expect(grabMovement({ capStyle, offsets: adjusted })).to.be.at.most(Math.SQRT2);
     });
   }
 });

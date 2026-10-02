@@ -1096,8 +1096,9 @@ describe("the curvature gizmo at a bulb terminal", () => {
         }
         const onCurve = bulbPosition(edited, role, "onCurve");
         const start = bulbPosition(plain, role, "onCurve");
-        expect(onCurve.x - start.x, role).to.be.closeTo(6 * tangent.x, 1e-6);
-        expect(onCurve.y - start.y, role).to.be.closeTo(6 * tangent.y, 1e-6);
+        // Both positions are on whole units.
+        expect(onCurve.x - start.x, role).to.be.closeTo(6 * tangent.x, 1);
+        expect(onCurve.y - start.y, role).to.be.closeTo(6 * tangent.y, 1);
         expect(moved, `${role} carry ${carry}`).to.have.length(carry ? 3 : 1);
       }
     }
@@ -1112,7 +1113,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
         const a = bulbPosition(plain, role, slot),
           b = bulbPosition(edited, role, slot);
         const length = (p) => Math.hypot(p.x - anchor.x, p.y - anchor.y);
-        expect(length(b) - length(a), `${role} ${slot}`).to.be.closeTo(5, 1e-6);
+        // Both handles are on whole units.
+        expect(length(b) - length(a), `${role} ${slot}`).to.be.closeTo(5, Math.SQRT2);
         let moved = 0;
         for (let i = 0; i < plain.path.numPoints; i++) {
           const p = plain.path.getPoint(i),

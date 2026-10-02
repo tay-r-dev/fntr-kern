@@ -414,10 +414,11 @@ function createGeneratedSlideTargetEntries(
       makeChangeForDelta(delta) {
         let value;
         if (isPrimary) {
-          const pointer = {
+          // The pointer lands on the grid first, as in the drawn V-slide.
+          const pointer = vector.roundVector({
             x: initialPointer.x + delta.x,
             y: initialPointer.y + delta.y,
-          };
+          });
           const destination = chooseSlideInterval(adjacent, pointer, point);
           if (!destination) return null;
           const share = destination.side === "next" ? destination.t : 1 - destination.t;
