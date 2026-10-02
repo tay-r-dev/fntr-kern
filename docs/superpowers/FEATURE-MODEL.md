@@ -584,9 +584,7 @@ layer's path and provenance, rather than a global geometry cache.
 The final fit merges C–A–N into C–N and N–W–Q into N–Q. It then jointly adjusts
 handle lengths and bounded point motion against samples of the reference and
 signed curvature at the joins. Shape error retains a nonzero weight throughout
-the solve. B/C movement is bounded by 4% of R; body-handle changes have a 40%
-budget so a flatter incoming wall can join the ball without a comb step. The
-reference penalty is 0.00001 and the final solve has up to 160 iterations.
+the solve. B/C movement and body-handle changes are bounded by 4% of R; automatic
 N motion grows with easing; its automatic tangent stays vertical. E and Q stay fixed. The current fit is a
 bounded approximation: exact reference preservation and continuous curvature
 are goals, not guaranteed by this first iteration. Its curvature residual is
