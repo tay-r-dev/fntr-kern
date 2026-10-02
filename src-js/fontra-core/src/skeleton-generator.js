@@ -164,6 +164,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       serifUnitsMode: options.serifUnitsMode ?? "absolute",
       removeCollapsedPoints: options.removeCollapsedPoints === true,
       simplifyEasing: options.simplifyEasing === true,
+      bulbPreview: options.bulbPreview === true,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -3123,6 +3124,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         capBallEaseCurvature:
           firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: firstOnCurvePoint.capBallEdits,
+        preview: options.bulbPreview,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3326,6 +3328,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
         capBallEaseCurvature:
           lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: lastOnCurvePoint.capBallEdits,
+        preview: options.bulbPreview,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -6541,6 +6544,7 @@ function buildDropCap({
   capBallEasing,
   capBallEaseCurvature,
   capBallEdits = null,
+  preview = false,
 }) {
   if (!endpoint || !(capWidth > 0.001)) return null;
   const outer = outerSide === "left" ? leftSide : rightSide;
@@ -6563,6 +6567,7 @@ function buildDropCap({
     easing,
     easeCurvature: pin,
     edits: capBallEdits,
+    preview,
   });
   if (!result) return null;
   const points = result.points;
@@ -6589,47 +6594,59 @@ function buildDropCap({
       bulbSlot: slot,
     };
   };
-  ["entry", "bottom", "side", "neck"].forEach((role, k) => {
-    const i = k * 3;
-    stamp(points[i], role, "onCurve");
-    points[i]._provenance.bulbTangent = result.tangents[k];
-    stamp(i ? points[i - 1] : result.wall[2], role, "in");
-    stamp(points[i + 1], role, "out");
-    points[i].smooth = role !== "neck" || easing > 0;
-    points[i].skipColinear = true;
-  });
-  // The neck joins Q, the existing inner-wall on-curve. No separate wall-cut
-  // point is emitted. Preserve Q's identity and every wall segment beyond it.
-  const originalInner = awayFromRib(innerPiece.segmentPoints);
-  points[12]._provenance = {
-    ...originalInner.at(-1)._provenance,
-  };
-  points[12].skipColinear = true;
-  points[12].smooth = originalInner.at(-1).smooth;
-  result.keptInner[0] = points[12];
-  const tension = calculateSegmentTension(
-    points[10],
-    points[9],
-    points[11],
-    points[12]
-  );
-  for (const [i, role] of [
-    [10, "out"],
-    [11, "in"],
-  ]) {
-    points[i]._provenance = {
-      ...points[i]._provenance,
-      skeletonPointId: endpoint._sourcePointId,
-      side: innerSide,
-      role,
-      capCurvatureField: "capBallEaseCurvature",
-      capCurvatureValue: pin,
-      capCurvatureTension: tension,
+  if (result.preview) {
+    result.wall[2]._provenance = { ...result.wall[2]._provenance, bulbPreview: true };
+    // Construction points have no edit identities and are hidden while dragging.
+    for (const p of points.slice(0, -1)) {
+      p._provenance = { skeletonPointId: endpoint._sourcePointId, bulbPreview: true };
+      p.skipColinear = true;
+    }
+    points.at(-1)._provenance = {
+      ...awayFromRib(innerPiece.segmentPoints).at(-1)._provenance,
     };
+  } else {
+    ["entry", "bottom", "side", "neck"].forEach((role, k) => {
+      const i = k * 3;
+      stamp(points[i], role, "onCurve");
+      points[i]._provenance.bulbTangent = result.tangents[k];
+      stamp(i ? points[i - 1] : result.wall[2], role, "in");
+      stamp(points[i + 1], role, "out");
+      points[i].smooth = true;
+      points[i].skipColinear = true;
+    });
+    // The neck joins Q, the existing inner-wall on-curve. No separate wall-cut
+    // point is emitted. Preserve Q's identity and every wall segment beyond it.
+    const originalInner = awayFromRib(innerPiece.segmentPoints);
+    points[12]._provenance = {
+      ...originalInner.at(-1)._provenance,
+    };
+    points[12].skipColinear = true;
+    points[12].smooth = originalInner.at(-1).smooth;
+    result.keptInner[0] = points[12];
+    const tension = calculateSegmentTension(
+      points[10],
+      points[9],
+      points[11],
+      points[12]
+    );
+    for (const [i, role] of [
+      [10, "out"],
+      [11, "in"],
+    ]) {
+      points[i]._provenance = {
+        ...points[i]._provenance,
+        skeletonPointId: endpoint._sourcePointId,
+        side: innerSide,
+        role,
+        capCurvatureField: "capBallEaseCurvature",
+        capCurvatureValue: pin,
+        capCurvatureTension: tension,
+      };
+    }
+    points[9]._provenance.constructionSegment = points
+      .slice(9)
+      .map(({ x, y }) => ({ x, y }));
   }
-  points[9]._provenance.constructionSegment = points
-    .slice(9)
-    .map(({ x, y }) => ({ x, y }));
   const keptOuter =
     position === "end"
       ? [...outer.slice(0, outerPiece.segmentStartIndex), ...result.wall]

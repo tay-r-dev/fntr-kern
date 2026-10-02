@@ -544,14 +544,14 @@ Size sets its radius to half the stroke width times the ratio. Shape stretches
 the rear radius to `R * (1 + 1.4 * shape)`. Choosing the emitted entry does not
 move this construction anchor.
 
-The bulb always has four owned on-curves, in outer-to-inner order:
+The committed bulb has four owned on-curves, in outer-to-inner order:
 
 | Point | Meaning | Freedom |
 | --- | --- | --- |
 | E | Horizontal wall apex | Exact wall subdivision; vertical handles. Its incoming length follows the cut. |
 | B | Bottom/top apex | Horizontal handles; bounded tangential slide; both lengths adjustable. |
 | C | Return-side horizontal apex | Vertical handles; bounded tangential slide; both lengths adjustable. |
-| N | Shared neck | Position, tangent, both lengths, and V-slide. Corner at zero easing; smooth above zero. |
+| N | Shared neck | Position, tangent, both lengths, and V-slide. Smooth at every easing value; vertical handles at zero. |
 
 P is the outer-wall point before E. Its outgoing handle participates in the
 splice. When E lies on the wall, exact subdivision changes both wall handles.
@@ -559,31 +559,32 @@ When E lies on the first ball arc, the shared V-slide fitter adjusts P–E,
 including P's handle, and retains the remaining ball arc. That second case is
 a fit; it does not promise exact equality with the original wall.
 
-W is a cut on the terminal inner-wall cubic. W and the retained wall are a
-De Casteljau subdivision. The wall's previous on-curve remains in the outline.
-Both wall pieces keep their original construction snapshots and gizmos.
+The reference shape is built first, with an implicit ball shoulder A and a
+wall cut W. Its retained W–Q wall is an exact subdivision of the generated wall.
+Q is the next existing inner-wall point and stays fixed. A small fillet replaces
+the old zero-easing corner; N starts at its vertical tangent. Increasing easing
+extends this transition along the ball and wall.
 
-At zero easing N belongs to the ball. Where the ball meets the wall, N and W
-coincide; only their connector collapses. N retains its incoming ball handle
-and is a corner. As easing increases, the construction retreats its implicit
-shoulder along the ball and advances W along the inner wall. N moves into the
-transition between them. C–N fits the return arc and the start of that
-transition; N–W finishes it. The shoulder is not an emitted on-curve.
+During skeleton edits and panel gestures the generator emits this reference,
+including its construction points. Those points, handles and their gizmos are
+hidden. On release the editor regenerates the contour with E/B/C/N only, then
+includes that final fit in the same undo record. Direct bulb-point drags keep
+the editable topology. Preview state is scoped to the edit transaction.
 
-The joint solve adjusts all eight handle lengths. B/C tangential motion and
-the B–C handle-length changes are bounded by 4% of R. N can move and turn within
-bounds that grow with easing. E and W remain fixed. Signed curvature is matched
-at E, B, C, N and W; N is excluded at zero easing. The small physical-displacement
-preference keeps the solve near the construction. A bounded result publishes
-its residual in `bulbHarmonizationError`; it is not a universal existence proof.
+The final fit merges C–A–N into C–N and N–W–Q into N–Q. It then jointly adjusts
+handle lengths and bounded point motion against samples of the reference and
+signed curvature at the joins. Shape error retains a nonzero weight throughout
+the solve. B/C movement and body-handle changes are bounded by 4% of R; automatic
+N motion and rotation grow with easing. E and Q stay fixed. The current fit is a
+bounded approximation: exact reference preservation and continuous curvature
+are goals, not guaranteed by this first iteration. Its curvature residual is
+published in `bulbHarmonizationError`.
 
 Z/Alt movement and handle edits set the preference before harmonization. N also
 supports normal movement and Shift+Z tangent rotation. V-slide runs on the
-harmonized outline, followed by a handle-only solve with N's projected position
-fixed. At zero easing the editor projects through the coincident W onto the
-retained wall. A still grab preserves the stored value. All writes use
-`editSkeleton`, including undo. The neck gizmo publishes its construction
-snapshot and stored curvature target.
+fitted outline, followed by a handle-only solve with N's projected position
+fixed. All writes use `editSkeleton`, including undo. The neck gizmo publishes
+its construction snapshot and stored curvature target.
 
 The solved bulb and its boundary wall curves retain fractional coordinates.
 Independent rounding would break exact subdivision and curvature continuity.

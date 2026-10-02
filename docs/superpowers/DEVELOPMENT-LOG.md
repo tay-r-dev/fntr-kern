@@ -2855,3 +2855,26 @@ scene alignment in the constructor and threw the identical "can't access
 property 'axes', this._rootObject is undefined" until it moved to the same
 place. **Reading font data before `start()` finishes is not a mistake
 specific to one field.**
+
+
+### Reference-first bulb and orthogonal neck (2026-10-02)
+
+The single-neck checkpoint removed emitted W but pulled the inner wall away
+from its reference at low easing. The next existing wall point must remain
+fixed. The new iteration separates the reference shape from its editable fit.
+The reference keeps the ball shoulder and wall cut internally. Zero easing now
+starts with a smooth vertical-tangent neck, using a small fillet instead of a
+corner. Its extent grows continuously with easing.
+
+Skeleton and panel edit transactions show the reference with its construction
+points hidden. On release the four-point fit replaces it in the same undoable
+change. Direct bulb editing retains its four-point topology. The fitter samples
+the reference and retains a shape penalty while solving curvature constraints;
+it no longer drops that penalty to nearly zero at the end.
+
+Validation for this requested rapid iteration: JavaScript syntax checks and
+finite-coordinate smoke checks at easing 0, 0.001, 0.5 and 1. Reference emission
+has extra construction points; final emission has E/B/C/N and fixed Q. No bundle
+or test-suite run. The earlier corner-at-zero tests describe the replaced rule.
+Visual fidelity, the mouse-up fit, and editor behavior await interactive review;
+the smoke fixture still reports nonzero curvature residuals.

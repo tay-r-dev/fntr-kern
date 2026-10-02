@@ -39,6 +39,8 @@ export function harmonizeBulb({
   neckForwardOnly = false,
   preferenceWeights = null,
   curveTargets = [],
+  shapeWeight = null,
+  maxIterations = 240,
 }) {
   const anchors = [0, 3, 6, 9, 12].map((i) => points[i]);
   const handles = [1, 2, 4, 5, 7, 8, 10, 11];
@@ -157,11 +159,11 @@ export function harmonizeBulb({
   // Penalizing log-length changes instead made a short neck handle as costly
   // to move as the long wall handle, and selected visibly different solutions
   // on neighboring slider samples. All iterations start from this frame's seed.
-  for (let iteration = 0; iteration < 240; iteration++) {
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
     if (iteration >= 140 && Math.max(...residuals(q).map(Math.abs)) < 1e-6) break;
     const r = residuals(q),
       d = displacement(q);
-    const weight = iteration < 100 ? 1e-4 : 1e-9;
+    const weight = shapeWeight ?? (iteration < 100 ? 1e-4 : 1e-9);
     const jacobian = Array.from({ length: count }, () => []);
     const motion = Array.from({ length: count }, () => []);
     const h = 1e-4;

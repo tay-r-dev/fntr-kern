@@ -6053,6 +6053,7 @@ function computeGeneratedTunniSegments(skeletonData, path) {
       const pointIndices = segment.parentPointIndices.map(
         (absolute) => absolute - contourStart
       );
+      if (pointIndices.some((i) => pointMap[i]?.bulbPreview)) continue;
       const isCubicControl = (absolute) =>
         (path.pointTypes[absolute] & VarPackedPath.POINT_TYPE_MASK) ===
         VarPackedPath.OFF_CURVE_CUBIC;
