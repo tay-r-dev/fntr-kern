@@ -205,10 +205,95 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
 // cap, corner, slide or pass made it. Stages round as they build, but not all
 // of them do; this is the one place that guarantees it.
 function roundGeneratedPoints(contour) {
-  for (const point of contour.points) {
+  const points = contour.points;
+  const entries = [];
+  points.forEach((point, index) => {
+    const origin = point._provenance;
+    if (
+      !point.type &&
+      origin?.bulbRole === "entry" &&
+      origin.bulbSlot === "onCurve" &&
+      !origin.bulbEdited
+    ) {
+      entries.push(index);
+    }
+  });
+  const exact = entries.map((index) =>
+    [-1, 0, 1].map((step) => {
+      const point = points[(index + step + points.length) % points.length];
+      return { x: point.x, y: point.y };
+    })
+  );
+  for (const point of points) {
     point.x = Math.round(point.x);
     point.y = Math.round(point.y);
   }
+  entries.forEach((index, k) => chooseBulbEntryGrid(points, index, exact[k]));
+}
+
+// The bulb's entry is built so that the wall and the ball bend by the same
+// amount where they meet. Rounding the three points that set that join each to
+// its own nearest unit throws the match away: the comb stepped 17-27 per cent.
+// So the join's handle in, on-curve and handle out each take whichever of the
+// whole-unit positions around their exact place leaves the smallest step, with
+// the join kept as straight as the grid allows. 64 placements, all tried.
+function chooseBulbEntryGrid(points, index, exact) {
+  const count = points.length;
+  const at = (step) => points[(index + step + count) % count];
+  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return;
+  const candidates = exact.map(({ x, y }) =>
+    [Math.floor(x), Math.ceil(x)].flatMap((cx) =>
+      [Math.floor(y), Math.ceil(y)].map((cy) => ({ x: cx, y: cy }))
+    )
+  );
+  const placed = [at(-1), at(0), at(1)];
+  const endCurvature = (a, b, c) => {
+    const d1 = { x: b.x - a.x, y: b.y - a.y };
+    const d2 = { x: c.x - 2 * b.x + a.x, y: c.y - 2 * b.y + a.y };
+    const speed = Math.hypot(d1.x, d1.y);
+    return speed ? Math.abs((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / speed ** 3 : 0;
+  };
+  const score = ([handleIn, onCurve, handleOut]) => {
+    const u = { x: onCurve.x - handleIn.x, y: onCurve.y - handleIn.y };
+    const v = { x: handleOut.x - onCurve.x, y: handleOut.y - onCurve.y };
+    const lengths = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
+    if (!lengths) return null;
+    const kink = Math.acos(
+      Math.min(1, Math.max(-1, (u.x * v.x + u.y * v.y) / lengths))
+    );
+    const kIn = endCurvature(onCurve, handleIn, at(-2));
+    const kOut = endCurvature(onCurve, handleOut, at(2));
+    const larger = Math.max(kIn, kOut);
+    return {
+      bent: kink > gridKinkAllowance(handleIn, onCurve, handleOut) + 1e-9 ? kink : 0,
+      step: larger ? Math.abs(kIn - kOut) / larger : 0,
+      travel: [handleIn, onCurve, handleOut].reduce(
+        (sum, point, k) => sum + Math.hypot(point.x - exact[k].x, point.y - exact[k].y),
+        0
+      ),
+    };
+  };
+  const better = (a, b) =>
+    !b ||
+    a.bent < b.bent - 1e-12 ||
+    (a.bent <= b.bent + 1e-12 &&
+      (a.step < b.step - 1e-9 || (a.step <= b.step + 1e-9 && a.travel < b.travel)));
+  let best = null;
+  let bestScore = score(placed.map(({ x, y }) => ({ x, y })));
+  for (const handleIn of candidates[0])
+    for (const onCurve of candidates[1])
+      for (const handleOut of candidates[2]) {
+        const trial = score([handleIn, onCurve, handleOut]);
+        if (trial && better(trial, bestScore)) {
+          best = [handleIn, onCurve, handleOut];
+          bestScore = trial;
+        }
+      }
+  if (!best) return;
+  placed.forEach((point, k) => {
+    point.x = best[k].x;
+    point.y = best[k].y;
+  });
 }
 
 function stripPointProvenance(contour) {
@@ -7109,6 +7194,16 @@ function buildDropCap({
     stamp(before, role, "in");
     stamp(after, role, "out");
     if (point) point.skipColinear = true;
+  }
+  // An entry the designer moved by hand keeps exactly what the hand stated:
+  // the whole-unit search for an even comb leaves it alone.
+  const entryEdit = capBallEdits?.entry;
+  if (
+    outerEnd.point?._provenance &&
+    entryEdit &&
+    ["slide", "carry", "in", "out", "vslide"].some((field) => entryEdit[field])
+  ) {
+    outerEnd.point._provenance.bulbEdited = true;
   }
   // The neck's gizmo measures the neck as built, before any edit, which is the
   // curve its pin governs.

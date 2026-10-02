@@ -1092,7 +1092,10 @@ describe("the curvature gizmo at a bulb terminal", () => {
         for (let i = 0; i < plain.path.numPoints; i++) {
           const a = plain.path.getPoint(i),
             b = edited.path.getPoint(i);
-          if (Math.hypot(a.x - b.x, a.y - b.y) > 1e-6) moved.push(i);
+          // An unedited entry's join takes the whole-unit placement that keeps
+          // the comb even; a hand edit takes the nearest. Either way within a
+          // unit, so only a larger move is the edit's own.
+          if (Math.hypot(a.x - b.x, a.y - b.y) > Math.SQRT2) moved.push(i);
         }
         const onCurve = bulbPosition(edited, role, "onCurve");
         const start = bulbPosition(plain, role, "onCurve");
@@ -1119,7 +1122,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
         for (let i = 0; i < plain.path.numPoints; i++) {
           const p = plain.path.getPoint(i),
             q = edited.path.getPoint(i);
-          if (Math.hypot(p.x - q.x, p.y - q.y) > 1e-6) moved++;
+          if (Math.hypot(p.x - q.x, p.y - q.y) > Math.SQRT2) moved++;
         }
         expect(moved, `${role} ${slot}`).to.equal(1);
       }
