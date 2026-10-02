@@ -1172,7 +1172,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           this.sceneController.scrollAdjustBehavior =
             this.getScrollAdjustBehavior("pin-glyph-center");
           this.sceneController.autoViewBox = false;
-        }
+        },
+        () => this._glyphSourceLocations ?? []
       );
 
     this._updateFontAxes = updateFontAxes;
@@ -2827,6 +2828,13 @@ export default class DesignspaceNavigationPanel extends Panel {
     );
     this.glyphAxesElement.axes = glyphAxes;
     this.glyphAxesAccordionItem.hidden = !varGlyphController;
+
+    // The glyph's sources slot on the font axes too: a source added from the
+    // sources table need not sit on a font source.
+    this._glyphSourceLocations = (varGlyphController?.sources || []).map((source) =>
+      varGlyphController.getSourceLocation(source)
+    );
+    this._updateFontAxes();
 
     this._updateResetGlyphAxesButtonState();
   }

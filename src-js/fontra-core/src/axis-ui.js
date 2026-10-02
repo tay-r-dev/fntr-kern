@@ -21,7 +21,10 @@ export function makeFontAxisAccordionItems(
   fontController,
   settingsController,
   accordion,
-  sliderChangeHook
+  sliderChangeHook,
+  // More source-space locations to slot, beside the font's own sources: the
+  // edited glyph's sources, which need not sit on a font source.
+  extraSourceLocations = () => []
 ) {
   const settings = settingsController.model;
 
@@ -98,7 +101,8 @@ export function makeFontAxisAccordionItems(
         settingsController,
         accordion,
         sliderChangeHook,
-        false
+        false,
+        extraSourceLocations
       );
 
       updateHiddenFontAxes = setupFontAxisSliders(
@@ -106,7 +110,8 @@ export function makeFontAxisAccordionItems(
         settingsController,
         accordion,
         sliderChangeHook,
-        true
+        true,
+        extraSourceLocations
       );
     }
 
@@ -133,7 +138,8 @@ function setupFontAxisSliders(
   settingsController,
   accordion,
   sliderChangeHook,
-  forHiddenAxes = false
+  forHiddenAxes = false,
+  extraSourceLocations = () => []
 ) {
   const settings = settingsController.model;
   const locationElement = accordion.querySelector(
@@ -169,20 +175,25 @@ function setupFontAxisSliders(
     const sourceSpaceDefaults = Object.fromEntries(
       axesSourceSpace.map((axis) => [axis.name, axis.defaultValue])
     );
-    const sourceLocations = Object.values(fontController.sources || {}).map(
-      (source) => {
-        const location = { ...sourceSpaceDefaults, ...source.location };
-        return settings.fontAxesUseSourceCoordinates
-          ? location
-          : mapBackward(location, axes);
-      }
-    );
+    const sourceLocations = [
+      ...Object.values(fontController.sources || {}).map((source) => source.location),
+      ...extraSourceLocations(),
+    ].map((sparse) => {
+      const location = { ...sourceSpaceDefaults, ...sparse };
+      return settings.fontAxesUseSourceCoordinates
+        ? location
+        : mapBackward(location, axes);
+    });
     locationElement.axisStops = Object.fromEntries(
       axes.map((axis) => [
         axis.name,
-        sourceLocations
-          .map((location) => location[axis.name])
-          .filter((value) => value != null),
+        [
+          ...new Set(
+            sourceLocations
+              .map((location) => location[axis.name])
+              .filter((value) => value != null)
+          ),
+        ],
       ])
     );
     locationElement.axes = settings.fontAxesUseSourceCoordinates
