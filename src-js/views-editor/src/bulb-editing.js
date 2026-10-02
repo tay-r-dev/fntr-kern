@@ -163,12 +163,16 @@ function makeBulbEntries(layerGlyph, items, options, makeWriter) {
         return rollbackChange;
       },
       makeChangeForDelta(delta) {
-        const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
-          for (const { contourIndex, pointIndex, role, write } of writers) {
-            const point = working.contours?.[contourIndex]?.points?.[pointIndex];
-            if (point) setSkeletonCapBallEdit(point, role, write(delta));
-          }
-        });
+        const changes = makeEditSkeletonChange(
+          originalLayerGlyph,
+          (working) => {
+            for (const { contourIndex, pointIndex, role, write } of writers) {
+              const point = working.contours?.[contourIndex]?.points?.[pointIndex];
+              if (point) setSkeletonCapBallEdit(point, role, write(delta));
+            }
+          },
+          { bulbInteractive: true }
+        );
         rollbackChange = changes.rollbackChange;
         return changes.change;
       },

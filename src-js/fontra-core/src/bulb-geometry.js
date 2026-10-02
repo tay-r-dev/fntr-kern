@@ -273,7 +273,9 @@ export function buildFourPointBulb({
     theta: Math.PI / 2,
   };
   const first = ballArc(ball, -Math.PI / 2, bottom.theta);
-  const entry = joinBulbEntry(wall, first);
+  const entry = preview
+    ? { wall, firstArc: first, t: 1, orthogonal: false }
+    : joinBulbEntry(wall, first);
   const cut = innerBallCut(ball, inner, side.theta);
   const cutPoint = cubicPointAt(inner, cut);
   const thetaCut = clamp(
@@ -320,14 +322,15 @@ export function buildFourPointBulb({
   const referencePoints = referenceCurves.flatMap((curve, i) =>
     (i ? curve.slice(1) : curve).map((p) => ({ ...p }))
   );
-  const fittedReturn = corner
-    ? returnArc
-    : makeSlideCandidate(
-        { points: [...returnArc, ...easingCurve.slice(1)], isClosed: false },
-        3,
-        "previous",
-        0
-      ).points.slice(3);
+  const fittedReturn =
+    corner || preview
+      ? returnArc
+      : makeSlideCandidate(
+          { points: [...returnArc, ...easingCurve.slice(1)], isClosed: false },
+          3,
+          "previous",
+          0
+        ).points.slice(3);
   const fittedWall = keptInner;
   let points = [
     ...entry.firstArc,
@@ -462,8 +465,8 @@ export function buildFourPointBulb({
     if (entrySlide.direction === "previous") {
       entry.t = entrySlide.parameter;
       entry.ballParameter = undefined;
-    } else if (entry.ballParameter !== undefined) {
-      entry.ballParameter += (1 - entry.ballParameter) * entrySlide.parameter;
+    } else if (entrySlide.direction === "next") {
+      entry.ballParameter = entrySlide.parameter;
     }
     tangents[0] = unit(sub(points[1], points[0]));
   }

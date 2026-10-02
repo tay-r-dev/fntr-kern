@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { slideBulbEntryForCurvature } from "../src/bulb-entry-slide.js";
 import { bulbEndCurvature } from "../src/bulb-harmonization.js";
+import { buildFourPointBulb } from "../src/bulb-geometry.js";
 import { splitCubicAt } from "../src/offset-contour.js";
 
 describe("bulb entry V-slide fallback", () => {
@@ -45,5 +46,48 @@ describe("bulb entry V-slide fallback", () => {
       1e-8
     );
     expect(result.departure).to.be.below(1.35);
+  });
+  it("reduces the supplied outer comb jump without moving any ball control", () => {
+    const wall = [
+      [304, 498],
+      [475, 498],
+      [536, 427],
+      [585, 284],
+    ].map(([x, y], i) => ({ x, y, ...(i === 1 || i === 2 ? { type: "cubic" } : {}) }));
+    const inner = [
+      [474, 246],
+      [440, 392],
+      [417, 435],
+      [304, 435],
+    ].map(([x, y], i) => ({ x, y, ...(i === 1 || i === 2 ? { type: "cubic" } : {}) }));
+    const r = buildFourPointBulb({
+      wall,
+      inner,
+      radius: 94.77,
+      shape: 0,
+      easing: 0.59,
+      easeCurvature: 0.14,
+    });
+    expect(r.entrySlide.direction).to.equal("stationary");
+    expect(r.entrySlide.bounded).to.equal(true);
+    const oldBall = [
+      [590.1922866045394, 253.1458168659178],
+      [590.1922866045395, 202.8363421938656],
+      [549.4650356842409, 158.54328026048844],
+      [495.3596611760296, 158.54328026048844],
+      [443.00686947193435, 158.54328026048844],
+      [400.5603614173832, 200.98245227974303],
+      [400.5603614173832, 253.32619584429938],
+    ];
+    r.points.slice(0, 7).forEach((p, i) => {
+      expect(p.x).to.be.closeTo(oldBall[i][0], 1e-8);
+      expect(p.y).to.be.closeTo(oldBall[i][1], 1e-8);
+    });
+    const jump = Math.abs(
+      bulbEndCurvature(r.wall, true) - bulbEndCurvature(r.points.slice(0, 4))
+    );
+    expect(jump).to.be.lessThan(0.8 * 0.006095895518770122);
+    // The supplied P-E fit already departed by 7.84 units. Do not enlarge it.
+    expect(r.entrySlide.departure).to.be.at.most(7.837752664663);
   });
 });

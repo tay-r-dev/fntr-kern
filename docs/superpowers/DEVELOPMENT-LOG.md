@@ -2973,3 +2973,36 @@ On the supplied geometry, sampled maximum C–N–Q departure drops from 14.42 t
 G2 and not exact wall subdivision. Three focused checks pass: preview fidelity
 and reference immutability; body/Q preservation and finite coordinates over
 five easing values; the existing entry-slide regression. No bundle/full suite.
+
+
+### Bulb drag latency and bounded outer-entry correction (2026-10-02)
+
+The supplied lslash(4) exposed a selection-dependent preview bug: selecting a
+bulb point disabled reference preview for panel sliders as well as canvas
+manipulation. Panel streams now explicitly request preview. Reference generation
+also skips the entry V-slide and neck reduction it previously did before its
+early return.
+
+Direct bulb point/handle drags now retain the captured four-point outline and
+apply stored-edit deltas through the existing skeleton write path. They keep
+their editable nodes and avoid a full neck solve each frame. Tunni bulb-handle
+writes use the same route. Only edit-only changes qualify; changed skeleton or
+cap geometry still rebuilds. Neck fits have an eight-entry coordinate-keyed
+cache, with copied coordinates and fresh caller metadata, so unchanged fitting
+inputs (notably V-slide) do not repeat the expensive solve.
+
+The outer entry had a 0.006096 curvature jump. Exact local candidates exceeded
+the existing shape bound on this specimen. The bounded fallback changes only
+P–E's handle lengths; all ball controls and E remain fixed. It lowers the jump
+to 0.004782, about 22%, without enlarging the wall-departure envelope. This is
+an improvement, not resolution of the outer comb discontinuity. Ball-side
+search also uses the original source arc and no longer rejects an unchanged
+small bottom residual; its parameter is stored in that source arc's domain.
+
+Ten local geometry frames on lslash(4): full regeneration averaged 734 ms,
+slider preview 1.5 ms, and direct retained neck drag 2.4 ms. These figures exclude
+browser rendering. Four focused tests cover entry/body preservation, the bounded
+outer improvement, preview fidelity/reference independence, and corner/finite
+geometry across easing values. Editor syntax checks pass; no bundle/full suite.
+Manual browser checks remain: slider while N is selected, direct point/handle
+and Tunni dragging, release, cancel and undo/redo.

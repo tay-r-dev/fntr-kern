@@ -637,95 +637,102 @@ export async function handleGeneratedTunniDrag({
 
       let frame = new ChangeCollector();
       for (const { layerGlyph, changePath, originals } of layerInfo) {
-        const changes = editSkeleton(layerGlyph, (working) => {
-          for (const [index, write] of writes) {
-            const original = originals[index];
-            const point =
-              working?.contours?.[original?.contourIndex]?.points?.[
-                original?.pointIndex
-              ];
-            // A ball segment: the handle's new length, stated against the one
-            // it had at the grab, lands on the bulb's edit for that handle.
-            if (write.bulbHandle) {
-              if (point && original?.bulbRole) {
-                const anchor = originalPoints[index === 1 ? 0 : 3];
-                const change =
-                  distance(write.bulbHandle, anchor) -
-                  distance(originalPoints[index], anchor);
-                setSkeletonCapBallEdit(point, original.bulbRole, {
-                  [original.bulbSlot]: round(original.edit[original.bulbSlot] + change),
-                });
+        const changes = editSkeleton(
+          layerGlyph,
+          (working) => {
+            for (const [index, write] of writes) {
+              const original = originals[index];
+              const point =
+                working?.contours?.[original?.contourIndex]?.points?.[
+                  original?.pointIndex
+                ];
+              // A ball segment: the handle's new length, stated against the one
+              // it had at the grab, lands on the bulb's edit for that handle.
+              if (write.bulbHandle) {
+                if (point && original?.bulbRole) {
+                  const anchor = originalPoints[index === 1 ? 0 : 3];
+                  const change =
+                    distance(write.bulbHandle, anchor) -
+                    distance(originalPoints[index], anchor);
+                  setSkeletonCapBallEdit(point, original.bulbRole, {
+                    [original.bulbSlot]: round(
+                      original.edit[original.bulbSlot] + change
+                    ),
+                  });
+                }
+                continue;
               }
-              continue;
-            }
-            // Curvature, so the handle lock is the one that speaks.
-            // A ball point has no side, and no side's lock holds it.
-            if (
-              !original ||
-              !point ||
-              ((original.side === "left" || original.side === "right") &&
-                isSkeletonSideLocked(point, original.side, "handles"))
-            ) {
-              continue;
-            }
-            if (write.capCurvature !== undefined) {
-              setSkeletonCapCurvature(
-                point,
-                write.capCurvatureField,
-                write.capCurvature
-              );
-            } else if (write.pinnedTension !== undefined) {
-              // Absolute, not a delta: the drag already computed the tension it
-              // wants from the geometry it grabbed, and every mousemove restates
-              // it against the same original. Accumulating it would compound.
-              setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
-            } else if (write.offsetAbsolute && original.offset) {
-              const collapsed = !!(write.offsetAbsolute.x || write.offsetAbsolute.y);
-              setSkeletonHandleOffset(
-                point,
-                original.side,
-                original.role,
-                {
-                  ...write.offsetAbsolute,
-                  detached: original.offset.detached,
-                  collapsedByCurvature: collapsed,
-                },
-                { round }
-              );
-            } else if (write.release && original.offset) {
-              // Only what this gizmo put down. An unmarked offset is the
-              // designer's own placement and is not the gizmo's to undo.
-              if (original.offset.collapsedByCurvature) {
-                setSkeletonHandleOffset(point, original.side, original.role, {
-                  x: 0,
-                  y: 0,
-                  detached: original.offset.detached,
-                });
+              // Curvature, so the handle lock is the one that speaks.
+              // A ball point has no side, and no side's lock holds it.
+              if (
+                !original ||
+                !point ||
+                ((original.side === "left" || original.side === "right") &&
+                  isSkeletonSideLocked(point, original.side, "handles"))
+              ) {
+                continue;
               }
-            } else if (write.offsetDelta && original.offset) {
-              setSkeletonHandleOffset(
-                point,
-                original.side,
-                original.role,
-                {
-                  x: original.offset.x + write.offsetDelta.x,
-                  y: original.offset.y + write.offsetDelta.y,
-                  detached: original.offset.detached,
-                  collapsedByCurvature:
-                    write.collapsedByCurvature || original.offset.collapsedByCurvature,
-                },
-                { round }
-              );
-            } else if (write.nudgeDelta !== undefined) {
-              setSkeletonPointSideNudge(
-                point,
-                original.side,
-                original.nudge + write.nudgeDelta,
-                { round }
-              );
+              if (write.capCurvature !== undefined) {
+                setSkeletonCapCurvature(
+                  point,
+                  write.capCurvatureField,
+                  write.capCurvature
+                );
+              } else if (write.pinnedTension !== undefined) {
+                // Absolute, not a delta: the drag already computed the tension it
+                // wants from the geometry it grabbed, and every mousemove restates
+                // it against the same original. Accumulating it would compound.
+                setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
+              } else if (write.offsetAbsolute && original.offset) {
+                const collapsed = !!(write.offsetAbsolute.x || write.offsetAbsolute.y);
+                setSkeletonHandleOffset(
+                  point,
+                  original.side,
+                  original.role,
+                  {
+                    ...write.offsetAbsolute,
+                    detached: original.offset.detached,
+                    collapsedByCurvature: collapsed,
+                  },
+                  { round }
+                );
+              } else if (write.release && original.offset) {
+                // Only what this gizmo put down. An unmarked offset is the
+                // designer's own placement and is not the gizmo's to undo.
+                if (original.offset.collapsedByCurvature) {
+                  setSkeletonHandleOffset(point, original.side, original.role, {
+                    x: 0,
+                    y: 0,
+                    detached: original.offset.detached,
+                  });
+                }
+              } else if (write.offsetDelta && original.offset) {
+                setSkeletonHandleOffset(
+                  point,
+                  original.side,
+                  original.role,
+                  {
+                    x: original.offset.x + write.offsetDelta.x,
+                    y: original.offset.y + write.offsetDelta.y,
+                    detached: original.offset.detached,
+                    collapsedByCurvature:
+                      write.collapsedByCurvature ||
+                      original.offset.collapsedByCurvature,
+                  },
+                  { round }
+                );
+              } else if (write.nudgeDelta !== undefined) {
+                setSkeletonPointSideNudge(
+                  point,
+                  original.side,
+                  original.nudge + write.nudgeDelta,
+                  { round }
+                );
+              }
             }
-          }
-        });
+          },
+          { bulbInteractive: Array.from(writes).some(([, write]) => write.bulbHandle) }
+        );
         if (changes.hasChange) {
           frame = frame.concat(changes.prefixed(changePath));
         }

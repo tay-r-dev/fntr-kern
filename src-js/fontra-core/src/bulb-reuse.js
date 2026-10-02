@@ -1,11 +1,17 @@
 // A terminal depends on its own settings and its adjoining skeleton segment.
 // The next rib's width/nudge and the rest of the contour do not rebuild its ball.
-function terminalInput(contour, atStart) {
+import { bulbEndCurvature } from "./bulb-harmonization.js";
+
+function terminalInput(contour, atStart, ignoreEdits = false) {
   const points = atStart ? contour.points : [...contour.points].reverse();
   const next = points.findIndex((p, i) => i > 0 && !p.type);
   if (next < 0) return null;
   const terminal = { ...points[0] };
   delete terminal.locked;
+  if (ignoreEdits)
+    terminal.capBallEdits = {
+      neck: { vslide: terminal.capBallEdits?.neck?.vslide ?? 0 },
+    };
   return JSON.stringify({
     terminal,
     segment: points
@@ -21,7 +27,12 @@ function terminalInput(contour, atStart) {
   });
 }
 
-export function collectUnchangedBulbs(before, after, path) {
+export function collectUnchangedBulbs(
+  before,
+  after,
+  path,
+  { allowEditDeltas = false } = {}
+) {
   const retained = new Map();
   for (const contour of after?.contours || []) {
     if (contour.closed) continue;
@@ -30,7 +41,10 @@ export function collectUnchangedBulbs(before, after, path) {
     for (const atStart of [true, false]) {
       const terminal = atStart ? contour.points[0] : contour.points.at(-1);
       if (!terminal || (terminal.capStyle ?? contour.capStyle) !== "drop") continue;
-      if (terminalInput(previous, atStart) !== terminalInput(contour, atStart))
+      if (
+        terminalInput(previous, atStart, allowEditDeltas) !==
+        terminalInput(contour, atStart, allowEditDeltas)
+      )
         continue;
       for (const entry of before.generated || []) {
         if (
@@ -75,6 +89,12 @@ export function collectUnchangedBulbs(before, after, path) {
           entryBallParameter: origin.bulbEntryBallParameter,
           orthogonalEntry: origin.bulbEntryOrthogonal,
           error: origin.bulbHarmonizationError,
+          editDeltas: allowEditDeltas
+            ? bulbEditDeltas(
+                (atStart ? previous.points[0] : previous.points.at(-1)).capBallEdits,
+                terminal.capBallEdits
+              )
+            : null,
         });
       }
     }
@@ -99,5 +119,72 @@ export function reconnectRetainedBulb(retained, wall, inner) {
     }
   }
   result.keptInner = [result.points[12]];
+  if (result.editDeltas) applyBulbEditDeltas(result, result.editDeltas);
   return result;
+}
+
+function bulbEditDeltas(before, after) {
+  return ["entry", "bottom", "side", "neck"].map((role) =>
+    Object.fromEntries(
+      ["slide", "normal", "turn", "in", "out", "carry"].map((field) => [
+        field,
+        (after?.[role]?.[field] ?? 0) - (before?.[role]?.[field] ?? 0),
+      ])
+    )
+  );
+}
+
+// Direct manipulation starts from the outline the user grabbed. Apply the
+// stored-edit delta to that snapshot; do not solve a new bulb under the cursor.
+export function applyBulbEditDeltas(result, deltas) {
+  const p = result.points;
+  const unit = (x, y) => {
+    const n = Math.hypot(x, y) || 1;
+    return { x: x / n, y: y / n };
+  };
+  for (let k = 0; k < 4; k++) {
+    const edit = deltas[k];
+    if (!edit || !Object.values(edit).some(Boolean)) continue;
+    const i = 3 * k,
+      anchor = { ...p[i] };
+    const tangent = unit(p[i + 1].x - anchor.x, p[i + 1].y - anchor.y);
+    const slide = k ? edit.slide : 0,
+      normal = k === 3 ? edit.normal : 0;
+    p[i].x += tangent.x * slide - tangent.y * normal;
+    p[i].y += tangent.y * slide + tangent.x * normal;
+    for (const [h, sign, slot] of [
+      [i - 1, -1, "in"],
+      [i + 1, 1, "out"],
+    ]) {
+      if (h < 0) continue;
+      const dx = p[h].x - anchor.x,
+        dy = p[h].y - anchor.y;
+      const direction = unit(dx, dy),
+        angle = k === 3 ? edit.turn : 0;
+      const length = Math.max(
+        0,
+        Math.hypot(dx, dy) + edit[slot] + sign * ((k ? edit.carry : 0) - slide)
+      );
+      p[h].x =
+        p[i].x +
+        length * (direction.x * Math.cos(angle) - direction.y * Math.sin(angle));
+      p[h].y =
+        p[i].y +
+        length * (direction.x * Math.sin(angle) + direction.y * Math.cos(angle));
+    }
+    result.tangents[k] = unit(p[i + 1].x - p[i].x, p[i + 1].y - p[i].y);
+  }
+  // Retained diagnostics must describe the edited curves, not the old fit.
+  const errors = [
+    Math.abs(bulbEndCurvature(result.wall, true) - bulbEndCurvature(p.slice(0, 4))),
+  ];
+  for (const i of [3, 6, ...(p[9].smooth ? [9] : [])])
+    errors.push(
+      Math.abs(
+        bulbEndCurvature(p.slice(i - 3, i + 1), true) -
+          bulbEndCurvature(p.slice(i, i + 4))
+      )
+    );
+  result.error =
+    Math.max(...errors) * Math.max(1, Math.hypot(p[3].x - p[6].x, p[3].y - p[6].y));
 }

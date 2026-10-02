@@ -351,15 +351,16 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   }
   const generated = generateFromSkeleton(working, {
     ...readSkeletonGenerationOptions(),
-    bulbPreview: bulbReferencePreview,
+    bulbPreview: options.bulbPreview ?? bulbReferencePreview,
     retainedBulbs: collectUnchangedBulbs(
       normalizeSkeletonData(structuredClone(original || makeEmptySkeletonData())),
       working,
-      layerGlyph.path
+      layerGlyph.path,
+      { allowEditDeltas: options.bulbInteractive === true }
     ),
   });
   if (
-    bulbReferencePreview &&
+    (options.bulbPreview ?? bulbReferencePreview) &&
     generated.provenance.some((entry) =>
       entry.pointMap.some((point) => point?.bulbPreview)
     )

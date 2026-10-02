@@ -566,6 +566,10 @@ after it stay fixed. A ball-side fallback keeps the ball subcurve exact and fits
 only P–E. Departure is measured against the original ball and wall, not a prior
 fit: candidates stay within 2% of R or improve an already larger authored
 reference error. This prevents a boxy fit from becoming its own reference.
+If neither exact entry candidate fits that envelope, a bounded wall-handle
+adjustment may reduce the comb jump. It holds E and every ball control fixed,
+limits wall departure to the existing reference envelope, and reports the
+remaining curvature error. This fallback does not claim exact G2.
 
 The reference shape is built first, with an implicit ball shoulder A and wall
 cut W. W–Q is an exact subdivision of the generated inner wall; Q is the next
@@ -578,7 +582,12 @@ During skeleton edits and panel gestures the generator emits this reference,
 including its construction points. Those points, handles and their gizmos are
 hidden. On release the editor regenerates the contour with E/B/C/N only, then
 includes that final fit in the same undo record. Direct bulb-point drags keep
-the editable topology. Preview state is scoped to the edit transaction.
+the editable topology. Their frame writes apply edit deltas to the captured
+outline through retained geometry; they do not rerun the neck fitter. Panel
+streams explicitly request preview even when a bulb point is selected. Preview
+state is scoped to the edit transaction. Preview construction skips entry and
+neck reduction work. A bounded, coordinate-keyed cache reuses identical neck
+fits (including during V-slide); returned points and metadata are independent.
 
 `bulb-reuse.js` compares each terminal's settings and adjoining skeleton segment
 before regeneration. An unchanged bulb reuses its emitted points, retaining

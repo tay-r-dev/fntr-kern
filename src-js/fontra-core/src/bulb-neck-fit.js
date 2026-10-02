@@ -52,7 +52,41 @@ function merge(a, b) {
 // Reduce C-A-W-Q to C-N-Q. N belongs to the fit, not necessarily to the
 // source wall. Fix the body and Q, fit both adjacent spans, and retain the
 // preview as an independent target throughout curvature harmonization.
-export function fitBulbNeck({
+const fitCache = new Map();
+export function fitBulbNeck(options) {
+  const xy = (points) => points.map(({ x, y }) => [x, y]);
+  const key = JSON.stringify([
+    xy(options.points),
+    xy(options.reference),
+    xy(options.wall),
+    options.radius,
+    options.nextCurvature,
+    options.neckOffsets,
+  ]);
+  let fit = fitCache.get(key);
+  if (!fit) {
+    fit = solveBulbNeck(options);
+    if (fitCache.size >= 8) fitCache.delete(fitCache.keys().next().value);
+    fit = {
+      ...fit,
+      points: fit.points.map(({ x, y, type, smooth, skipColinear }) => ({
+        x,
+        y,
+        ...(type ? { type } : {}),
+        ...(smooth === undefined ? {} : { smooth }),
+        ...(skipColinear === undefined ? {} : { skipColinear }),
+      })),
+    };
+    fitCache.set(key, structuredClone(fit));
+  }
+  // The generator stamps provenance and the editor mutates returned controls.
+  // Only coordinates are memoized; restore this call's metadata on every hit.
+  const result = structuredClone(fit);
+  result.points = result.points.map((p, i) => ({ ...options.points[i], ...p }));
+  return result;
+}
+
+function solveBulbNeck({
   points,
   reference,
   wall,

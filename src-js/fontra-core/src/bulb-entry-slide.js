@@ -81,7 +81,6 @@ export function slideBulbEntryForCurvature({
       Math.abs(bulbEndCurvature(entry, true) - target)
     ) * radius;
   if (mismatch < 0.001) return null;
-  const ballRun = { points: [...wall, ...entry.slice(1)], isClosed: false };
   const sourceFirst = sourceArc ? sourceArc.map((p) => ({ ...p })) : entry;
   if (sourceArc) {
     sourceFirst[2].x += entry[3].x - sourceFirst[3].x;
@@ -101,9 +100,22 @@ export function slideBulbEntryForCurvature({
     baselineDeparture = Math.max(baselineDeparture, Math.min(...distances));
   }
   const maxDeparture = Math.max(0.02 * radius, baselineDeparture);
+  let wallDeparture = 0;
+  for (let k = 0; k <= 32; k++) {
+    const p = cubicPointAt(wall, k / 32);
+    wallDeparture = Math.max(
+      wallDeparture,
+      Math.min(
+        ...[sourceWall, sourceFirst].map((curve) =>
+          norm(sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point))
+        )
+      )
+    );
+  }
+  const ballSideLimit = Math.max(maxDeparture, wallDeparture);
   let best = null;
   const consider = (direction, t) => {
-    const run = direction === "previous" ? wallRun : ballRun;
+    const run = wallRun;
     const candidate = makeSlideCandidate(run, 3, direction, t).points;
     let keptWall = candidate.slice(0, 4);
     let fitted;
@@ -117,7 +129,11 @@ export function slideBulbEntryForCurvature({
     } else {
       // Keep the ball-side subcurve exact. Only the wall is refit here.
       fitted = candidate.slice(3);
-      if (Math.abs(bulbEndCurvature(fitted, true) - target) * radius > 0.001) return;
+      if (
+        Math.abs(bulbEndCurvature(fitted, true) - target) >
+        Math.abs(bulbEndCurvature(entry, true) - target) + 1e-9
+      )
+        return;
       keptWall = matchCubicEndCurvatures(
         keptWall,
         bulbEndCurvature(sourceWall),
@@ -148,6 +164,21 @@ export function slideBulbEntryForCurvature({
         Math.min(distance(sourceFirst), distance(sourceWall))
       );
     }
+    if (direction === "next") {
+      for (let k = 0; k <= 32; k++) {
+        const p = cubicPointAt(keptWall, k / 32);
+        departure = Math.max(
+          departure,
+          Math.min(
+            ...[sourceWall, sourceFirst].map((curve) =>
+              norm(
+                sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point)
+              )
+            )
+          )
+        );
+      }
+    }
     if (!best || departure < best.departure)
       best = {
         wall: keptWall,
@@ -171,8 +202,56 @@ export function slideBulbEntryForCurvature({
         if (t > 0.01 && t < 0.99) consider(direction, t);
       }
     }
-    if (best?.departure <= maxDeparture) return best;
+    if (best?.departure <= (direction === "next" ? ballSideLimit : maxDeparture))
+      return best;
   }
   // V-slide may refit the adjacent span, but never loosen the ball's limits.
-  return best?.departure <= maxDeparture ? best : null;
+  if (best?.departure <= maxDeparture) return best;
+  return softenEntryWall(wall, points, sourceWall, sourceFirst, radius);
+}
+
+// A bounded fallback for an entry already on the ball. Preserve every ball
+// control and E itself; adjust only P-E's two lengths inside the existing
+// wall/reference envelope. Keep the remaining comb error visible to callers.
+function softenEntryWall(wall, points, sourceWall, sourceArc, radius) {
+  const distance = (p, curve) =>
+    norm(sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point));
+  const departure = (curve) => {
+    let result = 0;
+    for (let i = 0; i <= 32; i++) {
+      const p = cubicPointAt(curve, i / 32);
+      result = Math.max(
+        result,
+        Math.min(distance(p, sourceWall), distance(p, sourceArc))
+      );
+    }
+    return result;
+  };
+  const tolerance = Math.max(0.02 * radius, departure(wall));
+  const target = bulbEndCurvature(points.slice(0, 4));
+  const error = (curve) =>
+    Math.max(
+      Math.abs(bulbEndCurvature(curve, true) - target),
+      Math.abs(bulbEndCurvature(curve) - bulbEndCurvature(sourceWall))
+    );
+  const axes = [unit(sub(wall[1], wall[0])), unit(sub(wall[2], wall[3]))];
+  const lengths = [norm(sub(wall[1], wall[0])), norm(sub(wall[2], wall[3]))];
+  let best = { wall, error: error(wall), departure: departure(wall) };
+  for (let i = -8; i <= 8; i++)
+    for (let j = -8; j <= 8; j++) {
+      const candidate = wall.map((p) => ({ ...p }));
+      for (let k = 0; k < 2; k++) {
+        const anchor = wall[k ? 3 : 0];
+        const length = Math.max(1e-6, lengths[k] + [i, j][k] * radius * 0.025);
+        candidate[k + 1].x = anchor.x + length * axes[k].x;
+        candidate[k + 1].y = anchor.y + length * axes[k].y;
+      }
+      const residual = error(candidate);
+      if (residual >= best.error) continue;
+      const deviation = departure(candidate);
+      if (deviation <= tolerance)
+        best = { wall: candidate, error: residual, departure: deviation };
+    }
+  if (best.wall === wall) return null;
+  return { ...best, points, direction: "stationary", bounded: true };
 }
