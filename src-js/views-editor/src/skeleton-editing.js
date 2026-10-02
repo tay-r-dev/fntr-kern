@@ -1,3 +1,4 @@
+import { collectUnchangedBulbs } from "@fontra/core/bulb-reuse.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
@@ -351,6 +352,11 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
   const generated = generateFromSkeleton(working, {
     ...readSkeletonGenerationOptions(),
     bulbPreview: bulbReferencePreview,
+    retainedBulbs: collectUnchangedBulbs(
+      normalizeSkeletonData(structuredClone(original || makeEmptySkeletonData())),
+      working,
+      layerGlyph.path
+    ),
   });
   if (
     bulbReferencePreview &&

@@ -1,5 +1,6 @@
 import { Bezier } from "bezier-js";
 import { buildFourPointBulb } from "./bulb-geometry.js";
+import { reconnectRetainedBulb } from "./bulb-reuse.js";
 import { gridKinkAllowance } from "./harmonization.js";
 import {
   getAdjacentSegments,
@@ -165,6 +166,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       removeCollapsedPoints: options.removeCollapsedPoints === true,
       simplifyEasing: options.simplifyEasing === true,
       bulbPreview: options.bulbPreview === true,
+      retainedBulbs: options.retainedBulbs,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -3125,6 +3127,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: firstOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
+        retained: options.retainedBulbs?.get(
+          `${skeletonContour.id}/${firstOnCurvePoint._sourcePointId}`
+        ),
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3329,6 +3334,9 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: lastOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
+        retained: options.retainedBulbs?.get(
+          `${skeletonContour.id}/${lastOnCurvePoint._sourcePointId}`
+        ),
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -6545,6 +6553,7 @@ function buildDropCap({
   capBallEaseCurvature,
   capBallEdits = null,
   preview = false,
+  retained = null,
 }) {
   if (!endpoint || !(capWidth > 0.001)) return null;
   const outer = outerSide === "left" ? leftSide : rightSide;
@@ -6559,16 +6568,18 @@ function buildDropCap({
   const wall = towardsRib(outerPiece.segmentPoints);
   const easing = clampCapBallEasing(capBallEasing);
   const pin = clampCapBallEaseCurvature(capBallEaseCurvature);
-  const result = buildFourPointBulb({
-    wall,
-    inner: awayFromRib(innerPiece.segmentPoints),
-    radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
-    shape: clampCapBallShape(capBallShape),
-    easing,
-    easeCurvature: pin,
-    edits: capBallEdits,
-    preview,
-  });
+  const result = retained
+    ? reconnectRetainedBulb(retained, wall, awayFromRib(innerPiece.segmentPoints))
+    : buildFourPointBulb({
+        wall,
+        inner: awayFromRib(innerPiece.segmentPoints),
+        radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
+        shape: clampCapBallShape(capBallShape),
+        easing,
+        easeCurvature: pin,
+        edits: capBallEdits,
+        preview,
+      });
   if (!result) return null;
   const points = result.points;
   // Keep the source wall snapshot for its gizmo, even when E lies before the rib.
@@ -6611,7 +6622,7 @@ function buildDropCap({
       points[i]._provenance.bulbTangent = result.tangents[k];
       stamp(i ? points[i - 1] : result.wall[2], role, "in");
       stamp(points[i + 1], role, "out");
-      points[i].smooth = true;
+      points[i].smooth = role !== "neck" || easing > 0;
       points[i].skipColinear = true;
     });
     // The neck joins Q, the existing inner-wall on-curve. No separate wall-cut

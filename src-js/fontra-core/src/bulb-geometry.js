@@ -280,9 +280,10 @@ export function buildFourPointBulb({
     (3 * Math.PI) / 2 - 0.02
   );
   const room = Math.max(0, thetaCut - side.theta - 0.02);
-  // Build the reference independently of its final point count. A small
-  // fillet at zero replaces the corner with an orthogonal smooth neck.
-  const extent = 0.12 + 0.88 * easing;
+  // Panel units are percentages: zero is a corner, one percent and above
+  // start from an orthogonal smooth neck and extend the easing.
+  const corner = easing === 0;
+  const extent = corner ? 0 : easing;
   const retreat = extent * Math.min(0.55, 0.75 * room);
   const thetaA = thetaCut - retreat;
   const easeDistance = extent * Math.min(radius, 0.9 * arcLength(inner, cut, 1));
@@ -293,6 +294,7 @@ export function buildFourPointBulb({
   }));
   const A = ball.at(thetaA),
     W = keptInner[0];
+  if (corner && vector.distance(A, W) < 1e-6 * radius) Object.assign(A, W);
   const tA = ball.tangentAt(thetaA),
     tW = unit(sub(keptInner[1], W));
   const uv = ({ x, y }) => ({ u: x, v: y });
@@ -305,10 +307,11 @@ export function buildFourPointBulb({
     { nearWindow: 1 }
   );
   const returnArc = ballArc(ball, side.theta, thetaA);
+  returnArc[3] = A;
   const easingCurve = [A, handle(A, tA, neck.startLen), handle(W, tW, -neck.endLen), W];
   const orthogonalNeck = bulbEntry(easingCurve);
   const neckParameter = clamp(
-    (orthogonalNeck.orthogonal ? orthogonalNeck.t : 0.5) * (1 - easing) + 0.5 * easing,
+    orthogonalNeck.orthogonal ? orthogonalNeck.t : 0.5,
     0.05,
     0.95
   );
@@ -320,7 +323,7 @@ export function buildFourPointBulb({
     }));
   const beforeNeck = asCubic(fillet.first),
     afterNeck = asCubic(fillet.second);
-  if (easing === 0) {
+  if (!corner) {
     // Also covers configurations whose fillet has no interior x extremum.
     const n = beforeNeck[3];
     const tangent = { x: 0, y: Math.sign(W.y - A.y) || 1 };
@@ -328,17 +331,10 @@ export function buildFourPointBulb({
     afterNeck[1] = handle(n, tangent, vector.distance(afterNeck[1], n));
   }
   const bodyArc = ballArc(ball, bottom.theta, side.theta);
-  const referenceCurves = [
-    entry.firstArc,
-    bodyArc,
-    returnArc,
-    beforeNeck,
-    afterNeck,
-    keptInner,
-  ];
-  const referencePoints = referenceCurves.flatMap((curve, i) =>
-    i ? curve.slice(1) : curve
-  );
+  const referenceCurves = [first, bodyArc, returnArc, beforeNeck, afterNeck, keptInner];
+  const referencePoints = (
+    corner ? [first, bodyArc, returnArc, keptInner] : referenceCurves
+  ).flatMap((curve, i) => (i ? curve.slice(1) : curve));
   // Remove the implicit shoulder A, then W, fitting the two surrounding spans.
   const merge = (left, right) =>
     makeSlideCandidate(
@@ -347,15 +343,15 @@ export function buildFourPointBulb({
       "previous",
       0
     ).points.slice(3);
-  const fittedReturn = merge(returnArc, beforeNeck);
-  const fittedWall = merge(afterNeck, keptInner);
+  const fittedReturn = corner ? returnArc : merge(returnArc, beforeNeck);
+  const fittedWall = corner ? keptInner : merge(afterNeck, keptInner);
   let points = [
     ...entry.firstArc,
     ...bodyArc.slice(1),
     ...fittedReturn.slice(1),
     ...fittedWall.slice(1),
   ];
-  points[9].smooth = true;
+  points[9].smooth = !corner;
   points[9].skipColinear = true;
   for (const [i, axis] of [
     [3, "y"],
@@ -367,7 +363,9 @@ export function buildFourPointBulb({
   if (preview) {
     return {
       points: referencePoints,
-      wall: entry.wall,
+      // The reference retains the original P-to-rib wall exactly. E is a
+      // fitting constraint only; imposing it here was bending the preview.
+      wall: wall.map((p) => ({ ...p })),
       keptInner: [referencePoints.at(-1)],
       preview: true,
       error: 0,
@@ -422,7 +420,18 @@ export function buildFourPointBulb({
           (edit[slot] ?? 0) +
           sign * ((k ? (edit.carry ?? 0) : 0) - slide)
       );
-      points[h] = handle(points[i], tangent, sign * length);
+      if (k === 3 && corner) {
+        const direction = unit(sub(points[h], before));
+        const angle = clamp(edit.turn ?? 0, -Math.PI / 2, Math.PI / 2);
+        points[h] = handle(
+          points[i],
+          {
+            x: direction.x * Math.cos(angle) - direction.y * Math.sin(angle),
+            y: direction.x * Math.sin(angle) + direction.y * Math.cos(angle),
+          },
+          length
+        );
+      } else points[h] = handle(points[i], tangent, sign * length);
     }
   }
   const preferred = points.map((p) => ({ ...p }));
@@ -430,9 +439,11 @@ export function buildFourPointBulb({
   // The reference remains the target throughout harmonization.
   const curveTargets = [];
   referenceCurves.forEach((curve, index) => {
+    if (corner && (index === 3 || index === 4)) return;
     const start = index < 2 ? index * 3 : index < 4 ? 6 : 9;
     for (let i = 1; i < 12; i++) {
-      const point = cubicPointAt(curve, i / 12);
+      const from = index === 0 ? (entry.ballParameter ?? 0) : 0;
+      const point = cubicPointAt(curve, from + ((1 - from) * i) / 12);
       const { t } = projectPointToSegment(
         { kind: "cubic", points: points.slice(start, start + 4) },
         point
@@ -455,12 +466,12 @@ export function buildFourPointBulb({
     points,
     wall: entry.wall,
     radius,
-    corner: false,
+    corner,
     nextCurvature: bulbEndCurvature(inner, true),
     movePoints: true,
     apexMotion: 0.04,
     neckMotion: 0.08 * easing,
-    neckTurn: 0.6 * easing,
+    neckTurn: 0,
     neckForwardOnly: true,
     preferenceWeights: { 9: 4, 10: 16, 11: 16 },
     curveTargets,
@@ -487,7 +498,7 @@ export function buildFourPointBulb({
         points,
         wall: entry.wall,
         radius,
-        corner: false,
+        corner,
         nextCurvature: bulbEndCurvature(inner, true),
         movePoints: false,
         lengthBounds,

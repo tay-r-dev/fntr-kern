@@ -2878,3 +2878,28 @@ has extra construction points; final emission has E/B/C/N and fixed Q. No bundle
 or test-suite run. The earlier corner-at-zero tests describe the replaced rule.
 Visual fidelity, the mouse-up fit, and editor behavior await interactive review;
 the smoke fixture still reports nonzero curvature residuals.
+
+
+### Restore the corner and restrict bulb invalidation (2026-10-02)
+
+The zero-easing instruction was corrected: 0 remains a corner; panel value 1
+and onward start smooth and orthogonal. Removed the minimum fillet at zero and
+restored independent corner handles. Positive easing keeps the automatic neck
+tangent vertical; explicit neck edits can still rotate it.
+
+The reference preview was reusing the fitted outer P–E splice. In the supplied
+lslash glyph, E lies beyond the rib on the ball, so that splice bent the outer
+skeleton even during dragging. Preview now keeps the original wall and rib
+junction, deferring the orthogonal entry fit until release.
+
+Previously preview mode applied to every bulb in every skeleton write.
+Unchanged terminals now reuse their emitted geometry from the layer path.
+The dependency comparison includes the terminal and adjoining skeleton segment,
+but excludes the next rib's width/nudge and distant contour geometry. Only the
+wall endpoint and its handle reconnect when that next rib moves.
+
+Focused smoke checks on the supplied lslash.json: the preview contains the exact
+outer skeleton cubic; next-rib width and distant-point edits retain the bulb
+with zero E/B/C/N movement and no preview markers; a terminal size edit activates
+preview. Easing 0 emits a corner; 0.01, 0.49 and 1 emit smooth vertical-tangent
+necks. Syntax checks only otherwise; no bundle or full test-suite run.

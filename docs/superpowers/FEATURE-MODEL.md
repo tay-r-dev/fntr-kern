@@ -551,7 +551,7 @@ The committed bulb has four owned on-curves, in outer-to-inner order:
 | E | Horizontal wall apex | Exact wall subdivision; vertical handles. Its incoming length follows the cut. |
 | B | Bottom/top apex | Horizontal handles; bounded tangential slide; both lengths adjustable. |
 | C | Return-side horizontal apex | Vertical handles; bounded tangential slide; both lengths adjustable. |
-| N | Shared neck | Position, tangent, both lengths, and V-slide. Smooth at every easing value; vertical handles at zero. |
+| N | Shared neck | Position, tangent, both lengths, and V-slide. Corner at zero; smooth with vertical handles at positive easing. |
 
 P is the outer-wall point before E. Its outgoing handle participates in the
 splice. When E lies on the wall, exact subdivision changes both wall handles.
@@ -561,9 +561,12 @@ a fit; it does not promise exact equality with the original wall.
 
 The reference shape is built first, with an implicit ball shoulder A and a
 wall cut W. Its retained W–Q wall is an exact subdivision of the generated wall.
-Q is the next existing inner-wall point and stays fixed. A small fillet replaces
-the old zero-easing corner; N starts at its vertical tangent. Increasing easing
-extends this transition along the ball and wall.
+Q is the next existing inner-wall point and stays fixed during fitting. At zero,
+N is a corner at the ball/wall intersection, with independent handles. Positive
+easing (panel value 1 is stored as 0.01) replaces it with a smooth vertical-tangent
+neck. Increasing easing extends the transition along the ball and wall. The
+preview retains the complete original outer wall and its rib junction; it does
+not use the fitted P–E splice.
 
 During skeleton edits and panel gestures the generator emits this reference,
 including its construction points. Those points, handles and their gizmos are
@@ -571,11 +574,18 @@ hidden. On release the editor regenerates the contour with E/B/C/N only, then
 includes that final fit in the same undo record. Direct bulb-point drags keep
 the editable topology. Preview state is scoped to the edit transaction.
 
+`bulb-reuse.js` compares each terminal's settings and adjoining skeleton segment
+before regeneration. An unchanged bulb reuses its emitted points, retaining
+its visible edit nodes. Changing the next rib's width/nudge or a distant segment
+does not rebuild it. The wall endpoint and its handle follow the changed rib;
+the bulb-owned points and handles remain fixed. Reuse comes from the current
+layer's path and provenance, rather than a global geometry cache.
+
 The final fit merges C–A–N into C–N and N–W–Q into N–Q. It then jointly adjusts
 handle lengths and bounded point motion against samples of the reference and
 signed curvature at the joins. Shape error retains a nonzero weight throughout
 the solve. B/C movement and body-handle changes are bounded by 4% of R; automatic
-N motion and rotation grow with easing. E and Q stay fixed. The current fit is a
+N motion grows with easing; its automatic tangent stays vertical. E and Q stay fixed. The current fit is a
 bounded approximation: exact reference preservation and continuous curvature
 are goals, not guaranteed by this first iteration. Its curvature residual is
 published in `bulbHarmonizationError`.
