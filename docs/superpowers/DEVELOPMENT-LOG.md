@@ -2920,3 +2920,31 @@ above 2% of R; there is no widening of body handles or apex motion.
 The supplied near-vertical specimen chooses the outer wall. A focused regression
 checks exact retained-wall subdivision, unchanged downstream controls, four-point
 topology, and matched entry/bottom curvature. No bundle or full-suite run.
+
+
+### Wall-first entry and a single neck cut (2026-10-02)
+
+Compared lslash(2) with the manually corrected lslash_realize outline. The
+corrected N is much farther along the inner wall and follows its tangent. The
+old code forced N vertical and capped travel by the bulb radius. Its global
+harmonizer could also change the wall and body while resolving the neck.
+
+N now owns the exact inner-wall cut. Easing uses the full available terminal
+wall length, with the curvature setting adjusting its travel. N–Q is retained
+by subdivision, and only C–N's two lengths solve the curvature joins. The body
+is kept out of that solve. Stored neck position edits project to the source wall;
+its tangent and outgoing span remain source-derived. V-slide extends to 0.995
+and also follows the source wall, leaving only one N and the existing fixed Q.
+
+Entry candidates are ranked against the original ball reference. A viable
+wall-side solution wins before ball-side search. Ball-side fallback now retains
+the exact ball subcurve and adjusts P–E only. An authored fit already outside
+the ordinary 2%-of-R envelope may be improved, but its reference error may not
+grow. This avoids preserving a previously boxy contour as the new target.
+
+Two focused tests pass. The new neck regression uses the supplied wall geometry,
+with and without its saved bottom and neck edits. At easing 0, 0.01, 0.41, 0.8
+and 1 it retains the exact N–Q wall, keeps B–C unchanged, and moves N over 100
+units. Positive-easing neck joins match within 1e-7; E selects the wall. No bundle
+or full test-suite run. The manually corrected outline remains a visual reference,
+not a claim that every one of its coordinates is reproduced.

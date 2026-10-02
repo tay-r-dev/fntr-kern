@@ -12,7 +12,7 @@ const unit = (v) => {
 
 // Fit just E-B's two lengths to the retained wall and the unchanged B-C span.
 // None of the remaining bulb controls participate in this solve.
-function matchEntry(curve, incoming, outgoing, radius) {
+export function matchCubicEndCurvatures(curve, incoming, outgoing, radius) {
   const [e, h0, h1, b] = curve;
   const t0 = unit(sub(h0, e)),
     t1 = unit(sub(b, h1)),
@@ -89,23 +89,48 @@ export function slideBulbEntryForCurvature({
     sourceFirst[3] = entry[3];
   }
   const wallRun = { points: [...sourceWall, ...sourceFirst.slice(1)], isClosed: false };
+  // An authored entry may already be boxy. A wall candidate may correct that
+  // error, but must not depart farther from the original ball than the input.
+  let baselineDeparture = 0;
+  for (let k = 0; k <= 32; k++) {
+    const p = cubicPointAt(entry, k / 32);
+    const distances = [sourceFirst, sourceWall].map((curve) => {
+      const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
+      return norm(sub(p, q));
+    });
+    baselineDeparture = Math.max(baselineDeparture, Math.min(...distances));
+  }
+  const maxDeparture = Math.max(0.02 * radius, baselineDeparture);
   let best = null;
   const consider = (direction, t) => {
     const run = direction === "previous" ? wallRun : ballRun;
     const candidate = makeSlideCandidate(run, 3, direction, t).points;
-    const keptWall = candidate.slice(0, 4);
-    const fitted = matchEntry(
-      candidate.slice(3),
-      bulbEndCurvature(keptWall, true),
-      target,
-      radius
-    );
-    if (!fitted) return;
+    let keptWall = candidate.slice(0, 4);
+    let fitted;
+    if (direction === "previous") {
+      fitted = matchCubicEndCurvatures(
+        candidate.slice(3),
+        bulbEndCurvature(keptWall, true),
+        target,
+        radius
+      );
+    } else {
+      // Keep the ball-side subcurve exact. Only the wall is refit here.
+      fitted = candidate.slice(3);
+      if (Math.abs(bulbEndCurvature(fitted, true) - target) * radius > 0.001) return;
+      keptWall = matchCubicEndCurvatures(
+        keptWall,
+        bulbEndCurvature(sourceWall),
+        bulbEndCurvature(fitted),
+        radius
+      );
+    }
+    if (!fitted || !keptWall) return;
     // Measure the old ball span against the new entry span (and retained
     // wall when E advances onto the ball). The rest of the ball is exact.
     let departure = 0;
     for (let k = 0; k <= 32; k++) {
-      const p = cubicPointAt(entry, k / 32);
+      const p = cubicPointAt(sourceFirst, k / 32);
       const distance = (curve) => {
         const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
         return norm(sub(p, q));
@@ -118,7 +143,10 @@ export function slideBulbEntryForCurvature({
         const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
         return norm(sub(p, q));
       };
-      departure = Math.max(departure, Math.min(distance(entry), distance(sourceWall)));
+      departure = Math.max(
+        departure,
+        Math.min(distance(sourceFirst), distance(sourceWall))
+      );
     }
     if (!best || departure < best.departure)
       best = {
@@ -129,20 +157,22 @@ export function slideBulbEntryForCurvature({
         parameter: t,
       };
   };
-  // Wall first, ball second. Refine only the selected neighborhood rather than
-  // widening any body constraint or carrying a solution across drag frames.
+  // A valid wall-side solution wins even if a ball-side fit has a smaller
+  // numeric score. Otherwise that score repeatedly migrates E onto the ball.
   for (const direction of ["previous", "next"]) {
-    for (let i = 1; i <= 30; i++)
+    best = null;
+    for (let i = 1; i <= 45; i++)
       consider(direction, direction === "previous" ? 1 - i / 50 : i / 50);
-  }
-  for (const window of [0.02, 0.004]) {
-    if (!best) break;
-    const { direction, parameter } = best;
-    for (let i = -4; i <= 4; i++) {
-      const t = parameter + (i * window) / 5;
-      if (t > 0.01 && t < 0.99) consider(direction, t);
+    for (const window of [0.02, 0.004]) {
+      if (!best) break;
+      const { parameter } = best;
+      for (let i = -4; i <= 4; i++) {
+        const t = parameter + (i * window) / 5;
+        if (t > 0.01 && t < 0.99) consider(direction, t);
+      }
     }
+    if (best?.departure <= maxDeparture) return best;
   }
   // V-slide may refit the adjacent span, but never loosen the ball's limits.
-  return best?.departure <= 0.02 * radius ? best : null;
+  return best?.departure <= maxDeparture ? best : null;
 }

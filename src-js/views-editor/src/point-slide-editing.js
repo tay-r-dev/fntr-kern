@@ -437,7 +437,7 @@ function createGeneratedSlideTargetEntries(
           const share = projectedShare(pointer);
           if (share === null) return null;
           value = item.bulbRole ? originalShare + share - initialShare : share;
-          if (item.bulbRole) value = Math.max(-0.8, Math.min(0.8, value));
+          if (item.bulbRole) value = Math.max(-0.995, Math.min(0.995, value));
           session.generatedSlide = value;
         } else {
           value = session.generatedSlide;

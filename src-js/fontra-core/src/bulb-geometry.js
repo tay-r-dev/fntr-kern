@@ -1,6 +1,9 @@
-import { slideBulbEntryForCurvature } from "./bulb-entry-slide.js";
+import {
+  slideBulbEntryForCurvature,
+  matchCubicEndCurvatures,
+} from "./bulb-entry-slide.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
-import { bulbEndCurvature, harmonizeBulb } from "./bulb-harmonization.js";
+import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
 import { makeSlideCandidate, projectPointToSegment } from "./point-slide.js";
 import { boundedEasingHandles } from "./serif-geometry.js";
@@ -281,13 +284,14 @@ export function buildFourPointBulb({
     (3 * Math.PI) / 2 - 0.02
   );
   const room = Math.max(0, thetaCut - side.theta - 0.02);
-  // Panel units are percentages: zero is a corner, one percent and above
-  // start from an orthogonal smooth neck and extend the easing.
+  // Zero is a corner. With easing, N travels on the generated inner wall
+  // and follows its tangent; no orthogonal-neck or radius-sized travel limit.
   const corner = easing === 0;
   const extent = corner ? 0 : easing;
   const retreat = extent * Math.min(0.55, 0.75 * room);
   const thetaA = thetaCut - retreat;
-  const easeDistance = extent * Math.min(radius, 0.9 * arcLength(inner, cut, 1));
+  const wallShare = Math.min(1, extent * (0.75 + 0.5 * clamp(easeCurvature, 0, 1)));
+  const easeDistance = wallShare * arcLength(inner, cut, 0.995);
   const cutParameter = wallParameterAtDistance(inner, cut, easeDistance);
   const keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
     ...inner[i],
@@ -310,42 +314,24 @@ export function buildFourPointBulb({
   const returnArc = ballArc(ball, side.theta, thetaA);
   returnArc[3] = A;
   const easingCurve = [A, handle(A, tA, neck.startLen), handle(W, tW, -neck.endLen), W];
-  const orthogonalNeck = bulbEntry(easingCurve);
-  const neckParameter = clamp(
-    orthogonalNeck.orthogonal ? orthogonalNeck.t : 0.5,
-    0.05,
-    0.95
-  );
-  const fillet = splitCubicAt(easingCurve, neckParameter);
-  const asCubic = (curve) =>
-    curve.map((p, i) => ({
-      ...p,
-      ...(i === 1 || i === 2 ? { type: "cubic" } : {}),
-    }));
-  const beforeNeck = asCubic(fillet.first),
-    afterNeck = asCubic(fillet.second);
-  if (!corner) {
-    // Also covers configurations whose fillet has no interior x extremum.
-    const n = beforeNeck[3];
-    const tangent = { x: 0, y: Math.sign(W.y - A.y) || 1 };
-    beforeNeck[2] = handle(n, tangent, -vector.distance(beforeNeck[2], n));
-    afterNeck[1] = handle(n, tangent, vector.distance(afterNeck[1], n));
-  }
+  // N is the wall cut itself. Its outgoing span is the original wall,
+  // exactly subdivided; there is no extra emitted shoulder or wall-cut point.
   const bodyArc = ballArc(ball, bottom.theta, side.theta);
-  const referenceCurves = [first, bodyArc, returnArc, beforeNeck, afterNeck, keptInner];
-  const referencePoints = (
-    corner ? [first, bodyArc, returnArc, keptInner] : referenceCurves
-  ).flatMap((curve, i) => (i ? curve.slice(1) : curve));
-  // Remove the implicit shoulder A, then W, fitting the two surrounding spans.
-  const merge = (left, right) =>
-    makeSlideCandidate(
-      { points: [...left, ...right.slice(1)], isClosed: false },
-      3,
-      "previous",
-      0
-    ).points.slice(3);
-  const fittedReturn = corner ? returnArc : merge(returnArc, beforeNeck);
-  const fittedWall = corner ? keptInner : merge(afterNeck, keptInner);
+  const referenceCurves = corner
+    ? [first, bodyArc, returnArc, keptInner]
+    : [first, bodyArc, returnArc, easingCurve, keptInner];
+  const referencePoints = referenceCurves.flatMap((curve, i) =>
+    i ? curve.slice(1) : curve
+  );
+  const fittedReturn = corner
+    ? returnArc
+    : makeSlideCandidate(
+        { points: [...returnArc, ...easingCurve.slice(1)], isClosed: false },
+        3,
+        "previous",
+        0
+      ).points.slice(3);
+  const fittedWall = keptInner;
   let points = [
     ...entry.firstArc,
     ...bodyArc.slice(1),
@@ -435,77 +421,54 @@ export function buildFourPointBulb({
       } else points[h] = handle(points[i], tangent, sign * length);
     }
   }
+  // Neck position edits resolve onto the source wall. Its outgoing handle
+  // and Q's incoming handle come from subdivision, not independent offsets.
+  let neckWallParameter = cutParameter;
+  const placeNeckOnWall = (t) => {
+    neckWallParameter = clamp(t, cut, 0.995);
+    const incomingVector = sub(points[8], points[9]);
+    const incomingLength = vector.distance(points[8], points[9]);
+    const retained = splitCubicAt(inner, neckWallParameter).second.map((p, i) => ({
+      ...inner[i],
+      ...p,
+    }));
+    points.splice(9, 4, ...retained);
+    points[9].smooth = !corner;
+    points[9].skipColinear = true;
+    points[8] = corner
+      ? {
+          ...points[8],
+          x: points[9].x + incomingVector.x,
+          y: points[9].y + incomingVector.y,
+        }
+      : handle(points[9], unit(sub(points[10], points[9])), -incomingLength);
+  };
+  const projection = projectPointToSegment({ kind: "cubic", points: inner }, points[9]);
+  placeNeckOnWall(projection.t);
   const preferred = points.map((p) => ({ ...p }));
-  // Fit every part of the reference, including the wall after the easing.
-  // The reference remains the target throughout harmonization.
-  const curveTargets = [];
-  referenceCurves.forEach((curve, index) => {
-    if (corner && (index === 3 || index === 4)) return;
-    const start = index < 2 ? index * 3 : index < 4 ? 6 : 9;
-    for (let i = 1; i < 12; i++) {
-      const from = index === 0 ? (entry.ballParameter ?? 0) : 0;
-      const point = cubicPointAt(curve, from + ((1 - from) * i) / 12);
-      const { t } = projectPointToSegment(
-        { kind: "cubic", points: points.slice(start, start + 4) },
-        point
-      );
-      curveTargets.push({ start, t, point, weight: index === 5 ? 16 : 8 });
-    }
-  });
-  // G2 is subordinate to retaining the ball, not permission to redraw it.
-  // The B-C quarter stays within 4% of R of its ball preference. C-N includes
-  // the transition, so its handles and N's position/angle must remain free.
-  const handleIndices = [1, 2, 4, 5, 7, 8, 10, 11],
-    anchors = [0, 3, 3, 6, 6, 9, 9, 12];
-  const lengthBounds = handleIndices.map((h, k) => {
-    if (k < 2 || k > 3) return null;
-    const length = vector.distance(points[h], points[anchors[k]]);
-    const budget = radius * 0.04;
-    return [Math.max(0.001 * radius, length - budget), length + budget];
-  });
-  const result = harmonizeBulb({
-    points,
-    wall: entry.wall,
-    radius,
-    corner,
-    nextCurvature: bulbEndCurvature(inner, true),
-    movePoints: true,
-    apexMotion: 0.04,
-    neckMotion: 0.08 * easing,
-    neckTurn: 0,
-    neckForwardOnly: true,
-    preferenceWeights: { 9: 4, 10: 16, 11: 16 },
-    curveTargets,
-    shapeWeight: 0.02,
-    maxIterations: 80,
-    lengthBounds,
-  });
-  points = result.points;
-  // Authorial V-slide runs on the emitted geometry and is not subsequently
-  // pulled back by the optimizer. Q remains the existing wall point.
-  const v = clamp(edits?.neck?.vslide ?? 0, -0.8, 0.8);
-  if (v) {
-    points = makeSlideCandidate(
-      { points, isClosed: false },
-      9,
-      v < 0 ? "previous" : "next",
-      v < 0 ? 1 + v : v
-    ).points;
-    // Restore the comb by adjusting lengths only. N's projected position and
-    // tangent, and all other on-curves, are fixed during this second solve.
-    Object.assign(
-      result,
-      harmonizeBulb({
-        points,
-        wall: entry.wall,
-        radius,
-        corner,
-        nextCurvature: bulbEndCurvature(inner, true),
-        movePoints: false,
-        lengthBounds,
-      })
+  // Preserve the body and retained wall. Only the transition cubic may
+  // change to harmonize the neck; a global solve would redraw both boundaries.
+  const result = { points, error: 0, status: "bounded" };
+  const harmonizeNeck = () => {
+    if (corner) return;
+    const transition = matchCubicEndCurvatures(
+      points.slice(6, 10),
+      bulbEndCurvature(points.slice(3, 7), true),
+      bulbEndCurvature(points.slice(9)),
+      radius
     );
-    points = result.points;
+    if (transition) points.splice(6, 4, ...transition);
+  };
+  harmonizeNeck();
+  // Authorial V-slide can traverse the entire remaining wall span.
+  const v = clamp(edits?.neck?.vslide ?? 0, -0.995, 0.995);
+  if (v) {
+    const t =
+      v < 0
+        ? cut + (neckWallParameter - cut) * (1 + v)
+        : neckWallParameter + (1 - neckWallParameter) * v;
+    placeNeckOnWall(t);
+    harmonizeNeck();
   }
   const entrySlide = slideBulbEntryForCurvature({
     wall: entry.wall,
@@ -525,26 +488,25 @@ export function buildFourPointBulb({
       entry.ballParameter += (1 - entry.ballParameter) * entrySlide.parameter;
     }
     tangents[0] = unit(sub(points[1], points[0]));
-    result.points = points;
-    const errors = [
-      Math.abs(
-        bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))
-      ),
-    ];
-    for (const join of [3, 6, ...(corner ? [] : [9])]) {
-      errors.push(
-        Math.abs(
-          bulbEndCurvature(points.slice(join - 3, join + 1), true) -
-            bulbEndCurvature(points.slice(join, join + 4))
-        )
-      );
-    }
-    errors.push(
-      Math.abs(bulbEndCurvature(points.slice(9), true) - bulbEndCurvature(inner, true))
-    );
-    result.error = Math.max(...errors) * radius;
-    result.status = result.error < 1e-5 ? "matched" : "bounded";
   }
+  result.points = points;
+  const errors = [
+    Math.abs(bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))),
+  ];
+  for (const join of [3, 6, ...(corner ? [] : [9])]) {
+    errors.push(
+      Math.abs(
+        bulbEndCurvature(points.slice(join - 3, join + 1), true) -
+          bulbEndCurvature(points.slice(join, join + 4))
+      )
+    );
+  }
+  errors.push(
+    Math.abs(bulbEndCurvature(points.slice(9), true) - bulbEndCurvature(inner, true))
+  );
+  result.error = Math.max(...errors) * radius;
+  result.status = result.error < 1e-5 ? "matched" : "bounded";
+
   const neckTangent = unit(sub(points[9], points[8]));
   return {
     ...result,
@@ -553,10 +515,10 @@ export function buildFourPointBulb({
     wall: entry.wall,
     keptInner: [points[12]],
     referencePoints,
-    referenceWall: keptInner,
+    referenceWall: splitCubicAt(inner, neckWallParameter).second,
     ball,
     tangents: [...tangents.slice(0, 3), neckTangent],
-    cutParameter,
+    cutParameter: neckWallParameter,
     referenceReturn: returnArc,
     referenceEasing: easingCurve,
     entryParameter: entry.t,
