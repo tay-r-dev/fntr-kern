@@ -700,10 +700,12 @@ export class PointerTool extends BaseTool {
         ? toggleSegmentSelection(sceneController.selection, selection)
         : modeFunc(sceneController.selection, selection);
     const cleanSel = selection;
+    // Alt alone does not reselect: an Alt-drag from one point of a selection
+    // drags the whole selection, like a plain drag. Alt picking a component's
+    // tCenter still reselects, because that hit is not in the selection.
     if (
       !selection.size ||
       initialEvent.shiftKey ||
-      initialEvent.altKey ||
       !isSuperset(sceneController.selection, cleanSel)
     ) {
       this._selectionBeforeSingleClick = sceneController.selection;
