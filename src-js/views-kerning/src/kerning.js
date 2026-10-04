@@ -2739,7 +2739,14 @@ export class KerningViewController extends ViewController {
     this._pairTable.columns = [
       // Each head sorts by its own column, so the arrow shows on the one that
       // drives the sort: L by the left glyph, R by the right one.
-      { label: "L", sortKey: "left", sortable: true, selectAll: true, width: 56 },
+      {
+        label: "L",
+        sortKey: "left",
+        sortable: true,
+        selectAll: true,
+        width: 56,
+        noShrink: true,
+      },
       {
         // Always shown: the stored value is what every other number reads
         // against, so it is not in the column menu.
@@ -2756,13 +2763,14 @@ export class KerningViewController extends ViewController {
       {
         label: "Proposed",
         width: 96,
+        noShrink: true,
         key: "showProposed",
         hideable: true,
         sortKey: "proposed",
         sortable: true,
         headerClassName: "kerning-pairtable-proposed-col",
       },
-      { label: "R", sortKey: "right", sortable: true, width: 56 },
+      { label: "R", sortKey: "right", sortable: true, width: 56, noShrink: true },
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       // It takes the width the other columns leave, never less than its

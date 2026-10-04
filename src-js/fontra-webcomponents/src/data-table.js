@@ -900,11 +900,7 @@ export class DataTable extends HTMLElement {
     // box widens.
     const shown =
       anyWidth && box > 0
-        ? fitColumnWidths(
-            widths,
-            box - lastMin,
-            fixed.map(({ column }) => column.minWidth ?? 24)
-          )
+        ? fitColumnWidths(widths, box - lastMin, this._shrinkFloors(fixed, widths))
         : widths;
     let used = 0;
     fixed.forEach((entry, i) => {
@@ -916,11 +912,23 @@ export class DataTable extends HTMLElement {
       th.style.width = width ? `${width}px` : "";
       used += width || 0;
     });
+    const lastWidth = Math.max(lastMin, box - used);
     if (last) {
       last.column._headerElement.style.width =
-        anyWidth && box > 0 ? `${Math.max(lastMin, box - used)}px` : "";
+        anyWidth && box > 0 ? `${lastWidth}px` : "";
     }
-    this._table.style.minWidth = "";
+    // Columns that do not shrink can leave the table wider than its box, which
+    // then scrolls sideways.
+    this._table.style.minWidth =
+      anyWidth && box > 0 && used + lastWidth > box ? `${used + lastWidth}px` : "";
+  }
+
+  // The width each fixed column may shrink to: its `minWidth`, or its own
+  // width for a column marked `noShrink`, which the box never narrows.
+  _shrinkFloors(fixed, widths) {
+    return fixed.map(({ column }, i) =>
+      column.noShrink ? (widths[i] ?? 0) : (column.minWidth ?? 24)
+    );
   }
 
   _maxColumnWidth(column) {
@@ -1313,7 +1321,7 @@ export class DataTable extends HTMLElement {
         const next = spreadColumnWidths(
           current,
           delta,
-          fixed.map(({ column }) => column.minWidth ?? 24)
+          this._shrinkFloors(fixed, current)
         );
         this._columnWidths = { ...this._columnWidths };
         ids.forEach((id, i) => (this._columnWidths[id] = next[i]));
