@@ -703,9 +703,10 @@ export class PointerTool extends BaseTool {
     // Alt alone does not reselect: an Alt-drag from one point of a selection
     // drags the whole selection, like a plain drag. Alt picking a component's
     // tCenter still reselects, because that hit is not in the selection.
+    // Shift with Alt is an Alt-drag too, so it does not toggle the point off.
     if (
       !selection.size ||
-      initialEvent.shiftKey ||
+      (initialEvent.shiftKey && !initialEvent.altKey) ||
       !isSuperset(sceneController.selection, cleanSel)
     ) {
       this._selectionBeforeSingleClick = sceneController.selection;
