@@ -1,8 +1,18 @@
+import { Bezier } from "bezier-js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import { cubicPointAt } from "./offset-contour.js";
-import { makeSlideCandidate, projectPointToSegment } from "./point-slide.js";
+import { makeSlideCandidate } from "./point-slide.js";
 
 const cross = (a, b) => a.x * b.y - a.y * b.x;
+// One curve object per target: it caches its lookup table, which a fresh
+// object per projection rebuilds every time.
+const distanceTo = (curve) => {
+  const bezier = new Bezier(curve);
+  return (p) => {
+    const q = bezier.project(p);
+    return Math.hypot(p.x - q.x, p.y - q.y);
+  };
+};
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const norm = (v) => Math.hypot(v.x, v.y);
 const unit = (v) => {
@@ -88,16 +98,17 @@ export function slideBulbEntryForCurvature({
     sourceFirst[3] = entry[3];
   }
   const wallRun = { points: [...sourceWall, ...sourceFirst.slice(1)], isClosed: false };
+  const toSourceFirst = distanceTo(sourceFirst),
+    toSourceWall = distanceTo(sourceWall);
   // An authored entry may already be boxy. A wall candidate may correct that
   // error, but must not depart farther from the original ball than the input.
   let baselineDeparture = 0;
   for (let k = 0; k <= 32; k++) {
     const p = cubicPointAt(entry, k / 32);
-    const distances = [sourceFirst, sourceWall].map((curve) => {
-      const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
-      return norm(sub(p, q));
-    });
-    baselineDeparture = Math.max(baselineDeparture, Math.min(...distances));
+    baselineDeparture = Math.max(
+      baselineDeparture,
+      Math.min(toSourceFirst(p), toSourceWall(p))
+    );
   }
   const maxDeparture = Math.max(0.02 * radius, baselineDeparture);
   let wallDeparture = 0;
@@ -105,11 +116,7 @@ export function slideBulbEntryForCurvature({
     const p = cubicPointAt(wall, k / 32);
     wallDeparture = Math.max(
       wallDeparture,
-      Math.min(
-        ...[sourceWall, sourceFirst].map((curve) =>
-          norm(sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point))
-        )
-      )
+      Math.min(toSourceWall(p), toSourceFirst(p))
     );
   }
   const ballSideLimit = Math.max(maxDeparture, wallDeparture);
@@ -144,42 +151,24 @@ export function slideBulbEntryForCurvature({
     if (!fitted || !keptWall) return;
     // Measure the old ball span against the new entry span (and retained
     // wall when E advances onto the ball). The rest of the ball is exact.
+    // A candidate already no better than the best so far cannot win, so its
+    // measurement stops there.
+    const bound = best ? best.departure : Infinity;
+    const toFitted = distanceTo(fitted),
+      toKeptWall = distanceTo(keptWall);
+    const passes = [
+      [sourceFirst, toFitted, toKeptWall],
+      [fitted, toSourceFirst, toSourceWall],
+      ...(direction === "next" ? [[keptWall, toSourceWall, toSourceFirst]] : []),
+    ];
     let departure = 0;
-    for (let k = 0; k <= 32; k++) {
-      const p = cubicPointAt(sourceFirst, k / 32);
-      const distance = (curve) => {
-        const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
-        return norm(sub(p, q));
-      };
-      departure = Math.max(departure, Math.min(distance(fitted), distance(keptWall)));
-    }
-    for (let k = 0; k <= 32; k++) {
-      const p = cubicPointAt(fitted, k / 32);
-      const distance = (curve) => {
-        const q = projectPointToSegment({ kind: "cubic", points: curve }, p).point;
-        return norm(sub(p, q));
-      };
-      departure = Math.max(
-        departure,
-        Math.min(distance(sourceFirst), distance(sourceWall))
-      );
-    }
-    if (direction === "next") {
-      for (let k = 0; k <= 32; k++) {
-        const p = cubicPointAt(keptWall, k / 32);
-        departure = Math.max(
-          departure,
-          Math.min(
-            ...[sourceWall, sourceFirst].map((curve) =>
-              norm(
-                sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point)
-              )
-            )
-          )
-        );
+    for (const [curve, toA, toB] of passes) {
+      for (let k = 0; k <= 32 && departure < bound; k++) {
+        const p = cubicPointAt(curve, k / 32);
+        departure = Math.max(departure, Math.min(toA(p), toB(p)));
       }
     }
-    if (!best || departure < best.departure)
+    if (departure < bound)
       best = {
         wall: keptWall,
         points: [...fitted, ...points.slice(4)],
@@ -214,16 +203,13 @@ export function slideBulbEntryForCurvature({
 // control and E itself; adjust only P-E's two lengths inside the existing
 // wall/reference envelope. Keep the remaining comb error visible to callers.
 function softenEntryWall(wall, points, sourceWall, sourceArc, radius) {
-  const distance = (p, curve) =>
-    norm(sub(p, projectPointToSegment({ kind: "cubic", points: curve }, p).point));
+  const toSourceWall = distanceTo(sourceWall),
+    toSourceArc = distanceTo(sourceArc);
   const departure = (curve) => {
     let result = 0;
     for (let i = 0; i <= 32; i++) {
       const p = cubicPointAt(curve, i / 32);
-      result = Math.max(
-        result,
-        Math.min(distance(p, sourceWall), distance(p, sourceArc))
-      );
+      result = Math.max(result, Math.min(toSourceWall(p), toSourceArc(p)));
     }
     return result;
   };

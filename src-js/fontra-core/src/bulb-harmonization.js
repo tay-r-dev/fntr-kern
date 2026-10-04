@@ -199,14 +199,22 @@ export function harmonizeBulb({
     if (!step) break;
     const damping = Math.min(0.8, 0.5 / Math.max(...step.map(Math.abs), 1e-12));
     const before = merit(q, weight);
+    let after = before;
     for (let backtrack = 0; backtrack < 10; backtrack++) {
       const factor = damping / 2 ** backtrack;
       const trial = q.map((v, k) => Math.max(-8, Math.min(8, v + factor * step[k])));
-      if (merit(trial, weight) <= before) {
+      const trialMerit = merit(trial, weight);
+      if (trialMerit <= before) {
         q = trial;
+        after = trialMerit;
         break;
       }
     }
+    // A bounded fit settles above zero and then repeats the same step to the
+    // cap. Stop once a step stops paying; the weight schedule is fixed or has
+    // already switched, so a stalled merit cannot start moving again.
+    const settledWeight = shapeWeight !== null || iteration >= 100;
+    if (settledWeight && before - after <= 1e-6 * before) break;
   }
   const error = Math.max(...residuals(q).map(Math.abs));
   const solved = place(q);

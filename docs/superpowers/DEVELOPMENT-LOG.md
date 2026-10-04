@@ -3001,7 +3001,23 @@ small bottom residual; its parameter is stored in that source arc's domain.
 
 Ten local geometry frames on lslash(4): full regeneration averaged 734 ms,
 slider preview 1.5 ms, and direct retained neck drag 2.4 ms. These figures exclude
-browser rendering. Four focused tests cover entry/body preservation, the bounded
+browser rendering.
+
+**The release fit was 734 ms and is 104 now** (48 bulbs: eight easings, with
+and without edits, three radii). No point moved more than 0.02 units. Two
+faults made it slow, and neither one changed the shape:
+
+- **The neck solve never converged, so it always ran to its cap.** It settles
+  above zero (merit 0.33, then 0.31) within about ten steps and repeated the
+  same value for sixty more. Its convergence exit waited for step 140 under a
+  cap of 70, so it could not fire. Eight solves per bulb (two seeds, four
+  rounds) paid the whole cap. The solver now stops when one step improves the
+  merit by less than one part in a million.
+- **Every distance check built a new curve object**, and that object builds
+  a 101-point lookup table before it projects, and the entry slide measures
+  every candidate at 33 samples against two curves. One object per target
+  curve now. A candidate also
+  stops its measurement as soon as it can no longer beat the best one. Four focused tests cover entry/body preservation, the bounded
 outer improvement, preview fidelity/reference independence, and corner/finite
 geometry across easing values. Editor syntax checks pass; no bundle/full suite.
 Manual browser checks remain: slider while N is selected, direct point/handle
