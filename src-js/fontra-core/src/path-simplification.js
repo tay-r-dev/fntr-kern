@@ -238,6 +238,359 @@ function hasNonEmptyAttrs(point) {
   return !!point.attrs && Object.keys(point.attrs).length > 0;
 }
 
+// What Simplify writes has to FIT the curve it replaces, not only lie near it.
+// A curve can stay inside the tolerance and still be broken: one handle
+// collapsed beside a long one draws a hook smaller than a unit, and the
+// distance never sees it. So a written curve also has to leave and arrive with
+// the curvature the original had there, within this share, and no handle may
+// pass the point where the tangents cross.
+//
+// Equal handles were tried as the test and refused a plain arch: halving a
+// curve at its apex leaves halves whose own handles are not equal, so a rule
+// on the handles judges the drawing, not the fit. The curvature at the ends is
+// what a broken fit gets wrong.
+const FIT_ALLOWANCE = 0.2;
+
+// Curvatures are compared as bends: curvature times the curve's chord, which
+// is the angle the curve would turn if it kept that curvature along its
+// length, so the comparison means the same at any drawing size. Below this
+// bend a curve is nearly straight there, and comparing two nearly-zero
+// curvatures as a ratio measures noise.
+//
+// ponytail: a fixed floor on the bend; tie it to the grid's own resolution
+// if near-straight joints start refusing or passing for the wrong reason.
+const FLAT_BEND = 0.05;
+
+function signedCurvature(points, t) {
+  const [p0, p1, p2, p3] = points;
+  const d = cubicDerivative(points, t);
+  const u = 1 - t;
+  const dd = {
+    x: 6 * u * (p2.x - 2 * p1.x + p0.x) + 6 * t * (p3.x - 2 * p2.x + p1.x),
+    y: 6 * u * (p2.y - 2 * p1.y + p0.y) + 6 * t * (p3.y - 2 * p2.y + p1.y),
+  };
+  const speed = Math.hypot(d.x, d.y);
+  return speed === 0 ? 0 : (d.x * dd.y - d.y * dd.x) / speed ** 3;
+}
+
+function chordOf(points) {
+  return Math.hypot(points[3].x - points[0].x, points[3].y - points[0].y);
+}
+
+// How far a curvature misses the original's, as a share of the original's.
+// Where the original is nearly straight the share is taken of the flat bend
+// instead, so two nearly-zero curvatures are not compared as a ratio of noise.
+function curvatureMiss(k, originalK, length) {
+  return Math.abs(k - originalK) / Math.max(Math.abs(originalK), FLAT_BEND / length);
+}
+
+function curvaturesAgree(k, originalK, length) {
+  return curvatureMiss(k, originalK, length) <= FIT_ALLOWANCE;
+}
+
+// How far each handle of a cubic may reach: the distance from its end to the
+// point where the two end tangents cross, when they cross ahead of both ends.
+// Otherwise the chord, the length a handle of a gentle curve is measured
+// against. `startDir` leaves p0 and `endDir` arrives at p3.
+function handleReaches(p0, startDir, p3, endDir) {
+  const chord = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+  const den = startDir.x * endDir.y - startDir.y * endDir.x;
+  if (Math.abs(den) > 1e-12) {
+    const dx = p3.x - p0.x;
+    const dy = p3.y - p0.y;
+    const s = (dx * endDir.y - dy * endDir.x) / den;
+    const u = (dx * startDir.y - dy * startDir.x) / den;
+    if (s > 0 && u > 0) {
+      return [s, u];
+    }
+  }
+  return [chord, chord];
+}
+
+function unitVector(v) {
+  const length = Math.hypot(v.x, v.y);
+  return length === 0 ? null : { x: v.x / length, y: v.y / length };
+}
+
+function startDirection(points) {
+  return (
+    unitVector(directionBetween(points[0], points[1])) ??
+    unitVector(directionBetween(points[0], points[2]))
+  );
+}
+
+function endDirection(points) {
+  return (
+    unitVector(directionBetween(points[2], points[3])) ??
+    unitVector(directionBetween(points[1], points[3]))
+  );
+}
+
+// The two tensions of a cubic, each handle's length over its reach.
+function handleTensionsOf(points) {
+  const startDir = startDirection(points);
+  const endDir = endDirection(points);
+  if (!startDir || !endDir) {
+    return null;
+  }
+  const [r0, r3] = handleReaches(points[0], startDir, points[3], endDir);
+  return [
+    Math.hypot(points[1].x - points[0].x, points[1].y - points[0].y) / r0,
+    Math.hypot(points[3].x - points[2].x, points[3].y - points[2].y) / r3,
+  ];
+}
+
+// Tension a hair over 1 is the grid, not a curve doubling back.
+const TENSION_CEILING = 1.02;
+
+// Whether a cubic's two tensions are within the allowance of each other.
+function isBalanced(points) {
+  const tensions = handleTensionsOf(points);
+  if (!tensions) {
+    return false;
+  }
+  const [t1, t2] = tensions;
+  const mean = (t1 + t2) / 2;
+  return mean > 0 && Math.abs(t1 - t2) <= FIT_ALLOWANCE * mean;
+}
+
+function withinCeiling(points) {
+  const tensions = handleTensionsOf(points);
+  return !!tensions && tensions[0] <= TENSION_CEILING && tensions[1] <= TENSION_CEILING;
+}
+
+function endCurvaturesAgree(candidate, originalPieces) {
+  const length = chordOf(candidate);
+  return (
+    curvaturesAgree(
+      signedCurvature(candidate, 0),
+      signedCurvature(originalPieces[0].points, 0),
+      length
+    ) &&
+    curvaturesAgree(
+      signedCurvature(candidate, 1),
+      signedCurvature(originalPieces.at(-1).points, 1),
+      length
+    )
+  );
+}
+
+// Whether a whole-unit cubic fits the original curve it stands for. The
+// original is the exact curve as a list of pieces, so its end curvatures are
+// read off its first and last piece.
+function fitsOriginal(candidate, originalPieces, tolerance) {
+  return (
+    withinCeiling(candidate) &&
+    endCurvaturesAgree(candidate, originalPieces) &&
+    maxCubicDeviation(originalPieces, candidate) <= tolerance
+  );
+}
+
+// The whole-unit cubic from p0 to p3, with the given end directions, that
+// fits the original: it leaves and arrives with the original's curvature,
+// within the allowance, and among those lies nearest it. With both end
+// directions held, two handle lengths and two end curvatures leave nothing
+// free, so the search looks for the lengths that match the curvatures and
+// then for the whole-unit handles next to them. Null when nothing on whole
+// units fits: the curve is too small for the grid to hold its shape.
+function gridFit(originalPieces, p0, startDir, p3, endDir, options = {}) {
+  const requireBalance = options.balanced ?? false;
+  const chord = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+  if (chord === 0) {
+    return null;
+  }
+  const k0 = signedCurvature(originalPieces[0].points, 0);
+  const k3 = signedCurvature(originalPieces.at(-1).points, 1);
+  const build = (a, b, round) => {
+    const h1 = { x: p0.x + startDir.x * a, y: p0.y + startDir.y * a };
+    const h2 = { x: p3.x - endDir.x * b, y: p3.y - endDir.y * b };
+    return round ? [p0, roundPoint(h1), roundPoint(h2), p3] : [p0, h1, h2, p3];
+  };
+  const miss = (candidate) =>
+    Math.max(
+      curvatureMiss(signedCurvature(candidate, 0), k0, chord),
+      curvatureMiss(signedCurvature(candidate, 1), k3, chord)
+    );
+
+  // Lengths that fit, in floating point. An exact match of both curvatures
+  // often does not exist, and where it does there can be several, so the
+  // search keeps every length pair that fits within the allowance and prefers
+  // the ones nearest the original. Failing any, the closest match is refined
+  // from the best few, in case the fitting region is narrower than the look.
+  const STEPS = 30;
+  const searchPolyline = piecesPolyline(originalPieces, SEARCH_POLYLINE_STEPS);
+  const coarse = [];
+  for (let i = 1; i <= STEPS; i++) {
+    for (let j = 1; j <= STEPS; j++) {
+      const a = (chord * 1.2 * i) / STEPS;
+      const b = (chord * 1.2 * j) / STEPS;
+      coarse.push({ a, b, miss: miss(build(a, b, false)) });
+    }
+  }
+  const fitting = coarse
+    .filter((cell) => cell.miss <= FIT_ALLOWANCE)
+    .map((cell) => ({
+      ...cell,
+      error: deviationAgainst(
+        originalPieces,
+        build(cell.a, cell.b, false),
+        searchPolyline,
+        SEARCH_POLYLINE_STEPS
+      ),
+    }))
+    .sort((x, y) => x.error - y.error);
+  coarse.sort((x, y) => x.miss - y.miss);
+  const matched = [
+    ...fitting.slice(0, 3),
+    ...coarse.slice(0, 3).map((start) => {
+      let { a, b, miss: best } = start;
+      let step = (chord * 1.2) / STEPS / 2;
+      for (let round = 0; round < 60 && step > 0.01; round++) {
+        let improved = false;
+        for (const [da, db] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+          [1, 1],
+          [-1, -1],
+          [1, -1],
+          [-1, 1],
+        ]) {
+          const na = a + da * step;
+          const nb = b + db * step;
+          if (na <= 0 || nb <= 0) {
+            continue;
+          }
+          const m = miss(build(na, nb, false));
+          if (m < best) {
+            ({ a, b } = { a: na, b: nb });
+            best = m;
+            improved = true;
+          }
+        }
+        if (!improved) {
+          step /= 2;
+        }
+      }
+      return { a, b };
+    }),
+  ];
+
+  // The whole-unit handles around each match. Rounding a handle moves the
+  // curvature, so the neighbours are tried and the fitting one nearest the
+  // original is kept.
+  const polyline = piecesPolyline(originalPieces);
+  let best = null;
+  const tried = new Set();
+  for (const { a, b } of matched) {
+    // The coarse look steps a fortieth of the chord, so the neighbourhood
+    // covers at least one step either way.
+    const reach = Math.max(2, (chord * 1.2) / STEPS);
+    for (let da = -reach; da <= reach; da += 0.5) {
+      for (let db = -reach; db <= reach; db += 0.5) {
+        if (a + da <= 0 || b + db <= 0) {
+          continue;
+        }
+        const candidate = build(a + da, b + db, true);
+        const key = `${candidate[1].x},${candidate[1].y},${candidate[2].x},${candidate[2].y}`;
+        if (tried.has(key)) {
+          continue;
+        }
+        tried.add(key);
+        if (
+          miss(candidate) > FIT_ALLOWANCE ||
+          !withinCeiling(candidate) ||
+          (requireBalance && !isBalanced(candidate))
+        ) {
+          continue;
+        }
+        const error = deviationAgainst(originalPieces, candidate, polyline);
+        if (!best || error < best.error) {
+          best = { candidate, error };
+        }
+      }
+    }
+  }
+  return best?.candidate ?? null;
+}
+
+// The part of a cubic between parameters a and b.
+function subCubic(points, a, b) {
+  const right = a > 0 ? splitCubic(points, a).right : points;
+  return b < 1 ? splitCubic(right, (b - a) / (1 - a)).left : right;
+}
+
+// Split one cubic at its extrema and fit each part on whole units, with the
+// new points' handles on the axis. Returns the fitted parts, or null when any
+// part does not fit: then an orthogonal point there would break the curve,
+// and what does fit there is not the extremum.
+//
+// A part that runs from a corner has one more condition: its two handles are
+// balanced. A corner's handle is the designer's statement of how the curve
+// leaves the corner, and an extremum close to it is usually the curve
+// leaning a unit or two past the corner on its way out rather than a turn of
+// its own; the part between them then fits only with one handle doing all the
+// work. `corners` says which ends of the cubic are corners.
+function fitExtremaSplit(points, ts, tolerance, corners = {}) {
+  const bounds = [0, ...ts, 1];
+  const ends = bounds.map((t, i) => {
+    if (i === 0) {
+      return { point: points[0], leave: startDirection(points) };
+    }
+    if (i === bounds.length - 1) {
+      return { point: points[3], arrive: endDirection(points) };
+    }
+    const exact = cubicPoint(points, t);
+    const tangent = cubicDerivative(points, t);
+    const axis =
+      Math.abs(tangent.x) < Math.abs(tangent.y)
+        ? { x: 0, y: Math.sign(tangent.y) }
+        : { x: Math.sign(tangent.x), y: 0 };
+    const point = { x: roundCoordinate(exact.x), y: roundCoordinate(exact.y) };
+    return { point, leave: axis, arrive: axis };
+  });
+  if (ends.some((end) => (end.leave ?? end.arrive) === null)) {
+    return null;
+  }
+  const parts = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const original = [{ points: subCubic(points, bounds[i], bounds[i + 1]) }];
+    const fitted = gridFit(
+      original,
+      ends[i].point,
+      ends[i].leave,
+      ends[i + 1].point,
+      ends[i + 1].arrive,
+      {
+        balanced:
+          (i === 0 && !!corners.start) || (i === bounds.length - 2 && !!corners.end),
+      }
+    );
+    if (!fitted || !fitsOriginal(fitted, original, tolerance)) {
+      return null;
+    }
+    parts.push({ points: fitted, sourcePoints: original[0].points, t: bounds[i + 1] });
+  }
+  return parts;
+}
+
+// The extrema of one cubic that get a point: each one, in order, is kept only
+// when the cubic still splits into fitting parts with it. Returns the kept
+// parameters and the fitted parts for them.
+function fittingExtrema(points, tolerance, corners = {}) {
+  let kept = [];
+  let parts = null;
+  for (const t of interiorExtremaParameters(points, tolerance)) {
+    const tried = fitExtremaSplit(points, [...kept, t], tolerance, corners);
+    if (tried) {
+      kept = [...kept, t];
+      parts = tried;
+    }
+  }
+  return { ts: kept, parts };
+}
+
 // Analyze one unpacked contour: split cubic pieces at interior extrema and
 // classify which points must survive simplification.
 //
@@ -300,57 +653,46 @@ export function classifySimplifyContour(contour, options = {}) {
       pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
       continue;
     }
-    const extremaTs = insertExtrema
-      ? interiorExtremaParameters(piece.points, extremaMinDistance)
-      : [];
+    const { ts: extremaTs, parts } = insertExtrema
+      ? fittingExtrema(piece.points, extremaMinDistance, {
+          start: points[piece.startPointIndex].smooth !== true,
+          end: points[piece.endPointIndex].smooth !== true,
+        })
+      : { ts: [], parts: null };
     if (!extremaTs.length) {
       pieces.push({ ...piece, startKey, endKey: piece.endPointIndex });
       continue;
     }
-    // Split the piece at each extremum, left to right.
-    let currentPoints = piece.points;
+    // One piece per fitted part. A part is written as fitted, and measured
+    // against as the exact curve it stands for.
     let currentStartKey = startKey;
     let currentStartPointIndex = piece.startPointIndex;
-    let tOffset = 0;
-    let tScale = 1;
-    for (const [i, t] of extremaTs.entries()) {
-      // t is relative to the original piece; convert to the current remainder.
-      const localT = (t - tOffset) / tScale;
-      const { left, right } = splitCubic(currentPoints, localT);
-      const extremaKey = `extrema-${piece.sourceSegmentIndex}-${i}-${insertedCounter++}`;
-      const extremaPoint = left[3];
-      sourcePointMap.set(extremaKey, {
-        point: extremaPoint,
-        sourceSegmentIndex: piece.sourceSegmentIndex,
-        t,
-      });
-      protectedPointKeys.add(extremaKey);
+    for (const [i, part] of parts.entries()) {
+      const isLast = i === parts.length - 1;
+      let endKey = piece.endPointIndex;
+      if (!isLast) {
+        endKey = `extrema-${piece.sourceSegmentIndex}-${i}-${insertedCounter++}`;
+        sourcePointMap.set(endKey, {
+          point: part.points[3],
+          sourceSegmentIndex: piece.sourceSegmentIndex,
+          t: part.t,
+        });
+        protectedPointKeys.add(endKey);
+      }
       pieces.push({
         kind: "cubic",
         mergeable: true,
-        points: left,
+        points: part.points,
+        sourcePoints: part.sourcePoints,
         startPointIndex: currentStartPointIndex,
-        endPointIndex: null,
+        endPointIndex: isLast ? piece.endPointIndex : null,
         startKey: currentStartKey,
-        endKey: extremaKey,
+        endKey,
         sourceSegmentIndex: piece.sourceSegmentIndex,
       });
-      currentPoints = right;
-      currentStartKey = extremaKey;
+      currentStartKey = endKey;
       currentStartPointIndex = null;
-      tOffset = t;
-      tScale = 1 - t;
     }
-    pieces.push({
-      kind: "cubic",
-      mergeable: true,
-      points: currentPoints,
-      startPointIndex: currentStartPointIndex,
-      endPointIndex: piece.endPointIndex,
-      startKey: currentStartKey,
-      endKey: piece.endPointIndex,
-      sourceSegmentIndex: piece.sourceSegmentIndex,
-    });
   }
 
   // Runs never wrap around the end of a closed contour, so whatever point the
@@ -927,10 +1269,20 @@ export function insertExtremaPoints(contours, options = {}) {
     return contours;
   }
 
-  const rootsPerContour = piecesPerContour.map((pieces) =>
-    pieces.map((piece) =>
-      piece.kind === "cubic" ? interiorExtremaParameters(piece.points, minDistance) : []
-    )
+  // Each segment's extrema that fit, with the fitted parts they split it into.
+  const splitsPerContour = piecesPerContour.map((pieces, contourIndex) =>
+    pieces.map((piece) => {
+      const points = contours[contourIndex].points;
+      return piece.kind === "cubic"
+        ? fittingExtrema(piece.points, minDistance, {
+            start: points[piece.startPointIndex].smooth !== true,
+            end: points[piece.endPointIndex].smooth !== true,
+          })
+        : { ts: [], parts: null };
+    })
+  );
+  const rootsPerContour = splitsPerContour.map((splits) =>
+    splits.map((split) => split.ts)
   );
   const numSegments = rootsPerContour[0].length;
   if (rootsPerContour.some((roots) => roots.length !== numSegments)) {
@@ -960,19 +1312,16 @@ export function insertExtremaPoints(contours, options = {}) {
         points.push(...piece.points.slice(1, -1));
         continue;
       }
-      let rest = piece.points;
-      let consumed = 0;
-      for (const t of roots[s]) {
-        const { left, right } = splitCubic(rest, (t - consumed) / (1 - consumed));
+      const parts = splitsPerContour[contourIndex][s].parts;
+      for (const [i, part] of parts.entries()) {
         points.push(
-          { ...left[1], type: "cubic" },
-          { ...left[2], type: "cubic" },
-          { x: left[3].x, y: left[3].y, smooth: true }
+          { ...part.points[1], type: "cubic" },
+          { ...part.points[2], type: "cubic" }
         );
-        rest = right;
-        consumed = t;
+        if (i < parts.length - 1) {
+          points.push({ x: part.points[3].x, y: part.points[3].y, smooth: true });
+        }
       }
-      points.push({ ...rest[1], type: "cubic" }, { ...rest[2], type: "cubic" });
     }
     if (!contour.isClosed) {
       points.push(contour.points.at(-1));
@@ -1045,13 +1394,24 @@ export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
       point = { x: roundCoordinate(original.x), y: roundCoordinate(original.y) };
       if (original.smooth === true) {
         // Keep smooth only when the new joint is still tangent-continuous.
+        // Rounding a handle to whole units turns it by up to atan(0.7 / its
+        // length), so a short or fractional handle written back can bend a
+        // smooth joint by more than the tangent limit without anything having
+        // changed. That much bend is the grid's, and does not cost the flag.
+        const gridBend = (tangent) =>
+          (Math.atan(0.7 / Math.max(vectorLength(tangent), 0.7)) * 180) / Math.PI;
         const stillSmooth =
           incomingPiece &&
           outgoingPiece &&
           angleBetweenDegrees(
             pieceEndTangent(incomingPiece),
             pieceStartTangent(outgoingPiece)
-          ) <= DEFAULT_MAX_TANGENT_ANGLE;
+          ) <=
+            Math.max(
+              DEFAULT_MAX_TANGENT_ANGLE,
+              gridBend(pieceEndTangent(incomingPiece)) +
+                gridBend(pieceStartTangent(outgoingPiece))
+            );
         if (stillSmooth) {
           point.smooth = true;
         }
@@ -1154,18 +1514,57 @@ function fitSpan(run, start, end) {
   const key = `${start}:${end}`;
   if (!cache.has(key)) {
     const candidatePieces = run.pieces.slice(start, end);
-    const first = candidatePieces[0].points;
-    const last = candidatePieces.at(-1).points;
+    // Measured against the exact curves the pieces stand for, not against
+    // their whole-unit fits.
+    const targets = candidatePieces.map((piece) =>
+      piece.sourcePoints ? { ...piece, points: piece.sourcePoints } : piece
+    );
+    const first = targets[0].points;
+    const last = targets.at(-1).points;
+    // The merge is written between the run's own written end points.
+    const p0 = candidatePieces[0].points[0];
+    const p3 = candidatePieces.at(-1).points[3];
+    const fitted = fitCubicToSpan(
+      targets,
+      { x: first[1].x - first[0].x, y: first[1].y - first[0].y },
+      { x: last[3].x - last[2].x, y: last[3].y - last[2].y }
+    );
+    const startDir = startDirection(first);
+    const endDir = endDirection(last);
     cache.set(key, {
       pieces: candidatePieces,
-      candidate: fitCubicToSpan(
-        candidatePieces,
-        { x: first[1].x - first[0].x, y: first[1].y - first[0].y },
-        { x: last[3].x - last[2].x, y: last[3].y - last[2].y }
-      ),
+      targets,
+      candidate: fitted && [p0, roundPoint(fitted[1]), roundPoint(fitted[2]), p3],
+      // The closest fit is often lopsided and breaks the curve at an end.
+      // When it does, the closest fit that does not is the merge, if anything
+      // is; built only when it is asked for.
+      keeping: () =>
+        startDir &&
+        endDir &&
+        (targets.length < 2 || spanTurnDegrees(targets) <= MAX_SPAN_TURN_DEGREES)
+          ? gridFit(targets, p0, startDir, p3, endDir)
+          : null,
     });
   }
   return cache.get(key);
+}
+
+// The cubic a span of a run merges into, or null when nothing fits it. The
+// closest fit first; failing that the closest one that keeps the curvature. Either has to fit
+// the original, not only lie near it.
+function acceptedMerge(run, start, end, tolerance, maxTangentAngle) {
+  const span = fitSpan(run, start, end);
+  const accepts = (candidate) =>
+    candidate &&
+    fitsOriginal(candidate, span.targets, tolerance) &&
+    tangentAngleDegrees(candidate, span.targets) <= maxTangentAngle;
+  if (accepts(span.candidate)) {
+    return span.candidate;
+  }
+  if (span.keepingCandidate === undefined) {
+    span.keepingCandidate = span.keeping();
+  }
+  return accepts(span.keepingCandidate) ? span.keepingCandidate : null;
 }
 
 export function planRunMerges(run, options = {}) {
@@ -1177,12 +1576,7 @@ export function planRunMerges(run, options = {}) {
   while (start < pieces.length) {
     let acceptedEnd = start + 1;
     for (let end = pieces.length; end > start + 1; end--) {
-      const { pieces: candidatePieces, candidate } = fitSpan(run, start, end);
-      if (
-        candidate &&
-        maxCubicDeviation(candidatePieces, candidate) <= tolerance &&
-        tangentAngleDegrees(candidate, candidatePieces) <= maxTangentAngle
-      ) {
+      if (acceptedMerge(run, start, end, tolerance, maxTangentAngle)) {
         acceptedEnd = end;
         break;
       }
@@ -1203,7 +1597,14 @@ export function applyRunPlan(run, spans, options = {}) {
       result.push(pieces[start]);
       continue;
     }
-    const { pieces: candidatePieces, candidate } = fitSpan(run, start, end);
+    const candidatePieces = run.pieces.slice(start, end);
+    const candidate = acceptedMerge(
+      run,
+      start,
+      end,
+      options.tolerance ?? 0.5,
+      options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE
+    );
     if (!candidate) {
       result.push(...candidatePieces);
       continue;

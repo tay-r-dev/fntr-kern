@@ -802,3 +802,104 @@ describe("simplifyContourCompatible (multi-master)", () => {
     expect(results).to.equal(null);
   });
 });
+
+// The W of skeletron: a stroke terminal (corners 0 and 1, a straight between
+// them, one handle each) whose curves lean a unit or two past the corners,
+// and a bowl whose merge once ended in a hook.
+const W_POINTS = [[283,333,0],[313,333,0],[321,397,1],[299,449,1],[262,475,2],[233,496,1],[194,501,1],[153,484,2],[131,475,1],[111,459,1],[95,438,2],[84,422,1],[76,404,1],[71,384,2],[65.60023836242985,360.08676989076076,1],[68.29670951924832,338.5549357211275,1],[78,324,2],[94,300,1],[127,299,1],[147,314,2],[156,322,1],[163,334,1],[163,349,2],[163,370,1],[152.45278824587675,379.8866176911531,1],[158,403,2],[164,431,1],[186,446,1],[214,446,2],[237,446,1],[258,439,1],[271,420,2],[283,402,1],[288,374,1]]; // prettier-ignore
+
+function wContour() {
+  return {
+    isClosed: true,
+    points: W_POINTS.map(([x, y, kind]) =>
+      kind === 1
+        ? { x, y, type: "cubic" }
+        : kind === 2
+          ? { x, y, smooth: true }
+          : { x, y }
+    ),
+  };
+}
+
+// What the editor runs: the smallest whole-unit tolerance that removes a point.
+function simplifyLikeTheEditor(contour) {
+  let gentlest = null;
+  for (let tolerance = 1; tolerance <= 10; tolerance++) {
+    const results = simplifyContourCompatible([contour], { tolerance });
+    if (!results) {
+      continue;
+    }
+    if (results[0].points.length < contour.points.length) {
+      return results[0];
+    }
+    gentlest ??= results[0];
+  }
+  return gentlest;
+}
+
+function curvatureAt(points, t) {
+  const [p0, p1, p2, p3] = points;
+  const d = cubicDerivative(points, t);
+  const u = 1 - t;
+  const dd = {
+    x: 6 * u * (p2.x - 2 * p1.x + p0.x) + 6 * t * (p3.x - 2 * p2.x + p1.x),
+    y: 6 * u * (p2.y - 2 * p1.y + p0.y) + 6 * t * (p3.y - 2 * p2.y + p1.y),
+  };
+  return (d.x * dd.y - d.y * dd.x) / Math.hypot(d.x, d.y) ** 3;
+}
+
+describe("simplify writes curves that fit", () => {
+  it("adds no point beside a corner where the grid cannot hold the extremum", () => {
+    const result = simplifyLikeTheEditor(wContour());
+    // Corner 1 is followed by its curve's two handles and then the next
+    // on-curve, which is the top of the letter, not a point 1.6 units out.
+    expect(result.points[1]).to.deep.include({ x: 313, y: 333 });
+    expect(result.points[2].type).to.equal("cubic");
+    expect(result.points[3].type).to.equal("cubic");
+    expect(result.points[4].y).to.be.above(450);
+    // And corner 0 is reached from a curve, not from a point beside it.
+    expect(result.points.at(-1).type).to.equal("cubic");
+    expect(result.points.at(-2).type).to.equal("cubic");
+    expect(result.points.at(-3).y).to.be.above(400);
+  });
+
+  it("leaves no smooth joint bent the other way or broken", () => {
+    const result = simplifyLikeTheEditor(wContour());
+    expect(result.points.length).to.be.below(W_POINTS.length);
+    const pieces = contourToCubicPieces(result);
+    for (const [i, piece] of pieces.entries()) {
+      const next = pieces[(i + 1) % pieces.length];
+      const joint = result.points[piece.endPointIndex];
+      if (piece.kind !== "cubic" || next.kind !== "cubic" || !joint.smooth) {
+        continue;
+      }
+      const arriving = curvatureAt(piece.points, 1);
+      const leaving = curvatureAt(next.points, 0);
+      expect(Math.sign(arriving)).to.equal(Math.sign(leaving));
+      // The drawing itself steps by up to a third at one joint.
+      expect(
+        Math.abs(arriving - leaving) / Math.max(Math.abs(arriving), Math.abs(leaving))
+      ).to.be.below(0.4);
+    }
+  });
+
+  it("still puts a point on an apex a few units above a far end", () => {
+    // The top of an O: the curve rises 3 units above its end, 34 units on.
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 399, y: 338 },
+        { x: 360, y: 432, type: "cubic" },
+        { x: 260, y: 458, type: "cubic" },
+        { x: 193, y: 445 },
+      ],
+    };
+    const analysis = classifySimplifyContour(contour, { tolerance: 1 });
+    expect(analysis.pieces.length).to.equal(2);
+    const [inserted] = [...analysis.sourcePointMap.values()];
+    expect(inserted.point).to.deep.include({ x: 227, y: 448 });
+    // Its handles lie on the axis.
+    expect(analysis.pieces[0].points[2].y).to.equal(448);
+    expect(analysis.pieces[1].points[1].y).to.equal(448);
+  });
+});

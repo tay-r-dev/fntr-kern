@@ -2630,6 +2630,54 @@ both sides of a glyph the panel reports nothing, which spec case 18 asks for.
 
 ---
 
+## Simplify (`path-simplification.js`)
+
+**State: built 2026-10-04, live check owed.** What Simplify writes has to FIT
+the curve it replaces, not only lie within the tolerance of it.
+
+Reported on the `W` of skeletron: a hook where the bowl's merge ended, and new
+points on the two curves leaving the terminal's corners.
+
+- **The hook passed at 0.2 units of distance.** The merge's handles were 57
+  and 1.5 units; the curve arrived at the bottom with curvature -0.18 against
+  the original's +0.019. Distance cannot see a bend under one unit. A merge is
+  now accepted only where its end curvatures are within 20 per cent of the
+  original's (`curvatureMiss`, measured against the original, floored at a
+  bend of 0.05 over the chord) and no handle passes the tangent crossing.
+  Failing the closest fit, `gridFit` searches whole-unit handles for one that
+  does; it obeys the same 170-degree span limit, or it merges half a bowl.
+- **The corner extrema were real and not worth a point.** The curves lean 1.6
+  and 2 units past corners 0 and 1. Distance to the end, axis overshoot,
+  angle turned, balance of the exact halves: each was proposed and each was a
+  number fitted to this glyph, and the exact halves are balanced (0.67/0.66),
+  because cutting an arc anywhere gives balanced halves. The designer's rule
+  decides it: **an extremum gets a point only if the curve, split there with
+  the new point on whole units and its handles on the axis, still fits** --
+  and a part that runs from a corner must also be balanced, within 20 per cent.
+  At corner 1 the grid cannot hold the 26-unit part's curvature (best miss
+  31 per cent); at corner 0 the part fits but is unbalanced.
+- **The first fit search was too coarse and refused real apexes** -- the top
+  of the `O`, 3 units above an end 34 units away. A brute whole-unit search
+  fitted it at 7 per cent. The search now keeps every length pair inside the
+  allowance and takes the nearest the original, then tries the whole-unit
+  handles around it.
+- **Equal handles were tried as the general test and refused a plain arch**:
+  halving a curve at its apex leaves halves whose own tensions differ, so the
+  rule on balance stays beside corners only.
+- **Smooth flags were lost to rounding.** A 24-unit fractional handle written
+  back on whole units turns by up to atan(0.7/24); that much is the grid's and
+  keeps the flag.
+
+Measured on all 67 skeletron contours against the previous code: no contour's
+worst smooth-joint curvature step got worse than the original drawing's; the
+`W` goes 34 to 25 points, worst step 1.03 to 0.34. Extrema left without a
+point stand 0.1 to 5.6 units past a nearby end; the largest, the `A` crossbar
+at 5.6, sits 19 units from a corner where the grid cannot hold it. Cost: the
+whole font 0.6 s to 9.2 s, the `W` 150 ms -- `gridFit` is a 900-cell look plus
+a local search per part.
+
+---
+
 ## The documents themselves
 
 Five design specs and implementation plans, 3,783 lines, all describing shipped
