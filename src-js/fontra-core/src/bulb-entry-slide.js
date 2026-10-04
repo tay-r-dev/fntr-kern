@@ -2,7 +2,12 @@ import { Bezier } from "bezier-js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import { cubicPointAt } from "./offset-contour.js";
 import { makeSlideCandidate } from "./point-slide.js";
+import { gridJoinPlacement } from "./harmonization.js";
 
+// The smallest shape tolerance, in units.
+const MIN_SHAPE_TOLERANCE = 2;
+// The largest comb step at E a fit may leave once on whole units.
+const MAX_GRID_ENTRY_STEP = 0.02;
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 // One curve object per target: it caches its lookup table, which a fresh
 // object per projection rebuilds every time.
@@ -118,7 +123,13 @@ export function slideBulbEntryForCurvature({
       }
     return departure;
   };
-  const tolerance = Math.max(0.02 * radius, departureOf(entry, wall));
+  // Never finer than the grid: 2% of a small ball (0.92 units on skeletron
+  // `h`) refused every fit a hand V-slide makes, and left a 64% jump.
+  const tolerance = Math.max(
+    0.02 * radius,
+    MIN_SHAPE_TOLERANCE,
+    departureOf(entry, wall)
+  );
   // The wall piece E keeps is exact; only E-B's two lengths are solved, to
   // meet the wall's curvature at E and B-C's at B.
   const fitAt = (keptWall, span, parameter, direction) => {
@@ -131,6 +142,16 @@ export function slideBulbEntryForCurvature({
     if (!fitted) return null;
     const departure = departureOf(fitted, keptWall);
     if (departure > tolerance) return null;
+    // The match must also hold on whole units, where the outline is drawn. A
+    // 5-unit handle at E facing a handle 0.3 units off its axis matches
+    // exactly and rounds to a 100% step (skeletron `h`).
+    const round = (p) => ({ x: Math.round(p.x), y: Math.round(p.y) });
+    const grid = gridJoinPlacement(
+      [keptWall[2], keptWall[3], fitted[1]],
+      round(keptWall[1]),
+      round(fitted[2])
+    );
+    if (!grid || grid.step > MAX_GRID_ENTRY_STEP) return null;
     return {
       wall: keptWall,
       points: [...fitted, ...points.slice(4)],

@@ -3020,6 +3020,13 @@ and a smallest-departure choice that kept picking 1-2% slides.
 - The supplied comb-jump fixture has no fit by this rule and now keeps E at the
   extreme with the jump reported; before, a wall refit removed most of it by
   reshaping the wall.
+- **"Fits" has two conditions the exact solve cannot see.** On skeletron `h`
+  (ball radius 46) 2% of R is 0.92 units, finer than the grid, so every fit a
+  hand V-slide makes (1.5-1.7 units) was refused and E kept a 64% jump. The
+  tolerance never drops below 2 units. With that, the extreme "fit" used a
+  5-unit handle facing one 0.3 units off its axis, exact in floats and a 100%
+  step on whole units. A fit must also stay within 2% once placed on whole
+  units. After: E slides to t = 0.94, 0.2 per cent.
 
 ### Wall-first entry and a single neck cut (2026-10-02)
 
