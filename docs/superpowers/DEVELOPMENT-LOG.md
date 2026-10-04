@@ -2987,22 +2987,39 @@ checks exact retained-wall subdivision, unchanged downstream controls, four-poin
 topology, and matched entry/bottom curvature. No bundle or full-suite run.
 
 
-### The wall side lost on a tighter limit, and rounding came back (2026-10-04)
+### The entry is two conditions, and rounding refines (2026-10-04)
 
-Reported on skeletron `f`: the comb jump at E came back. Two faults, one behind
-the other.
+Reported on skeletron `f`: the comb jump at E came back. The designer's rule,
+the whole algorithm:
 
-- **The rebuild had exempted the bulb from rounding and dropped the
-  whole-unit join search** (`7ffcf5e06`). Rounding restored, E's step went 0.0
-  to 16.6 per cent: its wall handle was 15 units long. The search is back, for
-  every smooth bulb join, and took it to 5.4.
-- **The 15-unit handle was the ball-side fallback's doing.** The wall-side slide
-  had to stay within 2% of R (1.4 units) while the ball side was allowed the
-  wall's own departure (6.3). Best wall slide: 5.8 units at t = 0.35, so E went
-  onto the ball and the whole wall was refit. One limit now serves both
-  directions; E slides toward P and every join lands at 0.0-0.1 per cent on
-  whole units. The supplied comb-jump case takes the slide too: jump 0, departure
-  3.2 against the stationary refit's 7.84.
+1. E at the wall's extreme, orthogonal, the outer wall exact. Can E-B's two
+   lengths meet the wall's curvature at E and B-C's at B while the ball stays
+   within its tolerance (2% of R)? Yes: done.
+2. No: V-slide E along the outer wall toward its centre, and stop at the first
+   position that fits the same way. Never past the centre. Nothing fits: E
+   stays at the extreme and the jump is reported.
+
+The wall and the reference ball are requirements, not tie-breaks. Removed with
+this: the slide onto the ball (it refit the wall and turned the curvature over
+at E on `f`), the stationary wall-softening fallback (it reshaped the wall),
+and a smallest-departure choice that kept picking 1-2% slides.
+
+- **Rounding is a refinement, as upstream's point insertion does it.** The
+  bulb had been exempted from rounding by the rebuild; restoring it took E's
+  step on `f` from 0.0 to 16.6 per cent. The whole-unit join placement from
+  `7ffcf5e06` is back for every smooth bulb join. An orthogonal join keeps its
+  handles on the axis and rounds only their lengths, to one of the two units
+  around each; whole-unit input comes back unchanged, so a still grab moves
+  nothing.
+- **A sweep that moves the terminal past anything drawn finds states with no
+  fit.** On the 17:44 `f`, the extreme to t = 0.77 has no positive E-B lengths
+  that meet a wall that flat (0.00089 against 0.0082), and t = 0.76 to the centre
+  departs 8 to 11 units against 2.2. The designer's drawings fit: the 18:16 `f`
+  slides to t of the wall where E's step is 0.1 per cent, and the editor's saved
+  outline matches the generator point for point.
+- The supplied comb-jump fixture has no fit by this rule and now keeps E at the
+  extreme with the jump reported; before, a wall refit removed most of it by
+  reshaping the wall.
 
 ### Wall-first entry and a single neck cut (2026-10-02)
 

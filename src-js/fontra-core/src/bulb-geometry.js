@@ -489,12 +489,15 @@ export function buildFourPointBulb({
     points[9]
   ).t;
   const result = { points, error: 0, status: "bounded" };
+  // E at the extreme if the fit holds there, else V-slid toward the wall's
+  // centre (slideBulbEntryForCurvature).
   const entrySlide = slideBulbEntryForCurvature({
     wall: entry.wall,
     points,
     radius,
     sourceWall: wall,
     sourceArc: first,
+    entryParameter: entry.ballParameter === undefined ? entry.t : 1,
   });
   if (entrySlide) {
     points = entrySlide.points;

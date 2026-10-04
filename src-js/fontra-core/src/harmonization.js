@@ -871,6 +871,110 @@ export function gridKinkAllowance(P, node, N) {
   );
 }
 
+// A smooth join's whole-unit placement. `exact` is its handle in, on-curve and
+// handle out before rounding; `farIn` and `farOut` are the next handles out,
+// already on the grid. Each of the three takes whichever whole-unit corner
+// around its exact place leaves the join straightest, then the smallest comb
+// step, then the least travel. 64 placements, all tried, so the answer depends
+// only on the geometry and cannot flicker during a drag. `current`, when
+// given, must be beaten. Returns { points, step } or null.
+export function gridJoinPlacement(exact, farIn, farOut, current = null) {
+  const corners = ({ x, y }) =>
+    [Math.floor(x) + 0, Math.ceil(x) + 0].flatMap((cx) =>
+      [Math.floor(y) + 0, Math.ceil(y) + 0].map((cy) => ({ x: cx, y: cy }))
+    );
+  // An orthogonal join (a bulb apex or extreme) keeps its handles on the axis:
+  // only their two lengths move, each to one of the two whole units around its
+  // own. Rounding refines the exact answer; it does not re-solve it. Corners
+  // of the grid would tilt the handles instead, and a short handle tilted by a
+  // unit throws the match away.
+  const [handleIn, onCurve, handleOut] = exact;
+  const axis = ["x", "y"].find(
+    (a) =>
+      Math.abs(handleIn[a] - onCurve[a]) < 1e-6 &&
+      Math.abs(handleOut[a] - onCurve[a]) < 1e-6
+  );
+  if (axis) {
+    const along = axis === "x" ? "y" : "x";
+    const lengths = (handle) => {
+      // The handle's own two whole units, measured from the rounded on-curve,
+      // so whole-unit input comes back unchanged.
+      const exactEnd = handle[along];
+      const sign = Math.sign(exactEnd - onCurve[along]) || 1;
+      const base = Math.round(onCurve[along]);
+      return [Math.floor(exactEnd), Math.ceil(exactEnd)]
+        .map((end) => end - base)
+        .filter(
+          (length, i, all) => all.indexOf(length) === i && Math.sign(length) === sign
+        );
+    };
+    const placements = [];
+    // The on-curve takes its nearest unit: a choice that read the handles
+    // would let an edit far along the bulb move it.
+    for (const point of [
+      { x: Math.round(onCurve.x) + 0, y: Math.round(onCurve.y) + 0 },
+    ])
+      for (const a of lengths(handleIn))
+        for (const b of lengths(handleOut))
+          placements.push([
+            { [axis]: point[axis], [along]: point[along] + a },
+            point,
+            { [axis]: point[axis], [along]: point[along] + b },
+          ]);
+    return bestJoinPlacement(placements, exact, farIn, farOut, current);
+  }
+  const candidates = exact.map(corners);
+  const placements = [];
+  for (const a of candidates[0])
+    for (const b of candidates[1])
+      for (const c of candidates[2]) placements.push([a, b, c]);
+  return bestJoinPlacement(placements, exact, farIn, farOut, current);
+}
+
+function bestJoinPlacement(placements, exact, farIn, farOut, current) {
+  const endCurvature = (a, b, c) => {
+    const d1 = { x: b.x - a.x, y: b.y - a.y };
+    const d2 = { x: c.x - 2 * b.x + a.x, y: c.y - 2 * b.y + a.y };
+    const speed = Math.hypot(d1.x, d1.y);
+    return speed ? Math.abs((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / speed ** 3 : 0;
+  };
+  const score = ([handleIn, onCurve, handleOut]) => {
+    const u = { x: onCurve.x - handleIn.x, y: onCurve.y - handleIn.y };
+    const v = { x: handleOut.x - onCurve.x, y: handleOut.y - onCurve.y };
+    const lengths = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
+    if (!lengths) return null;
+    const kink = Math.acos(
+      Math.min(1, Math.max(-1, (u.x * v.x + u.y * v.y) / lengths))
+    );
+    const kIn = endCurvature(onCurve, handleIn, farIn);
+    const kOut = endCurvature(onCurve, handleOut, farOut);
+    const larger = Math.max(kIn, kOut);
+    return {
+      bent: kink > gridKinkAllowance(handleIn, onCurve, handleOut) + 1e-9 ? kink : 0,
+      step: larger ? Math.abs(kIn - kOut) / larger : 0,
+      travel: [handleIn, onCurve, handleOut].reduce(
+        (sum, point, k) => sum + Math.hypot(point.x - exact[k].x, point.y - exact[k].y),
+        0
+      ),
+    };
+  };
+  const better = (a, b) =>
+    !b ||
+    a.bent < b.bent - 1e-12 ||
+    (a.bent <= b.bent + 1e-12 &&
+      (a.step < b.step - 1e-9 || (a.step <= b.step + 1e-9 && a.travel < b.travel)));
+  let best = null;
+  let bestScore = current ? score(current.map(({ x, y }) => ({ x, y }))) : null;
+  for (const placement of placements) {
+    const trial = score(placement);
+    if (trial && better(trial, bestScore)) {
+      best = placement;
+      bestScore = trial;
+    }
+  }
+  return best ? { points: best, step: bestScore.step } : null;
+}
+
 // The joint's curvature discontinuity as a fraction of its own curvature --
 // which is exactly the step a designer sees in the curvature comb, the fringe
 // on one side against the fringe on the other.

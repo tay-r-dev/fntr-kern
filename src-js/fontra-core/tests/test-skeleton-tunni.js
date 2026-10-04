@@ -1271,7 +1271,8 @@ describe("the curvature gizmo at a bulb terminal", () => {
       provenance: neck.provenance,
       delta: { x: 0, y: 0 },
     });
-    expect(edit.tension).to.be.closeTo(0.5, 1e-3);
+    // Read off the whole-unit outline: one unit of handle is about 0.001.
+    expect(edit.tension).to.be.closeTo(0.5, 2e-3);
   });
 
   it("keeps a handled neck-to-wall span when easing is zero", () => {

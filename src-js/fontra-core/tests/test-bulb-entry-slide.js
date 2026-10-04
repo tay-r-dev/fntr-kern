@@ -29,14 +29,12 @@ describe("bulb entry V-slide fallback", () => {
     ];
     const result = slideBulbEntryForCurvature({ wall, points, radius: 67.34 });
     expect(result).not.to.equal(null);
-    expect(result.direction).to.equal("previous");
+    // Step 1 fits: E stays at the extreme, orthogonal, with the wall exact.
+    expect(result.direction).to.equal("stationary");
     expect(result.points.slice(3)).to.deep.equal(points.slice(3));
     expect(result.points.length).to.equal(13);
-    const retainedWall = splitCubicAt(wall, result.parameter).first;
-    expect(result.wall.map(({ x, y }) => ({ x, y }))).to.deep.equal(
-      retainedWall.map(({ x, y }) => ({ x, y }))
-    );
-    expect(Math.abs(result.points[1].x - result.points[0].x)).to.be.greaterThan(0.01);
+    expect(result.wall).to.deep.equal(wall);
+    expect(result.points[1].x).to.equal(result.points[0].x);
     expect(bulbEndCurvature(result.wall, true)).to.be.closeTo(
       bulbEndCurvature(result.points.slice(0, 4)),
       1e-8
@@ -47,7 +45,7 @@ describe("bulb entry V-slide fallback", () => {
     );
     expect(result.departure).to.be.below(1.35);
   });
-  it("removes the supplied outer comb jump by sliding E toward the outer wall point", () => {
+  it("keeps E at the extreme and reports the jump when no position fits both shapes", () => {
     const wall = [
       [304, 498],
       [475, 498],
@@ -68,9 +66,10 @@ describe("bulb entry V-slide fallback", () => {
       easing: 0.59,
       easeCurvature: 0.14,
     });
-    // E slides up the wall; the bounded stationary refit used to win here and
-    // left most of the jump. B and every control after it stay exact.
-    expect(r.entrySlide.direction).to.equal("previous");
+    // No position between the extreme and the wall's centre meets the jump
+    // while keeping the wall exact and the ball within tolerance. The shapes
+    // win: nothing slides, the ball stays exact, and the jump is reported.
+    expect(r.entrySlide).to.equal(null);
     const oldBall = [
       [590.1922866045394, 253.1458168659178],
       [590.1922866045395, 202.8363421938656],
@@ -80,15 +79,10 @@ describe("bulb entry V-slide fallback", () => {
       [400.5603614173832, 200.98245227974303],
       [400.5603614173832, 253.32619584429938],
     ];
-    r.points.slice(3, 7).forEach((p, i) => {
-      expect(p.x).to.be.closeTo(oldBall[i + 3][0], 1e-8);
-      expect(p.y).to.be.closeTo(oldBall[i + 3][1], 1e-8);
+    r.points.slice(0, 7).forEach((p, i) => {
+      expect(p.x).to.be.closeTo(oldBall[i][0], 1e-8);
+      expect(p.y).to.be.closeTo(oldBall[i][1], 1e-8);
     });
-    const jump = Math.abs(
-      bulbEndCurvature(r.wall, true) - bulbEndCurvature(r.points.slice(0, 4))
-    );
-    expect(jump).to.be.lessThan(1e-8);
-    // The supplied P-E fit already departed by 7.84 units. Do not enlarge it.
-    expect(r.entrySlide.departure).to.be.at.most(7.837752664663);
+    expect(r.error).to.be.greaterThan(0);
   });
 });

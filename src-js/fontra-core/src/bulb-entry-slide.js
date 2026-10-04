@@ -82,6 +82,7 @@ export function slideBulbEntryForCurvature({
   radius,
   sourceWall = wall,
   sourceArc = null,
+  entryParameter = 1,
 }) {
   const entry = points.slice(0, 4);
   const target = bulbEndCurvature(points.slice(3, 7));
@@ -100,147 +101,55 @@ export function slideBulbEntryForCurvature({
   const wallRun = { points: [...sourceWall, ...sourceFirst.slice(1)], isClosed: false };
   const toSourceFirst = distanceTo(sourceFirst),
     toSourceWall = distanceTo(sourceWall);
-  // An authored entry may already be boxy. A wall candidate may correct that
-  // error, but must not depart farther from the original ball than the input.
-  let baselineDeparture = 0;
-  for (let k = 0; k <= 32; k++) {
-    const p = cubicPointAt(entry, k / 32);
-    baselineDeparture = Math.max(
-      baselineDeparture,
-      Math.min(toSourceFirst(p), toSourceWall(p))
-    );
-  }
-  const maxDeparture = Math.max(0.02 * radius, baselineDeparture);
-  let wallDeparture = 0;
-  for (let k = 0; k <= 32; k++) {
-    const p = cubicPointAt(wall, k / 32);
-    wallDeparture = Math.max(
-      wallDeparture,
-      Math.min(toSourceWall(p), toSourceFirst(p))
-    );
-  }
-  const ballSideLimit = Math.max(maxDeparture, wallDeparture);
-  let best = null;
-  const consider = (direction, t) => {
-    const run = wallRun;
-    const candidate = makeSlideCandidate(run, 3, direction, t).points;
-    let keptWall = candidate.slice(0, 4);
-    let fitted;
-    if (direction === "previous") {
-      fitted = matchCubicEndCurvatures(
-        candidate.slice(3),
-        bulbEndCurvature(keptWall, true),
-        target,
-        radius
-      );
-    } else {
-      // Keep the ball-side subcurve exact. Only the wall is refit here.
-      fitted = candidate.slice(3);
-      if (
-        Math.abs(bulbEndCurvature(fitted, true) - target) >
-        Math.abs(bulbEndCurvature(entry, true) - target) + 1e-9
-      )
-        return;
-      keptWall = matchCubicEndCurvatures(
-        keptWall,
-        bulbEndCurvature(sourceWall),
-        bulbEndCurvature(fitted),
-        radius
-      );
-    }
-    if (!fitted || !keptWall) return;
-    // Measure the old ball span against the new entry span (and retained
-    // wall when E advances onto the ball). The rest of the ball is exact.
-    // A candidate already no better than the best so far cannot win, so its
-    // measurement stops there.
-    const bound = best ? best.departure : Infinity;
-    const toFitted = distanceTo(fitted),
+  // How far a curve set strays from the reference ball and the outer wall,
+  // both ways. The fit must reproduce both; this is a requirement, not a
+  // tie-break.
+  const departureOf = (span, keptWall) => {
+    const toSpan = distanceTo(span),
       toKeptWall = distanceTo(keptWall);
-    const passes = [
-      [sourceFirst, toFitted, toKeptWall],
-      [fitted, toSourceFirst, toSourceWall],
-      ...(direction === "next" ? [[keptWall, toSourceWall, toSourceFirst]] : []),
-    ];
     let departure = 0;
-    for (const [curve, toA, toB] of passes) {
-      for (let k = 0; k <= 32 && departure < bound; k++) {
+    for (const [curve, toA, toB] of [
+      [sourceFirst, toSpan, toKeptWall],
+      [span, toSourceFirst, toSourceWall],
+    ])
+      for (let k = 0; k <= 32; k++) {
         const p = cubicPointAt(curve, k / 32);
         departure = Math.max(departure, Math.min(toA(p), toB(p)));
       }
-    }
-    if (departure < bound)
-      best = {
-        wall: keptWall,
-        points: [...fitted, ...points.slice(4)],
-        departure,
-        direction,
-        parameter: t,
-      };
+    return departure;
   };
-  // A valid wall-side solution wins even if a ball-side fit has a smaller
-  // numeric score. Otherwise that score repeatedly migrates E onto the ball.
-  for (const direction of ["previous", "next"]) {
-    best = null;
-    for (let i = 1; i <= 45; i++)
-      consider(direction, direction === "previous" ? 1 - i / 50 : i / 50);
-    for (const window of [0.02, 0.004]) {
-      if (!best) break;
-      const { parameter } = best;
-      for (let i = -4; i <= 4; i++) {
-        const t = parameter + (i * window) / 5;
-        if (t > 0.01 && t < 0.99) consider(direction, t);
-      }
-    }
-    // One limit for both directions. A tighter one on the wall side sent E
-    // onto the ball whenever the wall fit departed by more than 2% of R, and
-    // the ball side then refit the whole wall, leaving E a short handle that
-    // no whole-unit placement can match (`f` of skeletron: 15 units, 5.4%).
-    if (best?.departure <= ballSideLimit) return best;
-  }
-  // V-slide may refit the adjacent span, but never loosen the ball's limits.
-  if (best?.departure <= maxDeparture) return best;
-  return softenEntryWall(wall, points, sourceWall, sourceFirst, radius);
-}
-
-// A bounded fallback for an entry already on the ball. Preserve every ball
-// control and E itself; adjust only P-E's two lengths inside the existing
-// wall/reference envelope. Keep the remaining comb error visible to callers.
-function softenEntryWall(wall, points, sourceWall, sourceArc, radius) {
-  const toSourceWall = distanceTo(sourceWall),
-    toSourceArc = distanceTo(sourceArc);
-  const departure = (curve) => {
-    let result = 0;
-    for (let i = 0; i <= 32; i++) {
-      const p = cubicPointAt(curve, i / 32);
-      result = Math.max(result, Math.min(toSourceWall(p), toSourceArc(p)));
-    }
-    return result;
-  };
-  const tolerance = Math.max(0.02 * radius, departure(wall));
-  const target = bulbEndCurvature(points.slice(0, 4));
-  const error = (curve) =>
-    Math.max(
-      Math.abs(bulbEndCurvature(curve, true) - target),
-      Math.abs(bulbEndCurvature(curve) - bulbEndCurvature(sourceWall))
+  const tolerance = Math.max(0.02 * radius, departureOf(entry, wall));
+  // The wall piece E keeps is exact; only E-B's two lengths are solved, to
+  // meet the wall's curvature at E and B-C's at B.
+  const fitAt = (keptWall, span, parameter, direction) => {
+    const fitted = matchCubicEndCurvatures(
+      span,
+      bulbEndCurvature(keptWall, true),
+      target,
+      radius
     );
-  const axes = [unit(sub(wall[1], wall[0])), unit(sub(wall[2], wall[3]))];
-  const lengths = [norm(sub(wall[1], wall[0])), norm(sub(wall[2], wall[3]))];
-  let best = { wall, error: error(wall), departure: departure(wall) };
-  for (let i = -8; i <= 8; i++)
-    for (let j = -8; j <= 8; j++) {
-      const candidate = wall.map((p) => ({ ...p }));
-      for (let k = 0; k < 2; k++) {
-        const anchor = wall[k ? 3 : 0];
-        const length = Math.max(1e-6, lengths[k] + [i, j][k] * radius * 0.025);
-        candidate[k + 1].x = anchor.x + length * axes[k].x;
-        candidate[k + 1].y = anchor.y + length * axes[k].y;
-      }
-      const residual = error(candidate);
-      if (residual >= best.error) continue;
-      const deviation = departure(candidate);
-      if (deviation <= tolerance)
-        best = { wall: candidate, error: residual, departure: deviation };
-    }
-  if (best.wall === wall) return null;
-  return { ...best, points, direction: "stationary", bounded: true };
+    if (!fitted) return null;
+    const departure = departureOf(fitted, keptWall);
+    if (departure > tolerance) return null;
+    return {
+      wall: keptWall,
+      points: [...fitted, ...points.slice(4)],
+      departure,
+      direction,
+      parameter,
+    };
+  };
+  // 1. E at the extreme, orthogonal, with the outer wall exact.
+  const atExtreme = fitAt(wall, entry, entryParameter, "stationary");
+  if (atExtreme) return atExtreme;
+  // 2. Otherwise V-slide E along the outer wall toward its centre, and stop
+  // at the first position that fits. Never past the centre.
+  for (let t = Math.min(entryParameter, 1) - 0.01; t >= 0.5 - 1e-9; t -= 0.01) {
+    const candidate = makeSlideCandidate(wallRun, 3, "previous", t).points;
+    const slid = fitAt(candidate.slice(0, 4), candidate.slice(3), t, "previous");
+    if (slid) return slid;
+  }
+  // Nothing fits both shapes: E stays at the extreme, and the remaining jump
+  // is published through the bulb's harmonization error.
+  return null;
 }
