@@ -199,6 +199,46 @@ describe("V-slide of generated points, through the editor's entry", () => {
     globalThis.__model = await import("../src/skeleton-model.js");
   });
 
+  it("Alt-slides W, the wall point at the bulb's neck, without its bulb-side handle", async () => {
+    const { editSkeleton } = await import("../../views-editor/src/skeleton-editing.js");
+    const end = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" };
+    const isW = (m) =>
+      m?.skeletonPointId === 5 && m.side === "right" && m.role === "onCurve";
+    // The bulb-side handle is W's neighbour that belongs to the terminal.
+    const wAndHandle = (contour, map) => {
+      const n = contour.length;
+      const i = map.findIndex(isW);
+      const j = [(i + 1) % n, (i - 1 + n) % n].find(
+        (k) => map[k]?.skeletonPointId === 8
+      );
+      return [contour[i], contour[j]];
+    };
+    const fromPath = (layer) => {
+      const entry = globalThis.__model.getSkeletonData(layer).generated[0];
+      const contour = layer.path.getUnpackedContour(entry.pathContourIndex).points;
+      return wAndHandle(contour, entry.pointMap);
+    };
+    // Reused bulb, as during a drag: an Alt slide is a nudge with no handle carry.
+    const layer = await layerWith(skeleton({}, end));
+    const [w0, h0] = fromPath(layer);
+    editSkeleton(layer, (skeleton) => {
+      skeleton.contours[0].points.find((p) => p.id === 5).nudge = {
+        left: 0,
+        right: 15,
+      };
+    });
+    const [w1, h1] = fromPath(layer);
+    expect(Math.hypot(w1.x - w0.x, w1.y - w0.y)).to.be.greaterThan(10);
+    expect(h1).to.deep.equal(h0);
+    // A fresh build, as on reopening, gives the same answer.
+    const fresh = generateFromSkeleton(
+      skeleton({ nudge: { left: 0, right: 15 } }, end)
+    );
+    const [w2, h2] = wAndHandle(fresh.contours[0].points, fresh.provenance[0].pointMap);
+    expect([w2.x, w2.y]).to.deep.equal([w1.x, w1.y]);
+    expect([h2.x, h2.y]).to.deep.equal([h0.x, h0.y]);
+  });
+
   it("slides a rib's generated on-curve to where the pointer projects", async () => {
     const layer = await layerWith(skeleton());
     const outline = curves(generateFromSkeleton(skeleton()).contours[0].points);
@@ -270,8 +310,13 @@ describe("V-slide of generated points, through the editor's entry", () => {
       const n = map.findIndex(
         (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
       );
-      const q = map.findIndex((m) => m?.skeletonPointId === 5 &&
-        m.side === map[n].side && m.role === "onCurve" && !m.bulbRole);
+      const q = map.findIndex(
+        (m) =>
+          m?.skeletonPointId === 5 &&
+          m.side === map[n].side &&
+          m.role === "onCurve" &&
+          !m.bulbRole
+      );
       const start = at(n);
       expect(q).to.be.at.least(0);
       const step = (n + 3) % map.length === q ? 1 : -1;

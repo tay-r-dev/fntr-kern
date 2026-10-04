@@ -6607,20 +6607,42 @@ function buildDropCap({
   const wall = towardsRib(outerPiece.segmentPoints);
   const easing = clampCapBallEasing(capBallEasing);
   const pin = clampCapBallEaseCurvature(capBallEaseCurvature);
+  // W, the wall point the neck arrives at, may be slid along its outline. An
+  // Alt slide interpolates: the on-curve moves and its handles stay. So the
+  // bulb is built against where W's handles are carried to -- its construction
+  // place plus the handle-carrying part of the slide -- and only W's on-curve
+  // then takes its slid place. Building against the slid W carried the bulb's
+  // handle at W along with it.
+  const innerRun = awayFromRib(innerPiece.segmentPoints);
+  const beyondRun = innerPieces[1] && awayFromRib(innerPieces[1].segmentPoints);
+  const w = innerRun.at(-1);
+  const handleCarry = beyondRun?.[1]?._provenance?.handleNudge ?? { x: 0, y: 0 };
+  const wHandleAnchor = w._constructionAnchor
+    ? {
+        ...w,
+        x: w._constructionAnchor.x + handleCarry.x,
+        y: w._constructionAnchor.y + handleCarry.y,
+      }
+    : w;
+  const innerForBulb = [...innerRun.slice(0, -1), wHandleAnchor];
   const result = retained
-    ? reconnectRetainedBulb(retained, wall, awayFromRib(innerPiece.segmentPoints))
+    ? reconnectRetainedBulb(retained, wall, innerForBulb)
     : buildFourPointBulb({
         wall,
-        inner: awayFromRib(innerPiece.segmentPoints),
+        inner: innerForBulb,
         radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
         shape: clampCapBallShape(capBallShape),
         easing,
         easeCurvature: pin,
         edits: capBallEdits,
         preview,
-        beyond: innerPieces[1] && awayFromRib(innerPieces[1].segmentPoints),
+        beyond: beyondRun && [wHandleAnchor, ...beyondRun.slice(1)],
       });
   if (!result) return null;
+  if (wHandleAnchor !== w) {
+    result.points[12] = { ...w };
+    result.keptInner = [result.points[12]];
+  }
   const points = result.points;
   // Keep the source wall snapshot for its gizmo, even when E lies before the rib.
   const entry = points[0];

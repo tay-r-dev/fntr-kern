@@ -78,10 +78,20 @@ export function collectUnchangedBulbs(
           return { ...source[index], _provenance: structuredClone(map[index]) };
         };
         const origin = map[indices[0]];
+        // Where W's handles were carried to: W less its slide, plus the part
+        // of the slide that carries handles (published on the handle beyond).
+        const w = at(12);
+        const slide = w._provenance?.nudge ?? { x: 0, y: 0 };
+        const carry = at(13)._provenance?.handleNudge ?? { x: 0, y: 0 };
+        const wHandleAnchor = {
+          x: w.x - slide.x + carry.x,
+          y: w.y - slide.y + carry.y,
+        };
         const snapshot = origin.constructionSegment;
         const originalWall = snapshot && (atStart ? [...snapshot].reverse() : snapshot);
         retained.set(`${contour.id}/${terminal.id}`, {
           points: Array.from({ length: 13 }, (_, i) => at(i)),
+          wHandleAnchor,
           wall: Array.from({ length: 4 }, (_, i) => at(i - 3)),
           originalWall,
           tangents: indices.map((i) => map[i].bulbTangent),
@@ -104,8 +114,10 @@ export function collectUnchangedBulbs(
 
 export function reconnectRetainedBulb(retained, wall, inner) {
   const result = structuredClone(retained);
+  // `inner` ends at where W's handles are carried to, not at W itself; compare
+  // it with the same place in the reused outline.
   const q = inner.at(-1);
-  const previousQ = result.points[12];
+  const previousQ = result.wHandleAnchor ?? result.points[12];
   // Keep the bulb-owned anchors and handles. Only the existing wall endpoint
   // and its incoming handle follow that rib's displacement.
   result.points[11].x += q.x - previousQ.x;
