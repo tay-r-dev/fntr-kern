@@ -2736,3 +2736,28 @@ describe("harmonization: an S-bend evens its comb (skeletron M^1)", () => {
     expect(handle).to.be.within(29, 32);
   });
 });
+
+describe("balance: an S has no tension to balance", () => {
+  // The curve into point 25 of skeletron's `W`: it leaves straight up and
+  // arrives leaning right, so its two handle lines cross behind it. Balancing
+  // it once pushed the arriving handle 32 units, past its own on-curve.
+  it("leaves the segment exactly as drawn", () => {
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 163, y: 349 },
+        { x: 163, y: 370, type: "cubic" },
+        { x: 152, y: 380, type: "cubic" },
+        { x: 158, y: 403 },
+      ],
+    };
+    const path = VarPackedPath.fromUnpackedContours([contour]);
+    const before = Array.from(path.coordinates);
+    const report = balancePathInPlace(path, [0, 3]);
+    expect(Array.from(path.coordinates)).to.deep.equal(before);
+    expect(report[0]).to.deep.include({
+      status: "skipped",
+      reason: "no-forward-crossing",
+    });
+  });
+});

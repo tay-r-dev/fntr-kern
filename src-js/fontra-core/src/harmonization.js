@@ -2315,6 +2315,21 @@ export function balancePathInPlace(path, pointIndices) {
         continue;
       }
       const positions = segmentPositions(path, indices);
+      // A tension is a fraction of the way to where the two handle lines
+      // cross, so it means something only where they cross AHEAD of both
+      // handles. On an S the lines cross behind one end, and the tension
+      // reader, which measures an unsigned distance, still returns a number:
+      // balancing it then pushed the `W`'s handle 32 units, past its own
+      // on-curve, and drew a loop. Refused here, before anything is read.
+      if (!crossesAheadOfBothHandles(positions)) {
+        report.push({
+          segmentIndex: start,
+          contourIndex,
+          status: "skipped",
+          reason: "no-forward-crossing",
+        });
+        continue;
+      }
       // Three shapes have no balance to state, and the donor skips the same
       // three: both handles past their own crossing, both collapsed onto their
       // own on-curve, and neither reaching at all.
@@ -2335,8 +2350,7 @@ export function balancePathInPlace(path, pointIndices) {
       }
       // Parallel handle lines never cross, so there is no reach for a tension to
       // be a fraction of; an S has its two handles on opposite sides of its own
-      // chord, and no one tension describes it. Both are refused above and by
-      // the tension reader here, which returns nothing to balance.
+      // chord, and no one tension describes it. Both are refused above.
       //
       // Balanced, rounded, and balanced again from where the rounding put it.
       // A balanced pair rounded to whole units is no longer exactly balanced, so
@@ -2401,6 +2415,20 @@ export function balancePathInPlace(path, pointIndices) {
   }
 
   return report;
+}
+
+// Whether a segment's two handle lines cross ahead of both handles, which is
+// where a Tunni point exists and a tension is a fraction of something.
+function crossesAheadOfBothHandles(points) {
+  const tunniPoint = calculateTunniPoint(points);
+  if (!tunniPoint) {
+    return false;
+  }
+  const ahead = (onCurve, handle) =>
+    (tunniPoint.x - onCurve.x) * (handle.x - onCurve.x) +
+      (tunniPoint.y - onCurve.y) * (handle.y - onCurve.y) >
+    0;
+  return ahead(points[0], points[1]) && ahead(points[3], points[2]);
 }
 
 // Both handles to the harmonic mean of the two tensions, along their own
