@@ -2651,11 +2651,28 @@ points on the two curves leaving the terminal's corners.
   angle turned, balance of the exact halves: each was proposed and each was a
   number fitted to this glyph, and the exact halves are balanced (0.67/0.66),
   because cutting an arc anywhere gives balanced halves. The designer's rule
-  decides it: **an extremum gets a point only if the curve, split there with
-  the new point on whole units and its handles on the axis, still fits** --
-  and a part that runs from a corner must also be balanced, within 20 per cent.
+  decides it: **on a curve leaving a corner, an extremum gets a point only if
+  the curve, split there with the new point on whole units and its handles on
+  the axis, still fits** -- and the part that runs from the corner must also be
+  balanced, within 20 per cent.
   At corner 1 the grid cannot hold the 26-unit part's curvature (best miss
   31 per cent); at corner 0 the part fits but is unbalanced.
+- **The rule is for a curve leaving a corner, and only there.** It first ran
+  on every extremum, and that left point 25 of the `W` -- between two smooth
+  points -- with no extremum on its S-bend, where the designer expected one.
+  Between smooth points every extremum is cut exactly, as before. The known
+  cost, accepted: a piece 13 units long between a new extremum and a
+  neighbouring point cannot keep its shape on whole units, and on the `W` as
+  drawn on the morning of the report the curvature flipped there, +5 against
+  -15.
+- **Balance broke the fits afterwards.** The editor balances every curve
+  Simplify rewrites. Its tension reader measured an unsigned distance to the
+  Tunni point, so an S-bend, whose handle lines cross behind it, read as a
+  tension, and balancing it pushed a handle past its own on-curve: the loop
+  at point 25. Balance now refuses a segment whose handle lines do not cross
+  ahead of both handles. It still re-splits ordinary curves and so moves the
+  end curvatures Simplify fitted (point 10 of the `W`, 22/23 to 63/26); the
+  step is still in the command.
 - **The first fit search was too coarse and refused real apexes** -- the top
   of the `O`, 3 units above an end 34 units away. A brute whole-unit search
   fitted it at 7 per cent. The search now keeps every length pair inside the

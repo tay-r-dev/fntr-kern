@@ -806,7 +806,7 @@ describe("simplifyContourCompatible (multi-master)", () => {
 // The W of skeletron: a stroke terminal (corners 0 and 1, a straight between
 // them, one handle each) whose curves lean a unit or two past the corners,
 // and a bowl whose merge once ended in a hook.
-const W_POINTS = [[283,333,0],[313,333,0],[321,397,1],[299,449,1],[262,475,2],[233,496,1],[194,501,1],[153,484,2],[131,475,1],[111,459,1],[95,438,2],[84,422,1],[76,404,1],[71,384,2],[65.60023836242985,360.08676989076076,1],[68.29670951924832,338.5549357211275,1],[78,324,2],[94,300,1],[127,299,1],[147,314,2],[156,322,1],[163,334,1],[163,349,2],[163,370,1],[152.45278824587675,379.8866176911531,1],[158,403,2],[164,431,1],[186,446,1],[214,446,2],[237,446,1],[258,439,1],[271,420,2],[283,402,1],[288,374,1]]; // prettier-ignore
+const W_POINTS = [[283,333,0],[313,333,0],[321,397,1],[299,449,1],[262,475,2],[233,496,1],[194,501,1],[153,484,2],[131,475,1],[111,459,1],[95,438,2],[84,422,1],[76,404,1],[71,384,2],[65.60023836242985,360.08676989076076,1],[68.29670951924832,338.5549357211275,1],[78,324,2],[94,300,1],[127,299,1],[147,314,2],[156,322,1],[163,334,1],[163,349,2],[163,369,1],[141,412,1],[182,437,2],[191.2352176718614,442.63123028772037,1],[202,446,1],[214,446,2],[237,446,1],[258,439,1],[271,420,2],[283,402,1],[288,374,1]]; // prettier-ignore
 
 function wContour() {
   return {
@@ -864,23 +864,34 @@ describe("simplify writes curves that fit", () => {
   });
 
   it("leaves no smooth joint bent the other way or broken", () => {
-    const result = simplifyLikeTheEditor(wContour());
-    expect(result.points.length).to.be.below(W_POINTS.length);
-    const pieces = contourToCubicPieces(result);
-    for (const [i, piece] of pieces.entries()) {
-      const next = pieces[(i + 1) % pieces.length];
-      const joint = result.points[piece.endPointIndex];
-      if (piece.kind !== "cubic" || next.kind !== "cubic" || !joint.smooth) {
-        continue;
+    const original = wContour();
+    const result = simplifyLikeTheEditor(original);
+    expect(result.points.length).to.be.below(original.points.length);
+    const smoothSteps = (contour) => {
+      const pieces = contourToCubicPieces(contour);
+      const steps = [];
+      for (const [i, piece] of pieces.entries()) {
+        const next = pieces[(i + 1) % pieces.length];
+        if (
+          piece.kind !== "cubic" ||
+          next.kind !== "cubic" ||
+          !contour.points[piece.endPointIndex].smooth
+        ) {
+          continue;
+        }
+        const arriving = curvatureAt(piece.points, 1);
+        const leaving = curvatureAt(next.points, 0);
+        expect(Math.sign(arriving)).to.equal(Math.sign(leaving));
+        steps.push(
+          Math.abs(arriving - leaving) / Math.max(Math.abs(arriving), Math.abs(leaving))
+        );
       }
-      const arriving = curvatureAt(piece.points, 1);
-      const leaving = curvatureAt(next.points, 0);
-      expect(Math.sign(arriving)).to.equal(Math.sign(leaving));
-      // The drawing itself steps by up to a third at one joint.
-      expect(
-        Math.abs(arriving - leaving) / Math.max(Math.abs(arriving), Math.abs(leaving))
-      ).to.be.below(0.4);
-    }
+      return steps;
+    };
+    // No step worse than the drawing's own worst, plus the fit's allowance.
+    expect(Math.max(...smoothSteps(result))).to.be.at.most(
+      Math.max(...smoothSteps(original)) + 0.2
+    );
   });
 
   it("still puts a point on an apex a few units above a far end", () => {

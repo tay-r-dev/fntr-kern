@@ -579,9 +579,24 @@ function fitExtremaSplit(points, ts, tolerance, corners = {}) {
 // when the cubic still splits into fitting parts with it. Returns the kept
 // parameters and the fitted parts for them.
 function fittingExtrema(points, tolerance, corners = {}) {
+  const candidates = interiorExtremaParameters(points, tolerance);
+  if (!corners.start && !corners.end) {
+    // Between two smooth points every extremum gets its point, cut exactly.
+    // The fit test is for a curve leaving a corner, where an extremum a unit
+    // or two out is the curve leaning past the corner rather than a turn.
+    if (!candidates.length) {
+      return { ts: [], parts: null };
+    }
+    const bounds = [0, ...candidates, 1];
+    const parts = bounds.slice(0, -1).map((t, i) => {
+      const exact = subCubic(points, t, bounds[i + 1]);
+      return { points: exact, sourcePoints: exact, t: bounds[i + 1] };
+    });
+    return { ts: candidates, parts };
+  }
   let kept = [];
   let parts = null;
-  for (const t of interiorExtremaParameters(points, tolerance)) {
+  for (const t of candidates) {
     const tried = fitExtremaSplit(points, [...kept, t], tolerance, corners);
     if (tried) {
       kept = [...kept, t];
