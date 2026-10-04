@@ -18,18 +18,26 @@ import { themeColorCSS } from "./theme-support.js";
 // `options`, `value` and `disabled` are plain JS properties, not HTML
 // attributes -- set them after creating the element, the convention every
 // UnlitElement-based component in this tree uses.
+// select/segmented (Figma 2004:29330). Light colours are the design
+// system's tokens (core.css); dark ones stay hand-picked until the design has
+// a dark mode.
 const colors = {
-  "segmented-control-tray-color": ["#f7f7f7", "#3a3a3e"],
-  "segmented-control-border-color": ["#e0e0e0", "#6a6a74"],
-  "segmented-control-tray-hover-color": ["#d5ed57", "#d5ed57"],
-  "segmented-control-tray-hover-border-color": ["#3b560033", "#3b560033"],
-  "segmented-control-on-hover-shadow-color": ["#c8e048", "#c8e048"],
-  "segmented-control-on-background-color": ["#fff", "#5a5a60"],
-  "segmented-control-on-shadow-color": ["#ebebeb", "#000000a0"],
-  "segmented-control-off-text-color": ["#15151580", "#ffffff80"],
-  "segmented-control-on-text-color": ["#4c4c4c", "#e9e9ed"],
-  "segmented-control-hover-background-color": ["#a5c500", "#a5c500"],
-  "segmented-control-hover-text-color": ["#fff", "#fff"],
+  "segmented-control-tray-color": ["var(--sl-sgb-sr-rest)", "#3a3a3e"],
+  "segmented-control-border-color": ["var(--sl-sgb-ln-rest)", "#6a6a74"],
+  "segmented-control-disabled-border-color": ["var(--sl-sgb-ln-disabled)", "#4a4a50"],
+  "segmented-control-tray-hover-color": ["#d5ed57", "#d5ed57"], // lime-deprecated/7
+  "segmented-control-tray-hover-border-color": ["var(--sl-sgb-ln-hover)", "#b7d817"],
+  "segmented-control-on-hover-shadow-color": [
+    "var(--sl-sgc-sh-active-rest)",
+    "#9cbb12",
+  ],
+  "segmented-control-on-background-color": ["var(--sl-sgc-sr-active)", "#5a5a60"],
+  "segmented-control-on-shadow-color": ["var(--sl-sgc-sh-active-hover)", "#000000a0"],
+  "segmented-control-off-text-color": ["var(--sl-sgc-lb-rest)", "#ffffff80"],
+  "segmented-control-on-text-color": ["var(--sl-sgc-lb-active-rest)", "#e9e9ed"],
+  "segmented-control-disabled-text-color": ["var(--sl-sgc-lb-disabled)", "#ffffff40"],
+  "segmented-control-hover-background-color": ["var(--sl-sgc-sr-hover)", "#9cbb12"],
+  "segmented-control-hover-text-color": ["var(--sl-sgc-lb-hover)", "#fff"],
 };
 
 export class SegmentedControl extends UnlitElement {
@@ -58,12 +66,12 @@ export class SegmentedControl extends UnlitElement {
       margin: 0;
       padding: 3px 5px;
       border: none;
-      border-radius: 4px;
+      border-radius: var(--sl-sgc-radius);
       background: transparent;
       color: var(--segmented-control-off-text-color);
-      /* ui/label/S */
-      font: var(--ui-text-label-s);
-      letter-spacing: var(--ui-tracking);
+      /* ui/label/M */
+      font: var(--ui-text-label-m);
+      letter-spacing: var(--ui-tracking-label-m);
       font-feature-settings: "case" 1;
       white-space: nowrap;
       cursor: pointer;
@@ -95,11 +103,23 @@ export class SegmentedControl extends UnlitElement {
 
     button:disabled {
       cursor: default;
-      opacity: 0.5;
+      color: var(--segmented-control-disabled-text-color);
+    }
+
+    /* Disabled: a pale border, every label pale, the chosen chip's face and
+       shadow gone. */
+    :host([disabled]) .row {
+      border-color: var(--segmented-control-disabled-border-color);
     }
 
     :host([disabled]) button {
       cursor: default;
+      color: var(--segmented-control-disabled-text-color);
+    }
+
+    :host([disabled]) button.on {
+      background: transparent;
+      box-shadow: none;
     }
 
     button .icon {

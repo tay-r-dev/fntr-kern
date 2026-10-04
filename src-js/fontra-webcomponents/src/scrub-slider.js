@@ -12,23 +12,32 @@ import { CompactScrubField } from "./compact-scrub-field.js";
 //
 // The scrub, edit and event machinery ("change", "apply", "scrubstart") is
 // compact-scrub-field.js's; this class only re-draws the box.
+// input/field/slider (Figma 2004:29608). Light colours are the design
+// system's tokens (core.css) where it has them; the rest are the design's
+// literals. Dark ones stay hand-picked until the design has a dark mode.
 const colors = {
-  "scrub-slider-background-color": ["#f5f5f5", "#3a3a3a"],
+  "scrub-slider-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "scrub-slider-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
+  "scrub-slider-tray-active-color": ["var(--in-bsr-focus)", "#333"],
+  "scrub-slider-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
+  "scrub-slider-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
+  "scrub-slider-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
+  "scrub-slider-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
   "scrub-slider-hover-background-color": ["#f7f7f7", "#464646"],
   "scrub-slider-hover-border-color": [
     "rgba(0, 0, 0, 0.08)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "scrub-slider-active-background-color": ["#fff", "#2c2c2c"],
-  "scrub-slider-active-border-color": ["#def280", "#8fae4a"],
+  "scrub-slider-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
+  "scrub-slider-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
   "scrub-slider-text-color": ["#8e8e8e", "#b0b0b0"],
   "scrub-slider-value-rest-text-color": ["#565656", "#b0b0b0"],
   "scrub-slider-hover-text-color": ["#303030", "#e0e0e0"],
-  "scrub-slider-active-text-color": ["#151515", "#f0f0f0"],
+  "scrub-slider-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
   "scrub-slider-fill-color": ["#e9e9e9", "#4a4a4a"],
-  "scrub-slider-fill-active-color": ["#d5ed57", "#5c7033"],
+  "scrub-slider-fill-active-color": ["var(--in-sln-focus)", "#5c7033"],
   "scrub-slider-handle-color": ["#b4b4b4", "#777777"],
-  "scrub-slider-selection-color": ["#d5ed57", "#5c7033"],
+  "scrub-slider-selection-color": ["var(--in-sln-focus)", "#5c7033"],
   "scrub-slider-stepper-color": ["#d9d9d9", "#666666"],
   "scrub-slider-stepper-active-color": ["#303030", "#dddddd"],
 };
@@ -43,7 +52,9 @@ export class ScrubSlider extends CompactScrubField {
 
     .box {
       background-color: var(--scrub-slider-background-color);
-      border-radius: 0.375em;
+      border: 0 solid var(--scrub-slider-border-color);
+      border-top-width: 1px;
+      border-radius: 6px;
       box-sizing: border-box;
       height: 24px;
       padding: 3px;
@@ -51,7 +62,7 @@ export class ScrubSlider extends CompactScrubField {
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
-      /* ui/label/XS */
+      /* ui/label/S */
       font: var(--ui-text-label-s);
       letter-spacing: var(--ui-tracking);
     }
@@ -62,10 +73,10 @@ export class ScrubSlider extends CompactScrubField {
       display: flex;
       align-items: center;
       border: 1px solid transparent;
-      border-radius: 0.25em;
+      border-radius: 3px;
       box-sizing: border-box;
       height: 100%;
-      padding: 0 0.4em;
+      padding: 0 0 0 6px;
       overflow: hidden;
     }
 
@@ -111,21 +122,31 @@ export class ScrubSlider extends CompactScrubField {
       color: var(--scrub-slider-active-text-color);
     }
 
-    /* The fill keeps its own color under the active white background; the
-       rule above paints .inner, the fill sits over it. */
+    /* Scrubbing and typing both turn the fill lime, and the tray lightens
+       with side lines. */
     .box.scrubbing .inner .fill,
     .box.editing .inner .fill,
     .box:focus-within .inner .fill {
-      background-color: var(--scrub-slider-fill-color);
-    }
-
-    .box.scrubbing .inner .fill {
       background-color: var(--scrub-slider-fill-active-color);
     }
 
+    .box.scrubbing,
+    .box.editing,
+    .box:focus-within {
+      background-color: var(--scrub-slider-tray-active-color);
+      border-color: var(--scrub-slider-tray-active-border-color);
+      border-width: 1px 1px 0;
+    }
+
     .box.disabled {
-      opacity: 0.7;
+      background-color: var(--scrub-slider-tray-disabled-color);
+      border-color: var(--scrub-slider-tray-disabled-border-color);
+      color: var(--scrub-slider-disabled-text-color);
       cursor: default;
+    }
+
+    .box.disabled .fill {
+      display: none;
     }
 
     .name {

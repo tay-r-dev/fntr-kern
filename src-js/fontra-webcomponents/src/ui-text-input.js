@@ -10,7 +10,7 @@ import "./ui-handle.js";
 // - hover: the box fills light grey with a hairline border, the text darkens;
 // - manual input (focus): the box turns white with the lime border, the text
 //   near-black;
-// - disabled: the rest look with the box at 70%.
+// - disabled: the rest look in pale colours.
 //
 // `multiline` makes it the 60px several-line field with the small handle
 // (Figma 379:22492, size S) on its bottom edge; dragging the handle sets the
@@ -20,19 +20,38 @@ import "./ui-handle.js";
 // the convention every UnlitElement component in this tree uses. "input"
 // passes through from the inner field; "change" is sent again from the host,
 // since a native change event stops at the shadow root.
+// input/field/text (Figma 2004:29656). Light colours are the design system's
+// tokens (core.css); dark ones stay hand-picked until the design has a dark
+// mode.
 const colors = {
-  "ui-text-input-tray-color": ["#f5f5f5", "#3a3a3a"],
-  "ui-text-input-tray-border-color": ["#e0e0e0", "#555"],
-  "ui-text-input-hover-color": ["#f7f7f7", "#464646"],
+  "ui-text-input-tray-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "ui-text-input-tray-border-color": ["var(--in-bln-rest)", "#555"],
+  "ui-text-input-tray-focus-color": ["var(--in-bsr-focus)", "#333"],
+  "ui-text-input-tray-focus-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
+  "ui-text-input-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
+  "ui-text-input-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
+  "ui-text-input-color": ["var(--in-csr-rest)", "#3a3a3a"],
+  "ui-text-input-border-color": ["var(--in-sln-rest)", "transparent"],
+  "ui-text-input-hover-color": ["var(--in-csr-hover)", "#464646"],
   "ui-text-input-hover-border-color": [
-    "rgba(0, 0, 0, 0.08)",
+    "var(--in-sln-hover)",
     "rgba(255, 255, 255, 0.1)",
   ],
-  "ui-text-input-focus-color": ["#fff", "#2c2c2c"],
-  "ui-text-input-focus-border-color": ["#def280", "#8fae4a"],
-  "ui-text-input-text-color": ["#8e8e8e", "#8e8e8e"],
-  "ui-text-input-hover-text-color": ["#303030", "#e0e0e0"],
-  "ui-text-input-focus-text-color": ["#151515", "#fff"],
+  "ui-text-input-focus-color": ["var(--in-csr-focus)", "#2c2c2c"],
+  "ui-text-input-focus-border-color": ["var(--in-sln-focus)", "#8fae4a"],
+  "ui-text-input-disabled-color": ["var(--in-csr-disabled)", "#3a3a3a"],
+  "ui-text-input-disabled-border-color": ["var(--in-sln-disabled)", "transparent"],
+  // input/field/text names its text by what it is: "hint" is the
+  // placeholder of an empty field (txth), "value" the text a field keeps
+  // once focus leaves (txtf), "input" the text being typed (both tokens'
+  // focus colour). An empty focused field still shows its hint as a hint.
+  "ui-text-input-text-color": ["var(--in-txtf-rest)", "#b0b0b0"],
+  "ui-text-input-hover-text-color": ["var(--in-txtf-hover)", "#e0e0e0"],
+  "ui-text-input-focus-text-color": ["var(--in-txtf-focus)", "#fff"],
+  "ui-text-input-disabled-text-color": ["var(--in-txtf-disabled)", "#6a6a6a"],
+  "ui-text-input-hint-color": ["var(--in-txth-rest)", "#6a6a6a"],
+  "ui-text-input-hover-hint-color": ["var(--in-txth-hover)", "#6a6a6a"],
+  "ui-text-input-disabled-hint-color": ["var(--in-txth-disabled)", "#555"],
 };
 
 const MIN_MULTILINE_HEIGHT = 36;
@@ -48,8 +67,21 @@ export class UITextInput extends UnlitElement {
       height: 24px;
       padding: 3px;
       background-color: var(--ui-text-input-tray-color);
-      border-top: 1px solid var(--ui-text-input-tray-border-color);
+      border: 0 solid var(--ui-text-input-tray-border-color);
+      border-top-width: 1px;
       border-radius: 6px;
+    }
+
+    /* Focus: the tray lightens and takes a line at the sides too. */
+    :host(:focus-within:not([disabled])) {
+      background-color: var(--ui-text-input-tray-focus-color);
+      border-color: var(--ui-text-input-tray-focus-border-color);
+      border-width: 1px 1px 0;
+    }
+
+    :host([disabled]) {
+      background-color: var(--ui-text-input-tray-disabled-color);
+      border-color: var(--ui-text-input-tray-disabled-border-color);
     }
 
     :host([multiline]) {
@@ -64,14 +96,17 @@ export class UITextInput extends UnlitElement {
       height: 100%;
       border: 1px solid transparent;
       border-radius: 3px;
-      padding: 0 5px;
+      padding: 0 6px;
       transition:
         background-color 120ms,
         border-color 120ms;
     }
 
+    /* Several lines: the box shows at rest too. */
     :host([multiline]) .container {
-      padding: 7px 0 0 5px;
+      padding: 6px 4px 4px 6px;
+      background-color: var(--ui-text-input-color);
+      border-color: var(--ui-text-input-border-color);
     }
 
     :host(:hover:not([disabled])) .container {
@@ -84,8 +119,9 @@ export class UITextInput extends UnlitElement {
       border-color: var(--ui-text-input-focus-border-color);
     }
 
-    :host([disabled]) .container {
-      opacity: 0.7;
+    :host([multiline][disabled]) .container {
+      background-color: var(--ui-text-input-disabled-color);
+      border-color: var(--ui-text-input-disabled-border-color);
     }
 
     .field {
@@ -105,8 +141,24 @@ export class UITextInput extends UnlitElement {
     }
 
     .field::placeholder {
-      color: inherit;
+      color: var(--ui-text-input-hint-color);
       opacity: 1;
+    }
+
+    :host(:hover:not([disabled])) .field::placeholder {
+      color: var(--ui-text-input-hover-hint-color);
+    }
+
+    :host(:focus-within:not([disabled])) .field::placeholder {
+      color: var(--ui-text-input-hover-hint-color);
+    }
+
+    :host([disabled]) .field {
+      color: var(--ui-text-input-disabled-text-color);
+    }
+
+    :host([disabled]) .field::placeholder {
+      color: var(--ui-text-input-disabled-hint-color);
     }
 
     textarea.field {
@@ -132,7 +184,7 @@ export class UITextInput extends UnlitElement {
     }
 
     :host([disabled]) ui-handle {
-      display: none;
+      pointer-events: none;
     }
   `;
 

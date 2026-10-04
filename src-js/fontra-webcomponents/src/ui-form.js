@@ -136,9 +136,58 @@ export class Form extends SimpleElement {
       height: 24px;
     }
 
+    /* select/checkmark (Figma 2004:29411): a 12px box with 3px corners and
+       a line at the top and sides. Off it is pale grey, darker on hover; on
+       it fills mid grey with a white check, lime on hover. Light theme only:
+       the design system's tokens (core.css) have no dark values yet. */
     .ui-form-value input[type="checkbox"] {
-      width: initial;
-      height: initial;
+      appearance: none;
+      -webkit-appearance: none;
+      position: relative;
+      box-sizing: border-box;
+      width: 12px;
+      height: 12px;
+      margin: 0;
+      padding: 0;
+      vertical-align: middle;
+      border: 1px solid var(--sl-bsb-ln-rest);
+      border-bottom: none;
+      border-radius: 3px;
+      background-color: var(--sl-bsb-sr-rest);
+      cursor: pointer;
+    }
+
+    .ui-form-value input[type="checkbox"]:hover:not(:disabled) {
+      border-color: var(--sl-bsb-ln-hover);
+      background-color: var(--sl-bsb-sr-hover);
+    }
+
+    .ui-form-value input[type="checkbox"]:checked {
+      border-color: var(--sl-bsb-ln-active);
+      background-color: var(--sl-bsb-sr-active);
+    }
+
+    .ui-form-value input[type="checkbox"]:checked:hover:not(:disabled) {
+      border-color: var(--sl-bsb-ln-active-hover);
+      background-color: var(--sl-bsb-sr-active-hover);
+    }
+
+    .ui-form-value input[type="checkbox"]:checked::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: #fff;
+      mask: url("/tabler-icons/check.svg") center / 10px no-repeat;
+    }
+
+    .ui-form-value input[type="checkbox"]:disabled {
+      border-color: var(--sl-bsb-ln-disabled);
+      background-color: var(--sl-bsb-sr-disabled);
+      cursor: default;
+    }
+
+    .ui-form-value input[type="checkbox"]:disabled::before {
+      background-color: var(--sl-bsb-ln-disabled);
     }
 
     .ui-form-value input[type="color"] {

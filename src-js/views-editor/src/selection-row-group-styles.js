@@ -40,28 +40,35 @@ export const SELECTION_ROW_GROUP_STYLES = `
     width: 3.5em;
   }
 
-  /* A tray: button/segmented's plate (Figma 287:15729) holding a group's
+  /* A tray: button/segmented's plate (Figma 2004:29215) holding a group's
      buttons, an overflow set off by a line, and a segmented control drawn
-     flat on the plate. */
+     flat on the plate. The plate shows through the 1px gaps as the dividers. */
   .selection-row-group-icons.tray {
     justify-self: start;
     gap: 1px;
     padding: 0;
-    border-radius: 6px;
+    border-radius: var(--bt-sgb-corner);
     background: #e0e0e0;
   }
 
-  /* Each icon-button child drawn as segment/button (Figma 287:15640). The
-     host is the outer face, with its lines and 2px/1px inset; the button in
-     its shadow root is the inner container, set through its
-     --icon-button-inner-* hooks. The icon is 16px throughout.
+  .selection-row-group-icons.tray:has(icon-button[disabled]):not(
+      :has(icon-button:not([disabled]))
+    ) {
+    background: var(--bt-sgb-ln-disabled);
+  }
 
-     rest     face #f5f5f5, line under;           inner #f5f5f5, square
-     hover    face white, lines above and under;  inner #f7f7f7, radius 5
-     press    face white, line above and at the   inner #f7f7f7, radius 5,
-              outer side(s), none under;          2px padding
-     on       face #f0f0f0, lines as press;       inner clear
-     disabled as rest;                            inner at 30%
+  /* Each icon-button child drawn as ./segment (Figma 2004:29126). The host
+     is the outer face, with its lines and 2px/1px inset; the button in its
+     shadow root is the inner container, set through its --icon-button-inner-*
+     hooks. The icon is 16px throughout. The container's corners are 3px,
+     4px on the plate's outer edge.
+
+     rest     face grey, line under;              container grey, 3px 4px pad
+     hover    face white, lines above and under;  container grey, 4px pad
+     press    face white, line above and at the   container grey, 2px pad
+              outer side(s), none under;
+     on       face darker grey, lines as press;   container clear, 2px pad
+     disabled face pale, line under;              container pale, 4px pad
 
      A left segment rounds its left corners and takes the left side line, a
      right one the right; a middle one is square and takes both. */
@@ -70,51 +77,56 @@ export const SELECTION_ROW_GROUP_STYLES = `
     flex: 1 1 0;
     min-width: 0;
     width: auto;
-    height: 24px;
+    height: var(--bt-sgb-height);
     padding: 2px 1px;
-    background: #f5f5f5;
-    border: 0 solid #e0e0e0;
+    background: var(--bt-sgb-sr-rest);
+    border: 0 solid var(--bt-sgb-ln-rest);
     border-bottom-width: 1px;
     --icon-button-icon-size: 16px;
-    --icon-button-inner-fill: #f5f5f5;
+    --icon-button-inner-fill: var(--bt-sgc-sr-rest);
     --icon-button-inner-border: transparent;
-    --icon-button-inner-radius: 0;
-    --icon-button-inner-hover-fill: #f7f7f7;
+    --icon-button-inner-radius: var(--bt-sgc-corner);
+    --icon-button-inner-padding: 3px 4px;
+    --icon-button-inner-hover-fill: var(--bt-sgc-sr-hover);
     --icon-button-inner-hover-border: transparent;
-    --icon-button-inner-press-fill: #f7f7f7;
+    --icon-button-inner-press-fill: var(--bt-sgc-sr-focus);
     --icon-button-inner-press-border: transparent;
     --icon-button-on-background-color: transparent;
   }
 
   .selection-row-group-icons.tray icon-button:first-child {
-    border-radius: 6px 0 0 6px;
+    border-radius: var(--bt-sgb-corner) 0 0 var(--bt-sgb-corner);
+    --icon-button-inner-radius: 4px var(--bt-sgc-corner) var(--bt-sgc-corner) 4px;
   }
 
   .selection-row-group-icons.tray icon-button:last-child {
-    border-radius: 0 6px 6px 0;
+    border-radius: 0 var(--bt-sgb-corner) var(--bt-sgb-corner) 0;
+    --icon-button-inner-radius: var(--bt-sgc-corner) 4px 4px var(--bt-sgc-corner);
   }
 
   .selection-row-group-icons.tray icon-button:hover {
-    background: #fff;
+    background: var(--bt-sgb-sr-hover);
+    border-color: var(--bt-sgb-ln-hover);
     border-width: 1px 0;
-    --icon-button-inner-radius: 5px;
+    --icon-button-inner-padding: 4px;
   }
 
   .selection-row-group-icons.tray icon-button:active,
   .selection-row-group-icons.tray icon-button[on] {
     padding-bottom: 0;
     border-width: 1px 1px 0;
-    --icon-button-inner-radius: 5px;
     --icon-button-inner-padding: 2px;
   }
 
   .selection-row-group-icons.tray icon-button:active {
-    background: #fff;
+    background: var(--bt-sgb-sr-focus);
+    border-color: var(--bt-sgb-ln-focus);
   }
 
   .selection-row-group-icons.tray icon-button[on] {
-    background: #f0f0f0;
-    --icon-button-inner-fill: transparent;
+    background: var(--bt-sgb-sr-active-hover);
+    border-color: var(--bt-sgb-ln-active-hover);
+    --icon-button-inner-fill: var(--bt-sgc-sr-dropdown);
   }
 
   .selection-row-group-icons.tray icon-button:first-child:is(:active, [on]) {
@@ -126,9 +138,12 @@ export const SELECTION_ROW_GROUP_STYLES = `
   }
 
   .selection-row-group-icons.tray icon-button[disabled] {
-    background: #f5f5f5;
+    padding: 2px 1px;
+    background: var(--bt-sgb-sr-disabled);
+    border-color: var(--bt-sgb-ln-disabled);
     border-width: 0 0 1px;
-    --icon-button-inner-opacity: 0.3;
+    --icon-button-inner-fill: var(--bt-sgc-sr-disabled);
+    --icon-button-inner-padding: 4px;
   }
 
   .selection-row-group-icons.tray overflow-button,

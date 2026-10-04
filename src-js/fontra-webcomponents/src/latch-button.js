@@ -14,8 +14,8 @@ import { themeColorCSS } from "./theme-support.js";
 // borders -- 1px at the bottom at rest, a hairline all around on hover, and
 // the weight moved to the top while pressed or latched -- and the inner
 // container draws its own grey fill over it on hover, or lets the face
-// through otherwise. The icon is grey at rest, dark on hover, light lime
-// while pressed and dark lime while its dropdown is open; a latched button
+// through otherwise. The icon is grey at rest, dark on hover, lime while
+// pressed and dark lime while its dropdown is open; a latched button
 // keeps the grey icon and puts its indicator in the badge instead.
 //
 // With `dropdown` content a click opens the card (and the button takes the
@@ -24,19 +24,28 @@ import { themeColorCSS } from "./theme-support.js";
 // `on`, `mixed`, `disabled`, `badge` and `dropdown` are plain JS properties,
 // not HTML attributes -- set them after creating the element, the convention
 // every UnlitElement-based component in this tree uses.
+// Light colours are the design system's tokens (core.css); dark ones stay
+// hand-picked until the design has a dark mode.
 const colors = {
-  "latch-button-face-background-color": ["#f5f5f5", "#3a3a3a"],
-  "latch-button-face-hover-background-color": ["#ffffff", "#4a4a4a"],
-  "latch-button-face-press-background-color": ["#ffffff", "#4a4a4a"],
-  "latch-button-face-on-background-color": ["#f0f0f0", "#505050"],
-  "latch-button-container-background-color": ["#f5f5f5", "#3a3a3a"],
-  "latch-button-container-hover-background-color": ["#f7f7f7", "#444"],
-  "latch-button-border-color": ["#e0e0e0", "#555"],
-  "latch-button-icon-color": ["#8e8e8e", "#8e8e8e"],
-  "latch-button-icon-hover-color": ["#303030", "#e0e0e0"],
-  "latch-button-icon-press-color": ["#d5ed57", "#d5ed57"],
-  "latch-button-icon-open-color": ["#8eac10", "#8eac10"],
-  "latch-button-icon-disabled-color": ["#565656", "#5a5a5a"],
+  "latch-button-face-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
+  "latch-button-face-hover-background-color": ["var(--bt-sgb-sr-hover)", "#4a4a4a"],
+  "latch-button-face-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
+  "latch-button-face-on-background-color": ["var(--bt-sgb-sr-active-rest)", "#505050"],
+  "latch-button-face-disabled-background-color": ["var(--bt-sgb-sr-disabled)", "#333"],
+  "latch-button-container-background-color": ["var(--bt-sgc-sr-rest)", "#3a3a3a"],
+  "latch-button-container-hover-background-color": ["var(--bt-sgc-sr-hover)", "#444"],
+  "latch-button-container-press-background-color": ["var(--bt-sgc-sr-focus)", "#444"],
+  "latch-button-container-disabled-background-color": [
+    "var(--bt-sgc-sr-disabled)",
+    "#333",
+  ],
+  "latch-button-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
+  "latch-button-disabled-border-color": ["var(--bt-sgb-ln-disabled)", "#444"],
+  "latch-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
+  "latch-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "latch-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#d5ed57"],
+  "latch-button-icon-open-color": ["var(--bt-sgc-ic-active-hover)", "#8eac10"],
+  "latch-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "latch-button-card-background-color": ["#fff", "#2a2a2a"],
   "latch-button-card-shadow-color": ["#0003", "#0008"],
 };
@@ -89,6 +98,7 @@ export class LatchButton extends UnlitElement {
       gap: 4px;
       min-width: 0;
       padding: 3px 4px;
+      border-radius: 3px;
       background: var(--latch-button-container-background-color);
       color: var(--latch-button-icon-color);
       transition:
@@ -103,10 +113,10 @@ export class LatchButton extends UnlitElement {
       aspect-ratio: 1;
     }
 
-    /* The design's 6px chevron. */
+    /* The design's chevron: an 8px box. */
     inline-svg.latch-button-chevron {
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       flex: none;
       transform: rotate(180deg);
     }
@@ -117,12 +127,11 @@ export class LatchButton extends UnlitElement {
       background: var(--latch-button-face-hover-background-color);
       border-top-width: 1px;
       border-bottom-width: 1px;
-      padding: 2px 1px;
+      padding: 3px 2px;
     }
 
     :host(:hover) button:not(:disabled):not(.on) .container {
       background: var(--latch-button-container-hover-background-color);
-      border-radius: 4px;
       padding: 4px;
       color: var(--latch-button-icon-hover-color);
     }
@@ -132,12 +141,11 @@ export class LatchButton extends UnlitElement {
     :host(:active) button:not(:disabled) {
       background: var(--latch-button-face-press-background-color);
       border-width: 1px 1px 0;
-      padding: 2px 2px 0;
+      padding: 3px 2px 0;
     }
 
     :host(:active) button:not(:disabled) .container {
-      background: var(--latch-button-container-hover-background-color);
-      border-radius: 4px;
+      background: var(--latch-button-container-press-background-color);
       padding: 2px;
       color: var(--latch-button-icon-press-color);
     }
@@ -154,7 +162,6 @@ export class LatchButton extends UnlitElement {
     button.on .container,
     button.open .container {
       background: transparent;
-      border-radius: 5px 5px 4px 4px;
       padding: 2px;
     }
 
@@ -167,19 +174,18 @@ export class LatchButton extends UnlitElement {
     button.mixed .container {
       outline: 1px dashed var(--latch-button-icon-color);
       outline-offset: -1px;
-      border-radius: 4px;
     }
 
-    /* Disabled: the rest face with a hairline bottom, the container faded. */
+    /* Disabled: the rest shape in the pale disabled colours. */
     button:disabled {
+      background: var(--latch-button-face-disabled-background-color);
+      border-color: var(--latch-button-disabled-border-color);
       border-bottom-width: 1px;
     }
 
     button:disabled .container {
-      background: transparent;
-      border-radius: 4px;
+      background: var(--latch-button-container-disabled-background-color);
       padding: 4px;
-      opacity: 0.3;
       color: var(--latch-button-icon-disabled-color);
     }
 

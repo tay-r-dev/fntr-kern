@@ -28,33 +28,50 @@ import { themeColorCSS } from "./theme-support.js";
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
 // ones ui-form.js's own label-drag scrub uses -- this is a second place to
 // grab a field, not a second scrub.
-// Figma scrub-field design (_external/component-code/scrub/scrub.txt): light
-// gray box, a faint border on hover, and a lime accent border with a white
-// background while scrubbing or editing manually. Each light color carries a
-// dark-theme counterpart.
+// input/field/basic and ./scrub-field (Figma 2004:29576, 2004:29534): a grey
+// tray ruled on top holding the box the label and value sit in. The box is
+// invisible at rest, ruled on hover, and white with the lime line while
+// scrubbing or typing -- the tray then lightens and takes side lines too.
+// Light colours are the design system's tokens (core.css); dark ones stay
+// hand-picked until the design has a dark mode.
 const colors = {
-  "compact-scrub-field-background-color": ["#f5f5f5", "#3a3a3a"],
-  "compact-scrub-field-border-color": ["#e0e0e0", "#4a4a4a"],
-  "compact-scrub-field-hover-background-color": ["#f7f7f7", "#464646"],
+  "compact-scrub-field-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "compact-scrub-field-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
+  "compact-scrub-field-tray-active-color": ["var(--in-bsr-focus)", "#333"],
+  "compact-scrub-field-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
+  "compact-scrub-field-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
+  "compact-scrub-field-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
+  "compact-scrub-field-hover-background-color": ["var(--in-csr-hover)", "#464646"],
   "compact-scrub-field-hover-border-color": [
-    "rgba(0, 0, 0, 0.08)",
+    "var(--in-sln-hover)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "compact-scrub-field-active-background-color": ["#fff", "#2c2c2c"],
-  "compact-scrub-field-active-border-color": ["#def280", "#8fae4a"],
-  "compact-scrub-field-text-color": ["#8e8e8e", "#b0b0b0"],
-  // The design gives the rest-state value a darker gray than its label
-  // (grey/solid/3 vs grey/solid/4) -- every other state matches the two.
-  "compact-scrub-field-value-rest-text-color": ["#565656", "#b0b0b0"],
-  "compact-scrub-field-hover-text-color": ["#303030", "#e0e0e0"],
-  "compact-scrub-field-active-text-color": ["#151515", "#f0f0f0"],
-  "compact-scrub-field-handle-color": ["#b4b4b4", "#777777"],
-  // input/slider (Figma 379:22560): the value's share of the range as a bar.
+  "compact-scrub-field-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
+  "compact-scrub-field-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
+  // The label: grey at rest, dark on hover and while active.
+  "compact-scrub-field-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
+  "compact-scrub-field-hover-text-color": ["var(--in-lbl-hover)", "#e0e0e0"],
+  "compact-scrub-field-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
+  // The value: darker than the label at rest, near-black while active.
+  "compact-scrub-field-value-rest-text-color": ["var(--in-vl-rest)", "#b0b0b0"],
+  "compact-scrub-field-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
+  "compact-scrub-field-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
+  // The scrub (drag-arrows) icon.
+  "compact-scrub-field-handle-color": ["var(--in-ic-rest)", "#777777"],
+  "compact-scrub-field-handle-active-color": ["var(--in-ic-focus)", "#999999"],
+  "compact-scrub-field-handle-disabled-color": ["var(--in-ic-disabled)", "#555555"],
+  // input/field/slider (Figma 2004:29608): the value's share of the range as
+  // a bar -- grey at rest (a Figma literal), lime while active.
   "compact-scrub-field-fill-color": ["#e9e9e9", "#4a4a4a"],
-  "compact-scrub-field-active-fill-color": ["#d5ed57", "#6f8a1e"],
-  "compact-scrub-field-selection-color": ["#d5ed57", "#5c7033"],
+  "compact-scrub-field-active-fill-color": ["var(--in-sln-focus)", "#6f8a1e"],
+  "compact-scrub-field-selection-color": ["var(--in-sln-focus)", "#5c7033"],
   "compact-scrub-field-stepper-color": ["#d9d9d9", "#666666"],
   "compact-scrub-field-stepper-active-color": ["#303030", "#dddddd"],
+  // button/increment (Figma 2004:29110): the hovered half lifts to white.
+  "compact-scrub-field-stepper-hover-background-color": [
+    "var(--bt-sgb-sr-hover)",
+    "#555",
+  ],
 };
 
 export class CompactScrubField extends UnlitElement {
@@ -70,7 +87,8 @@ export class CompactScrubField extends UnlitElement {
        hover/scrub/manual-input background and text changes. */
     .box {
       background-color: var(--compact-scrub-field-background-color);
-      border-top: 1px solid var(--compact-scrub-field-border-color);
+      border: 0 solid var(--compact-scrub-field-border-color);
+      border-top-width: 1px;
       border-radius: 6px;
       box-sizing: border-box;
       height: 24px;
@@ -151,9 +169,32 @@ export class CompactScrubField extends UnlitElement {
       box-shadow: inset 0 0 0 1px var(--compact-scrub-field-active-border-color);
     }
 
-    /* The design fades the disabled state to 70% opacity, not 30% -- its
-       text is already the faint grey/solid/4, so a heavier fade read as
-       gone rather than disabled. */
+    .box.scrubbing,
+    .box.editing,
+    .box:focus-within {
+      background-color: var(--compact-scrub-field-tray-active-color);
+      border-color: var(--compact-scrub-field-tray-active-border-color);
+      border-width: 1px 1px 0;
+    }
+
+    /* One of a linked pair (input-scrub.js): the side line only on the
+       pair's outer edge. */
+    :host([side="left"]) .box:is(.scrubbing, .editing, :focus-within) {
+      border-right-width: 0;
+    }
+
+    :host([side="right"]) .box:is(.scrubbing, .editing, :focus-within) {
+      border-left-width: 0;
+    }
+
+    .box:is(.scrubbing, .editing, :focus-within) .name {
+      color: var(--compact-scrub-field-hover-text-color);
+    }
+
+    .box:is(.scrubbing, .editing, :focus-within) .scrub-icon {
+      color: var(--compact-scrub-field-handle-active-color);
+    }
+
     .box.string {
       cursor: text;
     }
@@ -162,8 +203,18 @@ export class CompactScrubField extends UnlitElement {
       cursor: default;
     }
 
-    .box.disabled .inner {
-      opacity: 0.7;
+    .box.disabled {
+      background-color: var(--compact-scrub-field-tray-disabled-color);
+      border-color: var(--compact-scrub-field-tray-disabled-border-color);
+      color: var(--compact-scrub-field-disabled-text-color);
+    }
+
+    .box.disabled .value {
+      color: var(--compact-scrub-field-value-disabled-text-color);
+    }
+
+    .box.disabled .scrub-icon {
+      color: var(--compact-scrub-field-handle-disabled-color);
     }
 
     .name {
@@ -258,6 +309,8 @@ export class CompactScrubField extends UnlitElement {
 
     .stepper:hover {
       color: var(--compact-scrub-field-stepper-active-color);
+      background: var(--compact-scrub-field-stepper-hover-background-color);
+      border-radius: 2px;
     }
 
     .stepper::before {

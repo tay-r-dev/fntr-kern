@@ -17,7 +17,7 @@ import { themeColorCSS } from "./theme-support.js";
 // tree uses.
 const colors = {
   // The strip keeps the fields' outer-shell gray, so it merges with them.
-  "link-button-background-color": ["#f5f5f5", "#3a3a3a"],
+  "link-button-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
   // The notches match the fields' inner background (white / its dark
   // counterpart), so they read as cutouts from the strip.
   "link-button-notch-color": ["#ffffff", "#2c2c2c"],

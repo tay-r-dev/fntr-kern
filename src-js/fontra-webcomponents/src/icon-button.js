@@ -18,23 +18,30 @@ const colors = {
   // pressed, and a light-grey icon when disabled. The design's "alert"
   // state is `badge`: an indication-badge (Figma 287:15770) pinned to the
   // button's top-right corner, on top of the base or hover look.
-  "icon-button-icon-color": ["#8e8e8e", "#8e8e8e"],
-  "icon-button-icon-hover-color": ["#303030", "#e0e0e0"],
-  "icon-button-icon-press-color": ["#a9c915", "#a9c915"],
-  "icon-button-icon-disabled-color": ["#d9d9d9", "#5a5a5a"],
-  "icon-button-hover-background-color": ["#f7f7f7", "#464646"],
+  // Light colours are the design system's tokens (core.css); dark ones stay
+  // hand-picked until the design has a dark mode.
+  "icon-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
+  "icon-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "icon-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#a9c915"],
+  "icon-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
+  "icon-button-icon-active-color": ["var(--bt-sgi-ic-active)", "#e0e0e0"],
+  "icon-button-hover-background-color": ["var(--bt-sgi-sr-hover)", "#464646"],
   "icon-button-hover-border-color": [
-    "rgba(0, 0, 0, 0.02)",
+    "var(--bt-sgi-ln-hover)",
     "rgba(255, 255, 255, 0.06)",
   ],
-  "icon-button-press-background-color": ["#fafafa", "#3c3c3c"],
-  // button/table icon (Figma 411:28023): the same states in a table row,
-  // but hover lifts the face to white (the row under it may be the light
-  // grey), and the alert state's hover keeps the light grey.
-  "icon-button-table-hover-background-color": ["#fff", "#2c2c2c"],
+  "icon-button-press-background-color": ["var(--bt-sgi-sr-focus)", "#3c3c3c"],
   "icon-button-press-border-color": [
-    "rgba(224, 224, 224, 0.31)",
+    "var(--bt-sgi-ln-focus)",
     "rgba(255, 255, 255, 0.14)",
+  ],
+  // button/table (Figma 4054:1391): the same states in a table row, but
+  // hover lifts the face to white with a pale border (the row under it may
+  // be the light grey).
+  "icon-button-table-hover-background-color": ["var(--bt-sgt-sr-hover)", "#2c2c2c"],
+  "icon-button-table-hover-border-color": [
+    "var(--bt-sgt-ln-hover)",
+    "rgba(255, 255, 255, 0.1)",
   ],
   // button/latch (Figma 287:15701): rest/hover/press/active backgrounds and
   // the shared border color, plus the dropdown card's own colors (moved in
@@ -76,7 +83,7 @@ export class IconButton extends UnlitElement {
          part of a larger component (the tray's segment/button). */
       background-color: var(--icon-button-inner-fill, transparent);
       border: 1px solid var(--icon-button-inner-border, transparent);
-      border-radius: var(--icon-button-inner-radius, 4px);
+      border-radius: var(--icon-button-inner-radius, 6px);
       box-sizing: border-box;
       padding: var(--icon-button-inner-padding, 0);
       opacity: var(--icon-button-inner-opacity, 1);
@@ -131,6 +138,11 @@ export class IconButton extends UnlitElement {
       color: var(--icon-button-icon-press-color);
     }
 
+    /* The alert state (button/icon "active") darkens the resting icon. */
+    :host([badge]) button:not(:disabled) {
+      color: var(--icon-button-icon-active-color);
+    }
+
     button:disabled {
       color: var(--icon-button-icon-disabled-color);
     }
@@ -144,11 +156,7 @@ export class IconButton extends UnlitElement {
 
     :host([table]:hover) button:not(:disabled):not(.icon-button-latch) {
       background-color: var(--icon-button-table-hover-background-color);
-      border-color: transparent;
-    }
-
-    :host([table][badge]:hover) button:not(:disabled):not(.icon-button-latch) {
-      background-color: var(--icon-button-hover-background-color);
+      border-color: var(--icon-button-table-hover-border-color);
     }
 
     :host([table]:active) button:not(:disabled):not(.icon-button-latch) {
@@ -213,10 +221,10 @@ export class IconButton extends UnlitElement {
       border-radius: 6px;
     }
 
-    /* segment/button's 6px chevron (Figma 287:15640's "dropdown" state). */
+    /* segment's chevron (Figma 2004:29126): an 8px box. */
     inline-svg.icon-button-chevron {
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       flex: none;
       transform: rotate(180deg);
     }
@@ -417,7 +425,10 @@ export class IconButton extends UnlitElement {
     if (this.badge) {
       const badge = html.createDomElement("indication-badge", {});
       // The table icon's alert dot is the small one.
-      badge.size = this.table ? "S" : "M";
+      // Figma 2004:29230 and 4054:1391: 6px in both, on the corner with
+      // the white ring.
+      badge.size = "M";
+      badge.state = "outside";
       result.push(badge);
     }
     return result.length > 1 ? result : this._button;

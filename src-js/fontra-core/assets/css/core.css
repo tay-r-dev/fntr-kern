@@ -241,6 +241,194 @@
   --ui-tracking-label-m: -0.01em;
 }
 
+/* Component tokens copied from the Figma design system (typeCAD | design
+   system, ui-kit page). The names are the Figma leaf names; the Figma path is
+   in the group comment. Light theme only -- Figma has no dark mode yet. */
+:root {
+  /* button/basic/base */
+  --bt-sgb-height: 24px;
+  --bt-sgb-corner: 6px;
+  --bt-sgb-padding: 3px;
+  --bt-sgb-sr-rest: #f5f5f5;
+  --bt-sgb-sr-hover: #ffffff;
+  --bt-sgb-sr-focus: #ffffff;
+  --bt-sgb-sr-active-rest: #ededed;
+  --bt-sgb-sr-active-hover: #ededed;
+  --bt-sgb-sr-disabled: #fafafa;
+  --bt-sgb-ln-rest: #dadada;
+  --bt-sgb-ln-hover: #dadada;
+  --bt-sgb-ln-focus: #dadada;
+  --bt-sgb-ln-active-rest: #dadada;
+  --bt-sgb-ln-active-hover: #dadada;
+  --bt-sgb-ln-disabled: #ededed;
+  /* button/basic/content */
+  --bt-sgc-corner: 3px;
+  --bt-sgc-sr-rest: #f5f5f5;
+  --bt-sgc-sr-hover: #f5f5f5;
+  --bt-sgc-sr-focus: #f5f5f5;
+  --bt-sgc-sr-dropdown: #f5f5f500;
+  --bt-sgc-sr-active-rest: #f5f5f500;
+  --bt-sgc-sr-disabled: #fafafa;
+  --bt-sgc-ic-rest: #8d8d8d;
+  --bt-sgc-ic-hover: #515151;
+  --bt-sgc-ic-focus: #a9c915;
+  --bt-sgc-ic-active: #8d8d8d;
+  --bt-sgc-ic-active-hover: #71900a;
+  --bt-sgc-ic-disabled: #c9c9c9;
+  --bt-sgc-tx-rest: #8d8d8d;
+  --bt-sgc-tx-hover: #515151;
+  --bt-sgc-tx-focus: #a9c915;
+  --bt-sgc-tx-disabled: #c9c9c9;
+  /* button/overrides/icon */
+  --bt-sgi-ic-active: #515151;
+  --bt-sgi-sr-hover: #f5f5f5;
+  --bt-sgi-ln-hover: #dadada;
+  --bt-sgi-sr-focus: #fafafa;
+  --bt-sgi-ln-focus: #ededed;
+  /* button/overrides/table */
+  --bt-sgt-sr-hover: #ffffff;
+  --bt-sgt-ln-hover: #ededed;
+  --bt-sgt-ln-select-hover: #d0eb49;
+  --bt-sgt-sr-select-focus: #e2f38f;
+  --bt-sgt-ln-select-focus: #d0eb49;
+  --bt-sgt-ic-select-rest: #71900acc;
+  --bt-sgt-ic-select-active: #567305;
+  --bt-sgt-ic-select-focus: #8eac10;
+  --bt-sgt-ic-select-disabled: #71900a66;
+  /* button/overrides/text */
+  --bt-sgx-sr-focus: #f5f5f5;
+
+  /* select/segmented/base */
+  --sl-sgb-height: 24px;
+  --sl-sgb-radius: 6px;
+  --sl-sgb-padding: 3px;
+  --sl-sgb-sr-rest: #f5f5f5;
+  --sl-sgb-sr-disabled: #f5f5f5;
+  --sl-sgb-ln-rest: #dadada;
+  --sl-sgb-ln-hover: #b7d817;
+  --sl-sgb-ln-disabled: #ededed;
+  /* select/segmented/chip */
+  --sl-sgc-radius: 3px;
+  --sl-sgc-sr-rest: #ffffff00;
+  --sl-sgc-sr-hover: #9cbb12;
+  --sl-sgc-sr-active: #ffffff;
+  --sl-sgc-sr-active-hover: #ffffff;
+  --sl-sgcs-disabled: #ffffff00;
+  --sl-sgc-lb-rest: #8d8d8d;
+  --sl-sgc-lb-hover: #ffffff;
+  --sl-sgc-lb-active-rest: #515151;
+  --sl-sgc-lb-active-hover: #515151;
+  --sl-sgc-lb-disabled: #c9c9c9;
+  --sl-sgc-sh-active-rest: #9cbb12;
+  --sl-sgc-sh-active-hover: #dadada;
+  /* select/basic (toggle, checkmark) */
+  --sl-bsb-sr-rest: #f5f5f5;
+  --sl-bsb-sr-hover: #c9c9c9;
+  --sl-bsb-sr-active: #a7a7a7;
+  --sl-bsb-sr-active-hover: #d0eb49;
+  --sl-bsb-sr-disabled: #f5f5f5;
+  --sl-bsb-ln-rest: #dadada;
+  --sl-bsb-ln-hover: #b8b8b8;
+  --sl-bsb-ln-active: #8d8d8d;
+  --sl-bsb-ln-active-hover: #b7d817;
+  --sl-bsb-ln-disabled: #ededed;
+  --sl-bsb-lb-rest: #8d8d8d;
+  --sl-bsb-lb-hover: #515151;
+  --sl-bsb-lb-active-rest: #8d8d8d;
+  --sl-bsb-lb-active-hover: #515151;
+  --sl-bsb-lb-disabled: #b8b8b8;
+  --sl-bsb-sh-rest: #b8b8b8;
+  --sl-bsb-sh-hover: #b8b8b8;
+  --sl-bsb-sh-active-rest: #737373;
+  --sl-bsb-sh-active-hover: #a9c915;
+  --sl-bsb-sh-disabled: #dadada;
+  /* select/dropdown/field */
+  --sl-drf-nm-height: 24px;
+  --sl-drf-nm-corner: 6px;
+  --sl-drf-sr-rest: #ffffff;
+  --sl-drf-sr-hover: #f5f5f5;
+  --sl-drf-sr-focus: #ffffff;
+  --sl-drf-sr-disabled: #fafafa;
+  --sl-drf-ln-rest: #dadada;
+  --sl-drf-ln-hover: #c9c9c9;
+  --sl-drf-ln-disabled: #ededed;
+  --sl-drf-lb-empty-rest: #8d8d8d;
+  --sl-drf-lb-empty-hover: #515151;
+  --sl-drf-lb-empty-focus: #515151;
+  --sl-drf-lb-filled-rest: #8d8d8d;
+  --sl-drf-lb-filled-hover: #515151;
+  --sl-drf-lb-disabled: #c9c9c9;
+  --sl-drf-ic-rest: #8d8d8d;
+  --sl-drf-ic-hover: #515151;
+  --sl-drf-ic-focus: #515151;
+  --sl-drf-ic-disabled: #c9c9c9;
+  /* select/dropdown/menu-item */
+  --sl-drm-corner: 3px;
+  --sl-drm-sr-single-rest: #ffffff;
+  --sl-drm-sr-single-hover: #f5f5f5;
+  --sl-drm-sr-single-active: #d0eb49;
+  --sl-drm-lb-single-rest: #8d8d8d;
+  --sl-drm-lb-single-hover: #515151;
+  --sl-drm-lb-single-active: #567305;
+  --sl-drm-sr-multi-rest: #ffffff;
+  --sl-drm-sr-multi-hover: #f5f5f5;
+  --sl-drm-sr-multi-active: #f4fad5;
+  --sl-drm-sr-multi-active-hover: #d0eb49;
+  --sl-drm-lb-multi-rest: #8d8d8d;
+  --sl-drm-lb-multi-hover: #303030;
+  --sl-drm-lb-multi-active: #71900a;
+  --sl-drm-lb-multi-active-hover: #567305;
+  --sl-drm-ic-multi-active: #8eac10;
+  --sl-drm-ic-multi-active-hover: #71900a;
+
+  /* input/base */
+  --in-bsn-height: 24px;
+  --in-bsn-corner: 6px;
+  --in-bsn-pad: 3px;
+  --in-bsr-rest: #f5f5f5;
+  --in-bsr-focus: #fafafa;
+  --in-bsr-disabled: #f5f5f5;
+  --in-bln-rest: #dadada;
+  --in-bln-focus: #ededed;
+  --in-bln-disabled: #ededed;
+  /* input/content */
+  --in-cnn-corner: 3px;
+  --in-csr-rest: #f5f5f5;
+  --in-csr-hover: #f5f5f5;
+  --in-csr-focus: #ffffff;
+  --in-csr-disabled: #f5f5f5;
+  --in-sln-rest: #dadada00;
+  --in-sln-hover: #dadada;
+  --in-sln-focus: #d0eb49;
+  --in-sln-disabled: #ededed00;
+  --in-lbl-rest: #8d8d8d;
+  --in-lbl-hover: #515151;
+  --in-lbl-focus: #515151;
+  --in-lbl-disabled: #b8b8b8;
+  --in-vl-rest: #515151;
+  --in-vl-hover: #515151;
+  --in-vl-focus: #1e1e1e;
+  --in-vl-disabled: #b8b8b8;
+  --in-ic-rest: #b8b8b8;
+  --in-ic-hover: #b8b8b8;
+  --in-ic-focus: #8d8d8d;
+  --in-ic-disabled: #c9c9c9;
+  /* input/content/text: h = hint (placeholder), f = filled */
+  --in-txth-rest: #b8b8b8;
+  --in-txth-hover: #b8b8b8;
+  --in-txth-focus: #1e1e1e;
+  --in-txth-disabled: #b8b8b8;
+  --in-txtf-rest: #515151;
+  --in-txtf-hover: #515151;
+  --in-txtf-focus: #1e1e1e;
+  --in-txtf-disabled: #8d8d8d;
+
+  /* indication/badge */
+  --ind-bdg-sr-active: #d0eb49;
+  --ind-bdg-ln-inside: #9cbb12;
+  --ind-bdg-ln-outside: #ffffff;
+}
+
 :root.dark-theme {
   --fontra-theme-marker: initial; /* invalidates the "light" variables */
 }

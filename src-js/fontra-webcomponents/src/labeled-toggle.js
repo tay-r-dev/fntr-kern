@@ -13,11 +13,32 @@ import { themeColorCSS } from "./theme-support.js";
 // attributes -- set them after creating the element (this.checked = true),
 // the same convention every other UnlitElement-based component in this
 // tree uses (see UI-NOMENCLATURE.md's own note on icon-button.js).
+//
+// select/toggle (Figma 2004:29380): a 22x12 pill, the label 4px after it.
+// Off it is pale grey, darker on hover; on it is mid grey, lime on hover.
+// Each track has a line at the top and sides and a 1px shade under it.
+// Light colours are the design system's tokens (core.css); dark ones stay
+// hand-picked until the design has a dark mode.
 const colors = {
-  "labeled-toggle-track-off-color": ["#ccc", "#555"],
-  "labeled-toggle-track-on-color": ["#3b82f6", "#2f6fd1"],
+  "labeled-toggle-track-off-color": ["var(--sl-bsb-sr-rest)", "#555"],
+  "labeled-toggle-line-off-color": ["var(--sl-bsb-ln-rest)", "#666"],
+  "labeled-toggle-shade-off-color": ["var(--sl-bsb-sh-rest)", "#222"],
+  "labeled-toggle-track-off-hover-color": ["var(--sl-bsb-sr-hover)", "#666"],
+  "labeled-toggle-line-off-hover-color": ["var(--sl-bsb-ln-hover)", "#777"],
+  "labeled-toggle-shade-off-hover-color": ["var(--sl-bsb-sh-hover)", "#222"],
+  "labeled-toggle-track-on-color": ["var(--sl-bsb-sr-active)", "#8a8a8a"],
+  "labeled-toggle-line-on-color": ["var(--sl-bsb-ln-active)", "#9a9a9a"],
+  "labeled-toggle-shade-on-color": ["var(--sl-bsb-sh-active-rest)", "#222"],
+  "labeled-toggle-track-on-hover-color": ["var(--sl-bsb-sr-active-hover)", "#a9c915"],
+  "labeled-toggle-line-on-hover-color": ["var(--sl-bsb-ln-active-hover)", "#b7d817"],
+  "labeled-toggle-shade-on-hover-color": ["var(--sl-bsb-sh-active-hover)", "#71900a"],
+  "labeled-toggle-track-disabled-color": ["var(--sl-bsb-sr-disabled)", "#444"],
+  "labeled-toggle-line-disabled-color": ["var(--sl-bsb-ln-disabled)", "#4a4a4a"],
+  "labeled-toggle-shade-disabled-color": ["var(--sl-bsb-sh-disabled)", "#333"],
   "labeled-toggle-thumb-color": ["#fff", "#fff"],
-  "labeled-toggle-text-color": ["#000", "#fff"],
+  "labeled-toggle-text-color": ["var(--sl-bsb-lb-rest)", "#b0b0b0"],
+  "labeled-toggle-hover-text-color": ["var(--sl-bsb-lb-hover)", "#e0e0e0"],
+  "labeled-toggle-disabled-text-color": ["var(--sl-bsb-lb-disabled)", "#666"],
 };
 
 export class LabeledToggle extends UnlitElement {
@@ -31,25 +52,42 @@ export class LabeledToggle extends UnlitElement {
     label {
       display: inline-flex;
       align-items: center;
-      gap: 0.4em;
-      /* ui/label/S's size, in the old UI font */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
-      font-family: var(--ui-font-old);
+      gap: 4px;
+      /* ui/label/S */
+      font: var(--ui-text-label-s);
+      letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
       color: var(--labeled-toggle-text-color);
       cursor: pointer;
       user-select: none;
     }
 
+    label:hover:not(:has(:disabled)) {
+      color: var(--labeled-toggle-hover-text-color);
+    }
+
+    label:has(:disabled) {
+      color: var(--labeled-toggle-disabled-text-color);
+      cursor: default;
+    }
+
     input[type="checkbox"] {
+      --track: var(--labeled-toggle-track-off-color);
+      --line: var(--labeled-toggle-line-off-color);
+      --shade: var(--labeled-toggle-shade-off-color);
       appearance: none;
       -webkit-appearance: none;
       position: relative;
-      width: 2em;
-      height: 1.15em;
-      margin: 0;
-      border-radius: 1em;
-      background-color: var(--labeled-toggle-track-off-color);
+      box-sizing: border-box;
+      flex: none;
+      width: 22px;
+      height: 12px;
+      margin: 0 0 1px;
+      border: 1px solid var(--line);
+      border-bottom: none;
+      border-radius: 6px;
+      background-color: var(--track);
+      box-shadow: 0 1px 0 var(--shade);
       cursor: pointer;
       transition: background-color 120ms ease;
     }
@@ -57,25 +95,41 @@ export class LabeledToggle extends UnlitElement {
     input[type="checkbox"]::before {
       content: "";
       position: absolute;
-      top: 0.1em;
-      left: 0.1em;
-      width: 0.95em;
-      height: 0.95em;
+      top: 1px;
+      left: 1px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       background-color: var(--labeled-toggle-thumb-color);
       transition: transform 120ms ease;
     }
 
+    label:hover input[type="checkbox"]:not(:disabled) {
+      --track: var(--labeled-toggle-track-off-hover-color);
+      --line: var(--labeled-toggle-line-off-hover-color);
+      --shade: var(--labeled-toggle-shade-off-hover-color);
+    }
+
     input[type="checkbox"]:checked {
-      background-color: var(--labeled-toggle-track-on-color);
+      --track: var(--labeled-toggle-track-on-color);
+      --line: var(--labeled-toggle-line-on-color);
+      --shade: var(--labeled-toggle-shade-on-color);
+    }
+
+    label:hover input[type="checkbox"]:checked:not(:disabled) {
+      --track: var(--labeled-toggle-track-on-hover-color);
+      --line: var(--labeled-toggle-line-on-hover-color);
+      --shade: var(--labeled-toggle-shade-on-hover-color);
     }
 
     input[type="checkbox"]:checked::before {
-      transform: translateX(0.85em);
+      transform: translateX(10px);
     }
 
     input[type="checkbox"]:disabled {
-      opacity: 0.5;
+      --track: var(--labeled-toggle-track-disabled-color);
+      --line: var(--labeled-toggle-line-disabled-color);
+      --shade: var(--labeled-toggle-shade-disabled-color);
       cursor: default;
     }
   `;
