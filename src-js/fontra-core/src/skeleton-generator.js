@@ -192,12 +192,9 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
   return { contours, provenance };
 }
 
-// Ordinary generated geometry is quantized. The bulb solve and its exact wall
-// boundaries retain their precision: independent rounding breaks both G2 and
-// the promise that the single-sided outer wall is the skeleton's own curve.
+// Every generated point and handle lands on whole units, the bulb included.
 function roundGeneratedPoints(contour) {
   for (const point of contour.points) {
-    if (point._bulbExact) continue;
     point.x = Math.round(point.x);
     point.y = Math.round(point.y);
   }
@@ -212,7 +209,6 @@ function stripPointProvenance(contour) {
     delete point._authoredAdjustment;
     delete point._serifCutWalls;
     delete point._easeMerge;
-    delete point._bulbExact;
   }
 }
 
@@ -6670,7 +6666,6 @@ function buildDropCap({
           ...result.keptInner.slice().reverse(),
         ]
       : [...result.keptInner, ...inner.slice(innerPiece.segmentEndIndex + 1)];
-  for (const p of [...result.wall, ...points, ...result.keptInner]) p._bulbExact = true;
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =
     outerSide === fromSide ? points.slice(1, -1) : points.slice(1, -1).reverse();
