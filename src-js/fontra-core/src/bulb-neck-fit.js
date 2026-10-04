@@ -158,8 +158,11 @@ function solveBulbNeck({
   }
   // Do not let an endpoint-curvature root override the visible shape. The
   // residual remains available to callers; a bounded fit is not exact G2.
+  // Three per cent of the radius, not two: a neck that must arrive at the
+  // stroke's own curvature past the wall point pays about two per cent for it,
+  // and the seed it lost to flips its curvature at N.
   const fallback = seeds[0];
-  if (!best || best.departure > Math.max(0.02 * radius, fallback.departure * 1.25))
+  if (!best || best.departure > Math.max(0.03 * radius, fallback.departure * 1.25))
     best = fallback;
   return best;
 }

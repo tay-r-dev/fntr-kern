@@ -3001,7 +3001,11 @@ small bottom residual; its parameter is stored in that source arc's domain.
 
 Ten local geometry frames on lslash(4): full regeneration averaged 734 ms,
 slider preview 1.5 ms, and direct retained neck drag 2.4 ms. These figures exclude
-browser rendering.
+browser rendering. Four focused tests cover entry/body preservation, the bounded
+outer improvement, preview fidelity/reference independence, and corner/finite
+geometry across easing values. Editor syntax checks pass; no bundle/full suite.
+Manual browser checks remain: slider while N is selected, direct point/handle
+and Tunni dragging, release, cancel and undo/redo.
 
 **The release fit was 734 ms and is 104 now** (48 bulbs: eight easings, with
 and without edits, three radii). No point moved more than 0.02 units. Two
@@ -3016,9 +3020,40 @@ faults made it slow, and neither one changed the shape:
 - **Every distance check built a new curve object**, and that object builds
   a 101-point lookup table before it projects, and the entry slide measures
   every candidate at 33 samples against two curves. One object per target
-  curve now. A candidate also
-  stops its measurement as soon as it can no longer beat the best one. Four focused tests cover entry/body preservation, the bounded
-outer improvement, preview fidelity/reference independence, and corner/finite
-geometry across easing values. Editor syntax checks pass; no bundle/full suite.
-Manual browser checks remain: slider while N is selected, direct point/handle
-and Tunni dragging, release, cancel and undo/redo.
+  curve now. A candidate also stops its measurement as soon as it can no
+  longer beat the best one.
+
+### The wall point copied a step nothing could remove (2026-10-04)
+
+Reported on the `h` of skeletron: Q, the existing wall point the neck returns
+to, could not be evened out with the bulb on, and the comb jumped on release.
+The step is in the stroke before the bulb exists: the inner wall arrives at Q
+at -27.6e-3 under a butt cap and leaves at -10.6e-3, over a skeleton that is
+G2 there (-7.9e-3 and -7.8e-3). With the bulb on, the bulb owns both handles
+of the span arriving at Q, and both the preview (an exact cut of the wall)
+and the fit (aimed at the cut wall's end curvature) copied that step back in
+on every regeneration.
+
+- **The target is the curvature leaving Q now**, read off the next wall
+  segment the generator hands over, where the wall runs through Q smoothly.
+- **One handle cannot do it.** Lengthening only Q's incoming handle reaches
+  Q exactly and moves the span's start curvature with it: the preview's wall
+  cut went -28.8/-22.9 to -28.8/2.4, and the fit fell back to its seed. Two
+  handle lengths, holding the start curvature, keep the cut at -28.8/-22.9.
+- **The fit's acceptance limit went from 2 to 3 per cent of R**, the
+  designer's call. Arriving at -10.6 costs the fitted neck 1.14 units against a
+  limit of 1.10, and the seed it lost to flips its curvature at N (18.3 to
+  -19.4) and then needs 4.12 units of correction at Q.
+
+On `h` (12:33:07 save), curvature arriving/leaving, x1e-3:
+
+| | C | N | Q | neck vs preview |
+| --- | --- | --- | --- | --- |
+| before | 17.7/16.6 | -32.0/-31.9 | -25.7/-10.6 | 0.28 |
+| after | 17.7/14.5 | -22.6/-21.1 | -10.6/-10.6 | 1.16 |
+
+The preview reads -10.6/-10.6 at Q too. **The cost is at C**: the neck
+flattens from -32 to -10.6 in a 40-unit span, so C's step went from 6 to 18
+per cent. **Open**: the step at Q under the stroke itself, -27.6 against an
+offset of about -9 on a smooth skeleton, is the offset construction's, and
+contradicts feature model §9's 1.7 per cent figure for generated joints.

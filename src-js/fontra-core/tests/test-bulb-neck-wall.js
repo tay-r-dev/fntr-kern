@@ -1,5 +1,6 @@
 import { expect } from "chai";
 import { buildFourPointBulb } from "../src/bulb-geometry.js";
+import { bulbEndCurvature } from "../src/bulb-harmonization.js";
 import { bulbNeckDeparture } from "../src/bulb-neck-fit.js";
 
 const cubic = (coordinates) =>
@@ -63,5 +64,31 @@ describe("bulb neck fitted against its preview", () => {
       if (body) expect(xy(result.points.slice(3, 7))).to.deep.equal(body);
       body = xy(result.points.slice(3, 7));
     }
+  });
+
+  it("arrives at the wall point with the curvature the stroke leaves it with", () => {
+    // Runs on smoothly past the wall point, bending the other way: the cut
+    // wall's own end curvature is not what the stroke continues with.
+    const beyond = cubic([
+      [248, 435],
+      [200, 435],
+      [160, 420],
+      [130, 390],
+    ]);
+    const leaving = bulbEndCurvature(beyond);
+    expect(Math.abs(bulbEndCurvature(options.inner, true) - leaving)).to.be.greaterThan(
+      1e-3
+    );
+    for (const preview of [true, false]) {
+      const result = buildFourPointBulb({ ...options, beyond, preview });
+      const last = result.points.slice(-4);
+      expect(bulbEndCurvature(last, true)).to.be.closeTo(leaving, 1e-6);
+      expect(result.points.at(-1)).to.include(options.inner[3]);
+    }
+    const preview = buildFourPointBulb({ ...options, beyond, preview: true });
+    const result = buildFourPointBulb({ ...options, beyond });
+    expect(
+      bulbNeckDeparture(result.points.slice(6), preview.points.slice(6))
+    ).to.be.lessThan(0.03 * options.radius);
   });
 });

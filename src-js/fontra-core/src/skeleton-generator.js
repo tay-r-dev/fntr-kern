@@ -6579,6 +6579,7 @@ function buildDropCap({
         easeCurvature: pin,
         edits: capBallEdits,
         preview,
+        beyond: innerPieces[1] && awayFromRib(innerPieces[1].segmentPoints),
       });
   if (!result) return null;
   const points = result.points;

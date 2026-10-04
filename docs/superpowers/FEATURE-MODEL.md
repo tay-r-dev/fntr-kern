@@ -572,11 +572,22 @@ limits wall departure to the existing reference envelope, and reports the
 remaining curvature error. This fallback does not claim exact G2.
 
 The reference shape is built first, with an implicit ball shoulder A and wall
-cut W. W–Q is an exact subdivision of the generated inner wall; Q is the next
+cut W. W–Q is a subdivision of the generated inner wall; Q is the next
 existing wall point and stays fixed. Zero easing has a corner at the ball/wall
 intersection. Easing and its curvature setting control W's travel through the
 available wall length. The preview keeps the original outer wall and rib junction.
 A and W are construction boundaries, not extra emitted neck points.
+
+**The bulb arrives at Q with the curvature the stroke leaves Q with.** The
+generator hands over the wall segment past Q (`beyond`). Where the wall runs
+through Q smoothly, within 2 degrees, the last span's two handle lengths are set
+so the span keeps its start curvature and reaches Q at that curvature
+(`matchCubicEndCurvatures`). This happens to the reference's W–Q, and again to
+the fitted N–Q after V-slide, so the preview and the release agree at Q. The
+cut wall's own end curvature is not the target. A curvature step at Q is often
+in the stroke already, and the bulb owns both handles of that span, so a copied
+step was one nothing could remove. At a corner Q, or where no pair of lengths
+does both, the old target stands.
 
 During skeleton edits and panel gestures the generator emits this reference,
 including its construction points. Those points, handles and their gizmos are
@@ -605,6 +616,8 @@ a change of parameterization is not mistaken for a change of shape.
 The preview remains an independent, copied target. Curvature residuals at C, N
 and Q are balanced against that target, and bidirectional sampled departure
 checks guard the result. A curvature root may not arbitrarily distort C–N.
+The fit is kept while it departs from the preview by no more than 3% of R, or
+by a quarter more than the best seed; otherwise the best seed is used.
 This is an approximation: N–Q is now fitted, rather than exactly subdivided,
 and exact G2 is not guaranteed. Remaining curvature error is published through
 `bulbHarmonizationError`. Geometry after Q is unchanged. E retains its separate fit.

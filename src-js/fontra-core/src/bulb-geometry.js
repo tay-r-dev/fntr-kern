@@ -1,4 +1,7 @@
-import { slideBulbEntryForCurvature } from "./bulb-entry-slide.js";
+import {
+  matchCubicEndCurvatures,
+  slideBulbEntryForCurvature,
+} from "./bulb-entry-slide.js";
 import { fitBulbNeck } from "./bulb-neck-fit.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
@@ -84,6 +87,26 @@ const unit = (v) => {
 };
 const offset = (p, t, d) => ({ x: p.x + t.x * d, y: p.y + t.y * d });
 const handle = (p, t, length) => ({ ...offset(p, t, length), type: "cubic" });
+
+// The curvature the stroke leaves the bulb's last wall point with, where the
+// wall runs on smoothly past it. A corner there has nothing to match.
+function curvatureBeyond(inner, beyond) {
+  if (!beyond || beyond.length !== 4) return undefined;
+  const q = inner[3];
+  const arriving = unit(sub(q, inner[2]));
+  const leaving = unit(sub(beyond[1], q));
+  const cross = arriving.x * leaving.y - arriving.y * leaving.x;
+  const dot = arriving.x * leaving.x + arriving.y * leaving.y;
+  if (!(dot > 0 && Math.abs(cross) < Math.sin((2 * Math.PI) / 180))) return undefined;
+  return bulbEndCurvature(beyond);
+}
+
+// Reach a cubic's end with curvature k and keep the curvature it starts with.
+// Both handle lengths change and their directions do not; one handle alone
+// moves the start curvature too. Null where no pair of lengths does both.
+function arriveWithCurvature(curve, k, radius) {
+  return matchCubicEndCurvatures(curve, bulbEndCurvature(curve), k, radius);
+}
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 
 export function bulbCubic(points) {
@@ -255,9 +278,16 @@ export function buildFourPointBulb({
   easeCurvature = 0.55,
   edits = null,
   preview = false,
+  beyond = null,
 }) {
   wall = bulbCubic(wall);
   inner = bulbCubic(inner);
+  // The neck arrives at the wall point with the curvature the stroke leaves
+  // it with, not with the cut wall's own end curvature. Copying that end
+  // carried any step already at the point into the bulb, where nothing could
+  // remove it, because the bulb owns both handles of its last span.
+  const wallCurvature = curvatureBeyond(inner, beyond);
+  const wallTarget = wallCurvature ?? bulbEndCurvature(inner, true);
   const rib = wall[3];
   const ball = makeBulbBall({
     outer: rib,
@@ -293,10 +323,13 @@ export function buildFourPointBulb({
   const wallShare = Math.min(1, extent * (0.75 + 0.5 * clamp(easeCurvature, 0, 1)));
   const easeDistance = wallShare * arcLength(inner, cut, 0.995);
   const cutParameter = wallParameterAtDistance(inner, cut, easeDistance);
-  const keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
+  let keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
     ...inner[i],
     ...p,
   }));
+  // The preview carries the same arrival, so release does not change the comb.
+  if (wallCurvature !== undefined)
+    keptInner = arriveWithCurvature(keptInner, wallCurvature, radius) ?? keptInner;
   const A = ball.at(thetaA),
     W = keptInner[0];
   if (corner && vector.distance(A, W) < 1e-6 * radius) Object.assign(A, W);
@@ -430,7 +463,7 @@ export function buildFourPointBulb({
       reference: referencePoints.slice(6),
       wall: entry.wall,
       radius,
-      nextCurvature: bulbEndCurvature(inner, true),
+      nextCurvature: wallTarget,
       neckOffsets: points.slice(8, 11).map((p, i) => sub(p, uneditedNeck[i])),
     });
     points = neckFit.points;
@@ -445,6 +478,11 @@ export function buildFourPointBulb({
       v < 0 ? "previous" : "next",
       v < 0 ? 1 + v : v
     ).points;
+  }
+  // The fit trades this join against the shape; the last handle settles it.
+  if (wallCurvature !== undefined) {
+    const arrived = arriveWithCurvature(points.slice(9, 13), wallCurvature, radius);
+    if (arrived) points = [...points.slice(0, 9), ...arrived];
   }
   const neckWallParameter = projectPointToSegment(
     { kind: "cubic", points: inner },
@@ -482,9 +520,7 @@ export function buildFourPointBulb({
       )
     );
   }
-  errors.push(
-    Math.abs(bulbEndCurvature(points.slice(9), true) - bulbEndCurvature(inner, true))
-  );
+  errors.push(Math.abs(bulbEndCurvature(points.slice(9), true) - wallTarget));
   result.error = Math.max(...errors) * radius;
   result.status = result.error < 1e-5 ? "matched" : "bounded";
 
