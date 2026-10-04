@@ -191,8 +191,11 @@ export function slideBulbEntryForCurvature({
         if (t > 0.01 && t < 0.99) consider(direction, t);
       }
     }
-    if (best?.departure <= (direction === "next" ? ballSideLimit : maxDeparture))
-      return best;
+    // One limit for both directions. A tighter one on the wall side sent E
+    // onto the ball whenever the wall fit departed by more than 2% of R, and
+    // the ball side then refit the whole wall, leaving E a short handle that
+    // no whole-unit placement can match (`f` of skeletron: 15 units, 5.4%).
+    if (best?.departure <= ballSideLimit) return best;
   }
   // V-slide may refit the adjacent span, but never loosen the ball's limits.
   if (best?.departure <= maxDeparture) return best;

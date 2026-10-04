@@ -194,10 +194,100 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
 
 // Every generated point and handle lands on whole units, the bulb included.
 function roundGeneratedPoints(contour) {
-  for (const point of contour.points) {
-    point.x = Math.round(point.x);
-    point.y = Math.round(point.y);
+  const points = contour.points;
+  const count = points.length;
+  // The bulb's smooth joins are solved so both sides bend alike. Each keeps its
+  // three exact points, to place them on the grid after rounding.
+  const joins = [];
+  points.forEach((point, index) => {
+    const origin = point._provenance;
+    if (
+      !point.type &&
+      point.smooth &&
+      origin?.bulbRole &&
+      origin.bulbSlot === "onCurve"
+    ) {
+      joins.push({
+        index,
+        exact: [-1, 0, 1].map((step) => {
+          const p = points[(index + step + count) % count];
+          return { x: p.x, y: p.y };
+        }),
+      });
+    }
+  });
+  for (const point of points) {
+    // + 0 turns a rounded -0 into 0.
+    point.x = Math.round(point.x) + 0;
+    point.y = Math.round(point.y) + 0;
   }
+  for (const { index, exact } of joins) chooseBulbJoinGrid(points, index, exact);
+}
+
+// Rounding a join's handle in, on-curve and handle out each to its own nearest
+// unit throws the curvature match away: 16.6 per cent at the `f` entry, whose
+// wall handle is 15 units long. Restored from 7ffcf5e06, which the bulb rebuild
+// dropped. Each of the three takes whichever whole-unit corner around its exact
+// place leaves the join straightest, then the smallest comb step, then the
+// least travel. 64 placements, all tried, so the answer depends only on the
+// geometry and cannot flicker during a drag.
+function chooseBulbJoinGrid(points, index, exact) {
+  const count = points.length;
+  const at = (step) => points[(index + step + count) % count];
+  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return;
+  const candidates = exact.map(({ x, y }) =>
+    [Math.floor(x) + 0, Math.ceil(x) + 0].flatMap((cx) =>
+      [Math.floor(y) + 0, Math.ceil(y) + 0].map((cy) => ({ x: cx, y: cy }))
+    )
+  );
+  const placed = [at(-1), at(0), at(1)];
+  const endCurvature = (a, b, c) => {
+    const d1 = { x: b.x - a.x, y: b.y - a.y };
+    const d2 = { x: c.x - 2 * b.x + a.x, y: c.y - 2 * b.y + a.y };
+    const speed = Math.hypot(d1.x, d1.y);
+    return speed ? Math.abs((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / speed ** 3 : 0;
+  };
+  const score = ([handleIn, onCurve, handleOut]) => {
+    const u = { x: onCurve.x - handleIn.x, y: onCurve.y - handleIn.y };
+    const v = { x: handleOut.x - onCurve.x, y: handleOut.y - onCurve.y };
+    const lengths = Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y);
+    if (!lengths) return null;
+    const kink = Math.acos(
+      Math.min(1, Math.max(-1, (u.x * v.x + u.y * v.y) / lengths))
+    );
+    const kIn = endCurvature(onCurve, handleIn, at(-2));
+    const kOut = endCurvature(onCurve, handleOut, at(2));
+    const larger = Math.max(kIn, kOut);
+    return {
+      bent: kink > gridKinkAllowance(handleIn, onCurve, handleOut) + 1e-9 ? kink : 0,
+      step: larger ? Math.abs(kIn - kOut) / larger : 0,
+      travel: [handleIn, onCurve, handleOut].reduce(
+        (sum, point, k) => sum + Math.hypot(point.x - exact[k].x, point.y - exact[k].y),
+        0
+      ),
+    };
+  };
+  const better = (a, b) =>
+    !b ||
+    a.bent < b.bent - 1e-12 ||
+    (a.bent <= b.bent + 1e-12 &&
+      (a.step < b.step - 1e-9 || (a.step <= b.step + 1e-9 && a.travel < b.travel)));
+  let best = null;
+  let bestScore = score(placed.map(({ x, y }) => ({ x, y })));
+  for (const handleIn of candidates[0])
+    for (const onCurve of candidates[1])
+      for (const handleOut of candidates[2]) {
+        const trial = score([handleIn, onCurve, handleOut]);
+        if (trial && better(trial, bestScore)) {
+          best = [handleIn, onCurve, handleOut];
+          bestScore = trial;
+        }
+      }
+  if (!best) return;
+  placed.forEach((point, k) => {
+    point.x = best[k].x;
+    point.y = best[k].y;
+  });
 }
 
 function stripPointProvenance(contour) {

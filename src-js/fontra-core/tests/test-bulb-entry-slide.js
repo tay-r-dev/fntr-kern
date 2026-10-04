@@ -47,7 +47,7 @@ describe("bulb entry V-slide fallback", () => {
     );
     expect(result.departure).to.be.below(1.35);
   });
-  it("reduces the supplied outer comb jump without moving any ball control", () => {
+  it("removes the supplied outer comb jump by sliding E toward the outer wall point", () => {
     const wall = [
       [304, 498],
       [475, 498],
@@ -68,8 +68,9 @@ describe("bulb entry V-slide fallback", () => {
       easing: 0.59,
       easeCurvature: 0.14,
     });
-    expect(r.entrySlide.direction).to.equal("stationary");
-    expect(r.entrySlide.bounded).to.equal(true);
+    // E slides up the wall; the bounded stationary refit used to win here and
+    // left most of the jump. B and every control after it stay exact.
+    expect(r.entrySlide.direction).to.equal("previous");
     const oldBall = [
       [590.1922866045394, 253.1458168659178],
       [590.1922866045395, 202.8363421938656],
@@ -79,14 +80,14 @@ describe("bulb entry V-slide fallback", () => {
       [400.5603614173832, 200.98245227974303],
       [400.5603614173832, 253.32619584429938],
     ];
-    r.points.slice(0, 7).forEach((p, i) => {
-      expect(p.x).to.be.closeTo(oldBall[i][0], 1e-8);
-      expect(p.y).to.be.closeTo(oldBall[i][1], 1e-8);
+    r.points.slice(3, 7).forEach((p, i) => {
+      expect(p.x).to.be.closeTo(oldBall[i + 3][0], 1e-8);
+      expect(p.y).to.be.closeTo(oldBall[i + 3][1], 1e-8);
     });
     const jump = Math.abs(
       bulbEndCurvature(r.wall, true) - bulbEndCurvature(r.points.slice(0, 4))
     );
-    expect(jump).to.be.lessThan(0.8 * 0.006095895518770122);
+    expect(jump).to.be.lessThan(1e-8);
     // The supplied P-E fit already departed by 7.84 units. Do not enlarge it.
     expect(r.entrySlide.departure).to.be.at.most(7.837752664663);
   });

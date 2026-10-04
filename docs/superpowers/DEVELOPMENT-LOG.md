@@ -2987,6 +2987,23 @@ checks exact retained-wall subdivision, unchanged downstream controls, four-poin
 topology, and matched entry/bottom curvature. No bundle or full-suite run.
 
 
+### The wall side lost on a tighter limit, and rounding came back (2026-10-04)
+
+Reported on skeletron `f`: the comb jump at E came back. Two faults, one behind
+the other.
+
+- **The rebuild had exempted the bulb from rounding and dropped the
+  whole-unit join search** (`7ffcf5e06`). Rounding restored, E's step went 0.0
+  to 16.6 per cent: its wall handle was 15 units long. The search is back, for
+  every smooth bulb join, and took it to 5.4.
+- **The 15-unit handle was the ball-side fallback's doing.** The wall-side slide
+  had to stay within 2% of R (1.4 units) while the ball side was allowed the
+  wall's own departure (6.3). Best wall slide: 5.8 units at t = 0.35, so E went
+  onto the ball and the whole wall was refit. One limit now serves both
+  directions; E slides toward P and every join lands at 0.0-0.1 per cent on
+  whole units. The supplied comb-jump case takes the slide too: jump 0, departure
+  3.2 against the stationary refit's 7.84.
+
 ### Wall-first entry and a single neck cut (2026-10-02)
 
 Compared lslash(2) with the manually corrected lslash_realize outline. The
