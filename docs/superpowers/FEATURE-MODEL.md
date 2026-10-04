@@ -628,9 +628,10 @@ acts on the fitted C–N–Q pair through the shared point-slide fitter, retaini
 the traveled subcurve and refitting its neighbour. It keeps one N. All writes
 use `editSkeleton`, including undo.
 
-The solved bulb and its boundary wall curves retain fractional coordinates.
-Independent rounding would break exact subdivision and curvature continuity.
-Ordinary generated geometry still follows the grid rule. Entry roots and ball/
+The solved bulb and its boundary wall curves are rounded to whole units like
+every other generated point. The designer asked for this (`ac1128f3d`); the
+cost is that the exact subdivision and the G2 joins hold only to within the
+grid. A rebuild once exempted the bulb and was reverted (`b4bb44636`). Entry roots and ball/
 wall contacts are chosen from the current geometry, without gesture memory;
 root changes on other skeleton shapes are not covered by the parameter sweeps.
 
@@ -672,8 +673,8 @@ and they degrade colinearity at that size. The floor is `MIN_HANDLE_LENGTH`, plu
 `Math.max(along, 1)` clamp in `projectHandleOntoDirection`. **This is accepted, not a defect.**
 Ordinary on-curve points behave the same way at that scale, so the generated outline stays
 consistent with hand-drawn geometry. Do not "fix" it by raising the floor, and do not allow
-sub-unit handle coordinates in ordinary generation. The four-point bulb and its
-exact wall boundaries are the explicit exception described in Step 4.
+sub-unit handle coordinates in generation. There is no exception: the bulb is
+rounded too (Step 4).
 
 **Point-count stability is a hard constraint.** The generated point count must stay constant
 across parameter values, or cross-master interpolation breaks. Any change to outline geometry must
