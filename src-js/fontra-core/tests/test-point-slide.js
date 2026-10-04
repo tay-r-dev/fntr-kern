@@ -592,7 +592,21 @@ describe("roundSlideCandidate", () => {
     isClosed: true,
   };
 
-  it("keeps every smooth point's handles on one line after rounding", () => {
+  // Whole units cannot always line two handles up exactly; the realigned one
+  // lands on the whole unit nearest the line, within half a cell's diagonal.
+  const GRID_REACH = Math.SQRT1_2 + 1e-9;
+  const offLine = (pts, h0, o, h1) => {
+    const shorter =
+      Math.hypot(pts[h0].x - pts[o].x, pts[h0].y - pts[o].y) <
+      Math.hypot(pts[h1].x - pts[o].x, pts[h1].y - pts[o].y)
+        ? [h1, h0]
+        : [h0, h1];
+    const [keep, moved] = shorter;
+    const length = Math.hypot(pts[keep].x - pts[o].x, pts[keep].y - pts[o].y);
+    return Math.abs(cross(pts[o], pts[keep], pts[moved])) / length;
+  };
+
+  it("keeps every smooth point's handles on one line, on whole units", () => {
     for (const t of [0.137, 0.41, 0.73]) {
       for (const side of ["previous", "next"]) {
         const slid = makeSlideCandidate(contour, 3, side, t);
@@ -603,11 +617,14 @@ describe("roundSlideCandidate", () => {
           [5, 6, 7],
           [8, 0, 1],
         ]) {
-          const length = Math.hypot(pts[h1].x - pts[o].x, pts[h1].y - pts[o].y);
-          expect(Math.abs(cross(pts[o], pts[h0], pts[h1])) / length).to.be.below(1e-6);
+          expect(offLine(pts, h0, o, h1)).to.be.at.most(GRID_REACH);
         }
-        // The slid on-curve lands on whole units.
-        expect(Number.isInteger(pts[3].x) && Number.isInteger(pts[3].y)).to.be.true;
+        // Every point the slide moved lands on whole units, so a later
+        // rounding has nothing left to change.
+        pts.forEach((p, i) => {
+          if (p.x !== contour.points[i].x || p.y !== contour.points[i].y)
+            expect(Number.isInteger(p.x) && Number.isInteger(p.y)).to.be.true;
+        });
       }
     }
   });
@@ -618,8 +635,7 @@ describe("roundSlideCandidate", () => {
     bent.points[8] = control(-40, 11.5);
     const slid = makeSlideCandidate(bent, 3, "previous", 0.4);
     const pts = roundSlideCandidate(bent, slid).points;
-    const length = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-    expect(Math.abs(cross(pts[0], pts[8], pts[1])) / length).to.be.below(1e-6);
+    expect(offLine(pts, 8, 0, 1)).to.be.at.most(GRID_REACH);
   });
 
   it("leaves points the slide did not move untouched", () => {

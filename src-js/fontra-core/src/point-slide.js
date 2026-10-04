@@ -584,12 +584,32 @@ export function roundSlideCandidate(contour, candidate) {
     const other = keep === before ? after : before;
     const direction = unitToward(anchor, [points[keep]]);
     if (!direction) continue;
+    // On whole units: of the four around the exact spot on the line, the one
+    // that bends the point least. An exact, fractional spot was rounded again
+    // later (the skeleton generator rounds every point last), which bent the
+    // point again, worst on short handles.
     const reach = length(other);
-    points[other] = {
-      ...points[other],
+    const exact = {
       x: anchor.x - direction.x * reach,
       y: anchor.y - direction.y * reach,
     };
+    let best = null;
+    let bestBend = Infinity;
+    for (const x of [Math.floor(exact.x), Math.ceil(exact.x)])
+      for (const y of [Math.floor(exact.y), Math.ceil(exact.y)]) {
+        const away = { x: anchor.x - x, y: anchor.y - y };
+        const span = Math.hypot(away.x, away.y);
+        if (!span) continue;
+        const bend = Math.acos(
+          Math.min(1, (away.x * direction.x + away.y * direction.y) / span)
+        );
+        if (bend < bestBend - 1e-12) {
+          best = { x: x + 0, y: y + 0 };
+          bestBend = bend;
+        }
+      }
+    if (!best) continue;
+    points[other] = { ...points[other], ...best };
   }
   return { ...candidate, points };
 }
