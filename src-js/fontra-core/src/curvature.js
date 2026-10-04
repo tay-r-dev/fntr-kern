@@ -389,22 +389,24 @@ export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "
   if (!entry.curveCount) {
     return [];
   }
-  const stepsPerSegment = speedPunkStepRung(
+  // The zoom picks a budget rung; each contour divides that rung among its own
+  // curves (computeSpeedPunkSamples).
+  const contourSegmentBudget = speedPunkStepRung(
     calculateSegmentBudget(
-      entry.curveCount,
+      1,
       params.zoomFactor ?? 1,
       params.baseSegmentBudget ?? 600,
-      params.minSegmentsPerCurve ?? 5
+      1
     )
   );
   const { zoomFactor, ...rest } = params;
-  const key = JSON.stringify({ ...rest, stepsPerSegment });
+  const key = JSON.stringify({ ...rest, contourSegmentBudget });
   let samples = entry.results.get(key);
   if (samples) {
     // Most recent last, so the oldest is the one let go.
     entry.results.delete(key);
   } else {
-    samples = computeSpeedPunkSamples(entry.path, { ...params, stepsPerSegment });
+    samples = computeSpeedPunkSamples(entry.path, { ...params, contourSegmentBudget });
     if (entry.results.size >= SPEEDPUNK_RESULTS_PER_OWNER) {
       entry.results.delete(entry.results.keys().next().value);
     }
@@ -443,26 +445,30 @@ export function computeSpeedPunkSamples(path, params = {}) {
     return [];
   }
 
-  // A caller that has settled the step count already (cachedSpeedPunkSamples) passes it.
-  const stepsPerSegment =
+  // The step budget is per contour, so adding or redrawing another contour cannot
+  // resample, and so recolour, this one. A caller that has settled the zoom's
+  // budget rung already (cachedSpeedPunkSamples) passes it.
+  const contourSegmentBudget =
+    params.contourSegmentBudget ??
+    calculateSegmentBudget(1, zoomFactor, baseSegmentBudget, 1);
+  const segments = collectCurveSegments(path);
+  const curvesInContour = new Map();
+  const lengthInContour = new Map();
+  for (const { contourIndex, points } of segments) {
+    curvesInContour.set(contourIndex, (curvesInContour.get(contourIndex) ?? 0) + 1);
+    lengthInContour.set(
+      contourIndex,
+      (lengthInContour.get(contourIndex) ?? 0) + estimateCurveLength(...points)
+    );
+  }
+  const stepsFor = (contourIndex) =>
     params.stepsPerSegment ??
-    calculateSegmentBudget(
-      totalCurveCount,
-      zoomFactor,
-      baseSegmentBudget,
+    Math.max(
+      Math.floor(contourSegmentBudget / curvesInContour.get(contourIndex)),
       minSegmentsPerCurve
     );
-
-  let averageCurveLength = 0;
-  if (adaptToCurveLength) {
-    let totalLength = 0;
-    let curveCount = 0;
-    forEachCurveSegment(path, (kind, pts) => {
-      totalLength += estimateCurveLength(...pts);
-      curveCount++;
-    });
-    averageCurveLength = curveCount > 0 ? totalLength / curveCount : 0;
-  }
+  const averageCurveLengthIn = (contourIndex) =>
+    lengthInContour.get(contourIndex) / curvesInContour.get(contourIndex);
 
   // The normalizer. Curvature carries one over length, so it cannot be read
   // without a size. Multiplying by a length taken from the shape removes the
@@ -482,7 +488,6 @@ export function computeSpeedPunkSamples(path, params = {}) {
   // between them. Agreeing at the joint and reading nothing but itself are
   // exclusive, and reading a joint is what the comb is for. Nothing beyond the
   // two adjacent segments is touched.
-  const segments = collectCurveSegments(path);
   const lengthsAtPoint = new Map();
   for (const segment of segments) {
     segment.arcLength = segmentArcLength(segment.kind, segment.points);
@@ -504,11 +509,12 @@ export function computeSpeedPunkSamples(path, params = {}) {
     const pts = segment.points;
     const startLength = meanLengthAt(segment.startPointIndex);
     const endLength = meanLengthAt(segment.endPointIndex);
+    const stepsPerSegment = stepsFor(segment.contourIndex);
     const steps = adaptToCurveLength
       ? adjustStepsForCurve(
           stepsPerSegment,
           estimateCurveLength(...pts),
-          averageCurveLength
+          averageCurveLengthIn(segment.contourIndex)
         )
       : stepsPerSegment;
     const samples =
@@ -576,9 +582,12 @@ export function computeSpeedPunkSamples(path, params = {}) {
 // through the path's own point identity, not a search by position.
 function collectCurveSegments(path) {
   const segments = [];
-  forEachCurveSegment(path, (kind, points, startPointIndex, endPointIndex) => {
-    segments.push({ kind, points, startPointIndex, endPointIndex });
-  });
+  forEachCurveSegment(
+    path,
+    (kind, points, startPointIndex, endPointIndex, contourIndex) => {
+      segments.push({ kind, points, startPointIndex, endPointIndex, contourIndex });
+    }
+  );
   return segments;
 }
 
@@ -613,7 +622,8 @@ function forEachCurveSegment(path, cb) {
           return [point.x, point.y];
         }),
         pointIndex,
-        isCubic ? next3 : next2
+        isCubic ? next3 : next2,
+        contourIndex
       );
     }
   }

@@ -50,18 +50,55 @@ describe("cachedSpeedPunkSamples", () => {
   it("computes afresh on another rung, and for another owner", () => {
     const owner = {};
     const a = cachedSpeedPunkSamples(owner, quarterPath, { ...params, zoomFactor: 1 });
-    const far = cachedSpeedPunkSamples(owner, quarterPath, { ...params, zoomFactor: 4 });
+    const far = cachedSpeedPunkSamples(owner, quarterPath, {
+      ...params,
+      zoomFactor: 4,
+    });
     expect(far).to.not.equal(a);
     const other = cachedSpeedPunkSamples({}, quarterPath, { ...params, zoomFactor: 1 });
     expect(other).to.not.equal(a);
   });
 
   it("draws the samples computeSpeedPunkSamples draws at the rung's step count", () => {
-    const samples = cachedSpeedPunkSamples({}, quarterPath, { ...params, zoomFactor: 1 });
+    const samples = cachedSpeedPunkSamples({}, quarterPath, {
+      ...params,
+      zoomFactor: 1,
+    });
     const direct = computeSpeedPunkSamples(quarterPath(), {
       ...params,
-      stepsPerSegment: speedPunkStepRung(600),
+      contourSegmentBudget: speedPunkStepRung(600),
     });
     expect(samples).to.deep.equal(direct);
+  });
+});
+
+describe("SpeedPunk per-contour sampling", () => {
+  it("adding another curved contour leaves an existing contour's comb untouched", () => {
+    const quarter = quarterPath().unpackedContours()[0];
+    const ring = {
+      points: [
+        { x: 300, y: 0 },
+        { x: 355, y: 0, type: "cubic" },
+        { x: 400, y: 45, type: "cubic" },
+        { x: 400, y: 100 },
+        { x: 400, y: 155, type: "cubic" },
+        { x: 355, y: 200, type: "cubic" },
+        { x: 300, y: 200 },
+        { x: 245, y: 200, type: "cubic" },
+        { x: 200, y: 155, type: "cubic" },
+        { x: 200, y: 100 },
+      ],
+      isClosed: true,
+    };
+    const params = { contourSegmentBudget: 64, minSegmentsPerCurve: 5 };
+    const alone = computeSpeedPunkSamples(
+      VarPackedPath.fromUnpackedContours([quarter]),
+      params
+    );
+    const withRing = computeSpeedPunkSamples(
+      VarPackedPath.fromUnpackedContours([quarter, ring]),
+      params
+    );
+    expect(withRing.slice(0, alone.length)).to.deep.equal(alone);
   });
 });
