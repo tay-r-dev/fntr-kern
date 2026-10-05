@@ -228,7 +228,7 @@ class EditBehavior {
     ]);
   }
 
-  makeChangeForDelta(delta) {
+  makeChangeForDelta(delta, { preserveSnap = false } = {}) {
     assert(
       !this.doFullTransform,
       "can't call makeChangeForDelta on transform behavior"
@@ -244,10 +244,13 @@ class EditBehavior {
     // off-curve point.
     const pathChange = this._makeChangeForTransformFunc(
       makePointTranslateFunction(this.constrainMoveDelta(delta)),
-      makePointTranslateFunction(delta)
+      makePointTranslateFunction(delta),
+      null,
+      null,
+      preserveSnap
     );
     const entryChanges = (this.targetEntries || [])
-      .map((entry) => entry.makeChangeForDelta(delta))
+      .map((entry) => entry.makeChangeForDelta(delta, { preserveSnap }))
       .filter((change) => change);
     return entryChanges.length
       ? consolidateChanges([pathChange, ...entryChanges])
@@ -299,7 +302,8 @@ class EditBehavior {
     transformFunc,
     freeTransformFunc = null,
     transformComponentFunc = null,
-    transformBackgroundImageFunc = null
+    transformBackgroundImageFunc = null,
+    preserveSnap = false
   ) {
     const transform = {
       constrained: transformFunc,
@@ -313,7 +317,11 @@ class EditBehavior {
         const result = editFunc(transform);
         if (result) {
           const [pointIndex, x, y] = result;
-          return makePointChange(pointIndex, this.roundFunc(x), this.roundFunc(y));
+          // The snap resolver already placed and rounded the drag on its guide.
+          // Rounding x/y again would throw a diagonal or curve snap off it.
+          return preserveSnap
+            ? makePointChange(pointIndex, x, y)
+            : makePointChange(pointIndex, this.roundFunc(x), this.roundFunc(y));
         }
       })
       .filter((change) => change);

@@ -142,3 +142,19 @@ describe("Shift+Alt moves a point horizontally or vertically only", () => {
     expect(drag("constrain", { x: 30, y: 26 })).to.include({ x: 228, y: 178 });
   });
 });
+
+describe("a snap owns the final point rounding", () => {
+  it("preserves fractional placement through change application, and resets on release", () => {
+    const glyph = makeCornerAfterSmoothGlyph(false);
+    const behavior = new EditBehaviorFactory(glyph, new Set(["point/4"])).getBehavior(
+      "default"
+    );
+    applyChange(
+      glyph,
+      behavior.makeChangeForDelta({ x: 0.25, y: 0.75 }, { preserveSnap: true })
+    );
+    expect(glyph.path.getPoint(4)).to.include({ x: 200.25, y: 150.75 });
+    applyChange(glyph, behavior.makeChangeForDelta({ x: 0.25, y: 0.75 }));
+    expect(glyph.path.getPoint(4)).to.include({ x: 200, y: 151 });
+  });
+});

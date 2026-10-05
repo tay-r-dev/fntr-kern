@@ -949,3 +949,28 @@ describe("a width written to one tied rib", () => {
     expect(second.width).to.include({ left: 50, right: 50 });
   });
 });
+
+describe("snapped skeleton point persistence", () => {
+  it("preserves the resolver's fractional placement through the shared target entry", () => {
+    const layer = makeLayerGlyph(makeLineSkeleton());
+    const selection = new Set(["skeletonPoint/10/1"]);
+    const entry = makeSkeletonPointTargetEntry(
+      layer,
+      selection,
+      "default",
+      getSkeletonData(layer)
+    );
+    const behavior = new EditBehaviorFactory(layer, selection, false, {
+      targetEntries: [entry],
+    }).getBehavior("default");
+    applyChange(
+      layer,
+      behavior.makeChangeForDelta({ x: 0.25, y: 0.75 }, { preserveSnap: true })
+    );
+    expect(getSkeletonData(layer).contours[0].points[0]).to.include({
+      x: 0.25,
+      y: 0.75,
+    });
+    expect(layer.path.numContours).to.be.greaterThan(0);
+  });
+});

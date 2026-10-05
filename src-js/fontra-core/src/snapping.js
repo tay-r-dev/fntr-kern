@@ -719,9 +719,18 @@ function candidateFilter(only) {
   };
 }
 
-export function collectCandidates(scene, cursor, { pixelUnit, only }) {
+export function isSnapTargetAllowed(candidate, only) {
+  return targetSources(candidate).every(candidateFilter(only));
+}
+
+export function collectCandidates(
+  scene,
+  cursor,
+  { pixelUnit, only, points = [cursor], evaluate = createSnapEvaluator() }
+) {
   const radius = CULL_PARAMETERS.collectionRadiusPixels * pixelUnit;
-  const inRadius = (p) => Math.hypot(p.x - cursor.x, p.y - cursor.y) <= radius;
+  const inRadius = (p) =>
+    points.some((point) => Math.hypot(p.x - point.x, p.y - point.y) <= radius);
   const candidates = [];
 
   for (const metric of scene.metrics || []) {
@@ -765,12 +774,15 @@ export function collectCandidates(scene, cursor, { pixelUnit, only }) {
     }
     pointsByKind.get(kind).push(point);
   }
-  for (const [kind, points] of pointsByKind) {
+  for (const [kind, sources] of pointsByKind) {
     for (const [axis, angle] of [
       ["y", 0],
       ["x", 90],
     ]) {
-      for (const source of nearestPerSide(points, cursor, axis)) {
+      const kept = new Set(
+        points.flatMap((point) => nearestPerSide(sources, point, axis))
+      );
+      for (const source of kept) {
         candidates.push(
           makeLineCandidate({ x: source.x, y: source.y, angle, kind, source })
         );
@@ -805,19 +817,21 @@ export function collectCandidates(scene, cursor, { pixelUnit, only }) {
     );
   }
 
-  const allowed = candidates.filter(candidateFilter(only));
-  candidates.length = 0;
-  candidates.push(...allowed);
-
-  candidates.sort((a, b) => {
-    const weightDelta =
-      (SNAP_PARAMETERS.weights[b.kind] ?? 0) - (SNAP_PARAMETERS.weights[a.kind] ?? 0);
-    if (Math.abs(weightDelta) > 1e-12) {
-      return weightDelta;
-    }
-    return distanceToCandidate(a, cursor) - distanceToCandidate(b, cursor);
-  });
-  return candidates.slice(0, CULL_PARAMETERS.maxCandidates);
+  // Calculate expensive distances once, outside the comparator. The same
+  // candidate/source evaluations are reused when these candidates are resolved.
+  return candidates
+    .filter(candidateFilter(only))
+    .map((candidate) => ({
+      candidate,
+      distance: Math.min(...points.map((point) => evaluate(candidate, point).distance)),
+    }))
+    .sort(
+      (a, b) =>
+        kindWeight(b.candidate.kind) - kindWeight(a.candidate.kind) ||
+        a.distance - b.distance
+    )
+    .slice(0, CULL_PARAMETERS.maxCandidates)
+    .map(({ candidate }) => candidate);
 }
 
 export function roundSnapped(result, roundFunc) {
@@ -832,7 +846,10 @@ export function roundSnapped(result, roundFunc) {
   if (candidate.type === "curve") {
     // Rounding across the curve throws the point off it, so the whole unit is
     // taken along the tangent at the foot and the result is projected back.
-    const foot = projectOntoCurve(candidate, position);
+    const foot =
+      result.evaluation?.position?.t !== undefined
+        ? result.evaluation.position
+        : projectOntoCurve(candidate, position);
     const tangent = cubicTangentAt(candidate.points, foot.t);
     const stepped = {
       x: foot.x + (roundFunc(foot.x) - foot.x) * tangent.dx * tangent.dx,

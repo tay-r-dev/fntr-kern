@@ -763,12 +763,18 @@ export function makeSkeletonPointTargetEntry(
   }
 
   let rollbackChange = null;
-  const makeChange = (behavior, method, argument, transformMetadata = false) => {
+  const makeChange = (
+    behavior,
+    method,
+    argument,
+    transformMetadata = false,
+    options
+  ) => {
     // 1. Run the regular point-behavior rules on the synthetic path. The
     //    behavior computes absolute coordinates from the captured originals,
     //    so applying its change to the synthetic instance per frame yields
     //    current-frame positions.
-    applyChange(synthetic.instance, behavior[method](argument));
+    applyChange(synthetic.instance, behavior[method](argument, options));
     // 2. Copy EVERY mapped point position back onto the skeleton working copy
     //    (not only selected points — the rules move unselected neighbors too).
     const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
@@ -817,8 +823,14 @@ export function makeSkeletonPointTargetEntry(
     get rollbackChange() {
       return rollbackChange;
     },
-    makeChangeForDelta(delta) {
-      return makeChange(syntheticDeltaBehavior, "makeChangeForDelta", delta);
+    makeChangeForDelta(delta, options) {
+      return makeChange(
+        syntheticDeltaBehavior,
+        "makeChangeForDelta",
+        delta,
+        false,
+        options
+      );
     },
     makeChangeForTransformation(transformation) {
       return makeChange(

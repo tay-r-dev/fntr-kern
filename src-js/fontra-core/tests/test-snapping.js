@@ -5,6 +5,7 @@ import {
   SNAP_PARAMETERS,
   candidatePull,
   collectCandidates,
+  createSnapEvaluator,
   crossLines,
   distanceToCandidate,
   makeCurveCandidate,
@@ -1317,5 +1318,70 @@ describe("one chooser for every source and constraint", () => {
     );
     expect(result.target.kind).to.equal(KIND.INTERSECTION);
     expect(result.byKind[KIND.INTERSECTION]).to.be.greaterThan(1);
+  });
+});
+
+describe("collection shares a frame with resolution", () => {
+  afterEach(resetSnapParameters);
+  it("keeps a nearer ray at a remote selected point", () => {
+    SNAP_PARAMETERS.pointerWeight = 0;
+    const points = [
+      { x: 0, y: 0 },
+      { x: 0, y: 100 },
+    ];
+    const options = { pixelUnit: 1, points, evaluate: createSnapEvaluator() };
+    const candidates = collectCandidates(
+      {
+        points: [
+          { x: 100, y: 5 },
+          { x: 100, y: 100.1 },
+        ],
+      },
+      points[0],
+      options
+    );
+    const result = resolveSnapForPoints(candidates, points, points[0], options);
+    expect(result.pointIndex).to.equal(1);
+    expect(result.delta.y).to.be.closeTo(0.1, 1e-9);
+  });
+
+  it("looks outside the cursor radius around other selected points", () => {
+    const points = [
+      { x: 0, y: 0 },
+      { x: 0, y: 1000 },
+    ];
+    const candidates = collectCandidates({ points: [{ x: 100, y: 1001 }] }, points[0], {
+      pixelUnit: 1,
+      points,
+    });
+    expect(
+      resolveSnapForPoints(candidates, points, points[0], { pixelUnit: 1 }).delta.y
+    ).to.be.closeTo(1, 1e-9);
+  });
+
+  it("reuses a curve foot and its parameter throughout the frame", () => {
+    const points = [{ x: 101, y: 103 }];
+    const evaluate = createSnapEvaluator();
+    const options = { pixelUnit: 1, points, evaluate, only: "curvature" };
+    const candidates = collectCandidates(
+      {
+        curves: [
+          {
+            points: [
+              { x: 0, y: 0 },
+              { x: 0, y: 55 },
+              { x: 45, y: 100 },
+              { x: 100, y: 100 },
+            ],
+          },
+        ],
+      },
+      points[0],
+      options
+    );
+    const foot = evaluate(candidates[0], points[0]);
+    const result = resolveSnapForPoints(candidates, points, points[0], options);
+    expect(result.evaluation.position).to.equal(foot.position);
+    expect(result.evaluation.position.t).to.be.greaterThan(1);
   });
 });

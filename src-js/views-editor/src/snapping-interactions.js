@@ -11,14 +11,15 @@ import {
 import {
   KIND,
   SNAP_PARAMETERS,
-  candidatePull,
+  createSnapEvaluator,
+  isSnapTargetAllowed,
   collectCandidates,
   makeLineCandidate,
   resolveSnap,
   resolveSnapForPoints,
   roundSnapped,
 } from "@fontra/core/snapping.js";
-import { parseSelection } from "@fontra/core/utils.js";
+import { parseSelection } from "@fontra/core/utils.ts";
 import { constrainHorVer, constrainHorVerDiag } from "./edit-behavior.js";
 
 function segmentAngle(from, to) {
@@ -353,7 +354,8 @@ export function buildSnapScene(
       kind: ownGenerated.has(i) ? KIND.OWN_GENERATED : undefined,
     });
   }
-  for (const segment of iterPathSegments(path)) {
+  const pathSegments = [...iterPathSegments(path)];
+  for (const segment of pathSegments) {
     if (segment.curve) {
       continue; // taken below, under its own rule
     }
@@ -373,7 +375,7 @@ export function buildSnapScene(
   // being continued is the curve as it stood. Excluding them would take away the
   // one case the projection is for - a terminal is elongated by dragging the very
   // point the curve arriving at it ends on.
-  for (const segment of iterPathSegments(path)) {
+  for (const segment of pathSegments) {
     if (segment.curve && segment.curve.points.some(onScreen)) {
       curves.push(segment.curve);
     }
@@ -512,7 +514,11 @@ export function forceRefreshSnapping(sceneController) {
 export class SnappingSession {
   constructor(
     sceneController,
-    { excludePointIndices = [], keepSelectedSkeletonPoints = false } = {}
+    {
+      excludePointIndices = [],
+      keepSelectedSkeletonPoints = false,
+      startCursor = null,
+    } = {}
   ) {
     this.sceneController = sceneController;
     this.excludePointIndices = excludePointIndices;
@@ -534,6 +540,7 @@ export class SnappingSession {
     // A narrower set the drag itself asks for, as a modified drag does. It
     // gives way to a held snap key, which the designer pressed on purpose.
     this.only = undefined;
+    this._startCursor = startCursor;
     this._lastCursor = null;
     this._lastTime = 0;
     this._epoch = sceneController.sceneModel.snapSceneEpoch || 0;
@@ -546,7 +553,7 @@ export class SnappingSession {
   _refreshIfStale() {
     const epoch = this.sceneController.sceneModel.snapSceneEpoch || 0;
     if (epoch !== this._epoch) {
-      this._epoch = epoch;
+      this._clearPublished();
       this.refresh();
     }
   }
@@ -614,7 +621,7 @@ export class SnappingSession {
 
   // What the indicator draws and what the tuning panel reads. Published on every
   // resolve, so a frame that snapped nothing still clears the last frame's ring.
-  _publish(candidates, cursor, result, position) {
+  _publish(candidates, result, position) {
     const sceneModel = this.sceneController.sceneModel;
     sceneModel.snapHeldCandidates = result.held;
     sceneModel.snapSuggestion = result.suggestion || null;
@@ -629,22 +636,12 @@ export class SnappingSession {
           }
         : null;
 
-    const byKind = {};
-    for (const candidate of candidates) {
-      const pull = candidatePull(candidate, cursor, {
-        pixelUnit: this.sceneController.onePixelUnit,
-        held: null,
-      });
-      if (pull > (byKind[candidate.kind] || 0)) {
-        byKind[candidate.kind] = pull;
-      }
-    }
     sceneModel.snapDebugReadout = {
       candidateCount: candidates.length,
       winningPull: result.pull,
-      winningKind: result.held[0]?.kind || null,
+      winningKind: result.target?.kind || null,
       freedom: result.freedom,
-      byKind,
+      byKind: result.byKind,
     };
   }
 
@@ -654,27 +651,48 @@ export class SnappingSession {
       return point;
     }
     this._refreshIfStale();
-    const pixelUnit = this.sceneController.onePixelUnit;
-    const candidates = collectCandidates(this.scene, point, {
-      pixelUnit,
-      only: this._only,
-    });
+    const { candidates, options } = this._frame([point], point, constraint);
     const result = resolveSnap(candidates, point, {
-      pixelUnit,
+      ...options,
       held: this.held?.candidate || null,
+    });
+    const rounded = roundSnapped(result, Math.round);
+    this._accept(result);
+    this._publish(candidates, result, rounded);
+    return rounded;
+  }
+
+  _frame(points, cursor, constraint) {
+    const only = this._only;
+    // A retained target may survive spatial culling, but never a mode switch.
+    if (this.held && !isSnapTargetAllowed(this.held.candidate, only)) {
+      this.held = null;
+      this.overrule = null;
+      this.escape = null;
+    }
+    if (this.escape?.refused && !isSnapTargetAllowed(this.escape.refused, only)) {
+      this.escape = null;
+    }
+    const options = {
+      pixelUnit: this.sceneController.onePixelUnit || 1,
+      only,
+      points,
+      evaluate: createSnapEvaluator(),
+      held: this.held,
       overrule: this.overrule,
       escape: this.escape,
-      speed: this._speed(point),
+      speed: this._speed(cursor),
       constraint,
-    });
-    this.overrule = result.overrule || null;
-    this.escape = result.escape || null;
-    this.held = result.held.length
-      ? { pointIndex: 0, candidate: result.held[0] }
+    };
+    return { candidates: collectCandidates(this.scene, cursor, options), options };
+  }
+
+  _accept(result) {
+    this.overrule = result.overrule;
+    this.escape = result.escape;
+    this.held = result.target
+      ? { pointIndex: result.pointIndex, candidate: result.target }
       : null;
-    const rounded = roundSnapped(result, (value) => Math.round(value));
-    this._publish(candidates, point, result, rounded);
-    return rounded;
   }
 
   resolveSet(points, cursor, { constraint } = {}) {
@@ -697,45 +715,24 @@ export class SnappingSession {
       }
       this._startLeft = true;
     }
-    // The candidate set is built against the cursor once per frame, and every point is
-    // then resolved against that one set.
-    const candidates = collectCandidates(this.scene, cursor, {
-      pixelUnit,
-      only: this._only,
-    });
-    const best = resolveSnapForPoints(candidates, points, cursor, {
-      pixelUnit,
-      held: this.held,
-      overrule: this.overrule,
-      escape: this.escape,
-      speed: this._speed(cursor),
-      constraint,
-    });
-    this.overrule = best.overrule || null;
-    this.escape = best.escape || null;
+    const { candidates, options } = this._frame(points, cursor, constraint);
+    const best = resolveSnapForPoints(candidates, points, cursor, options);
+    this._accept(best);
     if (best.pointIndex < 0) {
-      this.held = null;
-      this._publish(candidates, cursor, best, cursor);
-      return { x: 0, y: 0 };
+      this._publish(candidates, best, cursor);
+      return best.delta;
     }
-    // The hold is the pair. A candidate held by one point earns no bonus on another.
-    this.held = { pointIndex: best.pointIndex, candidate: best.held[0] };
     const winner = points[best.pointIndex];
-    const rounded = roundSnapped(
-      { position: best.position, held: best.held, freedom: best.freedom },
-      (value) => Math.round(value)
-    );
-    this._publish(candidates, cursor, best, rounded);
+    const rounded = roundSnapped(best, Math.round);
+    this._publish(candidates, best, rounded);
     return { x: rounded.x - winner.x, y: rounded.y - winner.y };
   }
 
   end() {
-    this.held = null;
-    this.overrule = null;
-    this.escape = null;
+    this._clearPublished();
     this._lastCursor = null;
-    this.sceneController.sceneModel.snapSuggestion = null;
-    this.sceneController.sceneModel.snapHeldCandidates = [];
-    this.sceneController.sceneModel.snapIndicator = null;
+    this._lastTime = 0;
+    this._startCursor = null;
+    this._startLeft = false;
   }
 }

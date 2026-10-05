@@ -1225,6 +1225,7 @@ export class PointerTool extends BaseTool {
       );
       const snapSession = new SnappingSession(sceneController, {
         excludePointIndices: selectedPointIndices(sceneController),
+        startCursor: initialPoint,
       });
       const cornersOnly = draggedPointsAreCorners(
         sceneController,
@@ -1300,7 +1301,9 @@ export class PointerTool extends BaseTool {
 
         const deepEditChanges = [];
         for (const layer of layerInfo) {
-          const editChange = layer.editBehavior.makeChangeForDelta(delta);
+          const editChange = layer.editBehavior.makeChangeForDelta(delta, {
+            preserveSnap: !!snapSession.held,
+          });
           applyChange(layer.layerGlyph, editChange);
           deepEditChanges.push(consolidateChanges(editChange, layer.changePath));
           layer.shouldConnect = layer.connectDetector.shouldConnect(
