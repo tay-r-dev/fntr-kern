@@ -125,6 +125,7 @@ import {
 import {
   closePanelSkeletonContours,
   harmonizePanelSkeletonPoints,
+  simplifyPanelSkeletonContours,
   joinPanelSkeletonContours,
   splitPanelSkeletonContours,
   togglePanelContourReversed,
@@ -164,7 +165,7 @@ const MIN_SIMPLIFY_TOLERANCE = 1;
 // Failing that, the smallest result that changes the contour at all, which is
 // how a contour missing points on its extrema still gets them. Returns the
 // results with the tolerance that produced them, or null.
-function simplifyWithLeastDeviation(perMaster) {
+function simplifyWithLeastDeviation(perMaster, options = {}) {
   let gentlest = null;
   const before = perMaster[0].points.length;
   for (
@@ -172,7 +173,7 @@ function simplifyWithLeastDeviation(perMaster) {
     tolerance <= MAX_SIMPLIFY_TOLERANCE;
     tolerance++
   ) {
-    const results = simplifyContourCompatible(perMaster, { tolerance });
+    const results = simplifyContourCompatible(perMaster, { ...options, tolerance });
     if (!results) {
       continue;
     }
@@ -182,6 +183,36 @@ function simplifyWithLeastDeviation(perMaster) {
     gentlest = gentlest ?? { results, tolerance };
   }
   return gentlest;
+}
+
+// Simplify skeleton centerlines, one per master: the same least-deviation
+// search and the same tolerance-checked balance an ordinary contour gets. The
+// surviving original points keep their `sourceIndex`, which the skeleton needs
+// to carry each point's data across.
+function simplifyCenterlines(perMaster) {
+  const simplified = simplifyWithLeastDeviation(perMaster, { keepSourceIndex: true });
+  if (!simplified) {
+    return null;
+  }
+  const { results, tolerance } = simplified;
+  return results.map((result, layerIndex) => {
+    const path = VarPackedPath.fromUnpackedContours([result]);
+    balancePathInPlace(path, [...Array(path.numPoints).keys()]);
+    const kept = keepBalancedWithinTolerance(
+      perMaster[layerIndex],
+      result,
+      path.getUnpackedContour(0),
+      tolerance
+    );
+    return {
+      ...result,
+      points: result.points.map((point, i) => ({
+        ...point,
+        x: kept.points[i].x,
+        y: kept.points[i].y,
+      })),
+    };
+  });
 }
 
 // Every point index of the given contours, in path order.
@@ -875,7 +906,9 @@ export class SceneController {
       "action.simplify-contour",
       { topic },
       () => this.doSimplifySelectedContours(),
-      () => this.contextMenuState.simplifiableContours?.length
+      () =>
+        this.contextMenuState.simplifiableContours?.length ||
+        this.contextMenuState.skeletonContourIds?.length
     );
 
     registerAction(
@@ -2345,6 +2378,30 @@ export class SceneController {
   // only ever asked the designer to guess a number the command can find for
   // itself, and every answer other than the smallest is a worse drawing.
   async doSimplifySelectedContours() {
+    // A skeleton selection answers this itself, as Harmonize does: the
+    // centerline is simplified and written through the skeleton's own path,
+    // so the outline is regenerated. Skeleton and ordinary contours are never
+    // mixed into one pass, which would take two undo steps.
+    const skeletonContourIds = this.contextMenuState.skeletonContourIds || [];
+    if (skeletonContourIds.length) {
+      const changed = await simplifyPanelSkeletonContours(
+        this,
+        skeletonContourIds,
+        simplifyCenterlines,
+        translate("action.simplify-contour")
+      );
+      if (changed) {
+        // Removed points take their selection keys with them.
+        this.selection = new Set();
+      } else {
+        message(
+          translate("action.simplify-contour.title"),
+          translate("action.simplify-contour.nothing-to-simplify")
+        );
+      }
+      return;
+    }
+
     const contourIndices = [...(this.contextMenuState.simplifiableContours || [])].sort(
       (a, b) => a - b
     );

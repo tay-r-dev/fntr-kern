@@ -1652,7 +1652,10 @@ function roundPoint(point) {
 
 // Rebuild an unpacked contour ({points, isClosed}) from the analysis and the
 // final sequence of pieces (merged replacements and untouched originals).
-export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
+// With `keepSourceIndex`, every surviving original on-curve carries the index it
+// had in the original contour, so a caller holding data per point (a skeleton)
+// can carry that data across. Inserted points carry none.
+export function rebuildSimplifiedContour(analysis, simplifiedPieces, options = {}) {
   const { sourcePointMap, isClosed } = analysis;
   const originalPoints = analysis.contour.points;
 
@@ -1661,6 +1664,9 @@ export function rebuildSimplifiedContour(analysis, simplifiedPieces) {
     if (typeof key === "number") {
       const original = originalPoints[key];
       point = { x: roundCoordinate(original.x), y: roundCoordinate(original.y) };
+      if (options.keepSourceIndex) {
+        point.sourceIndex = key;
+      }
       if (original.smooth === true) {
         // Keep smooth only when the new joint is still tangent-continuous.
         // Rounding a handle to whole units turns it by up to atan(0.7 / its
@@ -2075,7 +2081,7 @@ export function simplifyContourCompatible(contours, options = {}) {
         finalPieces.push(piece);
       }
     }
-    return rebuildSimplifiedContour(analysis, finalPieces);
+    return rebuildSimplifiedContour(analysis, finalPieces, options);
   });
 
   const finalResults = insertExtremaPoints(

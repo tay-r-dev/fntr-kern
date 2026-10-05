@@ -2721,6 +2721,17 @@ editor tries ten tolerances and no fit depends on one) and by stopping a
 point's distance search once it cannot raise the maximum: all 990 contours
 of wip.fontra at two tolerances 6.6 s to 1.0 s, byte-identical output.
 
+**Skeleton centerlines** (2026-10-05) take the same pass, every layer at
+once, written through `editSkeleton` (`planSkeletonContourSimplify`). A
+survivor keeps its id and data, found by the `sourceIndex` Simplify tags it
+with, never by position. A new point takes the width read by arc length
+between the nearest survivors either side, rounded last; a removed point's
+own width goes. A point storing anything beyond position and width (a nudge,
+an offset, a pin, a lock, a cap, a corner) is never removed, the extrema
+rule included, because nothing else could carry that data. On the cacute
+drawn as a centerline with widths 20 to 40, the new points read 24, 28, 30,
+34, 35 and 39 in order. Live check owed.
+
 ---
 
 ## The documents themselves

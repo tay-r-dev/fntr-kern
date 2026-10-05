@@ -1822,6 +1822,159 @@ export function appendSkeletonContour(skeletonData, contourData = {}) {
   return contour;
 }
 
+// Simplify a skeleton centerline, the same contour in every layer at once.
+//
+// The centerline is an ordinary path, so the path's Simplify applies to it
+// unchanged; what this adds is the per-point data. `simplify` takes the
+// centerlines as unpacked contours, one per layer, and returns the simplified
+// ones with `sourceIndex` on every surviving original on-curve (or null).
+//
+// - A surviving point keeps its id and everything it stored.
+// - A point carrying authored data beyond its position and width (a nudge, a
+//   handle offset, a pin, a lock, a cap, a corner) is never removed: the data
+//   describes the stroke at that point, and nothing else could carry it.
+// - A new point takes the width the stroke has there, read along the new
+//   centerline by arc length between the nearest surviving points on either
+//   side. A removed point's own width goes with it.
+// - Widths are rounded to whole units, last.
+// - New points take fresh ids from `firstFreeId`, the same id in every layer.
+//
+// Returns { pointsPerLayer, nextId }, or null when nothing changes.
+export function planSkeletonContourSimplify(contoursPerLayer, simplify, firstFreeId) {
+  const unpacked = contoursPerLayer.map((contour) => ({
+    isClosed: contour.closed === true,
+    points: contour.points.map((point) => ({
+      x: point.x,
+      y: point.y,
+      ...(point.type ? { type: point.type } : {}),
+      ...(point.smooth ? { smooth: true } : {}),
+      ...(!point.type && carriesAuthoredData(point)
+        ? { attrs: { skeletonAuthored: true } }
+        : {}),
+    })),
+  }));
+  const results = simplify(unpacked);
+  if (!results) {
+    return null;
+  }
+  let nextId = firstFreeId;
+  const newIds = results[0].points.map((point) =>
+    point.sourceIndex === undefined ? nextId++ : null
+  );
+  const pointsPerLayer = results.map((result, layerIndex) =>
+    skeletonPointsFromSimplified(contoursPerLayer[layerIndex], result, newIds)
+  );
+  if (pointsPerLayer.some((points) => !points)) {
+    return null;
+  }
+  return { pointsPerLayer, nextId };
+}
+
+// Whether an on-curve stores anything beyond where it is and how wide.
+function carriesAuthoredData(point) {
+  const bare = normalizeSkeletonPoint({
+    id: point.id,
+    x: point.x,
+    y: point.y,
+    smooth: point.smooth,
+    width: point.width,
+  });
+  const stored = normalizeSkeletonPoint(point);
+  return JSON.stringify(stored) !== JSON.stringify(bare);
+}
+
+function skeletonPointsFromSimplified(contour, result, newIds) {
+  const points = result.points.map((point, index) => {
+    if (point.type) {
+      return {
+        id: newIds[index],
+        x: point.x,
+        y: point.y,
+        type: point.type,
+        smooth: false,
+      };
+    }
+    if (point.sourceIndex !== undefined) {
+      const kept = deepCopyObject(contour.points[point.sourceIndex]);
+      kept.x = point.x;
+      kept.y = point.y;
+      kept.smooth = point.smooth === true;
+      return kept;
+    }
+    return normalizeSkeletonPoint({
+      id: newIds[index],
+      x: point.x,
+      y: point.y,
+      smooth: point.smooth === true,
+    });
+  });
+  if (!interpolateNewPointWidths(points, contour, result.isClosed)) {
+    return null;
+  }
+  return points;
+}
+
+// Give every new on-curve the width its two nearest surviving neighbours
+// describe at its place along the centerline, by arc length. Rounded last.
+function interpolateNewPointWidths(points, contour, isClosed) {
+  const onCurve = points
+    .map((point, index) => (point.type ? -1 : index))
+    .filter((index) => index >= 0);
+  const survivors = new Set(
+    onCurve.filter((index) => contour.points.some((p) => p.id === points[index].id))
+  );
+  if (!survivors.size) {
+    return false;
+  }
+  // Arc length from each on-curve to the next, in on-curve order.
+  const segmentLength = (ordinal) => {
+    const start = onCurve[ordinal];
+    const end = onCurve[(ordinal + 1) % onCurve.length];
+    const controls = [];
+    for (let i = start; i !== end; i = (i + 1) % points.length) {
+      controls.push(points[i]);
+    }
+    controls.push(points[end]);
+    if (controls.length === 2) {
+      return Math.hypot(controls[1].x - controls[0].x, controls[1].y - controls[0].y);
+    }
+    return new Bezier(controls.map((p) => ({ x: p.x, y: p.y }))).length();
+  };
+  const count = onCurve.length;
+  const lengths = onCurve.map((_, ordinal) =>
+    isClosed || ordinal < count - 1 ? segmentLength(ordinal) : 0
+  );
+  for (let ordinal = 0; ordinal < count; ordinal++) {
+    const index = onCurve[ordinal];
+    if (survivors.has(index)) {
+      continue;
+    }
+    // Walk back and forward to the nearest survivors, summing arc length.
+    let back = 0;
+    let before = ordinal;
+    do {
+      before = (before - 1 + count) % count;
+      back += lengths[before];
+    } while (!survivors.has(onCurve[before]) && (isClosed || before > 0));
+    let ahead = 0;
+    let after = ordinal;
+    do {
+      ahead += lengths[after];
+      after = (after + 1) % count;
+    } while (!survivors.has(onCurve[after]) && (isClosed || after < count - 1));
+    const from = points[onCurve[before]].width;
+    const to = points[onCurve[after]].width;
+    const share = back + ahead > 0 ? back / (back + ahead) : 0.5;
+    points[index].width = {
+      ...points[index].width,
+      left: Math.round(from.left + (to.left - from.left) * share),
+      right: Math.round(from.right + (to.right - from.right) * share),
+      linked: from.linked && to.linked,
+    };
+  }
+  return true;
+}
+
 // G2-harmonize the skeleton's own centerline.
 //
 // The skeleton is a path, so the ordinary path's harmonize applies to it

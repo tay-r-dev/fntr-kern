@@ -70,6 +70,7 @@ import {
   setSkeletonSerifParameters,
   setSkeletonSideLocked,
   splitSkeletonContourAtPoint,
+  planSkeletonContourSimplify,
 } from "@fontra/core/skeleton-model.js";
 import {
   editSkeleton,
@@ -1140,6 +1141,80 @@ export async function harmonizePanelSkeletonPoints(
     }
   );
   return reports;
+}
+
+// Simplify whole centerlines, every editing layer at once. Unlike the other
+// skeleton edits the layers cannot be done one at a time: Simplify decides the
+// point structure from all layers together, so they still interpolate. The
+// plan is made first from every layer's centerline, and then written into each
+// layer through the one skeleton write path.
+//
+// `contourIds` name contours in the edit layer; other layers take the contour
+// at the same position. `simplify` is handed the centerlines as unpacked
+// contours and returns the simplified ones (see planSkeletonContourSimplify).
+// Returns the number of contours changed.
+export async function simplifyPanelSkeletonContours(
+  sceneController,
+  contourIds,
+  simplify,
+  undoLabel
+) {
+  if (!contourIds.length) {
+    return 0;
+  }
+  let changedCount = 0;
+  await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
+    const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
+    const entries = Object.entries(editingLayers);
+    if (!entries.length) {
+      return;
+    }
+    const editLayerName = sceneController.sceneSettings?.editLayerName;
+    const editLayerGlyph = editingLayers[editLayerName] || entries[0][1];
+    const reference = getSkeletonData(editLayerGlyph);
+    const layerData = entries.map(([, layerGlyph]) => getSkeletonData(layerGlyph));
+    if (!reference || layerData.some((data) => !data)) {
+      return;
+    }
+
+    let nextId = Math.max(...layerData.map((data) => data.nextId ?? 1));
+    const plans = [];
+    for (const contourId of contourIds) {
+      const ordinal = reference.contours.findIndex(
+        (contour) => contour.id === contourId
+      );
+      const contours = layerData.map((data) => data.contours[ordinal]);
+      if (ordinal < 0 || contours.some((contour) => !contour)) {
+        continue;
+      }
+      const plan = planSkeletonContourSimplify(contours, simplify, nextId);
+      if (!plan) {
+        continue;
+      }
+      nextId = plan.nextId;
+      plans.push({ contourIds: contours.map((contour) => contour.id), plan });
+    }
+    if (!plans.length) {
+      return;
+    }
+    changedCount = plans.length;
+
+    const allChanges = entries.map(([layerName, layerGlyph], layerIndex) =>
+      editSkeleton(layerGlyph, (working) => {
+        for (const { contourIds: ids, plan } of plans) {
+          const contour = getSkeletonContour(working, ids[layerIndex]);
+          if (contour) {
+            contour.points = structuredClone(plan.pointsPerLayer[layerIndex]);
+          }
+        }
+        working.nextId = Math.max(working.nextId ?? 1, nextId);
+      }).prefixed(["layers", layerName, "glyph"])
+    );
+    const combined = new ChangeCollector().concat(...allChanges);
+    await sendIncrementalChange(combined.change);
+    return { changes: combined, undoLabel, broadcast: true };
+  }, SKELETON_PANEL_SENDER);
+  return changedCount;
 }
 
 // Balance handles on the selected centerline points, written like Harmonize.
