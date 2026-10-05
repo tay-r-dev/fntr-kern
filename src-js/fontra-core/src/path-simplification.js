@@ -2029,3 +2029,54 @@ export function simplifyContourCompatible(contours, options = {}) {
   const changed = finalResults.some((result, i) => !sameContour(result, contours[i]));
   return changed ? finalResults : null;
 }
+
+// Balancing after Simplify evens a segment's two handles while holding its
+// fullness, and that can move the curve away from what it replaced: on the
+// cacute of wip.fontra one segment went from 0.56 units off the drawing to
+// 4.0. Keep each balanced segment only where it still lies within the
+// tolerance of the original contour; elsewhere put Simplify's handles back.
+// The three contours share their point structure.
+export function keepBalancedWithinTolerance(original, simplified, balanced, tolerance) {
+  const originalPolyline = piecesPolyline(contourToCubicPieces(original));
+  const simplifiedPieces = contourToCubicPieces(simplified);
+  const points = balanced.points.map((point) => ({ ...point }));
+  for (const piece of contourToCubicPieces(balanced)) {
+    if (piece.kind !== "cubic") {
+      continue;
+    }
+    const before = simplifiedPieces.find(
+      (other) => other.startPointIndex === piece.startPointIndex
+    );
+    const moved = piece.points.some(
+      (point, i) => point.x !== before.points[i].x || point.y !== before.points[i].y
+    );
+    if (!moved) {
+      continue;
+    }
+    const departure = Math.max(
+      ...candidatePolyline(piece.points).map((point) =>
+        nearestDistance(point, originalPolyline)
+      )
+    );
+    if (departure <= tolerance) {
+      continue;
+    }
+    for (const index of offCurveIndicesBetween(balanced, piece)) {
+      points[index] = { ...simplified.points[index] };
+    }
+  }
+  return { ...balanced, points };
+}
+
+function offCurveIndicesBetween(contour, piece) {
+  const indices = [];
+  const n = contour.points.length;
+  for (
+    let i = (piece.startPointIndex + 1) % n;
+    i !== piece.endPointIndex;
+    i = (i + 1) % n
+  ) {
+    indices.push(i);
+  }
+  return indices;
+}

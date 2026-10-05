@@ -2671,8 +2671,11 @@ points on the two curves leaving the terminal's corners.
   tension, and balancing it pushed a handle past its own on-curve: the loop
   at point 25. Balance now refuses a segment whose handle lines do not cross
   ahead of both handles. It still re-splits ordinary curves and so moves the
-  end curvatures Simplify fitted (point 10 of the `W`, 22/23 to 63/26); the
-  step is still in the command.
+  end curvatures Simplify fitted (point 10 of the `W`, 22/23 to 63/26). A
+  balanced segment is now kept only where it lies within Simplify's
+  tolerance of the drawing (`keepBalancedWithinTolerance`): on the `cacute`
+  balancing took one segment from 0.56 units off to 4.0, and four of its
+  seven segments go back to Simplify's handles.
 - **The first fit search was too coarse and refused real apexes** -- the top
   of the `O`, 3 units above an end 34 units away. A brute whole-unit search
   fitted it at 7 per cent. The search now keeps every length pair inside the

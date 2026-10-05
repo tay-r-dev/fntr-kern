@@ -743,7 +743,10 @@ describe("simplifyContour / rebuildSimplifiedContour", () => {
   });
 });
 
-import { simplifyContourCompatible } from "@fontra/core/path-simplification.js";
+import {
+  keepBalancedWithinTolerance,
+  simplifyContourCompatible,
+} from "@fontra/core/path-simplification.js";
 
 function scaleContour(contour, factor) {
   return {
@@ -961,8 +964,8 @@ describe("simplify places a point at an inflection only where an S does not fit"
     const points = onCurves(result);
     expect(hasPointNear(points, 385, 565, 0)).to.equal(false);
     expect(hasPointNear(points, 326.2, 513.6)).to.equal(true);
-    expect(result.points.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y))).to
-      .be.true;
+    expect(result.points.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y)))
+      .to.be.true;
   });
 
   it("removes a drawn point between two extrema even past the tolerance", () => {
@@ -1003,5 +1006,25 @@ describe("simplify places a point at an inflection only where an S does not fit"
       ],
     };
     expect(simplifyContourCompatible([contour], { tolerance: 1 })).to.equal(null);
+  });
+
+  it("keeps a balanced segment only where it still fits the drawing", () => {
+    const original = cacuteContour();
+    const simplified = simplifyContourCompatible([original], { tolerance: 1 })[0];
+    expect(simplified.points[7]).to.deep.include({ x: 58, y: 573 });
+    expect(simplified.points[8]).to.deep.include({ x: 118, y: 565 });
+    const balanced = {
+      ...simplified,
+      points: simplified.points.map((p) => ({ ...p })),
+    };
+    // What balancing wrote on the cacute: 4 units off the drawing.
+    Object.assign(balanced.points[7], { x: 69, y: 573 });
+    Object.assign(balanced.points[8], { x: 144, y: 537 });
+    // A one-unit change elsewhere still fits, and stays.
+    Object.assign(balanced.points[11], { x: balanced.points[11].x + 1 });
+    const kept = keepBalancedWithinTolerance(original, simplified, balanced, 1);
+    expect(kept.points[7]).to.deep.include({ x: 58, y: 573 });
+    expect(kept.points[8]).to.deep.include({ x: 118, y: 565 });
+    expect(kept.points[11].x).to.equal(simplified.points[11].x + 1);
   });
 });

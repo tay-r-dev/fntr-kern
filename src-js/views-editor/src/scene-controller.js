@@ -32,7 +32,10 @@ import {
 } from "@fontra/core/harmonization.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate, translatePlural } from "@fontra/core/localization.js";
-import { simplifyContourCompatible } from "@fontra/core/path-simplification.js";
+import {
+  keepBalancedWithinTolerance,
+  simplifyContourCompatible,
+} from "@fontra/core/path-simplification.js";
 import { MouseTracker } from "@fontra/core/mouse-tracker.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import {
@@ -159,7 +162,8 @@ const MIN_SIMPLIFY_TOLERANCE = 1;
 // Simplify one contour across its masters with the least deviation that
 // achieves anything: the smallest whole-unit tolerance that removes a point.
 // Failing that, the smallest result that changes the contour at all, which is
-// how a contour missing points on its extrema still gets them.
+// how a contour missing points on its extrema still gets them. Returns the
+// results with the tolerance that produced them, or null.
 function simplifyWithLeastDeviation(perMaster) {
   let gentlest = null;
   const before = perMaster[0].points.length;
@@ -173,9 +177,9 @@ function simplifyWithLeastDeviation(perMaster) {
       continue;
     }
     if (results[0].points.length < before) {
-      return results;
+      return { results, tolerance };
     }
-    gentlest = gentlest ?? results;
+    gentlest = gentlest ?? { results, tolerance };
   }
   return gentlest;
 }
@@ -2352,35 +2356,53 @@ export class SceneController {
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       const layers = Object.values(layerGlyphs);
       const rewritten = [];
+      const simplifiedContours = new Map();
       for (const contourIndex of contourIndices) {
         const perMaster = layers.map((layerGlyph) =>
           layerGlyph.path.getUnpackedContour(contourIndex)
         );
-        const results = simplifyWithLeastDeviation(perMaster);
-        if (!results) {
+        const simplified = simplifyWithLeastDeviation(perMaster);
+        if (!simplified) {
           continue;
         }
+        const { results } = simplified;
         for (const [layerIndex, layerGlyph] of layers.entries()) {
           // Net-zero contour count: no skeleton bookkeeping needed.
           layerGlyph.path.deleteContour(contourIndex);
           layerGlyph.path.insertContour(contourIndex, packContour(results[layerIndex]));
         }
         rewritten.push(contourIndex);
+        simplifiedContours.set(contourIndex, { perMaster, ...simplified });
       }
       if (!rewritten.length) {
         return undefined;
       }
       // Fitting one curve where there were several leaves the two handles of
       // a segment lopsided. Balancing evens them out while holding the
-      // segment's own fullness, so the outline keeps its shape and only the
-      // handle split changes. Same rule as the Tunni gizmo's equalize
-      // gesture. Scoped to the contours this run rewrote: an empty list means
+      // segment's own fullness. That changes how the curve bends along its
+      // length, so a balanced segment is kept only where it still lies within
+      // Simplify's tolerance of the drawing; elsewhere Simplify's handles go
+      // back. Scoped to the contours this run rewrote: an empty list means
       // the whole path to balancePathInPlace.
-      for (const layerGlyph of layers) {
+      for (const [layerIndex, layerGlyph] of layers.entries()) {
         balancePathInPlace(
           layerGlyph.path,
           pointIndicesOfContours(layerGlyph.path, rewritten)
         );
+        for (const [
+          contourIndex,
+          { perMaster, results, tolerance },
+        ] of simplifiedContours) {
+          const balanced = layerGlyph.path.getUnpackedContour(contourIndex);
+          const kept = keepBalancedWithinTolerance(
+            perMaster[layerIndex],
+            results[layerIndex],
+            balanced,
+            tolerance
+          );
+          layerGlyph.path.deleteContour(contourIndex);
+          layerGlyph.path.insertContour(contourIndex, packContour(kept));
+        }
       }
       // The first on-curve point of each simplified contour always survives.
       this.selection = new Set(
