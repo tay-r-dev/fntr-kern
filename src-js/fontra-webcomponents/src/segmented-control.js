@@ -25,7 +25,7 @@ const colors = {
   "segmented-control-tray-color": ["var(--sl-sgb-sr-rest)", "#3a3a3e"],
   "segmented-control-border-color": ["var(--sl-sgb-ln-rest)", "#6a6a74"],
   "segmented-control-disabled-border-color": ["var(--sl-sgb-ln-disabled)", "#4a4a50"],
-  "segmented-control-tray-hover-color": ["#d5ed57", "#d5ed57"], // lime-deprecated/7
+  "segmented-control-tray-hover-color": ["var(--sl-sgb-sr-hover)", "#d5ed57"],
   "segmented-control-tray-hover-border-color": ["var(--sl-sgb-ln-hover)", "#b7d817"],
   "segmented-control-on-hover-shadow-color": [
     "var(--sl-sgc-sh-active-rest)",
@@ -34,6 +34,15 @@ const colors = {
   "segmented-control-on-background-color": ["var(--sl-sgc-sr-active)", "#5a5a60"],
   "segmented-control-on-shadow-color": ["var(--sl-sgc-sh-active-hover)", "#000000a0"],
   "segmented-control-off-text-color": ["var(--sl-sgc-lb-rest)", "#ffffff80"],
+  "segmented-control-off-container-hover-text-color": [
+    "var(--sl-sgc-lb-hover-container)",
+    "#d0eb49",
+  ],
+  "segmented-control-on-hover-background-color": [
+    "var(--sl-sgc-sr-active-hover)",
+    "#5a5a60",
+  ],
+  "segmented-control-on-hover-text-color": ["var(--sl-sgc-lb-active-hover)", "#e9e9ed"],
   "segmented-control-on-text-color": ["var(--sl-sgc-lb-active-rest)", "#e9e9ed"],
   "segmented-control-disabled-text-color": ["var(--sl-sgc-lb-disabled)", "#ffffff40"],
   "segmented-control-hover-background-color": ["var(--sl-sgc-sr-hover)", "#9cbb12"],
@@ -87,7 +96,15 @@ export class SegmentedControl extends UnlitElement {
     }
 
     .row:hover button.on {
+      background: var(--segmented-control-on-hover-background-color);
       box-shadow: 0 1px 1px var(--segmented-control-on-hover-shadow-color);
+      color: var(--segmented-control-on-hover-text-color);
+    }
+
+    /* select/segmented/chip "contaner-hover, inactive": with the pointer on
+       the tray, the other chips' labels turn lime. */
+    .row:hover:not(:has(button:disabled)) button:not(.on):not(:hover) {
+      color: var(--segmented-control-off-container-hover-text-color);
     }
 
     button.on {

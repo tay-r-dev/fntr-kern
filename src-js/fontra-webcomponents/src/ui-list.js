@@ -19,7 +19,7 @@ const colors = {
   "table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
   "table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
   "table-look-divider-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
-  "table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
+  "table-look-heading-color": ["var(--grey-deprecated-5)", "#8e8e8e"],
   "table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
   "table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],

@@ -48,7 +48,7 @@ const lookColors = {
   "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
   "data-table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
   "data-table-look-divider-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
-  "data-table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
+  "data-table-look-heading-color": ["var(--grey-deprecated-5)", "#8e8e8e"],
   "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
   "data-table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],

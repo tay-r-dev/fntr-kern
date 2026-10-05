@@ -378,6 +378,7 @@ export const strings = {
   "kerning.hold-hand-tool": "Hold for Hand Tool",
   "kerning.title": "Kerning",
   "components.title": "Components",
+  "multi-select-dropdown.empty": "select",
   "kerning.toggle-suggestion-preview": "Toggle Suggestion Preview",
   "language.en": "English",
   "language.zh-cn": "Simplified Chinese",

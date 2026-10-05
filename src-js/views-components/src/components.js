@@ -155,16 +155,26 @@ function dropdowns() {
     { value: "c", label: "third", checked: checked.includes("c") },
   ];
   const dropdown = (props) => {
-    const d = make("multi-select-dropdown", { label: "label", ...props });
+    const d = make("multi-select-dropdown", { label: "preset", ...props });
     d.classList.add("gallery-field");
     return d;
   };
-  return row(
-    cell("empty", dropdown({ items: items([]) })),
-    cell("picks", dropdown({ items: items(["a", "c"]) })),
-    cell("single choice", dropdown({ singleChoice: true, items: items(["b"]) })),
-    cell("disabled", dropdown({ items: items(["a"]), disabled: true }))
-  );
+  const states = (labelAbove) =>
+    row(
+      cell("empty", dropdown({ labelAbove, items: items([]) })),
+      cell("one pick", dropdown({ labelAbove, items: items(["b"]) })),
+      cell("several picks", dropdown({ labelAbove, items: items(["a", "c"]) })),
+      cell(
+        "single choice",
+        dropdown({ labelAbove, singleChoice: true, items: items(["b"]) })
+      ),
+      cell("disabled", dropdown({ labelAbove, items: items([]), disabled: true })),
+      cell(
+        "disabled, filled",
+        dropdown({ labelAbove, items: items(["a"]), disabled: true })
+      )
+    );
+  return [states(false), states(true)];
 }
 
 function textInputs() {
@@ -389,7 +399,11 @@ export function buildComponentsGallery(container) {
     section("button/latch", "Figma 287:15701", latchButtons()),
     section("select/segmented", "Figma 2004:29330", segmentedControls()),
     section("select/toggle", "Figma 2004:29380", toggles()),
-    section("select/dropdown", "Figma 2004:29427, 2004:29483", dropdowns()),
+    section(
+      "select/dropdown",
+      "Figma 2004:29427 field, 2004:29458 with its label above, 2004:29483 menu",
+      ...dropdowns()
+    ),
     section("input/text", "Figma 2004:29656", textInputs()),
     section(
       "input/field",

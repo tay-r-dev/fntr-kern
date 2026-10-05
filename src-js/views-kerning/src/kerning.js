@@ -2519,8 +2519,7 @@ export class KerningViewController extends ViewController {
     const sideDropdown = html.createDomElement("multi-select-dropdown", {
       label: "side",
       singleChoice: true,
-      // The label stays; a side other than both is flagged by the badge.
-      showPick: false,
+      // Both reads as the empty field: the property name.
       items: sideLabels.map(([value, label]) => ({
         value,
         label,
@@ -2673,7 +2672,6 @@ export class KerningViewController extends ViewController {
     const glyphsetDropdown = html.createDomElement("multi-select-dropdown", {
       label: "glyphset",
       singleChoice: true,
-      showPick: false,
       items: glyphsetItems,
     });
     document

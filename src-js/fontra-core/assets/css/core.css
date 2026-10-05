@@ -319,6 +319,7 @@
   --sl-sgcs-disabled: #ffffff00;
   --sl-sgc-lb-rest: #8d8d8d;
   --sl-sgc-lb-hover: #ffffff;
+  --sl-sgc-lb-hover-container: #71900a;
   --sl-sgc-lb-active-rest: #515151;
   --sl-sgc-lb-active-hover: #515151;
   --sl-sgc-lb-disabled: #c9c9c9;
@@ -453,7 +454,6 @@
   --tbl-lb-sec-rest-selection: #56730566;
   --tbl-lb-sec-hover-selection: #3b560099;
   --tbl-lb-sec-disabled: #b8b8b8;
-  --tbl-lb-heading: #b4b4b4;
 
   /* indication/badge */
   --ind-bdg-sr-active: #d0eb49;
@@ -462,6 +462,16 @@
   --ind-bdg-sr-alert: #d0eb49;
   --ind-bdg-sr-crtitical: #d0eb49;
   --ind-bgg-size: 6px;
+}
+
+/* Primitives the components bind directly in Figma, rather than through a
+   component token (the "gradients" collection). Named as in Figma. */
+:root {
+  --grey-deprecated-3: #565656;
+  --grey-deprecated-5: #b4b4b4;
+  --lime-deprecated-0: #3b5600;
+  --lime-deprecated-7: #d5ed57;
+  --lime-alpha-dark-20: #3b560033;
 }
 
 :root.dark-theme {

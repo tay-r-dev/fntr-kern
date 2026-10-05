@@ -113,8 +113,10 @@ export class TextButton extends UnlitElement {
       background-color: var(--text-button-hover-face-color);
     }
 
+    /* The sides' rule grows 1px; the padding gives it back, so the key keeps
+       its width. */
     :host(:active) button {
-      padding: 4px 3px 2px;
+      padding: 4px 2px 2px;
       border-color: var(--text-button-press-border-color);
       border-width: 2px 2px 0;
       background-color: var(--text-button-press-background-color);

@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
+import { translate } from "@fontra/core/localization.js";
 import "./inline-svg.js";
 import { MenuItemDivider, showMenu } from "./menu-panel.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -50,14 +51,34 @@ const colors = {
     "var(--sl-drf-ln-disabled)",
     "rgba(255, 255, 255, 0.08)",
   ],
-  // The label and chevron: grey at rest, dark on hover and while open.
+  // The field's text: empty (the property name, or "select" under a label)
+  // and filled (the pick), each at rest, on hover and while open.
   "multi-select-dropdown-placeholder-color": ["var(--sl-drf-lb-empty-rest)", "#8e8e8e"],
   "multi-select-dropdown-text-color": ["var(--sl-drf-lb-empty-hover)", "#e0e0e0"],
+  "multi-select-dropdown-open-text-color": ["var(--sl-drf-lb-empty-focus)", "#e0e0e0"],
+  "multi-select-dropdown-filled-text-color": [
+    "var(--sl-drf-lb-filled-rest)",
+    "#b0b0b0",
+  ],
+  "multi-select-dropdown-filled-hover-text-color": [
+    "var(--sl-drf-lb-filled-hover)",
+    "#e0e0e0",
+  ],
   "multi-select-dropdown-disabled-text-color": ["var(--sl-drf-lb-disabled)", "#5a5a5a"],
-  // The "+N" tag after the label of a field with picks (Figma literals).
-  "multi-select-dropdown-tag-color": ["#d5ed57", "#d5ed57"],
-  "multi-select-dropdown-tag-border-color": ["#3b560033", "#3b560033"],
-  "multi-select-dropdown-tag-text-color": ["#3b5600", "#3b5600"],
+  // The chevron.
+  "multi-select-dropdown-chevron-color": ["var(--sl-drf-ic-rest)", "#8e8e8e"],
+  "multi-select-dropdown-chevron-hover-color": ["var(--sl-drf-ic-hover)", "#e0e0e0"],
+  "multi-select-dropdown-chevron-open-color": ["var(--sl-drf-ic-focus)", "#e0e0e0"],
+  "multi-select-dropdown-chevron-disabled-color": [
+    "var(--sl-drf-ic-disabled)",
+    "#5a5a5a",
+  ],
+  // The label above the field (select/dropdown, Figma 2004:29458).
+  "multi-select-dropdown-heading-color": ["var(--grey-deprecated-3)", "#b0b0b0"],
+  // The "+N" tag after the pick when there are several.
+  "multi-select-dropdown-tag-color": ["var(--lime-deprecated-7)", "#d5ed57"],
+  "multi-select-dropdown-tag-border-color": ["var(--lime-alpha-dark-20)", "#3b560033"],
+  "multi-select-dropdown-tag-text-color": ["var(--lime-deprecated-0)", "#3b5600"],
   // The open list: white, hairline border, soft shadow.
   "multi-select-dropdown-list-background-color": ["#fff", "#2a2a2a"],
   "multi-select-dropdown-list-border-color": [
@@ -225,6 +246,26 @@ export class MultiSelectDropdown extends UnlitElement {
       cursor: default;
     }
 
+    /* With labelAbove (select/dropdown, Figma 2004:29458): the property name
+       over the field, 4px apart. */
+    :host([label-above]) {
+      display: inline-flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    /* ui/label/XS */
+    .heading {
+      font: 320 9px / 10px var(--ui-font-mono);
+      font-stretch: 75%;
+      letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
+      color: var(--multi-select-dropdown-heading-color);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
     button {
       pointer-events: none;
       background-color: var(--multi-select-dropdown-background-color);
@@ -245,12 +286,40 @@ export class MultiSelectDropdown extends UnlitElement {
       align-items: center;
     }
 
-    /* The label and chevron are grey at rest, empty or filled alike, and
-       dark on hover and while the list is open. */
-    button.open,
+    /* select/dropdown/field (Figma 2004:29427): the text and the chevron
+       each take their own token per state, empty or filled. */
+    button.filled {
+      color: var(--multi-select-dropdown-filled-text-color);
+    }
+
     button.icon-mode,
     :host(:hover) button {
       color: var(--multi-select-dropdown-text-color);
+    }
+
+    :host(:hover) button.filled {
+      color: var(--multi-select-dropdown-filled-hover-text-color);
+    }
+
+    button.open,
+    :host(:hover) button.open {
+      color: var(--multi-select-dropdown-open-text-color);
+    }
+
+    .chevron {
+      color: var(--multi-select-dropdown-chevron-color);
+    }
+
+    :host(:hover) .chevron {
+      color: var(--multi-select-dropdown-chevron-hover-color);
+    }
+
+    button.open .chevron {
+      color: var(--multi-select-dropdown-chevron-open-color);
+    }
+
+    button:disabled .chevron {
+      color: var(--multi-select-dropdown-chevron-disabled-color);
     }
 
     :host(:hover) button {
@@ -264,7 +333,7 @@ export class MultiSelectDropdown extends UnlitElement {
       border-color: var(--multi-select-dropdown-open-border-color);
     }
 
-    /* A field with picks: the lime "+N" tag after the label. */
+    /* Several picks: the lime "+N" tag (the other picks) after the first. */
     .tag {
       display: none;
       flex: none;
@@ -409,24 +478,29 @@ export class MultiSelectDropdown extends UnlitElement {
     this._updateButtonClass();
   }
 
-  // A one-choice dropdown reads as its pick unless `showPick` is false; then
-  // it keeps its label and flags a pick other than a `showsLabel` one (an
-  // "All") with the badge, as a several-choice dropdown does.
-  get showPick() {
-    return this._showPick ?? true;
+  // `labelAbove`: the label is drawn over the field (select/dropdown), and
+  // the empty field says "select". Without it the empty field shows the
+  // label itself.
+  get labelAbove() {
+    return this._labelAbove ?? false;
   }
 
-  set showPick(value) {
-    this._showPick = !!value;
-    this._updateButtonClass();
+  set labelAbove(value) {
+    this._labelAbove = !!value;
+    this.toggleAttribute("label-above", this._labelAbove);
+    this.requestUpdate();
+  }
+
+  // The picks the field shows. A pick flagged `showsLabel` (an "All") reads
+  // as no pick.
+  _picks() {
+    return this._items.filter(
+      (item) => item.checked && !item.divider && !item.showsLabel
+    );
   }
 
   _isBadged() {
-    const picked = this._items.filter((item) => item.checked && !item.divider);
-    if (!this._singleChoice) {
-      return picked.length > 0;
-    }
-    return !this.showPick && picked.some((item) => !item.showsLabel);
+    return this._picks().length > 1;
   }
 
   get note() {
@@ -438,6 +512,7 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   render() {
+    this._headingSpan = this.labelAbove ? html.div({ class: "heading" }) : null;
     this._labelSpan = html.span({ class: "label" });
     this._tagSpan = null;
     this._button = html.createDomElement(
@@ -466,13 +541,13 @@ export class MultiSelectDropdown extends UnlitElement {
           ]
     );
     this._updateLabel();
-    return this._button;
+    return this._headingSpan ? [this._headingSpan, this._button] : this._button;
   }
 
   _buttonClass() {
     return [
       this._icon ? "icon-mode" : "",
-      this._items.some((item) => item.checked && !item.divider) ? "filled" : "",
+      this._picks().length ? "filled" : "",
       this._isBadged() ? "badged" : "",
       this._menu ? "open" : "",
     ]
@@ -480,28 +555,28 @@ export class MultiSelectDropdown extends UnlitElement {
       .trim();
   }
 
-  // A one-choice dropdown reads as its pick; a several-choice one, a
-  // one-choice one with nothing picked, and a pick flagged `showsLabel` (an
-  // "All") read as the label.
+  // Filled, the field reads as its first pick (the tag counts the rest).
+  // Empty, it reads as the label, or "select" when the label is above it.
   _displayLabel() {
-    if (this._singleChoice && this.showPick) {
-      const picked = this._items.find((item) => item.checked && !item.divider);
-      if (picked && !picked.showsLabel) {
-        return picked.label ?? String(picked.value);
-      }
+    const first = this._picks()[0];
+    if (first) {
+      return first.label ?? String(first.value);
     }
-    return this._label;
+    return this.labelAbove ? translate("multi-select-dropdown.empty") : this._label;
   }
 
   _updateLabel() {
+    if (this._headingSpan) {
+      this._headingSpan.textContent = this._label;
+    }
     if (this._labelSpan) {
       const text = this._displayLabel();
+      const picks = this._picks().map((item) => item.label ?? String(item.value));
       this._labelSpan.textContent = text;
-      this._labelSpan.title = text;
+      this._labelSpan.title = picks.length ? picks.join(", ") : text;
     }
     if (this._tagSpan) {
-      const count = this._items.filter((item) => item.checked && !item.divider).length;
-      this._tagSpan.textContent = `+${count}`;
+      this._tagSpan.textContent = `+${this._picks().length - 1}`;
     }
   }
 
