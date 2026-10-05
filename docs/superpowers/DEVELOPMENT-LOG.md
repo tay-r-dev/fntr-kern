@@ -2716,7 +2716,10 @@ worst smooth-joint curvature step got worse than the original drawing's; the
 point stand 0.1 to 5.6 units past a nearby end; the largest, the `A` crossbar
 at 5.6, sits 19 units from a corner where the grid cannot hold it. Cost: the
 whole font 0.6 s to 9.2 s, the `W` 150 ms -- `gridFit` is a 900-cell look plus
-a local search per part.
+a local search per part. Since cut by caching `gridFit` by geometry (the
+editor tries ten tolerances and no fit depends on one) and by stopping a
+point's distance search once it cannot raise the maximum: all 990 contours
+of wip.fontra at two tolerances 6.6 s to 1.0 s, byte-identical output.
 
 ---
 
