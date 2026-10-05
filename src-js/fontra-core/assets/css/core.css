@@ -291,10 +291,11 @@
   --bt-sgt-ln-select-hover: #d0eb49;
   --bt-sgt-sr-select-focus: #e2f38f;
   --bt-sgt-ln-select-focus: #d0eb49;
-  --bt-sgt-ic-select-rest: #71900acc;
+  --bt-sgt-ic-select-rest: #71900a80;
   --bt-sgt-ic-select-active: #567305;
   --bt-sgt-ic-select-focus: #8eac10;
-  --bt-sgt-ic-select-disabled: #71900a66;
+  --bt-sgt-ic-select-disabled: #71900a40;
+  --bt-sgt-ic-rest: #b8b8b8;
   /* button/overrides/text */
   --bt-sgx-sr-focus: #f5f5f5;
 
@@ -307,6 +308,7 @@
   --sl-sgb-ln-rest: #dadada;
   --sl-sgb-ln-hover: #b7d817;
   --sl-sgb-ln-disabled: #ededed;
+  --sl-sgb-sr-hover: #d0eb49;
   /* select/segmented/chip */
   --sl-sgc-radius: 3px;
   --sl-sgc-sr-rest: #ffffff00;
@@ -362,6 +364,7 @@
   --sl-drf-ic-hover: #515151;
   --sl-drf-ic-focus: #515151;
   --sl-drf-ic-disabled: #c9c9c9;
+  --sl-drf-ln-focus: #c9c9c9;
   /* select/dropdown/menu-item */
   --sl-drm-corner: 3px;
   --sl-drm-sr-single-rest: #ffffff;
@@ -380,6 +383,8 @@
   --sl-drm-lb-multi-active-hover: #567305;
   --sl-drm-ic-multi-active: #8eac10;
   --sl-drm-ic-multi-active-hover: #71900a;
+  --sl-drm-ic-multi-rest: #8d8d8d;
+  --sl-drm-ic-multi-hover: #515151;
 
   /* input/base */
   --in-bsn-height: 24px;
@@ -391,6 +396,8 @@
   --in-bln-rest: #dadada;
   --in-bln-focus: #ededed;
   --in-bln-disabled: #ededed;
+  --in-bsr-hover: #f5f5f5;
+  --in-bln-hover: #dadada;
   /* input/content */
   --in-cnn-corner: 3px;
   --in-csr-rest: #f5f5f5;
@@ -426,6 +433,7 @@
   /* table: one look for every table (the old table/data and table/select
      merged). The row's states are rest, hover, selection (active),
      selection hover and disabled. */
+  --tbl-ln-rest: #ededed;
   --tbl-height: 24px;
   --tbl-cs-sr-rest: #ffffff;
   --tbl-cs-sr-hover: #ffffff;
@@ -437,7 +445,7 @@
   --tbl-lb-prim-rest: #8d8d8d;
   --tbl-lb-prim-hover: #515151;
   --tbl-lb-prim-rest-selection: #567305bf;
-  --tbl-lb-prim-hover-selection: #3b5600e5;
+  --tbl-lb-prim-hover-selection: #3b5600e6;
   --tbl-lb-prim-disabled: #b8b8b8;
   --tbl-lb-sec-rest: #b8b8b8;
   --tbl-lb-sec-hover: #8d8d8d;
@@ -450,6 +458,9 @@
   --ind-bdg-sr-active: #d0eb49;
   --ind-bdg-ln-inside: #9cbb12;
   --ind-bdg-ln-outside: #ffffff;
+  --ind-bdg-sr-alert: #d0eb49;
+  --ind-bdg-sr-crtitical: #d0eb49;
+  --ind-bgg-size: 6px;
 }
 
 :root.dark-theme {

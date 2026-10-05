@@ -17,7 +17,8 @@ const colors = {
   // system's tokens (core.css); dark ones stay hand-picked.
   "table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
   "table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
-  "table-look-rule-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-divider-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
   "table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
   "table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
@@ -220,6 +221,18 @@ export class UIList extends UnlitElement {
       color: var(--table-look-heading-color);
     }
 
+    /* A hovered head cell shows a divider at each edge: 16px, centred. */
+    :host([look]) .text-cell-header:hover {
+      background-image:
+        linear-gradient(var(--table-look-divider-color), var(--table-look-divider-color)),
+        linear-gradient(var(--table-look-divider-color), var(--table-look-divider-color));
+      background-size: 1px 16px;
+      background-position:
+        left center,
+        right center;
+      background-repeat: no-repeat;
+    }
+
     /* Header and rows are different sizes of type, so every width and gap
        here is in px: an em width would come out narrower in the head than
        in the rows, and the labels would drift from their columns. */
@@ -241,6 +254,12 @@ export class UIList extends UnlitElement {
       box-sizing: border-box;
       flex: none;
       padding: 0;
+    }
+
+    /* A head cell is the head's full height, so its hover dividers have
+       room to stand centred in it. */
+    :host([look]) .text-cell-header {
+      line-height: var(--tbl-height, 24px);
     }
 
     :host([look]) .text-cell,

@@ -46,7 +46,8 @@ const MAX_HIDEABLE_COLUMNS = 24;
 const lookColors = {
   "data-table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
   "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
-  "data-table-look-rule-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-divider-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
   "data-table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
   "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
@@ -76,6 +77,10 @@ const lookColors = {
     "#a9b97a",
   ],
   "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "data-table-look-selection-icon-active-color": [
+    "var(--bt-sgt-ic-select-active)",
+    "#c4dc6a",
+  ],
   "data-table-look-selection-icon-press-color": [
     "var(--bt-sgt-ic-select-focus)",
     "#c4dc6a",
@@ -387,6 +392,28 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-heading-color);
   }
 
+  /* A hovered head cell shows a divider at each edge: 16px, centred. */
+  data-table[look] .data-table thead th:hover {
+    background-image:
+      linear-gradient(var(--data-table-look-divider-color), var(--data-table-look-divider-color)),
+      linear-gradient(var(--data-table-look-divider-color), var(--data-table-look-divider-color));
+    background-size: 1px 16px;
+    background-position:
+      left center,
+      right center;
+    background-repeat: no-repeat;
+  }
+
+  /* The column grip's hairline is that divider, held while dragging. */
+  data-table[look] .data-table-column-grip::after {
+    background: var(--data-table-look-divider-color);
+  }
+
+  data-table[look] .data-table-column-grip:hover::after,
+  data-table[look] .data-table-column-grip.dragging::after {
+    opacity: 1;
+  }
+
   /* The sort is told by its arrow; the head keeps one colour. */
   data-table[look] .data-table th.data-table-sort-active {
     font-weight: 400;
@@ -487,6 +514,11 @@ const DATA_TABLE_STYLES = `
      edge on hover, a lime face while pressed. */
   data-table[look] tr.data-table-row-selected icon-button {
     --icon-button-icon-color: var(--data-table-look-selection-icon-color);
+    --icon-button-icon-active-color: var(
+      --data-table-look-selection-icon-active-color
+    );
+    /* The badge's ring is the selected row's fill. */
+    --ind-bdg-ln-outside: var(--data-table-look-selection-color);
     --icon-button-icon-press-color: var(--data-table-look-selection-icon-press-color);
     --icon-button-icon-disabled-color: var(
       --data-table-look-selection-icon-disabled-color

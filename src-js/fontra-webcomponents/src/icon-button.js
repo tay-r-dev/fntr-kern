@@ -35,9 +35,10 @@ const colors = {
     "var(--bt-sgi-ln-focus)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  // button/table (Figma 4054:1391): the same states in a table row, but
-  // hover lifts the face to white with a pale border (the row under it may
-  // be the light grey).
+  // button/table (Figma 4054:1391): the same states in a table row, but a
+  // paler icon at rest, and hover lifts the face to white with a pale border
+  // (the row under it may be the light grey).
+  "icon-button-table-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
   "icon-button-table-hover-background-color": ["var(--bt-sgt-sr-hover)", "#2c2c2c"],
   "icon-button-table-hover-border-color": [
     "var(--bt-sgt-ln-hover)",
@@ -146,6 +147,10 @@ export class IconButton extends UnlitElement {
 
     button:disabled {
       color: var(--icon-button-icon-disabled-color);
+    }
+
+    :host([table]) {
+      --icon-button-icon-color: var(--icon-button-table-icon-color);
     }
 
     :host([table]:hover) button:not(:disabled):not(.icon-button-latch) {
