@@ -464,6 +464,7 @@ function resolvePoints(candidates, points, cursor, options) {
     pull: 0,
     held: [],
     target: null,
+    constraint: options.constraint,
     freedom: fallback ? "line" : "free",
     suggestion: null,
     overrule: null,
@@ -839,10 +840,10 @@ export function roundSnapped(result, roundFunc) {
   if (freedom === "point") {
     return { ...position };
   }
-  if (freedom === "free" || !held.length) {
+  if (freedom === "free" || (!held.length && !result.constraint)) {
     return { x: roundFunc(position.x), y: roundFunc(position.y) };
   }
-  const candidate = held[0];
+  const candidate = held[0] || result.constraint;
   if (candidate.type === "curve") {
     // Rounding across the curve throws the point off it, so the whole unit is
     // taken along the tangent at the foot and the result is projected back.

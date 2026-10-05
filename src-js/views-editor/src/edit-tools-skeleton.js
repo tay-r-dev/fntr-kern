@@ -30,7 +30,7 @@ import {
   parseSkeletonPointKey,
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
-import { SnappingSession } from "./snapping-interactions.js";
+import { SnappingSession, constraintLineForDelta } from "./snapping-interactions.js";
 
 // The dropdown, laid out like the ordinary pen's: one button that opens onto the
 // two pens. They differ in one thing, which is the state a contour they start is
@@ -211,8 +211,14 @@ export class SkeletonPenTool extends BaseTool {
   // and a point just placed is a source.
   _snapPoint(event) {
     const session = this._snapSession();
+    session.refresh();
     const point = this.sceneController.selectedGlyphPoint(event);
-    return point ? session.resolve(point) : point;
+    const anchor = event.shiftKey ? this._getDrawingEndpointPosition() : null;
+    const constraint =
+      point && anchor
+        ? constraintLineForDelta(vector.subVectors(point, anchor), anchor)
+        : null;
+    return point ? session.resolve(point, { constraint }) : point;
   }
 
   // The hover redraw below fires only when the pen's own hover answers change,
@@ -220,16 +226,12 @@ export class SkeletonPenTool extends BaseTool {
   // other hover state happens to change.
   _updateSnapHover(event) {
     const session = this._snapSession();
-    session.refresh();
     // Alt over a line segment inserts two handles at its thirds. The cursor
     // names the segment and nothing else - where the handles land is the
     // segment's own arithmetic - so a magnet has nothing to move, and the
     // guides it draws would describe a placement that is not happening.
     session.suppressed = !!this.sceneModel.skeletonInsertHandles;
-    const point = this.sceneController.selectedGlyphPoint(event);
-    if (point) {
-      session.resolve(point);
-    }
+    this._snapPoint(event);
     const snapState = JSON.stringify([
       this.sceneModel.snapHeldCandidates?.map((c) => [
         c.kind,
@@ -552,15 +554,15 @@ export class SkeletonPenTool extends BaseTool {
     // point of a contour has nothing to be square to. The constraint is taken
     // once, from the edit layer, so every layer receives the same point - which
     // is what the unconstrained path already did.
-    if (initialEvent.shiftKey) {
+    if (initialEvent.shiftKey && !this._snapSession().enabled) {
       const previous = this._getDrawingEndpointPosition();
       if (previous) {
         glyphPoint = shiftConstrainPoint(previous, glyphPoint);
       }
     }
     const pointData = {
-      x: Math.round(glyphPoint.x),
-      y: Math.round(glyphPoint.y),
+      x: this._snapSession().enabled ? glyphPoint.x : Math.round(glyphPoint.x),
+      y: this._snapSession().enabled ? glyphPoint.y : Math.round(glyphPoint.y),
       type: null,
       smooth: false,
     };

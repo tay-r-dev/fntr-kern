@@ -1,4 +1,11 @@
 import { expect } from "chai";
+import { VarPackedPath } from "@fontra/core/var-path.js";
+import { makeEmptySkeletonData } from "@fontra/core/skeleton-model.js";
+import {
+  distanceToCandidate,
+  makeCurveCandidate,
+  KIND,
+} from "@fontra/core/snapping.js";
 import { SNAP_PARAMETERS, resetSnapParameters } from "@fontra/core/snapping.js";
 
 // Only the shortcut imports need browser storage; the scene and resolver are real.
@@ -96,5 +103,84 @@ describe("snap session lifetime", () => {
     expect(session.held).to.equal(null);
     expect(controller.sceneModel.snapDebugReadout).to.equal(null);
     expect(controller.sceneModel.snapIndicator).to.equal(null);
+  });
+});
+
+const { getPenToolBehavior } = await import("../src/edit-tools-pen.js");
+const { SkeletonPenTool } = await import("../src/edit-tools-skeleton.js");
+
+function penSetup(path = new VarPackedPath(), selection = new Set()) {
+  const { session, controller } = setup();
+  controller.selection = selection;
+  controller.selectedGlyphPoint = (event) => ({ x: event.x, y: event.y });
+  controller.localPoint = controller.selectedGlyphPoint;
+  controller.sceneModel.pointSelectionAtPoint = () => new Set();
+  session.scene = {
+    metrics: [{ value: 0.75 }],
+    guides: [{ x: 12.25, y: 0, angle: 90 }],
+  };
+  session.refresh = () => {};
+  return { session, controller, path };
+}
+
+describe("pen placement uses the resolved position", () => {
+  afterEach(resetSnapParameters);
+  it("places an anchor and its dragged handle at the displayed fractional crossing", () => {
+    const { session, controller, path } = penSetup();
+    const event = { x: 13, y: 1 };
+    const behavior = getPenToolBehavior(controller, event, path, "cubic", session);
+    behavior.initialChanges(path, event);
+    expect(path.getPoint(0)).to.include({ x: 12.25, y: 0.75 });
+    behavior.setupDrag(path, event);
+    behavior.drag(path, event);
+    expect(path.getPoint(1)).to.include({ x: 12.25, y: 0.75 });
+    expect(controller.sceneModel.snapIndicator).to.include({ x: 12.25, y: 0.75 });
+  });
+
+  it("resolves Shift before inserting the anchor", () => {
+    const path = VarPackedPath.fromUnpackedContours([
+      { isClosed: false, points: [{ x: 0, y: 0 }] },
+    ]);
+    const { session, controller } = penSetup(path, new Set(["point/0"]));
+    const event = { x: 13, y: 1, shiftKey: true };
+    const behavior = getPenToolBehavior(controller, event, path, "cubic", session);
+    behavior.initialChanges(path, event);
+    expect(path.getPoint(1)).to.include({ x: 12.25, y: 0 });
+    expect(controller.sceneModel.snapIndicator).to.include({ x: 12.25, y: 0 });
+  });
+
+  it("keeps inserted anchors on a curvature guide over a sweep", () => {
+    SNAP_PARAMETERS.curvatureEnabled = 1;
+    const points = [
+      { x: 0, y: 0 },
+      { x: 0, y: 55 },
+      { x: 45, y: 100 },
+      { x: 100, y: 100 },
+    ];
+    const curve = makeCurveCandidate({ points, kind: KIND.CURVATURE });
+    for (let x = 102; x <= 140; x += 2) {
+      const { session, controller, path } = penSetup();
+      session.scene = { curves: [{ points }] };
+      const event = { x, y: 100 };
+      const behavior = getPenToolBehavior(controller, event, path, "cubic", session);
+      behavior.initialChanges(path, event);
+      expect(session.held).to.not.equal(null);
+      expect(distanceToCandidate(curve, path.getPoint(0))).to.be.lessThan(0.002);
+      expect(path.getPoint(0).x).to.equal(controller.sceneModel.snapIndicator.x);
+      expect(path.getPoint(0).y).to.equal(controller.sceneModel.snapIndicator.y);
+    }
+  });
+
+  it("keeps skeleton pen coordinates when constructing the persisted point", async () => {
+    const { session, controller } = penSetup();
+    const tool = new SkeletonPenTool({ sceneController: controller });
+    const skeleton = makeEmptySkeletonData();
+    tool._snapSession = () => session;
+    tool._getSelectedOpenEndpoint = () => null;
+    tool._getMasterDefaultWidth = () => 80;
+    tool._editSkeletonAcrossLayers = async (_label, edit) => edit(skeleton, skeleton);
+    await tool._handleAddSkeletonPoint([], { x: 13, y: 1 });
+    expect(skeleton.contours[0].points[0]).to.include({ x: 12.25, y: 0.75 });
+    expect(controller.sceneModel.snapIndicator).to.include({ x: 12.25, y: 0.75 });
   });
 });

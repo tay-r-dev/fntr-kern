@@ -14,7 +14,7 @@ import { constrainHorVerDiag } from "./edit-behavior.js";
 import { BaseTool, shouldInitiateDrag } from "./edit-tools-base.js";
 import { recordSkeletonContourIndexShift } from "./skeleton-editing.js";
 
-import { SnappingSession } from "./snapping-interactions.js";
+import { SnappingSession, constraintLineForDelta } from "./snapping-interactions.js";
 
 export class PenTool {
   identifier = "pen-tool";
@@ -50,9 +50,16 @@ export class PenToolCubic extends BaseTool {
     // arithmetic - so a magnet has nothing to move, and the guides it draws
     // would be describing a placement that is not happening.
     snapSession.suppressed = !!insertHandles;
-    this.sceneModel.penSnappedPoint = snapSession.resolve(
-      this.sceneController.selectedGlyphPoint(event)
-    );
+    const rawPoint = this.sceneController.selectedGlyphPoint(event);
+    const path = this.sceneModel.getSelectedPositionedGlyph()?.glyph?.instance?.path;
+    const append = path && getAppendInfo(path, this.sceneController.selection);
+    const anchor =
+      append && !append.createContour && append.isOnCurve
+        ? path.getContourPoint(append.contourIndex, append.contourPointIndex)
+        : null;
+    this.sceneModel.penSnappedPoint = snapSession.resolve(rawPoint, {
+      constraint: penSnapConstraint(event, rawPoint, anchor),
+    });
     // The hover redraw below fires only when the connect target changes, so the
     // snap draw needs its own. Without it the guide appears only where some other
     // hover state happens to change, which reads as snapping over geometry alone.
@@ -445,7 +452,7 @@ const AppendModes = {
   PREPEND: "prepend",
 };
 
-function getPenToolBehavior(
+export function getPenToolBehavior(
   sceneController,
   initialEvent,
   path,
@@ -533,10 +540,16 @@ function getPenToolBehavior(
   // The one place the pen turns an event into a position, so the click and the
   // preview cannot disagree. One point is placed, so this is resolve, not
   // resolveSet: there is no set to choose from.
-  const getPointFromEvent = (event) =>
-    snapSession
-      ? snapSession.resolve(sceneController.selectedGlyphPoint(event))
-      : sceneController.selectedGlyphPoint(event);
+  const getPointFromEvent = (event, context, anchor) => {
+    const rawPoint = sceneController.selectedGlyphPoint(event);
+    const constraint = penSnapConstraint(event, rawPoint, anchor);
+    context.snapConstrained = !!(snapSession?.enabled && constraint);
+    const point = snapSession
+      ? snapSession.resolve(rawPoint, { constraint })
+      : rawPoint;
+    context.preserveSnap = !!snapSession?.held || context.snapConstrained;
+    return point;
+  };
 
   return new PenToolBehavior(getPointFromEvent, appendInfo, behaviorFuncs, curveType);
 }
@@ -560,19 +573,26 @@ class PenToolBehavior {
   }
 
   initialChanges(path, event) {
-    const point = this.getPointFromEvent(event);
+    const anchor =
+      !this.context.createContour && this.context.isOnCurve
+        ? path.getContourPoint(
+            this.context.contourIndex,
+            this.context.contourPointIndex
+          )
+        : null;
+    const point = this.getPointFromEvent(event, this.context, anchor);
     for (const func of this.behaviorFuncs.setup || []) {
       func(this.context, path, point, event.shiftKey);
     }
   }
 
   setupDrag(path, event) {
-    const point = this.getPointFromEvent(event);
+    const point = this.getPointFromEvent(event, this.context, this.context.anchorPoint);
     this.behaviorFuncs.setupDrag?.(this.context, path, point, event.shiftKey);
   }
 
   drag(path, event) {
-    const point = this.getPointFromEvent(event);
+    const point = this.getPointFromEvent(event, this.context, this.context.anchorPoint);
     this.behaviorFuncs.drag?.(this.context, path, point, event.shiftKey);
   }
 
@@ -603,7 +623,12 @@ function setupExistingAnchorPoint(context, path, point, shiftKey) {
 }
 
 function insertAnchorPoint(context, path, point, shiftKey) {
-  if (shiftKey && !context.createContour && context.isOnCurve) {
+  if (
+    shiftKey &&
+    !context.snapConstrained &&
+    !context.createContour &&
+    context.isOnCurve
+  ) {
     // Shift-constrain the point to 0/45/90/etc degrees
     // Only if a contour exists and the selected point is an on-curve point
     const referencePoint = path.getContourPoint(
@@ -613,7 +638,7 @@ function insertAnchorPoint(context, path, point, shiftKey) {
     point = shiftConstrainPoint(referencePoint, point);
   }
 
-  point = vector.roundVector(point);
+  point = context.preserveSnap ? point : vector.roundVector(point);
   path.insertPoint(context.contourIndex, context.anchorIndex, point);
   context.anchorPoint = point;
   context.selection = getPointSelection(
@@ -624,21 +649,21 @@ function insertAnchorPoint(context, path, point, shiftKey) {
 }
 
 function insertHandleOut(context, path, point, shiftKey) {
-  point = vector.roundVector(point);
+  point = context.preserveSnap ? point : vector.roundVector(point);
   _insertHandleOut(context, path, point);
   _setHandleOutAbsIndex(context, path);
   context.selection = getPointSelectionAbs(context.handleOutAbsIndex);
 }
 
 function insertHandleIn(context, path, point, shiftKey) {
-  point = vector.roundVector(point);
+  point = context.preserveSnap ? point : vector.roundVector(point);
   _insertHandleIn(context, path, point);
   _setHandleInAbsIndex(context, path);
   context.selection = new Set();
 }
 
 function insertHandleInOut(context, path, point, shiftKey) {
-  point = vector.roundVector(point);
+  point = context.preserveSnap ? point : vector.roundVector(point);
   _insertHandleIn(context, path, point);
   _insertHandleOut(context, path, point);
   _setHandleInAbsIndex(context, path);
@@ -708,7 +733,12 @@ function closeContour(context, path, point, shiftKey) {
 }
 
 function dragHandle(context, path, point, shiftKey) {
-  point = getHandle(point, context.anchorPoint, shiftKey);
+  point = getHandle(
+    point,
+    context.anchorPoint,
+    shiftKey && !context.snapConstrained,
+    context.preserveSnap
+  );
   if (context.handleOutAbsIndex !== undefined) {
     path.setPointPosition(context.handleOutAbsIndex, point.x, point.y);
   }
@@ -888,11 +918,17 @@ function emptyContour() {
   return { coordinates: [], pointTypes: [], isClosed: false };
 }
 
-function getHandle(handleOut, anchorPoint, shiftKey) {
+function penSnapConstraint(event, point, anchor) {
+  return event.shiftKey && anchor
+    ? constraintLineForDelta(vector.subVectors(point, anchor), anchor)
+    : null;
+}
+
+function getHandle(handleOut, anchorPoint, shiftKey, preserveSnap = false) {
   if (shiftKey) {
     handleOut = shiftConstrainPoint(anchorPoint, handleOut);
   }
-  return vector.roundVector(handleOut);
+  return preserveSnap ? handleOut : vector.roundVector(handleOut);
 }
 
 function oppositeHandle(anchorPoint, handlePoint) {
