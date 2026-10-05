@@ -368,6 +368,14 @@ export function reachForKind(kind, pixelUnit) {
 export function createSnapEvaluator() {
   const cache = new Map();
   return (candidate, point) => {
+    // A crossing is already a position. Caching this subtraction would retain
+    // every crossing/source pair while saving no projection work.
+    if (candidate.type === "point") {
+      return {
+        position: { x: candidate.x, y: candidate.y },
+        distance: Math.hypot(candidate.x - point.x, candidate.y - point.y),
+      };
+    }
     let points = cache.get(candidate);
     if (!points) {
       points = new Map();
@@ -423,20 +431,32 @@ function compareSnaps(a, b) {
   );
 }
 
+// A translation constraint applies the same correction to every moved source.
+// Collection and projection must ask about these positions, not the raw cursor.
+export function constrainSnapPoints(points, constraint) {
+  if (!constraint || !points.length) return points;
+  const first = projectOntoLine(constraint, points[0]);
+  const dx = first.x - points[0].x;
+  const dy = first.y - points[0].y;
+  return points.map((point) => ({ x: point.x + dx, y: point.y + dy }));
+}
+
 function resolvePoints(candidates, points, cursor, options) {
   const { pixelUnit, held } = options;
+  const queries =
+    options.queryPoints || constrainSnapPoints(points, options.constraint);
   const evaluate = options.evaluate || createSnapEvaluator();
   const settled = (options.speed || 0) <= SNAP_PARAMETERS.acquireSpeedPixels;
   const previous = options.overrule;
   const escape = { armed: false, refused: null, ...options.escape };
-  const heldPoint = held && points[held.pointIndex];
+  const heldPoint = held && queries[held.pointIndex];
   const heldDistance = heldPoint ? evaluate(held.candidate, heldPoint).distance : 0;
   const movingAway =
     heldPoint &&
     Number.isFinite(previous?.heldDistance) &&
     heldDistance > previous.heldDistance + 1e-9;
   if (escape.refused) {
-    const owner = points[escape.pointIndex ?? 0];
+    const owner = queries[escape.pointIndex ?? 0];
     if (
       !owner ||
       evaluate(escape.refused, owner).distance >
@@ -451,10 +471,7 @@ function resolvePoints(candidates, points, cursor, options) {
     escape.armed = true;
   }
 
-  const fallback =
-    options.constraint && points.length
-      ? projectOntoLine(options.constraint, points[0])
-      : null;
+  const fallback = options.constraint && points.length ? queries[0] : null;
   const noWin = {
     delta: fallback
       ? { x: fallback.x - points[0].x, y: fallback.y - points[0].y }
@@ -496,7 +513,44 @@ function resolvePoints(candidates, points, cursor, options) {
       }
     });
   }
-  const entries = [];
+  let winner = null;
+  let heldEntry = null;
+  // Line intersections do not depend on the moving source. Build each pair at
+  // most once, even when many selected points ask about it.
+  const crossingCache = new Map();
+  const crossingOf = (a, b) => {
+    let others = crossingCache.get(a);
+    if (!others) {
+      others = new Map();
+      crossingCache.set(a, others);
+    }
+    if (!others.has(b)) others.set(b, crossLines(a, b));
+    return others.get(b);
+  };
+  let previousLines = [];
+  let previousCrossings = [];
+  const crossingsFor = (lines) => {
+    if (
+      lines.length === previousLines.length &&
+      lines.every((line, i) => line === previousLines[i])
+    )
+      return previousCrossings;
+    const crossings = [];
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const crossing = crossingOf(lines[i], lines[j]);
+        if (crossing) crossings.push(crossing);
+      }
+    }
+    previousLines = lines;
+    previousCrossings = crossings;
+    return crossings;
+  };
+  const uniqueCandidates = [];
+  for (const candidate of settled ? candidates : []) {
+    if (!uniqueCandidates.some((other) => sameCandidate(candidate, other)))
+      uniqueCandidates.push(candidate);
+  }
   const byKind = noWin.byKind;
   const pointerSpan =
     SNAP_PARAMETERS.reachPixels * pixelUnit * SNAP_PARAMETERS.pointerFalloffReaches;
@@ -508,28 +562,21 @@ function resolvePoints(candidates, points, cursor, options) {
   points.forEach((point, pointIndex) => {
     if (anchorIndex >= 0 && pointIndex !== anchorIndex) return;
     const ownHeld = held?.pointIndex === pointIndex ? held.candidate : null;
-    // Each source travels on its own parallel rail, at its original offset from
-    // the first source. Applying a single correction therefore preserves shape.
+    const query = queries[pointIndex];
     const constraint = options.constraint
-      ? {
-          ...options.constraint,
-          x: options.constraint.x + point.x - points[0].x,
-          y: options.constraint.y + point.y - points[0].y,
-        }
+      ? { ...options.constraint, x: query.x, y: query.y }
       : null;
-    const query = constraint ? projectOntoLine(constraint, point) : point;
     const pointerDistance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
     const discount =
       1 -
       SNAP_PARAMETERS.pointerWeight * Math.min(1, pointerDistance / (pointerSpan || 1));
-    const pool = [...candidates];
+    const pool = [...uniqueCandidates];
     if (ownHeld) {
       for (const source of targetSources(ownHeld)) {
         if (!pool.some((candidate) => sameCandidate(source, candidate)))
           pool.push(source);
       }
     }
-    const local = [];
     const add = (candidate) => {
       if (refused(candidate)) return;
       const geometry = evaluate(candidate, query);
@@ -555,8 +602,8 @@ function resolvePoints(candidates, points, cursor, options) {
         (!settled && !sameCandidate(candidate, ownHeld))
       )
         return;
-      if (!local.some((other) => sameCandidate(other.candidate, candidate)))
-        local.push(entry);
+      if (!winner || compareSnaps(entry, winner) < 0) winner = entry;
+      if (ownHeld && sameCandidate(candidate, ownHeld)) heldEntry = entry;
     };
     const lines = [];
     for (const candidate of pool) {
@@ -578,27 +625,38 @@ function resolvePoints(candidates, points, cursor, options) {
             evaluate(candidate, point).distance,
             pixelUnit,
             ownHeld
-          ) > SNAP_PARAMETERS.noSnapPull &&
-          !lines.some((line) => sameCandidate(line, candidate))
+          ) > SNAP_PARAMETERS.noSnapPull
         )
           lines.push(candidate);
       }
     }
-    // Crossings are evaluated before selection, never accepted by list order.
-    for (let i = 0; i < lines.length; i++) {
-      for (let j = i + 1; j < lines.length; j++) {
-        const crossing = crossLines(lines[i], lines[j]);
-        if (crossing) add(crossing);
+    // Crossings all have the same kind and pointer discount. Their nearest
+    // position is therefore their strongest pull. Compare squared distances
+    // without allocating an evaluation per crossing; keep the held crossing
+    // separately because it receives a bonus and hold protection.
+    let nearestCrossing = null;
+    let nearestSquared = Infinity;
+    let heldCrossing = null;
+    for (const crossing of crossingsFor(lines)) {
+      const squared = (crossing.x - query.x) ** 2 + (crossing.y - query.y) ** 2;
+      if (
+        squared < nearestSquared ||
+        (squared === nearestSquared &&
+          (crossing.x < nearestCrossing.x ||
+            (crossing.x === nearestCrossing.x && crossing.y < nearestCrossing.y)))
+      ) {
+        nearestSquared = squared;
+        nearestCrossing = crossing;
       }
+      if (ownHeld?.type === "point" && sameCandidate(crossing, ownHeld))
+        heldCrossing = crossing;
     }
-    entries.push(...local);
+    if (nearestCrossing) add(nearestCrossing);
+    if (heldCrossing && heldCrossing !== nearestCrossing) add(heldCrossing);
   });
-  if (!entries.length) return noWin;
-  entries.sort(compareSnaps);
-  let winner = entries[0];
+  if (!winner) return noWin;
   let suggestion = null;
   let overrule = null;
-  const heldEntry = held && entries.find((entry) => samePair(entry, held));
   if (heldEntry) {
     let count = 0;
     const refinement =
@@ -721,14 +779,29 @@ function candidateFilter(only) {
 }
 
 export function isSnapTargetAllowed(candidate, only) {
-  return targetSources(candidate).every(candidateFilter(only));
+  const allowed = candidateFilter(only);
+  return targetSources(candidate).every(
+    (source) =>
+      allowed(source) &&
+      (!(source.kind === KIND.OFF_CURVE || source.source?.offCurve) ||
+        !!SNAP_PARAMETERS.offCurveSources) &&
+      (source.type !== "curve" || source.extend === SNAP_PARAMETERS.curvatureExtend)
+  );
 }
 
 export function collectCandidates(
   scene,
   cursor,
-  { pixelUnit, only, points = [cursor], evaluate = createSnapEvaluator() }
+  {
+    pixelUnit,
+    only,
+    points = [cursor],
+    constraint,
+    queryPoints = constrainSnapPoints(points, constraint),
+    evaluate = createSnapEvaluator(),
+  }
 ) {
+  points = queryPoints;
   const radius = CULL_PARAMETERS.collectionRadiusPixels * pixelUnit;
   const inRadius = (p) =>
     points.some((point) => Math.hypot(p.x - point.x, p.y - point.y) <= radius);

@@ -2630,6 +2630,49 @@ both sides of a glyph the panel reports nothing, which spec case 18 asks for.
 
 ---
 
+## Snapping (map F12)
+
+**Candidate order used to decide placement.** Under a horizontal Shift rail,
+a vertical guide at x=8 before a diagonal through x=1 chose x=8; reversing the
+list chose x=1. The free resolver also accepted the first usable crossing.
+The shared chooser compares the valid results. Its regression suite includes
+reversed candidate order and a cursor sweep checked against exhaustive crossings.
+
+**Collection must use the moving sources.** A selection at y=0 and y=100 with
+source rays at y=5 and y=100.1 used to move by 5 when pointer weighting was zero:
+the cursor cull hid the better alignment. It now moves by 0.1. Shift collection
+must use constrained positions too, or the raw cursor's nearest ray can hide
+the one at the actual placement.
+
+**The second round defeated an exact snap.** The resolver kept a point on a
+slant or curve, then the edit behavior rounded x/y again. The regression checks
+now reach actual path changes, skeleton target-entry persistence and both pens.
+The pen curve test sweeps twenty placements and checks the inserted point against
+both the projection and the displayed indicator.
+
+**Measured cost, October 2026.** Compared with `fcfa464`, a synthetic frame with
+40 translated cubic projections and 16 moving sources fell from 940 projection
+calls to 641 (640 source/candidate pairs plus one final rounding projection).
+On Node in the implementation workspace, 20 warmups and 100 timed frames gave
+about 3.08 ms before and 2.01 ms after. The fixture uses cubics
+`[(0,d),(0,55+d),(45,100+d),(100,100+d)]`, with `d=(i-20)*0.4`, and sources
+`(105+j*0.3,99+j*0.2)`. This includes collection, resolution, rounding and the
+old diagnostic projection pass; it excludes rendering.
+
+**Global crossing comparison has a cost.** An intermediate implementation
+searched a growing duplicate list for every crossing; 80 crowded guides and
+16 sources took about 599 ms. Retaining only the best and held results, sharing
+pair geometry and comparing squared distances removed that blow-up. The final
+stress run took about 1.23 ms for 80 guides and 9.37 ms at the 200-guide cap,
+versus 0.77 and 4.42 ms for the old first-acceptable search. All guide pairs in
+this deliberately crowded fixture are near the selection: guide i starts at
+`((i%5)*0.2,0)` with angle `180*i/count`; source j is `(1+j*0.1,1+j*0.1)`.
+These are Node measurements, not browser frame-rate claims. A future spatial
+index must preserve the exhaustive comparison result rather than silently
+returning to candidate order.
+
+---
+
 ## The documents themselves
 
 Five design specs and implementation plans, 3,783 lines, all describing shipped

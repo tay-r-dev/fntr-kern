@@ -1385,3 +1385,63 @@ describe("collection shares a frame with resolution", () => {
     expect(result.evaluation.position.t).to.be.greaterThan(1);
   });
 });
+
+describe("crossing selection without a scored list", () => {
+  const line = (x, y, angle) =>
+    makeLineCandidate({ x, y, angle, kind: KIND.ORTHOGONAL });
+  afterEach(resetSnapParameters);
+  it("keeps the held crossing even when a closer crossing is much stronger", () => {
+    const candidates = [line(0, 0, 0), line(0, 0, 90), line(8, 0, 90), line(0, 8, 0)];
+    const held = crossLines(candidates[0], candidates[1]);
+    const result = resolveSnap(candidates, { x: 8, y: 8 }, { pixelUnit: 1, held });
+    expect(result.position.x).to.be.closeTo(0, 1e-9);
+    expect(result.position.y).to.be.closeTo(0, 1e-9);
+    expect(result.suggestion.kind).to.equal(KIND.INTERSECTION);
+  });
+
+  it("matches an exhaustive crossing comparison over a cursor sweep", () => {
+    const candidates = Array.from({ length: 20 }, (_, i) =>
+      line((i % 5) * 0.2, 0, (180 * i) / 20)
+    );
+    for (let x = -3; x <= 3; x += 0.3) {
+      const cursor = { x, y: x * 0.7 + 0.3 };
+      const crossings = candidates.flatMap((a, i) =>
+        candidates
+          .slice(i + 1)
+          .map((b) => crossLines(a, b))
+          .filter(Boolean)
+      );
+      crossings.sort(
+        (a, b) =>
+          distanceToCandidate(a, cursor) - distanceToCandidate(b, cursor) ||
+          a.x - b.x ||
+          a.y - b.y
+      );
+      for (const pool of [candidates, [...candidates].reverse()]) {
+        const result = resolveSnap(pool, cursor, { pixelUnit: 1 });
+        expect(result.position.x).to.be.closeTo(crossings[0].x, 1e-9);
+        expect(result.position.y).to.be.closeTo(crossings[0].y, 1e-9);
+      }
+    }
+  });
+});
+
+it("collects around the constrained positions before culling rays", () => {
+  const point = { x: 100, y: 50 };
+  const constraint = makeLineCandidate({ x: 0, y: 0, angle: 45, kind: KIND.DIAGONAL });
+  const options = { pixelUnit: 1, constraint };
+  const candidates = collectCandidates(
+    {
+      points: [
+        { x: 200, y: 50 },
+        { x: 200, y: 75 },
+      ],
+    },
+    point,
+    options
+  );
+  const result = resolveSnap(candidates, point, options);
+  expect(result.position.x).to.be.closeTo(75, 1e-9);
+  expect(result.position.y).to.be.closeTo(75, 1e-9);
+  expect(result.held).to.have.length(1);
+});

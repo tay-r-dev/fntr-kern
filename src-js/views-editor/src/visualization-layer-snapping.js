@@ -1,3 +1,4 @@
+import { cubicPointAt } from "@fontra/core/offset-contour.js";
 import {
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -76,13 +77,16 @@ registerVisualizationLayerDefinition({
     // A rival the designer has not chosen yet. Drawn faint and thin, so it reads
     // as on offer rather than as the guide in force.
     const suggestion = model.snapSuggestion;
-    if (suggestion?.type === "line") {
+    if (suggestion) {
       context.save();
       context.globalAlpha = 0.35;
       context.lineWidth = parameters.strokeWidth;
       context.strokeStyle = parameters.suggestionColor;
       context.setLineDash([parameters.dash, parameters.dash * 2]);
-      strokeGuideLine(context, suggestion, reach);
+      for (const candidate of suggestion.sources || [suggestion]) {
+        if (candidate.type === "line") strokeGuideLine(context, candidate, reach);
+        else if (candidate.type === "curve") strokeCurveProjection(context, candidate);
+      }
       context.restore();
     }
 
@@ -139,17 +143,7 @@ function strokeCurveProjection(context, candidate) {
     context.beginPath();
     for (let i = 0; i <= 32; i++) {
       const t = from + ((to - from) * i) / 32;
-      const u = 1 - t;
-      const x =
-        u * u * u * points[0].x +
-        3 * u * u * t * points[1].x +
-        3 * u * t * t * points[2].x +
-        t * t * t * points[3].x;
-      const y =
-        u * u * u * points[0].y +
-        3 * u * u * t * points[1].y +
-        3 * u * t * t * points[2].y +
-        t * t * t * points[3].y;
+      const { x, y } = cubicPointAt(points, t);
       if (i === 0) {
         context.moveTo(x, y);
       } else {

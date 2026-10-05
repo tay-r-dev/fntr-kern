@@ -2058,3 +2058,57 @@ changes and its angle does not. The movement across the handle is ignored.
 - **A smooth partner does not move.** The angle does not change, so the
   partner stays on the line.
 - **Snapping is off** under B by default, with a switch beside the others.
+
+
+## 15. Snapping and smart guides
+
+All seven kinds remain available: orthogonal, diagonal, intersection, off-curve,
+curvature, own-generated and other. Source provenance controls exclusion and
+presentation; direction or kind controls pull. The existing switches, weights,
+reaches, speed thresholds, hold bonus and overrule frame count keep their defaults.
+
+**One decision for the gesture.** Free movement, Shift, pen placement and a
+selection all use the same resolver. Each possible result records its position,
+distance, pull, source index and full target. A crossing retains both guides.
+Pointer distance discounts a source's pull; it does not cause each source to run
+its own hold/escape state machine.
+
+A viable point target, including a crossing, takes precedence over a line or
+curve target, preserving the preference for meeting two constraints. Within
+that class, discounted pull wins. Distance and coordinates break ties. Every
+eligible crossing is compared; candidate list order does not choose a crossing.
+A held target stays until its pull falls below the floor or a rival earns the
+existing overrule rule. A line can acquire a crossing on that same line. The
+held crossing and an escape refusal retain their source owner across frames.
+
+**Constrain before searching.** Shift puts each selected source on its own
+parallel rail through its original position. Collection looks around those
+constrained positions, and the winner supplies one translation for the whole
+selection. Culling is per kind and per moved source; their candidates are
+united before the existing 200-candidate cap. At pointer weight 1, only the
+source nearest the pointer can win. Crossings remain line-line intersections;
+this change adds no curve-intersection solver.
+
+**One frame, one set of geometry evaluations.** Collection caches projected
+positions and distances, including the curve parameter. Resolution reuses them,
+and diagnostics consume the recorded pulls. Line intersections are built once
+per pair and reused across sources. Crossings share a kind, so the nearest
+crossing is their strongest unheld result; the held crossing is evaluated
+separately for its bonus. The curve projector remains a bounded approximate
+search on the two extensions, not a guarantee of a global nearest point.
+
+**The result owns placement.** A point snap keeps its exact coordinates. A line
+rounds along its remaining freedom; a curve rounds along its tangent and projects
+back. Ordinary path and skeleton-point drags pass `preserveSnap` through the
+shared edit machinery, so x/y are not rounded again. Both pens preserve the
+resolved position as well. The indicator uses that final position. Releasing
+or suppressing the snap restores the ordinary edit rounding. Specialized
+modifier adapters still own their geometric constraints and grid rules.
+
+**State has a lifetime.** A drag freezes its scene; the pen refreshes it as it
+adds points. A force refresh clears the internal hold, rival and escape state
+as well as the drawing. Mode switches cannot resurrect an excluded held target.
+Changing the curve extension replaces a held curve with the newly built one.
+Drag travel starts at mouse-down, not at the first delivered movement event.
+Ending a session clears its diagnostics too. There is no new idle snap timer:
+acquisition is still reconsidered when the tool supplies an event.

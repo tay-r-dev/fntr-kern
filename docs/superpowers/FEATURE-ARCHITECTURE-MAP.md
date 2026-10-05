@@ -409,13 +409,22 @@ A drag reports where it would like to be, and the resolver answers with the
 metrics, guides, points and segments near it. Reach and precedence are separate
 numbers per kind, so a kind can grab from further away without also winning.
 
-| File                                               | +/−      | Role                                                                                              |
-| -------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------- |
-| `fontra-core/src/snapping.js`                      | +587     | **NEW** — candidate kinds, reach and weight per kind, the resolver, the escape and overrule rules |
-| `views-editor/src/snapping-interactions.js`        | +398     | **NEW** — the scene the resolver reads, the session held across a drag, exclusion by provenance   |
-| `views-editor/src/visualization-layer-snapping.js` | +198     | **NEW** — the held rings, the near indicator and the guide lines                                  |
-| `views-editor/src/edit-tools-pen.js`               | (shared) | the pen's own session, refreshed on every hover because it adds geometry as it goes               |
-| `fontra-core/tests/test-snapping.js`               | +        | tests                                                                                             |
+| File | Role |
+| --- | --- |
+| `fontra-core/src/snapping.js` | Candidate geometry, frame evaluation cache, shared chooser, source ownership, hold and escape rules, final rounding |
+| `views-editor/src/snapping-interactions.js` | Frozen scene, source exclusions, session lifetime, mode eligibility, published result |
+| `views-editor/src/visualization-layer-snapping.js` | Held and suggested guides, curve extensions and indicator; consumes results without resolving again |
+| `views-editor/src/edit-tools-pointer.js` | Supplies original source positions and the gesture constraint; applies the returned correction |
+| `views-editor/src/edit-behavior.js` | Generic `preserveSnap` option prevents a second coordinate rounding during point changes |
+| `views-editor/src/skeleton-editing.js` | Ordinary skeleton-point target entry forwards that option through the synthetic path and `editSkeleton` |
+| `views-editor/src/edit-tools-pen.js`, `edit-tools-skeleton.js` | Pass Shift constraints before resolution and preserve the final placement |
+| `fontra-core/tests/test-snapping.js`, `views-editor/tests/test-snapping-session.js` | Geometry, candidate-order sweeps, temporal state, mode changes and actual pen placement |
+
+Both public resolvers call the same chooser. A frame evaluates each candidate at
+its moving sources once. Collection and resolution share those evaluations;
+crossing geometry is shared across sources. The chooser retains only its best
+result and the held result, rather than sorting every evaluated crossing.
+See Feature Model §15 for ranking and placement rules.
 
 Two rules worth knowing before touching it.
 

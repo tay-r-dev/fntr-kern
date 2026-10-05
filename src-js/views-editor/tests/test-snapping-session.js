@@ -184,3 +184,39 @@ describe("pen placement uses the resolved position", () => {
     expect(controller.sceneModel.snapIndicator).to.include({ x: 12.25, y: 0.75 });
   });
 });
+
+describe("live snap parameter changes", () => {
+  afterEach(resetSnapParameters);
+  it("drops a held off-curve source when its switch is turned off", () => {
+    SNAP_PARAMETERS.offCurveSources = 1;
+    const { session } = setup();
+    session.scene = { points: [{ x: 100, y: 0, offCurve: true }] };
+    session.resolve({ x: 0, y: 1 });
+    expect(session.held).to.not.equal(null);
+    SNAP_PARAMETERS.offCurveSources = 0;
+    session.resolve({ x: 0, y: 1 });
+    expect(session.held).to.equal(null);
+  });
+
+  it("replaces a held curve when its extension length changes", () => {
+    SNAP_PARAMETERS.curvatureEnabled = 1;
+    const { session } = setup();
+    session.scene = {
+      curves: [
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 0, y: 55 },
+            { x: 45, y: 100 },
+            { x: 100, y: 100 },
+          ],
+        },
+      ],
+    };
+    session.resolve({ x: 130, y: 100 });
+    expect(session.held.candidate.extend).to.equal(1);
+    SNAP_PARAMETERS.curvatureExtend = 0.5;
+    session.resolve({ x: 130, y: 100 });
+    expect(session.held.candidate.extend).to.equal(0.5);
+  });
+});

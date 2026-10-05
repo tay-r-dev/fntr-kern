@@ -12,14 +12,17 @@ paper. Tuning them against a real glyph is the point of the panel.
 ## How a snap is decided
 
 Every candidate — a metric line, a guide, a ray off a point, a segment extended —
-produces a **pull** at the cursor:
+produces a **pull** at each moving source:
 
 - The **weight** says how much that kind of candidate is worth.
 - The **falloff** says how much of that weight survives the distance. It is full
   at zero distance and nothing at the reach.
 
-The strongest pull wins, if it clears the release floor. So weight decides
-near-ties, and distance decides everything else.
+Results must clear the release floor. A point target or valid crossing takes
+precedence over a line or curve; within that class the strongest pull wins,
+after the pointer-distance discount. A held result keeps the hold and overrule
+rules below. All crossings are compared, so list order does not decide placement.
+The same chooser runs for free movement, Shift and a whole selection.
 
 Distance is measured in screen pixels, not glyph units. The magnet grabs from the
 same distance on screen at every zoom level.
@@ -185,10 +188,12 @@ distance every frame, which is what deciding looks like.
 
 ## Collection radius (px)
 
-**Default 400.** How far from the cursor geometry is looked at at all.
+**Default 400.** How far from each moving source geometry is collected. Under
+Shift, these are the constrained positions, not the raw cursor positions.
 
-Nothing outside this radius contributes a candidate. It is a cost control, not a
-behavior control — set it comfortably wider than the reach.
+Point, segment and curve sources must be near at least one moving source.
+Metrics and explicit guides are exempt. This is a cost control; keep it
+comfortably wider than the snap reach.
 
 - **Too small:** guides stop appearing near the edges of the working area.
 - **Too large:** a dense glyph slows the drag down.
@@ -198,7 +203,7 @@ range, and the snap must not drop because of that.
 
 ## Sources per side
 
-**Default 1.** How many points on each side of the cursor may offer a ray.
+**Default 1.** How many points on each side of each moving source may offer a ray.
 
 A 40-point glyph would otherwise offer 80 lines, and crossings would be available
 almost everywhere. Only the nearest source above, below, left and right survives.
@@ -209,9 +214,9 @@ almost everywhere. Only the nearest source above, below, left and right survives
 Metrics and guides you placed are never culled this way. There are few of them,
 and you put them there.
 
-The cull runs **once per kind**, not once over all points (`collectCandidates`).
-A point of one kind does not hide the nearest point of another kind, or raising
-a weight would not be enough to reach a kind that stands behind a closer one.
+The cull runs **per kind and per moving source** (`collectCandidates`). Its
+results are united before the cap. One source's nearest ray cannot hide the
+better alignment at a different selected point, and kinds do not hide each other.
 
 The neighbours of the dragged points are exempt (`alwaysKeep`). They are what the
 designer aligns to, so a nearer point elsewhere must not hide them.
@@ -220,7 +225,7 @@ designer aligns to, so a nearer point elsewhere must not hide them.
 
 **Default 200.** The hard ceiling on the candidate list, after the culls.
 
-Kept in weight order, then distance order, so the cap takes the least useful
+Kept in weight order, then distance to the nearest moving source, so the cap takes the least useful
 candidates first. You should not need to touch it. If you hit it, lower the
 collection radius instead.
 
@@ -323,12 +328,13 @@ Below the sliders, updating live:
   moving around a dense glyph to see whether the culls are doing their job.
 - **freedom** — `free` (nothing held), `line` (on a guide, sliding along it), or
   `point` (on a crossing, pinned).
-- **winner** — which kind took the snap.
+- **winner** — which kind took the snap; a crossing reports `intersection`.
 - **pull** — the winning pull. Compare it against the release floor to see how
   close you are to letting go.
-- **the ranked list** — every kind's strongest pull this frame. A near-tie here
-  is what the weights exist to break, so this is where to look when a snap picks
-  something you did not expect.
+- **the ranked list** — each kind's strongest evaluated pull across the moving
+  sources, including hold bonuses. It reuses the resolver's evaluations; it
+  does not project the candidates again at the cursor. Pointer discounts and
+  hold protection also affect the winner.
 
 ## The ring
 
