@@ -423,6 +423,29 @@
   --in-txtf-focus: #1e1e1e;
   --in-txtf-disabled: #8d8d8d;
 
+  /* table: one look for every table (the old table/data and table/select
+     merged). The row's states are rest, hover, selection (active),
+     selection hover and disabled. */
+  --tbl-height: 24px;
+  --tbl-cs-sr-rest: #ffffff;
+  --tbl-cs-sr-hover: #ffffff;
+  --tbl-cs-sr-selection: #f4fad5;
+  --tbl-cs-sr-disabled: #ffffff;
+  --tbl-ln-hover: #ededed;
+  --tbl-ln-selection: #9cbb1266;
+  --tbl-ln-disabled: #ededed;
+  --tbl-lb-prim-rest: #8d8d8d;
+  --tbl-lb-prim-hover: #515151;
+  --tbl-lb-prim-rest-selection: #567305bf;
+  --tbl-lb-prim-hover-selection: #3b5600e5;
+  --tbl-lb-prim-disabled: #b8b8b8;
+  --tbl-lb-sec-rest: #b8b8b8;
+  --tbl-lb-sec-hover: #8d8d8d;
+  --tbl-lb-sec-rest-selection: #56730566;
+  --tbl-lb-sec-hover-selection: #3b560099;
+  --tbl-lb-sec-disabled: #b8b8b8;
+  --tbl-lb-heading: #b4b4b4;
+
   /* indication/badge */
   --ind-bdg-sr-active: #d0eb49;
   --ind-bdg-ln-inside: #9cbb12;

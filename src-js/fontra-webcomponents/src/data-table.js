@@ -40,18 +40,45 @@ import "./ui-handle.js";
 
 const MAX_HIDEABLE_COLUMNS = 24;
 
-// The looks' colors (`look` = "data" or "select").
+// The looks' colors (`look` = "data" or "select"). Light colours are the design
+// system's tokens (core.css); dark ones stay hand-picked until the design has
+// a dark mode.
 const lookColors = {
-  "data-table-look-background-color": ["#fff", "#2c2c2c"],
-  "data-table-look-border-color": ["#e9e9e9", "#3a3a3a"],
-  "data-table-look-rule-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
-  "data-table-look-heading-color": ["#b4b4b4", "#8e8e8e"],
-  "data-table-look-entry-color": ["#565656", "#c0c0c0"],
-  "data-table-look-entry-hover-color": ["#303030", "#e0e0e0"],
-  "data-table-look-additional-color": ["#b4b4b4", "#8e8e8e"],
-  "data-table-look-additional-hover-color": ["#8e8e8e", "#b4b4b4"],
-  "data-table-look-active-color": ["#f7f7f7", "#3a3a3a"],
-  "data-table-look-focus-border-color": ["#def280", "#8fae4a"],
+  "data-table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
+  "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
+  "data-table-look-rule-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
+  "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
+  "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
+  "data-table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
+  "data-table-look-additional-color": ["var(--tbl-lb-sec-rest)", "#8e8e8e"],
+  "data-table-look-additional-hover-color": ["var(--tbl-lb-sec-hover)", "#b4b4b4"],
+  "data-table-look-additional-disabled-color": [
+    "var(--tbl-lb-sec-disabled)",
+    "#5a5a5a",
+  ],
+  "data-table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],
+  "data-table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
+  "data-table-look-selection-entry-color": [
+    "var(--tbl-lb-prim-rest-selection)",
+    "#c4dc6a",
+  ],
+  "data-table-look-selection-entry-hover-color": [
+    "var(--tbl-lb-prim-hover-selection)",
+    "#e2f38f",
+  ],
+  "data-table-look-selection-additional-color": [
+    "var(--tbl-lb-sec-rest-selection)",
+    "#8a9a5a",
+  ],
+  "data-table-look-selection-additional-hover-color": [
+    "var(--tbl-lb-sec-hover-selection)",
+    "#a9b97a",
+  ],
+  "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "data-table-look-field-hover-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "data-table-look-field-selection-hover-color": ["var(--in-csr-focus)", "#2c2c2c"],
+  "data-table-look-focus-border-color": ["var(--in-sln-focus)", "#8fae4a"],
 };
 
 const DATA_TABLE_STYLES = `
@@ -284,12 +311,12 @@ const DATA_TABLE_STYLES = `
 
   ${themeColorCSS(lookColors, "data-table")}
 
-  /* The looks (table/data, Figma 417:8097; table/select, Figma 417:8683):
-     a white box, ruled and rounded; a 24px head of small uppercase light
-     grey labels over a rule; 26px rows of thin grey entries, the light grey
-     fill on a selected (active) row. table/data rules every row and shows a
-     row's editable box and icons on hover; table/select rules only the head
-     and darkens a hovered row's text instead. */
+  /* The looks (table, Figma 2004:29827): a white box, ruled and rounded; a
+     24px head of small uppercase light grey labels over a rule; 24px rows of
+     thin grey entries. "select" rules every row, "data" only the selected
+     ones; the rest is shared. A hovered row darkens its text and
+     shows its icons and its editable box; a selected row is lime-filled with
+     a lime rule and lime text; a disabled row is pale. */
   data-table[look] > .data-table-scroll {
     box-sizing: border-box;
     border: 1px solid var(--data-table-look-border-color);
@@ -325,9 +352,10 @@ const DATA_TABLE_STYLES = `
 
   /* ui/table/heading */
   data-table[look] .data-table th {
-    height: 24px;
+    height: var(--tbl-height, 24px);
     box-sizing: border-box;
-    font: 400 semi-condensed 8px / 10px var(--ui-font-mono);
+    font: 400 8px / 10px var(--ui-font-mono);
+    font-stretch: 90%;
     letter-spacing: var(--ui-tracking);
     text-transform: uppercase;
     color: var(--data-table-look-heading-color);
@@ -340,7 +368,7 @@ const DATA_TABLE_STYLES = `
 
   /* ui/table/entry */
   data-table[look] .data-table td {
-    height: 26px;
+    height: var(--tbl-height, 24px);
     box-sizing: border-box;
     font-family: var(--ui-font-mono);
     font-size: 9px;
@@ -356,13 +384,13 @@ const DATA_TABLE_STYLES = `
     border-bottom: none;
   }
 
-  data-table[look].data-table-resizable .data-table tbody tr:last-child td {
-    height: 40px;
-    padding-bottom: 12px;
+  data-table[look="data"] .data-table tbody tr:not(.data-table-row-selected) td {
+    border-bottom-color: transparent;
   }
 
-  data-table[look] .data-table .data-table-row-selected {
-    background-color: var(--data-table-look-active-color);
+  data-table[look].data-table-resizable .data-table tbody tr:last-child td {
+    height: 38px;
+    padding-bottom: 12px;
   }
 
   data-table[look] .data-table-additional {
@@ -370,35 +398,84 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-additional-color);
   }
 
-  data-table[look="select"] .data-table td {
-    border-bottom: none;
-  }
-
-  data-table[look="select"] .data-table tbody tr:hover td {
+  /* Hover */
+  data-table[look] .data-table tbody tr:hover td {
     color: var(--data-table-look-entry-hover-color);
   }
 
-  data-table[look="select"] .data-table tbody tr:hover .data-table-additional {
+  data-table[look] .data-table tbody tr:hover .data-table-additional {
     color: var(--data-table-look-additional-hover-color);
   }
 
-  /* The row's icons: button/table icon, 18px, 4px apart; hidden at rest and
-     shown whole on the row's hover. */
-  /* Every icon in a row is the glyph sources' size: a 12px glyph in an
-     18px slot, whether it is a button or a plain icon. */
+  /* Selection (active), and selection hover */
+  data-table[look] .data-table tr.data-table-row-selected td {
+    background-color: var(--data-table-look-selection-color);
+    border-bottom-color: var(--data-table-look-selection-rule-color);
+    color: var(--data-table-look-selection-entry-color);
+  }
+
+  data-table[look] .data-table tr.data-table-row-selected .data-table-additional {
+    color: var(--data-table-look-selection-additional-color);
+  }
+
+  data-table[look] .data-table tbody tr.data-table-row-selected:hover td {
+    color: var(--data-table-look-selection-entry-hover-color);
+  }
+
+  data-table[look]
+    .data-table
+    tbody
+    tr.data-table-row-selected:hover
+    .data-table-additional {
+    color: var(--data-table-look-selection-additional-hover-color);
+  }
+
+  /* The rule under a selected row is the lime one even where the next row
+     would draw over it: the last row keeps it too. */
+  data-table[look] .data-table tbody tr.data-table-row-selected:last-child td {
+    border-bottom: 1px solid var(--data-table-look-selection-rule-color);
+  }
+
+  data-table[look] tr.data-table-row-selected icon-button {
+    --icon-button-icon-color: var(--data-table-look-selection-icon-color);
+  }
+
+  /* Disabled: pale text and icons, no hover. */
+  data-table[look] .data-table tr.data-table-row-disabled td,
+  data-table[look] .data-table tr.data-table-row-disabled:hover td {
+    color: var(--data-table-look-entry-disabled-color);
+  }
+
+  data-table[look] .data-table tr.data-table-row-disabled .data-table-additional {
+    color: var(--data-table-look-additional-disabled-color);
+  }
+
+  data-table[look] tr.data-table-row-disabled icon-button {
+    --icon-button-icon-color: var(--icon-button-icon-disabled-color);
+    pointer-events: none;
+  }
+
+  data-table[look] tr.data-table-row-disabled .data-table-status {
+    opacity: 0.3;
+  }
+
+  /* The row's icons: button/table icon, a 16px slot with 4px corners, the
+     glyph 15px in it; 4px apart. */
   data-table[look] tbody icon-button {
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     vertical-align: middle;
-    --icon-button-icon-size: 12px;
+    --icon-button-inner-radius: 4px;
+    --icon-button-inner-padding: 0;
+    --icon-button-icon-size: 15px;
   }
 
   data-table[look] tbody td > inline-svg,
   data-table[look] tbody td > span > inline-svg {
     box-sizing: content-box;
-    width: 12px;
-    height: 12px;
-    padding: 3px;
+    width: 15px;
+    height: 15px;
+    padding: 0.5px;
     vertical-align: middle;
   }
 
@@ -414,16 +491,26 @@ const DATA_TABLE_STYLES = `
     margin-left: 0;
   }
 
+  /* A row's own icon ("dim") is hidden at rest and shows on the row's
+     hover, on a selected row and on a disabled one; the actions ("hover")
+     show only on the hover. */
+  data-table[look] .data-table-reveal-dim {
+    opacity: 0;
+  }
+
   data-table[look] tr:hover .data-table-reveal-hover,
   data-table[look] tr:focus-within .data-table-reveal-hover,
   data-table[look] tr:hover .data-table-reveal-dim,
-  data-table[look] tr:focus-within .data-table-reveal-dim {
+  data-table[look] tr:focus-within .data-table-reveal-dim,
+  data-table[look] tr.data-table-row-selected .data-table-reveal-dim,
+  data-table[look] tr.data-table-row-disabled .data-table-reveal-dim {
     opacity: 1;
+    pointer-events: auto;
   }
 
-  /* The editable entry (table/data "editable"): an 18px box, 6px in and
-     12px out, drawn on the row's hover, white on a selected row, lime-edged
-     while typing. */
+  /* The editable entry: an 18px box, 6px in and 12px out; drawn grey on
+     the row's hover, white on a selected row's hover, lime-edged while
+     typing. */
   data-table[look] .data-table .data-table-input,
   data-table[look] .data-table .data-table-select {
     height: 18px;
@@ -435,18 +522,24 @@ const DATA_TABLE_STYLES = `
   data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
   data-table[look] .data-table tr:hover .data-table-select:not(:disabled) {
     border-color: transparent;
-    background-color: var(--data-table-look-active-color);
+    background-color: var(--data-table-look-field-hover-color);
   }
 
-  data-table[look] .data-table .data-table-row-selected .data-table-input:not(:disabled),
-  data-table[look] .data-table .data-table-row-selected .data-table-select:not(:disabled) {
-    background-color: var(--data-table-look-background-color);
+  data-table[look]
+    .data-table
+    .data-table-row-selected:hover
+    .data-table-input:not(:disabled),
+  data-table[look]
+    .data-table
+    .data-table-row-selected:hover
+    .data-table-select:not(:disabled) {
+    background-color: var(--data-table-look-field-selection-hover-color);
   }
 
   data-table[look] .data-table .data-table-input:focus,
   data-table[look] .data-table .data-table-select:focus {
     border-color: var(--data-table-look-focus-border-color);
-    background-color: var(--data-table-look-background-color);
+    background-color: var(--data-table-look-field-selection-hover-color);
   }
 
   ${Array.from(
@@ -476,14 +569,17 @@ function addDataTableStyles(element) {
 
 // A row. `rowId` is what selection, windowing and `onRowClick` know it by.
 // `marker` draws the stripe down the first cell's left edge: true for the
-// design's orange, or a CSS color.
-export function tableRow(rowId, cells, { className, title, marker } = {}) {
+// design's orange, or a CSS color. `disabled` draws the row pale.
+export function tableRow(rowId, cells, { className, title, marker, disabled } = {}) {
   const tr = document.createElement("tr");
   if (rowId != null) {
     tr.dataset.rowId = rowId;
   }
   if (className) {
     tr.className = className;
+  }
+  if (disabled) {
+    tr.classList.add("data-table-row-disabled");
   }
   if (marker) {
     tr.classList.add("data-table-row-marked");
@@ -658,7 +754,7 @@ export function additionalText(text) {
   return span;
 }
 
-// A status cell's swatch (table/select "status"): an 18px rounded box of
+// A status cell's swatch (table "custom"): an 18px rounded box of
 // `color` filling the cell.
 export function statusSwatch(color, { title } = {}) {
   const swatch = document.createElement("div");
@@ -827,9 +923,9 @@ export class DataTable extends HTMLElement {
     }
   }
 
-  // The design's look: "data" (table/data, every row ruled) or "select"
-  // (table/select, only the head ruled). Unset keeps the plain table. Row
-  // icons from `rowAction` draw as button/table icon in either look.
+  // The design's look (table, Figma 2004:29827): "select" rules every row,
+  // "data" only the selected ones. Unset keeps the plain table. Row icons
+  // from `rowAction` draw as button/table icon in either look.
   set look(value) {
     this._look = value === "data" || value === "select" ? value : null;
     if (this._look) {

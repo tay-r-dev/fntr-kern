@@ -2510,7 +2510,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           "/tabler-icons/eye-closed.svg",
           "/tabler-icons/eye.svg",
         ]),
-        width: "18px",
+        width: "16px",
       },
     ];
     this.sourceLayersList.addEventListener("listSelectionChanged", (event) => {
@@ -2599,13 +2599,13 @@ export default class DesignspaceNavigationPanel extends Panel {
           ["/tabler-icons/circle-dotted.svg", "/tabler-icons/circle-dot.svg"],
           true
         ),
-        width: "18px",
+        width: "16px",
       },
       {
         title: " ",
         key: "interpolationStatus",
         cellFactory: interpolationErrorCell,
-        width: "18px",
+        width: "16px",
       },
       {
         key: "formattedName",
@@ -2621,7 +2621,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           "/tabler-icons/eye-closed.svg",
           "/tabler-icons/eye.svg",
         ]),
-        width: "18px",
+        width: "16px",
       },
       {
         title: makeClickableIconHeader("/tabler-icons/pencil.svg", (event) =>
@@ -2646,7 +2646,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             return { newValue, selectItem: !selectedItem };
           }
         ),
-        width: "18px",
+        width: "16px",
       },
     ];
 
@@ -2676,7 +2676,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       title: " ",
       key: "interpolationContribution",
       cellFactory: interpolationContributionCell,
-      width: "18px",
+      width: "16px",
     });
     return columnDescriptions;
   }

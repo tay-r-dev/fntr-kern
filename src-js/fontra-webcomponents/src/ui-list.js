@@ -13,14 +13,21 @@ const colors = {
   "row-foreground-color": ["black", "white"],
   "row-background-color": ["white", "#333"],
   "row-selected-background-color": ["#ddd", "#555"],
-  // table/select (Figma 417:8683), for look="select".
-  "select-look-background-color": ["#fff", "#2c2c2c"],
-  "select-look-border-color": ["#e9e9e9", "#3a3a3a"],
-  "select-look-rule-color": ["rgba(21, 21, 21, 0.1)", "rgba(255, 255, 255, 0.1)"],
-  "select-look-heading-color": ["#b4b4b4", "#8e8e8e"],
-  "select-look-entry-color": ["#565656", "#c0c0c0"],
-  "select-look-entry-hover-color": ["#303030", "#e0e0e0"],
-  "select-look-active-color": ["#f7f7f7", "#3a3a3a"],
+  // table (Figma 2004:29827), for look="data" and look="select". Light colours are the design
+  // system's tokens (core.css); dark ones stay hand-picked.
+  "table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
+  "table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
+  "table-look-rule-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-heading-color": ["var(--tbl-lb-heading)", "#8e8e8e"],
+  "table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
+  "table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
+  "table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],
+  "table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
+  "table-look-selection-entry-color": ["var(--tbl-lb-prim-rest-selection)", "#c4dc6a"],
+  "table-look-selection-entry-hover-color": [
+    "var(--tbl-lb-prim-hover-selection)",
+    "#e2f38f",
+  ],
 };
 
 export class UIList extends UnlitElement {
@@ -180,93 +187,96 @@ export class UIList extends UnlitElement {
       background-color: unset;
     }
 
-    /* look="select" (table/select, Figma 421:12696): the head and the rows
-       in one white box, ruled and rounded; a 24px head of small uppercase
-       light grey labels over a rule; 26px rows of thin grey entries with no
-       rules between them, darker on hover, the light grey fill on the
-       selected row. */
-    :host([look="select"]) {
+    /* look="data" and look="select" (table, Figma 2004:29827): the head
+       and the rows in one white box, ruled and rounded; a 24px head of small
+       uppercase light grey labels over a rule; 24px rows of thin grey
+       entries, darker on hover; a selected row is lime-filled with a lime
+       rule and lime text. "select" rules every row, "data" only the selected
+       ones. */
+    :host([look]) {
       gap: 0;
-      border: 1px solid var(--select-look-border-color);
+      border: 1px solid var(--table-look-border-color);
       border-radius: 6px;
       overflow: hidden;
-      background-color: var(--select-look-background-color);
+      background-color: var(--table-look-background-color);
     }
 
-    :host([look="select"]) .header-container {
-      border-bottom: 1px solid var(--select-look-rule-color);
+    :host([look]) .header-container {
+      border-bottom: 1px solid var(--table-look-rule-color);
     }
 
-    :host([look="select"]) .header {
+    :host([look]) .header {
       box-sizing: border-box;
       align-items: center;
-      height: 24px;
+      height: var(--tbl-height, 24px);
       padding: 0 8px;
       /* ui/table/heading */
-      font: 400 semi-condensed 8px / 10px var(--ui-font-mono);
+      font: 400 8px / 10px var(--ui-font-mono);
+      font-stretch: 90%;
       letter-spacing: var(--ui-tracking);
       text-transform: uppercase;
-      color: var(--select-look-heading-color);
+      color: var(--table-look-heading-color);
     }
 
     /* Header and rows are different sizes of type, so every width and gap
        here is in px: an em width would come out narrower in the head than
        in the rows, and the labels would drift from their columns. */
-    :host([look="select"]) {
+    :host([look]) {
       --column-header-divider-thickness: 0px;
       --column-header-divider-right-margin: 0px;
     }
 
-    :host([look="select"]) .header-cell.resizable {
+    :host([look]) .header-cell.resizable {
       border-right: none;
     }
 
     /* Each cell is exactly its column's width, padding included, so an
-       icon column carries no padding and a text column its 8px (table/select
-       "px 8") without the two drifting apart between head and rows. */
-    :host([look="select"]) .list-cell,
-    :host([look="select"]) .text-cell,
-    :host([look="select"]) .text-cell-header {
+       icon column carries no padding and a text column its 8px without the
+       two drifting apart between head and rows. */
+    :host([look]) .list-cell,
+    :host([look]) .text-cell,
+    :host([look]) .text-cell-header {
       box-sizing: border-box;
       flex: none;
       padding: 0;
     }
 
-    :host([look="select"]) .text-cell,
-    :host([look="select"]) .text-cell-header:not(:has(.clickable-icon-header)),
-    :host([look="select"]) .list-cell:has(.status-cell) {
+    :host([look]) .text-cell,
+    :host([look]) .text-cell-header:not(:has(.clickable-icon-header)),
+    :host([look]) .list-cell:has(.status-cell) {
       padding: 0 8px;
     }
 
-    :host([look="select"]) .header,
-    :host([look="select"]) .row {
+    :host([look]) .header,
+    :host([look]) .row {
       padding: 0 8px;
     }
 
-    :host([look="select"]) .list-cell {
+    :host([look]) .list-cell {
       align-items: center;
     }
 
-    /* A header's icon sits over its column's icons: 12px, 3px in. */
-    :host([look="select"]) .text-cell-header .clickable-icon-header {
-      width: 12px !important;
-      height: 12px !important;
-      margin-left: 3px;
+    /* A header's icon sits over its column's icons: 15px in a 16px slot. */
+    :host([look]) .text-cell-header .clickable-icon-header {
+      width: 15px !important;
+      height: 15px !important;
+      margin-left: 0.5px;
     }
 
-    :host([look="select"]) .rows-container {
+    :host([look]) .rows-container {
       border: none;
-      background-color: var(--select-look-background-color);
+      background-color: var(--table-look-background-color);
     }
 
-    :host([look="select"]) .row {
+    :host([look]) .row {
       box-sizing: border-box;
       align-items: center;
-      height: 26px;
+      height: var(--tbl-height, 24px);
       padding: 0 8px;
       border-top: none;
-      background-color: transparent;
-      color: var(--select-look-entry-color);
+      border-bottom: 1px solid var(--table-look-rule-color);
+      background-color: var(--table-look-background-color);
+      color: var(--table-look-entry-color);
       /* ui/table/entry */
       font-family: var(--ui-font-mono);
       font-size: 9px;
@@ -277,32 +287,49 @@ export class UIList extends UnlitElement {
       font-feature-settings: "case" 1;
     }
 
-    :host([look="select"]) .row:hover {
-      color: var(--select-look-entry-hover-color);
+    :host([look]) .row:last-child:not(.selected) {
+      border-bottom-color: transparent;
     }
 
-    :host([look="select"]) .contents > .selected,
-    :host([look="select"]) .selected > input {
-      background-color: var(--select-look-active-color);
+    :host([look="data"]) .row:not(.selected) {
+      border-bottom-color: transparent;
     }
 
-    /* The row's icons: button/table icon's 12px glyph in an 18px slot. */
-    :host([look="select"]) .row inline-svg {
+    :host([look]) .row:hover {
+      color: var(--table-look-entry-hover-color);
+    }
+
+    :host([look]) .contents > .selected {
+      background-color: var(--table-look-selection-color);
+      border-bottom-color: var(--table-look-selection-rule-color);
+      color: var(--table-look-selection-entry-color);
+    }
+
+    :host([look]) .contents > .selected:hover {
+      color: var(--table-look-selection-entry-hover-color);
+    }
+
+    :host([look]) .selected > input {
+      background-color: transparent;
+    }
+
+    /* The row's icons: button/table icon's 15px glyph in a 16px slot. */
+    :host([look]) .row inline-svg {
       box-sizing: content-box;
-      width: 12px !important;
-      height: 12px !important;
-      padding: 3px;
+      width: 15px !important;
+      height: 15px !important;
+      padding: 0.5px;
     }
 
-    /* table/select "status": an 18px swatch, 4px corners, a white edge. */
-    :host([look="select"]) .status-cell {
+    /* table "custom": an 18px swatch, 4px corners, a white edge. */
+    :host([look]) .status-cell {
       box-sizing: border-box;
       height: 18px;
-      border: 1px solid var(--select-look-background-color);
+      border: 1px solid var(--table-look-background-color);
       border-radius: 4px;
     }
 
-    :host([look="select"]) input {
+    :host([look]) input {
       font: inherit;
       letter-spacing: inherit;
       color: inherit;
