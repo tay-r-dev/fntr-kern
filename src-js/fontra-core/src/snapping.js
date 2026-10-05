@@ -1,4 +1,4 @@
-import { cubicVelocityAt } from "./offset-contour.js";
+import { cubicPointAt as cubicAt, cubicVelocityAt } from "./offset-contour.js";
 
 // A kind is a direction, not a source. Two lines that run the same way pull the
 // same, whether one came from a guide the designer placed, a font metric, a
@@ -66,18 +66,6 @@ export function makeCurveCandidate({ points, kind, extend, source, permanent }) 
   };
 }
 
-function cubicAt(points, t) {
-  const u = 1 - t;
-  const a = u * u * u;
-  const b = 3 * u * u * t;
-  const c = 3 * u * t * t;
-  const d = t * t * t;
-  return {
-    x: a * points[0].x + b * points[1].x + c * points[2].x + d * points[3].x,
-    y: a * points[0].y + b * points[1].y + c * points[2].y + d * points[3].y,
-  };
-}
-
 function cubicTangentAt(points, t) {
   const { x: dx, y: dy } = cubicVelocityAt(points, t);
   const length = Math.hypot(dx, dy);
@@ -98,9 +86,8 @@ function projectionSpans(candidate) {
 const PROJECTION_SAMPLES = 24;
 const PROJECTION_REFINEMENTS = 20;
 
-// Nearest point on the projection, by a fixed sweep and a fixed bisection. The
-// trip counts are fixed for the reason every other search in this fork fixes
-// them: a search that picks its own trip count cannot be continuous in its input.
+// Bounded approximate nearest-point search on the two extensions. A fixed
+// budget bounds the work; it does not guarantee continuity between local minima.
 export function projectOntoCurve(candidate, point) {
   const { points } = candidate;
   let best = null;
@@ -129,14 +116,10 @@ export function projectOntoCurve(candidate, point) {
     const middle = (low + high) / 2;
     const a = (low + middle) / 2;
     const b = (middle + high) / 2;
-    const da = Math.hypot(
-      cubicAt(points, a).x - point.x,
-      cubicAt(points, a).y - point.y
-    );
-    const db = Math.hypot(
-      cubicAt(points, b).x - point.x,
-      cubicAt(points, b).y - point.y
-    );
+    const pa = cubicAt(points, a);
+    const pb = cubicAt(points, b);
+    const da = Math.hypot(pa.x - point.x, pa.y - point.y);
+    const db = Math.hypot(pb.x - point.x, pb.y - point.y);
     if (da < db) {
       high = middle;
     } else {
@@ -175,8 +158,7 @@ export function projectOntoCandidate(candidate, point) {
     return { x: candidate.x, y: candidate.y };
   }
   if (candidate.type === "curve") {
-    const foot = projectOntoCurve(candidate, point);
-    return { x: foot.x, y: foot.y };
+    return projectOntoCurve(candidate, point);
   }
   return projectOntoLine(candidate, point);
 }
@@ -361,10 +343,13 @@ function sameCandidate(a, b) {
   if (a.type === "curve") {
     // Two projections are the same one where they were built on the same four
     // points. A curve has no normal form to compare, so this is the comparison.
-    return a.points.every(
-      (point, i) =>
-        Math.abs(point.x - b.points[i].x) < 1e-9 &&
-        Math.abs(point.y - b.points[i].y) < 1e-9
+    return (
+      Math.abs(a.extend - b.extend) < 1e-9 &&
+      a.points.every(
+        (point, i) =>
+          Math.abs(point.x - b.points[i].x) < 1e-9 &&
+          Math.abs(point.y - b.points[i].y) < 1e-9
+      )
     );
   }
   if (a.type === "point") {
@@ -378,311 +363,302 @@ export function reachForKind(kind, pixelUnit) {
   return SNAP_PARAMETERS.reachPixels * (SNAP_PARAMETERS.reaches[kind] ?? 1) * pixelUnit;
 }
 
-export function candidatePull(candidate, cursor, { pixelUnit, held }) {
-  const reach = reachForKind(candidate.kind, pixelUnit);
-  const weight = kindWeight(candidate.kind);
-  const bonus = sameCandidate(candidate, held) ? SNAP_PARAMETERS.holdBonus : 1;
-  return weight * bonus * falloff(distanceToCandidate(candidate, cursor) / reach);
-}
-
-export function resolveSnap(candidates, cursor, options) {
-  const { constraint } = options;
-  if (constraint) {
-    // The constraint is a held line, so the gesture already stands at one degree of
-    // freedom and the search below looks for the second. Shift is not overruled.
-    const onConstraint = projectOntoLine(constraint, cursor);
-    for (const candidate of candidates) {
-      if (candidate.type !== "line") {
-        continue;
-      }
-      if (candidatePull(candidate, cursor, options) <= SNAP_PARAMETERS.noSnapPull) {
-        continue;
-      }
-      const crossing = crossLines(constraint, candidate);
-      if (!crossing) {
-        continue;
-      }
-      const pull = candidatePull(crossing, cursor, options);
-      if (pull > SNAP_PARAMETERS.noSnapPull) {
-        return {
-          position: { x: crossing.x, y: crossing.y },
-          pull,
-          held: [candidate],
-          freedom: "point",
-        };
-      }
+// One cache per frame. Collection, resolution and diagnostics share these feet;
+// the cache dies with the frame so a changed scene or zoom cannot leave stale data.
+export function createSnapEvaluator() {
+  const cache = new Map();
+  return (candidate, point) => {
+    let points = cache.get(candidate);
+    if (!points) {
+      points = new Map();
+      cache.set(candidate, points);
     }
-    return { position: onConstraint, pull: 0, held: [], freedom: "line" };
-  }
-
-  const { held, pixelUnit } = options;
-  const speed = options.speed || 0;
-  // Below this the designer is placing, above it they are travelling. Inkscape
-  // postpones snapping the same way while the pointer is moving, which is what
-  // stops a guide swept past from grabbing the cursor on the way by.
-  const settled = speed <= SNAP_PARAMETERS.acquireSpeedPixels;
-
-  const heldDistance = held ? distanceToCandidate(held, cursor) : 0;
-  const previous = options.overrule;
-  const movingAway =
-    held && previous && Number.isFinite(previous.heldDistance)
-      ? heldDistance > previous.heldDistance + 1e-9
-      : false;
-
-  // The escape is a gesture in two parts, and both are needed so that ordinary
-  // dragging cannot perform it by accident. Settling on a guide arms it. Leaving
-  // that guide fast, while armed, breaks free. The candidate escaped from is then
-  // refused until the cursor has left its reach, or it would take the point back
-  // on the next frame.
-  const escapeIn = options.escape || { armed: false, refused: null };
-  let escapeOut = { armed: escapeIn.armed, refused: escapeIn.refused };
-  if (
-    escapeOut.refused &&
-    distanceToCandidate(escapeOut.refused, cursor) >
-      reachForKind(escapeOut.refused.kind, pixelUnit)
-  ) {
-    escapeOut.refused = null;
-  }
-  if (!held) {
-    escapeOut.armed = false;
-  } else if (settled) {
-    escapeOut.armed = true;
-  } else if (
-    escapeOut.armed &&
-    movingAway &&
-    speed > SNAP_PARAMETERS.escapeSpeedPixels
-  ) {
-    return {
-      position: { ...cursor },
-      pull: 0,
-      held: [],
-      freedom: "free",
-      suggestion: null,
-      overrule: null,
-      near: null,
-      escape: { armed: false, refused: held },
-      escaped: held,
-    };
-  }
-
-  // A held candidate is never culled. Sliding far along a guide takes the geometry
-  // that produced it out of collection range, and the snap must not drop because
-  // of that: the designer is still on the guide they chose.
-  let pool = escapeOut.refused
-    ? candidates.filter((candidate) => !sameCandidate(candidate, escapeOut.refused))
-    : candidates;
-  if (held && !pool.some((candidate) => sameCandidate(candidate, held))) {
-    pool = [...pool, held];
-  }
-  // Travelling: whatever is already held stays, and nothing new is taken up.
-  if (!settled) {
-    pool = held ? [held] : [];
-  }
-
-  const scored = [];
-  let near = null;
-  for (const candidate of pool) {
-    const pull = candidatePull(candidate, cursor, options);
-    // The strongest candidate seen, whether or not it beats the floor. This is
-    // what the indicator reads to show a snap coming before it takes.
-    if (pull > 0 && (!near || pull > near.pull)) {
-      near = { candidate, pull };
+    if (!points.has(point)) {
+      const position = projectOntoCandidate(candidate, point);
+      points.set(point, {
+        position,
+        distance: Math.hypot(position.x - point.x, position.y - point.y),
+      });
     }
-    if (pull <= SNAP_PARAMETERS.noSnapPull) {
-      continue;
-    }
-    if (scored.some(({ candidate: other }) => sameCandidate(other, candidate))) {
-      continue;
-    }
-    scored.push({ candidate, pull });
-  }
-  scored.sort((a, b) => b.pull - a.pull);
-
-  if (!scored.length) {
-    return {
-      position: { ...cursor },
-      pull: 0,
-      held: [],
-      freedom: "free",
-      suggestion: null,
-      overrule: null,
-      escape: escapeOut,
-      near: near
-        ? {
-            position: projectOntoCandidate(near.candidate, cursor),
-            pull: near.pull,
-            kind: near.candidate.kind,
-          }
-        : null,
-    };
-  }
-
-  // A guide the designer chose is not given up because a heavier one came within
-  // range. Two things must both be true before a rival takes over. It must beat
-  // the held candidate by a margin, and the designer must be moving away from the
-  // guide they hold, for a run of frames. Sliding along a held guide keeps the
-  // distance to it at nothing, so a metric crossing the path is only ever a
-  // suggestion. Leaving that guide raises the distance every frame, which is what
-  // deciding looks like, and then the rival takes the snap.
-  let winning = scored[0];
-  let suggestion = null;
-  let nextOverrule = null;
-  const heldEntry = held
-    ? scored.find((entry) => sameCandidate(entry.candidate, held))
-    : null;
-  if (heldEntry) {
-    let count = 0;
-    if (!sameCandidate(winning.candidate, held)) {
-      const rival = winning;
-      const beatsMargin = rival.pull >= heldEntry.pull * SNAP_PARAMETERS.overruleMargin;
-      if (beatsMargin && movingAway) {
-        count = sameCandidate(previous?.candidate, rival.candidate)
-          ? previous.count + 1
-          : 1;
-      }
-      if (count < SNAP_PARAMETERS.overruleFrames) {
-        suggestion = rival.candidate;
-        winning = heldEntry;
-      }
-      nextOverrule = { candidate: rival.candidate, count, heldDistance };
-    } else {
-      nextOverrule = { candidate: null, count: 0, heldDistance };
-    }
-  }
-
-  const winner = winning.candidate;
-  if (winner.type === "point") {
-    return {
-      position: { x: winner.x, y: winner.y },
-      pull: winning.pull,
-      held: winner.sources ? [...winner.sources] : [winner],
-      freedom: "point",
-      suggestion,
-      overrule: nextOverrule,
-      escape: escapeOut,
-    };
-  }
-
-  for (const { candidate } of scored) {
-    if (candidate.type !== "line" || sameCandidate(candidate, winner)) {
-      continue;
-    }
-    const crossing = crossLines(winner, candidate);
-    if (!crossing) {
-      continue;
-    }
-    const crossingPull = candidatePull(crossing, cursor, options);
-    if (crossingPull > SNAP_PARAMETERS.noSnapPull) {
-      return {
-        position: { x: crossing.x, y: crossing.y },
-        pull: crossingPull,
-        held: [winner, candidate],
-        freedom: "point",
-        suggestion,
-        overrule: nextOverrule,
-        escape: escapeOut,
-      };
-    }
-  }
-
-  // A projected curve takes one degree of freedom, exactly as a line does: the
-  // point is on it, and where along it is still the cursor's to say.
-  return {
-    position: projectOntoCandidate(winner, cursor),
-    pull: winning.pull,
-    held: [winner],
-    freedom: "line",
-    suggestion,
-    overrule: nextOverrule,
-    escape: escapeOut,
+    return points.get(point);
   };
 }
 
-export function resolveSnapForPoints(candidates, points, cursor, options) {
-  const reach = SNAP_PARAMETERS.reachPixels * options.pixelUnit;
-  const pointerSpan = reach * SNAP_PARAMETERS.pointerFalloffReaches;
+function pullAtDistance(candidate, distance, pixelUnit, held) {
+  const reach = reachForKind(candidate.kind, pixelUnit);
+  const bonus = sameCandidate(candidate, held) ? SNAP_PARAMETERS.holdBonus : 1;
+  return reach > 0 ? kindWeight(candidate.kind) * bonus * falloff(distance / reach) : 0;
+}
+
+export function candidatePull(candidate, cursor, { pixelUnit, held }) {
+  return pullAtDistance(
+    candidate,
+    distanceToCandidate(candidate, cursor),
+    pixelUnit,
+    held
+  );
+}
+
+function targetSources(candidate) {
+  return candidate.sources || [candidate];
+}
+
+function samePair(a, b) {
+  return (
+    a && b && a.pointIndex === b.pointIndex && sameCandidate(a.candidate, b.candidate)
+  );
+}
+
+// Preserve the existing preference for meeting two constraints when possible.
+// Within that class compare pull, then distance and coordinates for stable ties.
+function compareSnaps(a, b) {
+  return (
+    Number(b.candidate.type === "point") - Number(a.candidate.type === "point") ||
+    b.score - a.score ||
+    a.distance - b.distance ||
+    a.position.x - b.position.x ||
+    a.position.y - b.position.y ||
+    a.candidate.kind.localeCompare(b.candidate.kind) ||
+    a.pointIndex - b.pointIndex
+  );
+}
+
+function resolvePoints(candidates, points, cursor, options) {
+  const { pixelUnit, held } = options;
+  const evaluate = options.evaluate || createSnapEvaluator();
+  const settled = (options.speed || 0) <= SNAP_PARAMETERS.acquireSpeedPixels;
+  const previous = options.overrule;
+  const escape = { armed: false, refused: null, ...options.escape };
+  const heldPoint = held && points[held.pointIndex];
+  const heldDistance = heldPoint ? evaluate(held.candidate, heldPoint).distance : 0;
+  const movingAway =
+    heldPoint &&
+    Number.isFinite(previous?.heldDistance) &&
+    heldDistance > previous.heldDistance + 1e-9;
+  if (escape.refused) {
+    const owner = points[escape.pointIndex ?? 0];
+    if (
+      !owner ||
+      evaluate(escape.refused, owner).distance >
+        reachForKind(escape.refused.kind, pixelUnit)
+    ) {
+      escape.refused = null;
+    }
+  }
+  if (!heldPoint) {
+    escape.armed = false;
+  } else if (settled) {
+    escape.armed = true;
+  }
+
+  const fallback =
+    options.constraint && points.length
+      ? projectOntoLine(options.constraint, points[0])
+      : null;
   const noWin = {
-    delta: { x: 0, y: 0 },
+    delta: fallback
+      ? { x: fallback.x - points[0].x, y: fallback.y - points[0].y }
+      : { x: 0, y: 0 },
     pointIndex: -1,
-    position: null,
+    position: fallback,
     pull: 0,
     held: [],
-    freedom: "free",
+    target: null,
+    freedom: fallback ? "line" : "free",
     suggestion: null,
     overrule: null,
-    escape: options.escape || null,
+    escape,
     near: null,
+    byKind: {},
   };
-  let best = { ...noWin };
-  let bestScore = 0;
+  if (
+    heldPoint &&
+    escape.armed &&
+    movingAway &&
+    (options.speed || 0) > SNAP_PARAMETERS.escapeSpeedPixels
+  ) {
+    return {
+      ...noWin,
+      escaped: held.candidate,
+      escape: { armed: false, refused: held.candidate, pointIndex: held.pointIndex },
+    };
+  }
 
-  // The balance between one anchor and the whole selection. At 0 the strongest
-  // alignment anywhere takes the drag. In between, each point's pull is discounted
-  // by how far that point is from the hand. At 1 the point under the hand is the
-  // only one asked, so the end of the slider is an exact behavior and not merely a
-  // steep discount.
   let anchorIndex = -1;
   if (SNAP_PARAMETERS.pointerWeight >= 1) {
     let nearest = Infinity;
-    points.forEach((point, pointIndex) => {
+    points.forEach((point, i) => {
       const distance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
       if (distance < nearest) {
         nearest = distance;
-        anchorIndex = pointIndex;
+        anchorIndex = i;
       }
     });
   }
-
+  const entries = [];
+  const byKind = noWin.byKind;
+  const pointerSpan =
+    SNAP_PARAMETERS.reachPixels * pixelUnit * SNAP_PARAMETERS.pointerFalloffReaches;
+  const refused = (candidate) =>
+    escape.refused &&
+    targetSources(candidate).some((source) =>
+      targetSources(escape.refused).some((other) => sameCandidate(source, other))
+    );
   points.forEach((point, pointIndex) => {
-    if (anchorIndex >= 0 && pointIndex !== anchorIndex) {
-      return;
-    }
-    // The hold belongs to the pair. A candidate held by another point earns no bonus here.
-    const held =
-      options.held && options.held.pointIndex === pointIndex
-        ? options.held.candidate
-        : null;
-    const result = resolveSnap(candidates, point, {
-      ...options,
-      held,
-      overrule: held ? options.overrule : null,
-      escape: held ? options.escape : null,
-    });
-    if (held) {
-      // Only the point that holds owns the escape state; the rest were never on
-      // a guide to break free of.
-      best.escape = result.escape;
-    }
-    if (!result.held.length) {
-      // Nothing took this point, but the strongest near miss still feeds the
-      // indicator, so a snap coming is visible before it takes.
-      if (result.near && (!best.near || result.near.pull > best.near.pull)) {
-        best.near = result.near;
-      }
-      return;
-    }
+    if (anchorIndex >= 0 && pointIndex !== anchorIndex) return;
+    const ownHeld = held?.pointIndex === pointIndex ? held.candidate : null;
+    // Each source travels on its own parallel rail, at its original offset from
+    // the first source. Applying a single correction therefore preserves shape.
+    const constraint = options.constraint
+      ? {
+          ...options.constraint,
+          x: options.constraint.x + point.x - points[0].x,
+          y: options.constraint.y + point.y - points[0].y,
+        }
+      : null;
+    const query = constraint ? projectOntoLine(constraint, point) : point;
     const pointerDistance = Math.hypot(point.x - cursor.x, point.y - cursor.y);
     const discount =
-      1 - SNAP_PARAMETERS.pointerWeight * Math.min(1, pointerDistance / pointerSpan);
-    const score = result.pull * discount;
-    if (score > bestScore) {
-      bestScore = score;
-      best = {
-        delta: { x: result.position.x - point.x, y: result.position.y - point.y },
-        pointIndex,
-        position: result.position,
-        pull: result.pull,
-        held: result.held,
-        freedom: result.freedom,
-        suggestion: result.suggestion,
-        overrule: result.overrule,
-        escape: result.escape,
-        near: best.near,
-      };
+      1 -
+      SNAP_PARAMETERS.pointerWeight * Math.min(1, pointerDistance / (pointerSpan || 1));
+    const pool = [...candidates];
+    if (ownHeld) {
+      for (const source of targetSources(ownHeld)) {
+        if (!pool.some((candidate) => sameCandidate(source, candidate)))
+          pool.push(source);
+      }
     }
+    const local = [];
+    const add = (candidate) => {
+      if (refused(candidate)) return;
+      const geometry = evaluate(candidate, query);
+      const pull = pullAtDistance(candidate, geometry.distance, pixelUnit, ownHeld);
+      byKind[candidate.kind] = Math.max(byKind[candidate.kind] || 0, pull);
+      const entry = {
+        ...geometry,
+        candidate,
+        pointIndex,
+        pull,
+        score: pull * discount,
+      };
+      if (pull > 0 && (!noWin.near || entry.score > noWin.near.score)) {
+        noWin.near = {
+          position: geometry.position,
+          pull,
+          score: entry.score,
+          kind: candidate.kind,
+        };
+      }
+      if (
+        pull <= SNAP_PARAMETERS.noSnapPull ||
+        (!settled && !sameCandidate(candidate, ownHeld))
+      )
+        return;
+      if (!local.some((other) => sameCandidate(other.candidate, candidate)))
+        local.push(entry);
+    };
+    const lines = [];
+    for (const candidate of pool) {
+      if (refused(candidate)) continue;
+      if (constraint) {
+        const crossing = crossLines(constraint, candidate);
+        if (crossing) add({ ...crossing, sources: [candidate] });
+        else if (
+          candidate.type === "point" &&
+          distanceToCandidate(constraint, candidate) < 1e-9
+        )
+          add(candidate);
+      } else {
+        add(candidate);
+        if (
+          candidate.type === "line" &&
+          pullAtDistance(
+            candidate,
+            evaluate(candidate, point).distance,
+            pixelUnit,
+            ownHeld
+          ) > SNAP_PARAMETERS.noSnapPull &&
+          !lines.some((line) => sameCandidate(line, candidate))
+        )
+          lines.push(candidate);
+      }
+    }
+    // Crossings are evaluated before selection, never accepted by list order.
+    for (let i = 0; i < lines.length; i++) {
+      for (let j = i + 1; j < lines.length; j++) {
+        const crossing = crossLines(lines[i], lines[j]);
+        if (crossing) add(crossing);
+      }
+    }
+    entries.push(...local);
   });
+  if (!entries.length) return noWin;
+  entries.sort(compareSnaps);
+  let winner = entries[0];
+  let suggestion = null;
+  let overrule = null;
+  const heldEntry = held && entries.find((entry) => samePair(entry, held));
+  if (heldEntry) {
+    let count = 0;
+    const refinement =
+      winner.pointIndex === held.pointIndex &&
+      held.candidate.type !== "point" &&
+      targetSources(winner.candidate).some((source) =>
+        sameCandidate(source, held.candidate)
+      );
+    if (!samePair(winner, held) && !refinement) {
+      const rival = winner;
+      if (
+        rival.score >= heldEntry.score * SNAP_PARAMETERS.overruleMargin &&
+        movingAway
+      ) {
+        count = samePair(previous, rival) ? previous.count + 1 : 1;
+      }
+      if (count < SNAP_PARAMETERS.overruleFrames) {
+        suggestion = rival.candidate;
+        winner = heldEntry;
+      }
+      overrule = {
+        candidate: rival.candidate,
+        pointIndex: rival.pointIndex,
+        count,
+        heldDistance,
+      };
+    } else {
+      overrule = { candidate: null, pointIndex: -1, count: 0, heldDistance };
+    }
+  }
+  const { candidate, position, pointIndex, pull } = winner;
+  return {
+    ...noWin,
+    position,
+    pointIndex,
+    pull,
+    target: candidate,
+    delta: {
+      x: position.x - points[pointIndex].x,
+      y: position.y - points[pointIndex].y,
+    },
+    held: targetSources(candidate),
+    freedom: candidate.type === "point" ? "point" : "line",
+    suggestion,
+    overrule,
+    evaluation: winner,
+  };
+}
 
-  return best;
+export function resolveSnap(candidates, cursor, options) {
+  const result = resolvePoints(candidates, [cursor], cursor, {
+    ...options,
+    held: options.held ? { pointIndex: 0, candidate: options.held } : null,
+    // Pointer discount is one for the sole source, regardless of the setting.
+    overrule: options.overrule ? { pointIndex: 0, ...options.overrule } : null,
+  });
+  return { ...result, position: result.position || { ...cursor } };
+}
+
+export function resolveSnapForPoints(candidates, points, cursor, options) {
+  return resolvePoints(candidates, points, cursor, options);
 }
 
 function isOrthogonal(angle) {

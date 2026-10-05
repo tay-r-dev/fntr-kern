@@ -1172,3 +1172,150 @@ describe("the snap policy of a modified drag", () => {
     expect(found[0].y).to.equal(20);
   });
 });
+
+describe("one chooser for every source and constraint", () => {
+  const line = (x, y, angle = 0, kind = KIND.ORTHOGONAL) =>
+    makeLineCandidate({ x, y, angle, kind });
+  const opts = { pixelUnit: 1 };
+  afterEach(resetSnapParameters);
+
+  it("ranks Shift crossings independently of candidate order", () => {
+    const constraint = line(0, 0);
+    const far = line(8, 0, 90);
+    const near = line(1, 0, 45, KIND.DIAGONAL);
+    for (const candidates of [
+      [far, near],
+      [near, far],
+    ]) {
+      const result = resolveSnap(candidates, { x: 0, y: 0 }, { ...opts, constraint });
+      expect(result.position.x).to.be.closeTo(1, 1e-9);
+      expect(result.position.y).to.be.closeTo(0, 1e-9);
+    }
+  });
+
+  it("ranks all nearby crossings before choosing", () => {
+    const candidates = [line(0, 0), line(8, 0, 20), line(6, 0, 90)];
+    for (const pool of [candidates, [...candidates].reverse()]) {
+      const result = resolveSnap(pool, { x: 0, y: 0 }, opts);
+      expect(result.position.x).to.be.closeTo(6, 1e-9);
+      expect(result.position.y).to.be.closeTo(0, 1e-9);
+    }
+  });
+
+  it("applies acquisition speed to Shift too", () => {
+    const result = resolveSnap(
+      [line(1, 0, 90)],
+      { x: 0, y: 2 },
+      {
+        ...opts,
+        constraint: line(0, 0),
+        speed: SNAP_PARAMETERS.acquireSpeedPixels + 1,
+      }
+    );
+    expect(result.held).to.have.length(0);
+    expect(result.position).to.deep.equal({ x: 0, y: 0 });
+  });
+
+  it("uses a parallel constraint through each source's own start", () => {
+    SNAP_PARAMETERS.pointerWeight = 0;
+    const result = resolveSnapForPoints(
+      [line(106, 0, 90)],
+      [
+        { x: 5, y: 0 },
+        { x: 105, y: 20 },
+      ],
+      { x: 5, y: 0 },
+      { ...opts, constraint: line(0, 0) }
+    );
+    expect(result.pointIndex).to.equal(1);
+    expect(result.delta.x).to.be.closeTo(1, 1e-9);
+    expect(result.delta.y).to.be.closeTo(0, 1e-9);
+  });
+
+  it("retains both lines of a held crossing during fast travel", () => {
+    const a = line(0, 0);
+    const b = line(0, 0, 90);
+    const first = resolveSnap([a, b], { x: 1, y: 1 }, opts);
+    const next = resolveSnap(
+      [],
+      { x: 2, y: 1 },
+      {
+        ...opts,
+        held: first.target,
+        speed: SNAP_PARAMETERS.acquireSpeedPixels + 1,
+      }
+    );
+    expect(next.held).to.have.length(2);
+    expect(next.position.x).to.be.closeTo(0, 1e-9);
+    expect(next.position.y).to.be.closeTo(0, 1e-9);
+  });
+
+  it("keeps an escaped guide refused after the owning point drops its hold", () => {
+    const guide = line(0, 0);
+    const settled = resolveSnapForPoints(
+      [guide],
+      [{ x: 0, y: 1 }],
+      { x: 0, y: 1 },
+      {
+        ...opts,
+        held: { pointIndex: 0, candidate: guide },
+      }
+    );
+    const escaped = resolveSnapForPoints(
+      [guide],
+      [{ x: 0, y: 2 }],
+      { x: 0, y: 2 },
+      {
+        ...opts,
+        held: { pointIndex: 0, candidate: guide },
+        overrule: settled.overrule,
+        escape: settled.escape,
+        speed: SNAP_PARAMETERS.escapeSpeedPixels + 1,
+      }
+    );
+    expect(escaped.held).to.have.length(0);
+    const slow = resolveSnapForPoints(
+      [guide],
+      [{ x: 0, y: 3 }],
+      { x: 0, y: 3 },
+      {
+        ...opts,
+        held: null,
+        escape: escaped.escape,
+      }
+    );
+    expect(slow.held).to.have.length(0);
+    expect(slow.escape.refused).to.equal(guide);
+  });
+
+  it("applies hold protection across competing source points", () => {
+    SNAP_PARAMETERS.pointerWeight = 0;
+    const held = line(0, 0, 0, KIND.OTHER);
+    const rival = line(0, 100);
+    const result = resolveSnapForPoints(
+      [held, rival],
+      [
+        { x: 0, y: 1 },
+        { x: 0, y: 100 },
+      ],
+      { x: 0, y: 1 },
+      { ...opts, held: { pointIndex: 0, candidate: held } }
+    );
+    expect(result.pointIndex).to.equal(0);
+    expect(result.suggestion).to.equal(rival);
+  });
+
+  it("reports the crossing kind and the winning source's evaluated pulls", () => {
+    const result = resolveSnapForPoints(
+      [line(0, 100), line(100, 0, 90)],
+      [
+        { x: 0, y: 0 },
+        { x: 101, y: 101 },
+      ],
+      { x: 0, y: 0 },
+      opts
+    );
+    expect(result.target.kind).to.equal(KIND.INTERSECTION);
+    expect(result.byKind[KIND.INTERSECTION]).to.be.greaterThan(1);
+  });
+});
