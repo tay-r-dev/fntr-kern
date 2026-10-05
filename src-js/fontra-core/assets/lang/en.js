@@ -377,6 +377,7 @@ export const strings = {
   "guideline.labels.name": "Name",
   "kerning.hold-hand-tool": "Hold for Hand Tool",
   "kerning.title": "Kerning",
+  "components.title": "Components",
   "kerning.toggle-suggestion-preview": "Toggle Suggestion Preview",
   "language.en": "English",
   "language.zh-cn": "Simplified Chinese",

@@ -245,6 +245,21 @@ function getFontMenuItems(viewController) {
     },
   });
 
+  // The components gallery: every web component in each of its states, to
+  // hold against the design system.
+  items.push({
+    title: translate("components.title"),
+    callback: () => {
+      const url = new URL(window.location);
+      url.hash = "";
+      url.pathname = rerouteViewPath(url.pathname, "components");
+      window.open(
+        url.toString(),
+        `fontra.components.${viewController.projectIdentifier}`
+      );
+    },
+  });
+
   return items;
 }
 

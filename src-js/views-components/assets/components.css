@@ -1,0 +1,76 @@
+/* The components gallery: every web component in each state it can be put
+   in, laid out by Figma component. Page chrome only -- the components draw
+   themselves. */
+
+body {
+  margin: 0;
+  overflow: auto;
+  background-color: var(--background-color);
+}
+
+#components-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  max-width: 1200px;
+}
+
+.gallery-note {
+  font: var(--ui-text-label-m);
+  color: var(--bt-sgc-tx-rest);
+}
+
+.gallery-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--tbl-ln-rest);
+  border-radius: var(--bt-sgb-corner);
+  background-color: var(--tbl-cs-sr-rest);
+}
+
+.gallery-section-title {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking);
+  text-transform: uppercase;
+  color: var(--bt-sgc-tx-hover);
+}
+
+.gallery-section-source {
+  font: var(--ui-text-label-m);
+  text-transform: none;
+  color: var(--bt-sgc-tx-rest);
+}
+
+.gallery-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+}
+
+.gallery-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.gallery-cell-label {
+  font: var(--ui-text-label-m);
+  color: var(--bt-sgc-tx-rest);
+}
+
+.gallery-wide {
+  width: 360px;
+}
+
+.gallery-field {
+  width: 200px;
+}
