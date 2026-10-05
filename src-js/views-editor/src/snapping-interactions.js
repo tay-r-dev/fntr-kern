@@ -640,6 +640,8 @@ export class SnappingSession {
     sceneModel.snapDebugReadout = {
       candidateCount: candidates.length,
       winningPull: result.pull,
+      winningScore: result.evaluation?.score || 0,
+      pointIndex: result.pointIndex,
       winningKind: result.target?.kind || null,
       freedom: result.freedom,
       byKind: result.byKind,

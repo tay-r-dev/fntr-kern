@@ -414,6 +414,7 @@ numbers per kind, so a kind can grab from further away without also winning.
 | `fontra-core/src/snapping.js` | Candidate geometry, frame evaluation cache, shared chooser, source ownership, hold and escape rules, final rounding |
 | `views-editor/src/snapping-interactions.js` | Frozen scene, source exclusions, session lifetime, mode eligibility, published result |
 | `views-editor/src/visualization-layer-snapping.js` | Held and suggested guides, curve extensions and indicator; consumes results without resolving again |
+| `views-editor/src/panel-designspace-navigation.js` | Grouped debug sliders, exact selectable defaults, row help and raw-pull/weighted-score readout; tuning guide in `snapping-parameters.md` |
 | `views-editor/src/edit-tools-pointer.js` | Supplies original source positions and the gesture constraint; applies the returned correction |
 | `views-editor/src/edit-behavior.js` | Generic `preserveSnap` option prevents a second coordinate rounding during point changes |
 | `views-editor/src/skeleton-editing.js` | Ordinary skeleton-point target entry forwards that option through the synthetic path and `editSkeleton` |

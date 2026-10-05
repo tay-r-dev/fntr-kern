@@ -54,7 +54,7 @@ export function makePointCandidate({ x, y, kind, source, permanent }) {
 // outside [0, 1] is the same polynomial, so it leaves the end with the curve's
 // own bend rather than with its tangent - which is the whole of what this
 // candidate offers. `extend` is how far past each end it runs, in the source
-// parameter, so 1 doubles the curve.
+// parameter: 1 adds one original parameter interval at each end.
 export function makeCurveCandidate({ points, kind, extend, source, permanent }) {
   return {
     type: "curve",
@@ -233,7 +233,7 @@ export const SNAP_PARAMETERS_DEFAULTS = Object.freeze({
   // deliberate reach rather than an everyday one.
   curvatureEnabled: 0,
   // How far past each end the projection runs, in the source parameter. One
-  // doubles the curve.
+  // adds a full parameter interval at each end: [-1, 0] and [1, 2].
   curvatureExtend: 1,
   // A fixed-rib drag pins one edge and follows the cursor with the other, so a
   // snap moving the point is fighting the gesture. Off, with a switch, because

@@ -220,3 +220,21 @@ describe("live snap parameter changes", () => {
     expect(session.held.candidate.extend).to.equal(0.5);
   });
 });
+
+describe("snap tuning readout", () => {
+  afterEach(resetSnapParameters);
+
+  it("reports the winning source and its discounted score separately from pull", () => {
+    SNAP_PARAMETERS.startTravelPixels = 0;
+    const { session, controller } = setup();
+    const points = [
+      { x: 1000, y: 1000 },
+      { x: 1, y: 1 },
+    ];
+    session.resolveSet(points, points[0]);
+    const readout = controller.sceneModel.snapDebugReadout;
+    expect(readout.pointIndex).to.equal(1);
+    expect(readout.winningKind).to.equal("intersection");
+    expect(readout.winningScore).to.be.closeTo(readout.winningPull * 0.5, 1e-12);
+  });
+});

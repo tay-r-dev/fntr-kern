@@ -24,8 +24,10 @@ import { translate } from "@fontra/core/localization.js";
 import { ObservableController, controllerKey } from "@fontra/core/observable-object.ts";
 import {
   CULL_PARAMETERS,
+  CULL_PARAMETERS_DEFAULTS,
   KIND,
   SNAP_PARAMETERS,
+  SNAP_PARAMETERS_DEFAULTS,
   resetSnapParameters,
   setSnapParameter,
   subscribeSnapParameters,
@@ -195,7 +197,7 @@ function tuningControlsContent(prefix, controls) {
       {
         style: `
           display: grid;
-          grid-template-columns: auto 1fr auto;
+          grid-template-columns: minmax(0, 1fr) minmax(4em, 1fr) auto;
           gap: 0.35em 0.5em;
           align-items: center;
         `,
@@ -299,29 +301,56 @@ const LIST_HEADER_ANIMATION_STYLE = `
 // One row per control: label, input, readout. Every input carries the id the
 // snapping debug setup looks it up by.
 function snappingDebugRows(controls) {
-  return controls.flatMap((control) => [
-    html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [control.label]),
-    control.type === "toggle"
-      ? html.input({
-          id: `snapping-debug-${control.path.replace(".", "-")}`,
-          type: "checkbox",
-          style: "justify-self: start;",
-        })
-      : html.input({
-          id: `snapping-debug-${control.path.replace(".", "-")}`,
-          type: "range",
-          min: control.min,
-          max: control.max,
-          step: control.step,
-        }),
-    html.span(
-      {
-        id: `snapping-debug-${control.path.replace(".", "-")}-value`,
-        style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
-      },
-      [""]
-    ),
-  ]);
+  return controls.flatMap((control) => {
+    const id = `snapping-debug-${control.path.replace(".", "-")}`;
+    const help =
+      control.help ||
+      "Enable snapping during this modified drag. Its own geometric constraints still apply.";
+    const defaultValue = readSnapParameter(control.path, true);
+    const defaultText =
+      control.type === "toggle" ? (defaultValue ? "on" : "off") : defaultValue;
+    const input = html.input({
+      id,
+      type: control.type === "toggle" ? "checkbox" : "range",
+      ...(control.type === "toggle"
+        ? { style: "justify-self: start;" }
+        : {
+            min: control.min,
+            max: control.max,
+            step: control.step,
+            style: "min-width: 4em; width: 100%;",
+          }),
+      title: `${help} Default: ${defaultText}.`,
+    });
+    input.setAttribute("aria-describedby", `${id}-help`);
+    return [
+      ...(control.group
+        ? [
+            html.div(
+              { style: "grid-column: 1 / -1; font-weight: bold; padding-top: 0.8em;" },
+              [control.group]
+            ),
+          ]
+        : []),
+      html.label({ for: id, title: help, style: "font-size: 0.9em;" }, [control.label]),
+      input,
+      html.span(
+        {
+          id: `${id}-value`,
+          style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
+        },
+        [""]
+      ),
+      html.div(
+        {
+          id: `${id}-help`,
+          style:
+            "grid-column: 1 / -1; font-size: 0.8em; opacity: 0.75; padding-bottom: 0.35em;",
+        },
+        [`${help} Default: ${defaultText}.`]
+      ),
+    ];
+  });
 }
 
 // Snapping under each modifier, one switch each (snapping.js, dragSnapPolicy).
@@ -353,75 +382,151 @@ const MOD_SNAP_CONTROLS = [
 // is generated rather than written out, and adding a parameter is one line here.
 // Labels are literal: this is a tuning aid, not shipped chrome.
 const SNAPPING_TUNING_CONTROLS = [
-  { path: "reachPixels", label: "Reach (px)", min: 1, max: 60, step: 1 },
-  { path: "noSnapPull", label: "Release floor", min: 0, max: 1, step: 0.01 },
-  { path: "holdBonus", label: "Hold bonus", min: 1, max: 3, step: 0.05 },
+  {
+    path: "reachPixels",
+    label: "Base reach",
+    help: "Screen distance used by every per-kind reach. Raise it if you must aim too precisely.",
+    group: "Reach and holding",
+    unit: "px",
+    min: 1,
+    max: 60,
+    step: 1,
+  },
+  {
+    path: "noSnapPull",
+    label: "Minimum pull",
+    help: "Raw pull must exceed this to acquire or retain a snap. Raise it to reject weak snaps.",
+    min: 0,
+    max: 1,
+    step: 0.01,
+  },
+  {
+    path: "holdBonus",
+    label: "Held-target bonus",
+    help: "Multiplies pull for the held target at its owning point. Raise it to make the hold steadier.",
+    unit: "×",
+    min: 1,
+    max: 3,
+    step: 0.05,
+  },
   {
     path: "pointerWeight",
-    label: "Anchor vs multi-point (0 any point, 1 anchor only)",
+    label: "Pointer preference",
+    help: "0: all selected points compete equally. 1: only the nearest point can win. Between them, distant points receive a lower score.",
+    group: "Selection",
     min: 0,
     max: 1,
     step: 0.05,
   },
   {
     path: "pointerFalloffReaches",
-    label: "Anchor preference range (reaches)",
+    label: "Preference distance",
+    help: "Distance over which the pointer discount grows, in base reaches. Used only when pointer preference is between 0 and 1.",
+    unit: "reaches",
     min: 1,
     max: 20,
     step: 0.5,
   },
   {
     path: "acquireSpeedPixels",
-    label: "Acquire below speed (px/s)",
+    label: "Acquire at or below",
+    help: "No new target is acquired above this pointer speed. Existing holds can remain. There is no idle snap timer.",
+    group: "Movement",
+    unit: "px/s",
     min: 50,
     max: 3000,
     step: 25,
   },
   {
     path: "escapeSpeedPixels",
-    label: "Break free above speed (px/s)",
+    label: "Break free above",
+    help: "After settling, moving away above this speed releases the hold. Keep this above the acquisition speed.",
+    unit: "px/s",
     min: 200,
     max: 6000,
     step: 50,
   },
   {
     path: "startTravelPixels",
-    label: "Free travel at drag start (px)",
+    label: "Drag-start travel",
+    help: "Free pointer travel from mouse-down before snapping starts. 0 allows an immediate snap. Does not affect pen hover.",
+    unit: "px",
     min: 0,
     max: 60,
     step: 1,
   },
-  { path: "overruleMargin", label: "Overrule margin", min: 1, max: 4, step: 0.05 },
-  { path: "overruleFrames", label: "Overrule frames", min: 1, max: 20, step: 1 },
+  {
+    path: "overruleMargin",
+    label: "Rival score ratio",
+    help: "A rival must beat the held score by this factor while moving away, for the update count below. A crossing on the held line can engage directly.",
+    group: "Switching targets",
+    unit: "×",
+    min: 1,
+    max: 4,
+    step: 0.05,
+  },
+  {
+    path: "overruleFrames",
+    label: "Rival updates",
+    help: "Consecutive resolver updates during which the same rival clears the score ratio while you move away. This is not a delay in milliseconds.",
+    unit: "updates",
+    min: 1,
+    max: 20,
+    step: 1,
+  },
   {
     path: "collectionRadiusPixels",
-    label: "Collection radius (px)",
+    label: "Source search radius",
+    help: "Look for geometry around every moved point, after Shift constraining. Metrics and explicit guides are exempt.",
+    group: "Collection cost",
+    unit: "px",
     min: 50,
     max: 2000,
     step: 50,
   },
-  { path: "perSideCount", label: "Sources per side", min: 1, max: 5, step: 1 },
-  { path: "maxCandidates", label: "Candidate cap", min: 20, max: 500, step: 10 },
+  {
+    path: "perSideCount",
+    label: "Ray sources per side",
+    help: "Keep this many nearby ray sources on each side, per kind and per moved point. Higher values offer more crossings.",
+    min: 1,
+    max: 5,
+    step: 1,
+  },
+  {
+    path: "maxCandidates",
+    label: "Candidate limit",
+    help: "Limit the combined base candidates before generating crossings. Dense crossing work can grow roughly with the square of this limit.",
+    unit: "candidates",
+    min: 20,
+    max: 500,
+    step: 10,
+  },
   // Switches. Held as 0 or 1 so that one table describes every parameter and the
   // persistence, the reset and the external-change sync all keep working.
   {
     path: "diagonalsEnabled",
-    label: "Diagonals (shift+R)",
+    label: "Allow diagonals",
+    help: "Offer slanted guides during normal snapping. Hold R to request diagonals alone, regardless of this switch.",
+    group: "Guide types",
     type: "toggle",
   },
   {
     path: "offCurveSources",
     label: "Off-curve points cast rays",
+    help: "Let handle positions cast horizontal and vertical alignment rays.",
     type: "toggle",
   },
   {
     path: "curvatureEnabled",
-    label: "Curve projections (hold T)",
+    label: "Allow curve extensions",
+    help: "Continue cubic curves past their endpoints. Hold T to request only curve extensions.",
     type: "toggle",
   },
   {
     path: "curvatureExtend",
-    label: "Projection length (segments)",
+    label: "Curve extension per end",
+    help: "Parameter range added past each end. 1 adds one original parameter interval at each end; it is not a physical length.",
+    unit: "per end",
     min: 0.25,
     max: 4,
     step: 0.25,
@@ -432,57 +537,67 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "weights." + KIND.ORTHOGONAL,
     label: "Weight: upright",
+    help: "Raise this to strengthen upright pull. 0 disables this kind, including its contribution to crossings.",
+    group: "Weights",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "weights." + KIND.DIAGONAL,
     label: "Weight: diagonal",
+    help: "Raise this to strengthen diagonal pull. 0 disables this kind, including its contribution to crossings.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "weights." + KIND.INTERSECTION,
     label: "Weight: crossing",
+    help: "Controls whether crossings clear minimum pull and compete with a held target. An eligible crossing still takes priority over a line.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "weights." + KIND.OFF_CURVE,
     label: "Weight: off-curve point",
+    help: "Raise this to strengthen off-curve point pull. 0 disables this kind, including its contribution to crossings.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "weights." + KIND.CURVATURE,
     label: "Weight: curve projection",
+    help: "Raise this to strengthen curve projection pull. 0 disables this kind, including its contribution to crossings.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     // Zero by default: the outline the drag is generating moves with the drag,
     // so it is offered and never wins until the designer asks for it.
     path: "weights." + KIND.OWN_GENERATED,
     label: "Weight: own generated outline",
+    help: "0 ignores the outline produced by the dragged skeleton. Raise it to offer that frozen outline as a target.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "weights." + KIND.OTHER,
     label: "Weight: alignment band",
+    help: "Raise this to strengthen alignment band pull. 0 disables this kind, including its contribution to crossings.",
     min: 0,
     max: 1.5,
-    step: 0.02,
+    step: 0.01,
   },
   {
     path: "reaches." + KIND.ORTHOGONAL,
     label: "Reach: upright",
+    help: "Multiply base reach for upright. Raise it to acquire this kind from farther away.",
+    group: "Reach multipliers",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -490,6 +605,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.DIAGONAL,
     label: "Reach: diagonal",
+    help: "Multiply base reach for diagonal. Raise it to acquire this kind from farther away.",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -497,6 +613,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.INTERSECTION,
     label: "Reach: crossing",
+    help: "Distance to the crossing itself. Free crossings also need both lines in reach; Shift uses the rail crossing directly.",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -504,6 +621,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.OFF_CURVE,
     label: "Reach: off-curve point",
+    help: "Multiply base reach for off-curve point. Raise it to acquire this kind from farther away.",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -511,6 +629,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.CURVATURE,
     label: "Reach: curve projection",
+    help: "Multiply base reach for curve projection. Raise it to acquire this kind from farther away.",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -518,6 +637,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.OWN_GENERATED,
     label: "Reach: own generated outline",
+    help: "Multiply base reach for own generated outline. Raise it to acquire this kind from farther away.",
     min: 0.25,
     max: 3,
     step: 0.05,
@@ -525,6 +645,7 @@ const SNAPPING_TUNING_CONTROLS = [
   {
     path: "reaches." + KIND.OTHER,
     label: "Reach: alignment band",
+    help: "Multiply base reach for alignment band. Raise it to acquire this kind from farther away.",
     min: 0.25,
     max: 4,
     step: 0.05,
@@ -533,17 +654,19 @@ const SNAPPING_TUNING_CONTROLS = [
 
 const SNAPPING_DEBUG_CONTROLS = [...SNAPPING_TUNING_CONTROLS, ...MOD_SNAP_CONTROLS];
 
-function readSnapParameter(path) {
+function readSnapParameter(path, defaults = false) {
+  const snap = defaults ? SNAP_PARAMETERS_DEFAULTS : SNAP_PARAMETERS;
+  const cull = defaults ? CULL_PARAMETERS_DEFAULTS : CULL_PARAMETERS;
   if (path.startsWith("reaches.")) {
-    return SNAP_PARAMETERS.reaches[path.slice("reaches.".length)];
+    return snap.reaches[path.slice("reaches.".length)];
   }
   if (path.startsWith("weights.")) {
-    return SNAP_PARAMETERS.weights[path.slice("weights.".length)];
+    return snap.weights[path.slice("weights.".length)];
   }
-  if (path in CULL_PARAMETERS) {
-    return CULL_PARAMETERS[path];
+  if (path in cull) {
+    return cull[path];
   }
-  return SNAP_PARAMETERS[path];
+  return snap[path];
 }
 
 // Figma 379:22417's panel, card and field colours, light and dark.
@@ -1495,7 +1618,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           {
             style: `
               display: grid;
-              grid-template-columns: auto 1fr auto;
+              grid-template-columns: minmax(0, 1fr) minmax(4em, 1fr) auto;
               gap: 0.35em 0.5em;
               align-items: center;
             `,
@@ -1508,11 +1631,14 @@ export default class DesignspaceNavigationPanel extends Panel {
         label: "Snapping (debug)",
         open: false,
         content: html.div({}, [
+          html.div({ style: "font-size: 0.85em; opacity: 0.8;" }, [
+            "Eligible crossings take priority over lines. Held targets resist switching. Tune reach first, then holding and selection.",
+          ]),
           html.div(
             {
               style: `
                 display: grid;
-                grid-template-columns: auto 1fr auto;
+                grid-template-columns: minmax(0, 1fr) minmax(4em, 1fr) auto;
                 gap: 0.35em 0.5em;
                 align-items: center;
               `,
@@ -2120,12 +2246,20 @@ export default class DesignspaceNavigationPanel extends Panel {
           readout.textContent = value ? "on" : "off";
           return;
         }
-        // A per-kind reach is a multiple of the master reach, so the pixels it
-        // comes to are shown beside it. Otherwise the number means nothing on
-        // its own.
-        readout.textContent = control.path.startsWith("reaches.")
-          ? `${value} (${Math.round(value * SNAP_PARAMETERS.reachPixels)}px)`
-          : String(value);
+        const compact = (number) => String(Number(number.toFixed(2)));
+        const preferenceInactive =
+          control.path === "pointerFalloffReaches" &&
+          (SNAP_PARAMETERS.pointerWeight <= 0 || SNAP_PARAMETERS.pointerWeight >= 1);
+        if (input) input.disabled = preferenceInactive;
+        const multiple =
+          control.path.startsWith("reaches.") ||
+          control.path === "pointerFalloffReaches";
+        readout.textContent = preferenceInactive
+          ? "inactive"
+          : multiple
+            ? `${compact(value)}× (${compact(value * SNAP_PARAMETERS.reachPixels)} px)`
+            : `${compact(value)}${control.unit ? ` ${control.unit}` : ""}`;
+        if (input) input.setAttribute("aria-valuetext", readout.textContent);
       }
     };
 
@@ -2217,8 +2351,11 @@ export default class DesignspaceNavigationPanel extends Panel {
       `candidates ${readout.candidateCount}`,
       `freedom    ${readout.freedom}`,
       `winner     ${readout.winningKind || "-"}`,
-      `pull       ${readout.winningPull.toFixed(3)}`,
+      `source     ${readout.pointIndex >= 0 ? readout.pointIndex + 1 : "-"}`,
+      `raw pull   ${readout.winningPull.toFixed(3)}`,
+      `score      ${readout.winningScore.toFixed(3)}`,
       "",
+      "Best raw pull per kind (hold included):",
     ];
     const byKind = Object.entries(readout.byKind).sort((a, b) => b[1] - a[1]);
     for (const [kind, pull] of byKind) {

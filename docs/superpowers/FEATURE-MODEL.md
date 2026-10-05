@@ -2112,3 +2112,12 @@ Changing the curve extension replaces a held curve with the newly built one.
 Drag travel starts at mouse-down, not at the first delivered movement event.
 Ending a session clears its diagnostics too. There is no new idle snap timer:
 acquisition is still reconsidered when the tool supplies an event.
+
+
+The debug panel groups the existing controls by purpose and reads their defaults
+from the resolver constants. Its source number is the winning index in the
+moving selection, shown 1-based. Raw pull determines eligibility; the separate
+score includes pointer weighting and is used for rival comparisons. Per-kind
+rows show raw pulls, not a final ranking. `snapping-parameters.md` names every
+control and explains how to tune it. Weights use 0.01 steps so every default,
+including the crossing's 1.05, can be selected exactly.
