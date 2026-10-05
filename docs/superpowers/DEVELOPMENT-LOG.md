@@ -2685,6 +2685,28 @@ points on the two curves leaving the terminal's corners.
   back on whole units turns by up to atan(0.7/24); that much is the grid's and
   keeps the flag.
 
+**A drawn point between two extrema is never kept** (2026-10-05). Reported
+on the `cacute` of wip.fontra: the extrema went in and the smooth points
+beside them, (81,565) and (385,565), stayed, 47 and 17 units from the tops.
+Each sits mid-arc in an S, and one cubic across the S misses by 2.3 and 2.0
+units, so the merge was refused. Such a run now becomes one S or two curves
+split at the true inflection (where B' x B'' is zero), whichever lies closer
+to the drawing, at any tolerance; elsewhere a merge stops at an inflection
+before a drawn point, and an inflection cut with nothing merged beside it is
+joined back.
+
+- **A flat inflection cannot always be held.** From the inflection at
+  (326,514) to the top at (402,567), 92 units with a top radius of 64, no
+  cubic leaves at zero curvature and meets the top's curvature within 20 per
+  cent. An inflection end is therefore held to a real handle, not a
+  curvature, and the comb steps there: +0.4 to -7.1 (x1e-3) at (326,514),
+  -3.9 to -0.2 at (173,506). Excusing curvature up to the grid's bend was
+  tried and refused: a short handle excuses anything, a zero one reads flat.
+- **The extrema of a segment are tried together first.** One at a time, the
+  top at (402,567) failed because its part still spanned the bottom; the
+  final pass then added it anyway, so the merge never saw it. A part between
+  two smooth points is cut exactly; only a part touching a corner is fitted.
+
 Measured on all 67 skeletron contours against the previous code: no contour's
 worst smooth-joint curvature step got worse than the original drawing's; the
 `W` goes 34 to 25 points, worst step 1.03 to 0.34. Extrema left without a

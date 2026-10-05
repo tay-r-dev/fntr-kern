@@ -914,3 +914,94 @@ describe("simplify writes curves that fit", () => {
     expect(analysis.pieces[1].points[1].y).to.equal(448);
   });
 });
+
+describe("simplify places a point at an inflection only where an S does not fit", function () {
+  // The editor-like loop fits at up to ten tolerances.
+  this.timeout(30000);
+  // The cacute of wip.fontra: two smooth points drawn near, not on, the tops
+  // of two bumps. Each sits mid-arc in a span that one cubic cannot hold.
+  const cacuteContour = () => ({
+    isClosed: false,
+    points: [
+      { x: 47, y: 357 },
+      { x: -24, y: 287, type: "cubic" },
+      { x: -156, y: 351, type: "cubic" },
+      { x: -106, y: 471, smooth: true },
+      { x: -79, y: 537, type: "cubic" },
+      { x: -7, y: 595, type: "cubic" },
+      { x: 81, y: 565, smooth: true },
+      { x: 193, y: 527, type: "cubic" },
+      { x: 163, y: 471, type: "cubic" },
+      { x: 253, y: 471, smooth: true },
+      { x: 350, y: 471, type: "cubic" },
+      { x: 301, y: 541, type: "cubic" },
+      { x: 385, y: 565, smooth: true },
+      { x: 470, y: 589, type: "cubic" },
+      { x: 533, y: 423, type: "cubic" },
+      { x: 648, y: 520 },
+    ],
+  });
+  const onCurves = (contour) => contour.points.filter((p) => !p.type);
+  const hasPointNear = (points, x, y, reach = 1.5) =>
+    points.some((p) => Math.hypot(p.x - x, p.y - y) <= reach);
+
+  it("cuts a segment at an extremum that only fits beside its other extremum", () => {
+    // The last segment runs from a smooth point to the open end over a top
+    // and a bottom. The top alone leaves a part spanning the bottom, which
+    // cannot fit; the two together do.
+    const analysis = classifySimplifyContour(cacuteContour(), { tolerance: 1 });
+    const inserted = [...analysis.sourcePointMap.values()].map((entry) => entry.point);
+    expect(hasPointNear(inserted, 402.3, 567.4)).to.equal(true);
+  });
+
+  it("merges from an inflection on whole units", () => {
+    // From (253, 471) over the inflection and the drawn (385, 565) to the
+    // top: one S does not fit, the part after the inflection does.
+    const result = simplifyContourCompatible([cacuteContour()], { tolerance: 1 })[0];
+    const points = onCurves(result);
+    expect(hasPointNear(points, 385, 565, 0)).to.equal(false);
+    expect(hasPointNear(points, 326.2, 513.6)).to.equal(true);
+    expect(result.points.every((p) => Number.isInteger(p.x) && Number.isInteger(p.y))).to
+      .be.true;
+  });
+
+  it("removes a drawn point between two extrema even past the tolerance", () => {
+    // At 0.5 neither the S nor the two halves fit within the tolerance; the
+    // closer of the two is written anyway, because the extrema carry the shape.
+    const result = simplifyContourCompatible([cacuteContour()], { tolerance: 0.5 })[0];
+    const points = onCurves(result);
+    expect(hasPointNear(points, 81, 565, 0)).to.equal(false);
+    expect(hasPointNear(points, 385, 565, 0)).to.equal(false);
+  });
+
+  it("replaces a mid-arc smooth point with the true inflection", () => {
+    const result = simplifyLikeTheEditor(cacuteContour());
+    const points = onCurves(result);
+    expect(hasPointNear(points, 81, 565, 0)).to.equal(false);
+    expect(hasPointNear(points, 385, 565, 0)).to.equal(false);
+    expect(hasPointNear(points, 173, 506)).to.equal(true);
+    expect(hasPointNear(points, 326.2, 513.6)).to.equal(true);
+  });
+
+  it("adds no point at an inflection one S-curve already holds", () => {
+    const result = simplifyLikeTheEditor(cacuteContour());
+    // Between the top at (402, 567) and the bottom at (576, 489) one S fits.
+    expect(hasPointNear(onCurves(result), 482.8, 530.4, 10)).to.equal(false);
+    expect(onCurves(result).length).to.equal(9);
+  });
+
+  it("leaves a span untouched when even its halves do not fit", () => {
+    // One S whose halves are each a single exact cubic already: nothing to
+    // merge, so the inflection cut must not survive as a new point.
+    const contour = {
+      isClosed: false,
+      points: [
+        { x: 0, y: 0 },
+        { x: 100, y: 0, type: "cubic" },
+        { x: 0, y: 100, type: "cubic" },
+        { x: 100, y: 100 },
+      ],
+    };
+    expect(simplifyContourCompatible([contour], { tolerance: 1 })).to.equal(null);
+  });
+});

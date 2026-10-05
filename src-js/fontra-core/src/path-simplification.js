@@ -288,6 +288,21 @@ function curvaturesAgree(k, originalK, length) {
   return curvatureMiss(k, originalK, length) <= FIT_ALLOWANCE;
 }
 
+// The curvature miss at one end of a candidate (end 0 or 1). An inflection
+// end is not held to a curvature: one cubic leaving a flat inflection often
+// cannot also meet the extremum at its other end (measured on the cacute of
+// wip.fontra: no fit at all), and the deviation decides between the S and
+// its two halves instead. It is held to a real handle, because a handle on
+// its own point reads as flat while it is a kink.
+function endCurvatureMiss(candidate, end, originalK, length, atInflection) {
+  if (atInflection) {
+    const [p, h] =
+      end === 0 ? [candidate[0], candidate[1]] : [candidate[3], candidate[2]];
+    return Math.hypot(h.x - p.x, h.y - p.y) >= 1 ? 0 : Infinity;
+  }
+  return curvatureMiss(signedCurvature(candidate, end), originalK, length);
+}
+
 // How far each handle of a cubic may reach: the distance from its end to the
 // point where the two end tangents cross, when they cross ahead of both ends.
 // Otherwise the chord, the length a handle of a gentle curve is measured
@@ -361,17 +376,23 @@ function withinCeiling(points) {
 
 function endCurvaturesAgree(candidate, originalPieces) {
   const length = chordOf(candidate);
+  const first = originalPieces[0];
+  const last = originalPieces.at(-1);
   return (
-    curvaturesAgree(
-      signedCurvature(candidate, 0),
-      signedCurvature(originalPieces[0].points, 0),
-      length
-    ) &&
-    curvaturesAgree(
-      signedCurvature(candidate, 1),
-      signedCurvature(originalPieces.at(-1).points, 1),
-      length
-    )
+    endCurvatureMiss(
+      candidate,
+      0,
+      signedCurvature(first.points, 0),
+      length,
+      !!first.startsAtInflection
+    ) <= FIT_ALLOWANCE &&
+    endCurvatureMiss(
+      candidate,
+      1,
+      signedCurvature(last.points, 1),
+      length,
+      !!last.endsAtInflection
+    ) <= FIT_ALLOWANCE
   );
 }
 
@@ -406,10 +427,12 @@ function gridFit(originalPieces, p0, startDir, p3, endDir, options = {}) {
     const h2 = { x: p3.x - endDir.x * b, y: p3.y - endDir.y * b };
     return round ? [p0, roundPoint(h1), roundPoint(h2), p3] : [p0, h1, h2, p3];
   };
+  const startsAtInflection = !!originalPieces[0].startsAtInflection;
+  const endsAtInflection = !!originalPieces.at(-1).endsAtInflection;
   const miss = (candidate) =>
     Math.max(
-      curvatureMiss(signedCurvature(candidate, 0), k0, chord),
-      curvatureMiss(signedCurvature(candidate, 1), k3, chord)
+      endCurvatureMiss(candidate, 0, k0, chord, startsAtInflection),
+      endCurvatureMiss(candidate, 1, k3, chord, endsAtInflection)
     );
 
   // Lengths that fit, in floating point. An exact match of both curvatures
@@ -521,6 +544,141 @@ function subCubic(points, a, b) {
   return b < 1 ? splitCubic(right, (b - a) / (1 - a)).left : right;
 }
 
+// Where a cubic's curvature changes sign: the interior roots of the cross
+// product of its first and second derivatives, which is a quadratic in t.
+export function cubicInflectionParameters(points) {
+  const [p0, p1, p2, p3] = points;
+  const a = { x: p1.x - p0.x, y: p1.y - p0.y };
+  const b = { x: p2.x - 2 * p1.x + p0.x, y: p2.y - 2 * p1.y + p0.y };
+  const c = {
+    x: p3.x - 3 * p2.x + 3 * p1.x - p0.x,
+    y: p3.y - 3 * p2.y + 3 * p1.y - p0.y,
+  };
+  const cross = (u, v) => u.x * v.y - u.y * v.x;
+  return interiorQuadraticRoots(cross(b, c), cross(a, c), cross(a, b));
+}
+
+// The inflections of one cubic far enough from its ends, and from each other,
+// to be worth a point. The same spacing rule the extrema use.
+function cubicInflectionCuts(points, minDistance) {
+  const kept = [];
+  const keptPoints = [points[0], points[3]];
+  for (const t of cubicInflectionParameters(points)) {
+    const at = cubicPoint(points, t);
+    const crowded = keptPoints.some(
+      (other) => Math.hypot(at.x - other.x, at.y - other.y) <= minDistance
+    );
+    if (!crowded) {
+      kept.push(t);
+      keptPoints.push(at);
+    }
+  }
+  return kept;
+}
+
+// Cut every mergeable cubic at its inflections. A cut is not protected: a run
+// still merges across it, and a merge that cannot hold a whole S is offered
+// the inflection as the place to stop, rather than a drawn point that sits
+// anywhere along the arc. Parts left unmerged are joined back by
+// `rejoinInflectionCuts`, so a cut never survives on its own.
+function cutAtInflections(pieces, minDistance, sourcePointMap) {
+  const result = [];
+  let counter = 0;
+  for (const piece of pieces) {
+    if (piece.kind !== "cubic" || !piece.mergeable) {
+      result.push(piece);
+      continue;
+    }
+    const exact = piece.sourcePoints ?? piece.points;
+    const ts = cubicInflectionCuts(exact, minDistance);
+    if (!ts.length) {
+      result.push(piece);
+      continue;
+    }
+    const bounds = [0, ...ts, 1];
+    // The cut points are written on whole units, like an extremum, so a merge
+    // is fitted to the point it will actually end on.
+    const cutPoints = bounds.map((t, i) =>
+      i === 0 || i === bounds.length - 1 ? null : roundPoint(cubicPoint(exact, t))
+    );
+    let startKey = piece.startKey;
+    for (let i = 0; i < bounds.length - 1; i++) {
+      const isLast = i === bounds.length - 2;
+      let endKey = piece.endKey;
+      if (!isLast) {
+        endKey = `inflection-${piece.sourceSegmentIndex}-${counter++}`;
+        sourcePointMap.set(endKey, {
+          point: cutPoints[i + 1],
+          sourceSegmentIndex: piece.sourceSegmentIndex,
+          t: bounds[i + 1],
+        });
+      }
+      const [q0, q1, q2, q3] = subCubic(piece.points, bounds[i], bounds[i + 1]);
+      result.push({
+        kind: "cubic",
+        mergeable: true,
+        points: [cutPoints[i] ?? q0, q1, q2, cutPoints[i + 1] ?? q3],
+        sourcePoints: subCubic(exact, bounds[i], bounds[i + 1]),
+        startPointIndex: i === 0 ? piece.startPointIndex : null,
+        endPointIndex: isLast ? piece.endPointIndex : null,
+        startKey,
+        endKey,
+        sourceSegmentIndex: piece.sourceSegmentIndex,
+        startsAtInflection: i > 0,
+        endsAtInflection: !isLast,
+        inflectionParent: piece,
+        parentRange: [bounds[i], bounds[i + 1]],
+      });
+      startKey = endKey;
+    }
+  }
+  return result;
+}
+
+// Join back consecutive unmerged parts of one inflection-cut cubic, so a cut
+// with nothing merged on either side leaves the curve as it was drawn.
+function rejoinInflectionCuts(pieces) {
+  const result = [];
+  let i = 0;
+  while (i < pieces.length) {
+    const parent = pieces[i].inflectionParent;
+    if (!parent || pieces[i].merged) {
+      result.push(pieces[i]);
+      i++;
+      continue;
+    }
+    let j = i + 1;
+    while (
+      j < pieces.length &&
+      pieces[j].inflectionParent === parent &&
+      !pieces[j].merged
+    ) {
+      j++;
+    }
+    const first = pieces[i];
+    const last = pieces[j - 1];
+    const a = first.parentRange[0];
+    const b = last.parentRange[1];
+    if (j - i === 1) {
+      result.push(first);
+    } else if (a === 0 && b === 1) {
+      result.push(parent);
+    } else {
+      result.push({
+        ...first,
+        points: subCubic(parent.points, a, b),
+        sourcePoints: subCubic(parent.sourcePoints ?? parent.points, a, b),
+        endPointIndex: last.endPointIndex,
+        endKey: last.endKey,
+        endsAtInflection: last.endsAtInflection,
+        parentRange: [a, b],
+      });
+    }
+    i = j;
+  }
+  return result;
+}
+
 // Split one cubic at its extrema and fit each part on whole units, with the
 // new points' handles on the axis. Returns the fitted parts, or null when any
 // part does not fit: then an orthogonal point there would break the curve,
@@ -556,6 +714,19 @@ function fitExtremaSplit(points, ts, tolerance, corners = {}) {
   const parts = [];
   for (let i = 0; i < bounds.length - 1; i++) {
     const original = [{ points: subCubic(points, bounds[i], bounds[i + 1]) }];
+    const touchesCorner =
+      (i === 0 && !!corners.start) || (i === bounds.length - 2 && !!corners.end);
+    if (!touchesCorner) {
+      // A part between two smooth points is cut exactly, as everywhere else.
+      // Its ends are the same whole-unit points its neighbours are fitted to.
+      const [, h1, h2] = original[0].points;
+      parts.push({
+        points: [ends[i].point, h1, h2, ends[i + 1].point],
+        sourcePoints: original[0].points,
+        t: bounds[i + 1],
+      });
+      continue;
+    }
     const fitted = gridFit(
       original,
       ends[i].point,
@@ -593,6 +764,13 @@ function fittingExtrema(points, tolerance, corners = {}) {
       return { points: exact, sourcePoints: exact, t: bounds[i + 1] };
     });
     return { ts: candidates, parts };
+  }
+  // All of them together first. Tried one at a time, an extremum is judged
+  // with a part that still spans the next one, and that part cannot fit.
+  const together =
+    candidates.length > 1 && fitExtremaSplit(points, candidates, tolerance, corners);
+  if (together) {
+    return { ts: candidates, parts: together };
   }
   let kept = [];
   let parts = null;
@@ -648,15 +826,20 @@ export function classifySimplifyContour(contour, options = {}) {
   // all extrema and all smooth, has nothing holding its runs apart: the whole
   // outline becomes one run, merges at the wrong places, and the extrema pass
   // then scatters fresh points near the old ones.
+  // The points standing on an extremum, drawn or inserted. A run between two
+  // of them keeps no drawn point (`planRunMerges`).
+  const extremaKeys = new Set();
   for (const piece of basePieces) {
     if (piece.kind !== "cubic") {
       continue;
     }
     if (isAxisAligned(cubicDerivative(piece.points, 0))) {
       protectedPointKeys.add(piece.startPointIndex);
+      extremaKeys.add(piece.startPointIndex);
     }
     if (isAxisAligned(cubicDerivative(piece.points, 1))) {
       protectedPointKeys.add(piece.endPointIndex);
+      extremaKeys.add(piece.endPointIndex);
     }
   }
 
@@ -693,6 +876,7 @@ export function classifySimplifyContour(contour, options = {}) {
           t: part.t,
         });
         protectedPointKeys.add(endKey);
+        extremaKeys.add(endKey);
       }
       pieces.push({
         kind: "cubic",
@@ -710,6 +894,11 @@ export function classifySimplifyContour(contour, options = {}) {
     }
   }
 
+  const cutPieces =
+    (options.insertInflections ?? true)
+      ? cutAtInflections(pieces, extremaMinDistance, sourcePointMap)
+      : pieces;
+
   // Runs never wrap around the end of a closed contour, so whatever point the
   // contour happens to start on can never be merged away. Start the walk on a
   // protected point instead: then the seam falls where a run would have ended
@@ -718,11 +907,17 @@ export function classifySimplifyContour(contour, options = {}) {
   // place. Every master rotates to the same place, because they share which
   // points are protected.
   const rotated =
-    isClosed && pieces.length && !protectedPointKeys.has(pieces[0].startKey)
-      ? rotateToProtectedStart(pieces, protectedPointKeys)
-      : pieces;
+    isClosed && cutPieces.length && !protectedPointKeys.has(cutPieces[0].startKey)
+      ? rotateToProtectedStart(cutPieces, protectedPointKeys)
+      : cutPieces;
 
-  return { pieces: rotated, protectedPointKeys, sourcePointMap, isClosed };
+  return {
+    pieces: rotated,
+    protectedPointKeys,
+    extremaKeys,
+    sourcePointMap,
+    isClosed,
+  };
 }
 
 function rotateToProtectedStart(pieces, protectedPointKeys) {
@@ -739,11 +934,14 @@ function rotateToProtectedStart(pieces, protectedPointKeys) {
 // pieces are dropped: a single piece is copied unchanged.
 export function buildSimplifyRuns(analysis) {
   const { pieces, protectedPointKeys } = analysis;
+  const extremaKeys = analysis.extremaKeys ?? new Set();
   const runs = [];
   let currentRun = null;
 
   const flushRun = () => {
     if (currentRun && currentRun.pieces.length >= 2) {
+      currentRun.betweenExtrema =
+        extremaKeys.has(currentRun.startKey) && extremaKeys.has(currentRun.endKey);
       runs.push(currentRun);
     }
     currentRun = null;
@@ -1589,8 +1787,24 @@ export function planRunMerges(run, options = {}) {
   const spans = [];
   let start = 0;
   while (start < pieces.length) {
+    // The run's end first. Failing that, an inflection: where one S cannot
+    // hold the span, the curve is cut where it really turns over, not at
+    // whichever drawn point happens to merge. Only then the drawn points.
+    const inflectionEnds = [];
+    const otherEnds = [];
+    for (let end = pieces.length - 1; end > start; end--) {
+      (pieces[end - 1].endsAtInflection ? inflectionEnds : otherEnds).push(end);
+    }
     let acceptedEnd = start + 1;
-    for (let end = pieces.length; end > start + 1; end--) {
+    for (const end of [pieces.length, ...inflectionEnds, ...otherEnds]) {
+      if (end - start === 1) {
+        // A single part needs no merge. Stopping on it is right only at the
+        // run's end or at an inflection.
+        if (end === pieces.length || pieces[end - 1].endsAtInflection) {
+          break;
+        }
+        continue;
+      }
       if (acceptedMerge(run, start, end, tolerance, maxTangentAngle)) {
         acceptedEnd = end;
         break;
@@ -1599,7 +1813,72 @@ export function planRunMerges(run, options = {}) {
     spans.push([start, acceptedEnd]);
     start = acceptedEnd;
   }
+  const keepsDrawnPoint = spans
+    .slice(0, -1)
+    .some(([, end]) => !pieces[end - 1].endsAtInflection);
+  if (run.betweenExtrema && keepsDrawnPoint) {
+    return planBetweenExtrema(run, maxTangentAngle) ?? spans;
+  }
   return spans;
+}
+
+// The closest whole-unit cubic for a span, whatever the tolerance, or null.
+// It still has to meet the original's curvature at an extremum end, stay
+// inside the tension ceiling and keep the tangents.
+function closestFit(run, start, end, maxTangentAngle) {
+  const span = fitSpan(run, start, end);
+  if (span.keepingCandidate === undefined) {
+    span.keepingCandidate = span.keeping();
+  }
+  let best = null;
+  for (const candidate of [span.candidate, span.keepingCandidate]) {
+    if (
+      !candidate ||
+      !withinCeiling(candidate) ||
+      !endCurvaturesAgree(candidate, span.targets) ||
+      tangentAngleDegrees(candidate, span.targets) > maxTangentAngle
+    ) {
+      continue;
+    }
+    const deviation = maxCubicDeviation(span.targets, candidate);
+    if (!best || deviation < best.deviation) {
+      best = { candidate, deviation };
+    }
+  }
+  return best;
+}
+
+// A run between two extrema keeps no drawn point: the extrema carry the
+// shape. It becomes one S-curve, or two curves split at an inflection,
+// whichever lies closer to the drawing. Spans carry `true` as a third entry,
+// so applying the plan takes the same closest fit regardless of tolerance.
+// Null when neither can be fitted at all.
+function planBetweenExtrema(run, maxTangentAngle) {
+  const n = run.pieces.length;
+  const options = [[[0, n]]];
+  for (let i = 1; i < n; i++) {
+    if (run.pieces[i - 1].endsAtInflection) {
+      options.push([
+        [0, i],
+        [i, n],
+      ]);
+    }
+  }
+  let best = null;
+  for (const spans of options) {
+    let deviation = 0;
+    for (const [start, end] of spans) {
+      if (end - start === 1) {
+        continue;
+      }
+      const fit = closestFit(run, start, end, maxTangentAngle);
+      deviation = fit ? Math.max(deviation, fit.deviation) : Infinity;
+    }
+    if (deviation < (best?.deviation ?? Infinity)) {
+      best = { spans, deviation };
+    }
+  }
+  return best ? best.spans.map(([start, end]) => [start, end, true]) : null;
 }
 
 // Apply a merge plan to a run, fitting each accepted span to this contour's
@@ -1607,19 +1886,16 @@ export function planRunMerges(run, options = {}) {
 export function applyRunPlan(run, spans, options = {}) {
   const pieces = run.pieces;
   const result = [];
-  for (const [start, end] of spans) {
+  const maxTangentAngle = options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE;
+  for (const [start, end, closest] of spans) {
     if (end - start === 1) {
       result.push(pieces[start]);
       continue;
     }
     const candidatePieces = run.pieces.slice(start, end);
-    const candidate = acceptedMerge(
-      run,
-      start,
-      end,
-      options.tolerance ?? 0.5,
-      options.maxTangentAngle ?? DEFAULT_MAX_TANGENT_ANGLE
-    );
+    const candidate = closest
+      ? closestFit(run, start, end, maxTangentAngle)?.candidate
+      : acceptedMerge(run, start, end, options.tolerance ?? 0.5, maxTangentAngle);
     if (!candidate) {
       result.push(...candidatePieces);
       continue;
@@ -1637,7 +1913,7 @@ export function applyRunPlan(run, spans, options = {}) {
       mergedPieces: candidatePieces,
     });
   }
-  return result;
+  return rejoinInflectionCuts(result);
 }
 
 // Simplify the same contour across several masters. `contours` is an array
@@ -1650,9 +1926,13 @@ export function simplifyContourCompatible(contours, options = {}) {
   if (!contours.length) {
     return null;
   }
-  const analyze = (insertExtrema) =>
+  const analyze = (insertExtrema, insertInflections) =>
     contours.map((contour) => {
-      const analysis = classifySimplifyContour(contour, { ...options, insertExtrema });
+      const analysis = classifySimplifyContour(contour, {
+        ...options,
+        insertExtrema,
+        insertInflections,
+      });
       analysis.contour = contour;
       return analysis;
     });
@@ -1666,12 +1946,23 @@ export function simplifyContourCompatible(contours, options = {}) {
   // Masters can have extrema in different places, which would give them
   // different point counts. Rather than refuse the whole contour, fall back
   // to leaving the extrema alone and merging only.
-  let analyses = analyze(options.insertExtrema ?? true);
-  if (!structurallyEqual(analyses)) {
-    analyses = analyze(false);
-    if (!structurallyEqual(analyses)) {
-      return null;
+  // Inflections are dropped first, then extrema, until the masters agree.
+  const insertExtrema = options.insertExtrema ?? true;
+  const attempts = [
+    [insertExtrema, options.insertInflections ?? true],
+    [insertExtrema, false],
+    [false, false],
+  ];
+  let analyses = null;
+  for (const [extrema, inflections] of attempts) {
+    const tried = analyze(extrema, inflections);
+    if (structurallyEqual(tried)) {
+      analyses = tried;
+      break;
     }
+  }
+  if (!analyses) {
+    return null;
   }
 
   const runsPerMaster = analyses.map(buildSimplifyRuns);
