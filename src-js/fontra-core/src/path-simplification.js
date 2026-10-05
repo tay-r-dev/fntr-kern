@@ -414,7 +414,35 @@ function fitsOriginal(candidate, originalPieces, tolerance) {
 // free, so the search looks for the lengths that match the curvatures and
 // then for the whole-unit handles next to them. Null when nothing on whole
 // units fits: the curve is too small for the grid to hold its shape.
+// The grid search reads nothing but its inputs, and the editor asks for the
+// same fits at every tolerance it tries, so answers are kept by geometry.
+const gridFitCache = new Map();
+
 function gridFit(originalPieces, p0, startDir, p3, endDir, options = {}) {
+  const key = [
+    fitCacheKey(originalPieces, startDir, endDir),
+    p0.x,
+    p0.y,
+    p3.x,
+    p3.y,
+    !!options.balanced,
+    !!originalPieces[0].startsAtInflection,
+    !!originalPieces.at(-1).endsAtInflection,
+  ].join(";");
+  if (!gridFitCache.has(key)) {
+    if (gridFitCache.size >= FIT_CACHE_LIMIT) {
+      gridFitCache.clear();
+    }
+    gridFitCache.set(
+      key,
+      gridFitUncached(originalPieces, p0, startDir, p3, endDir, options)
+    );
+  }
+  const fitted = gridFitCache.get(key);
+  return fitted && fitted.map((point) => ({ ...point }));
+}
+
+function gridFitUncached(originalPieces, p0, startDir, p3, endDir, options = {}) {
   const requireBalance = options.balanced ?? false;
   const chord = Math.hypot(p3.x - p0.x, p3.y - p0.y);
   if (chord === 0) {
@@ -1034,28 +1062,56 @@ export function maxCubicDeviation(originalPieces, candidate, options = {}) {
 function deviationAgainst(originalPieces, candidate, originalPolyline, steps) {
   const polyline = candidatePolyline(candidate, steps);
   let maxDistance = 0;
+  // Each point only matters if it is farther than the largest distance so
+  // far, so its search stops as soon as it finds a segment within that.
   for (const piece of originalPieces) {
     for (const t of SAMPLE_TS) {
       maxDistance = Math.max(
         maxDistance,
-        nearestDistance(cubicPoint(piece.points, t), polyline)
+        nearestDistance(cubicPoint(piece.points, t), polyline, maxDistance)
       );
     }
   }
   if (originalPolyline) {
     for (const point of polyline) {
-      maxDistance = Math.max(maxDistance, nearestDistance(point, originalPolyline));
+      maxDistance = Math.max(
+        maxDistance,
+        nearestDistance(point, originalPolyline, maxDistance)
+      );
     }
   }
   return maxDistance;
 }
 
-function nearestDistance(point, polyline) {
+// The distance from a point to the nearest segment of a polyline. With a
+// `floor`, the search may stop at the first segment within it and return
+// that segment's distance: the caller wants a maximum, and nothing within
+// the floor can raise it.
+function nearestDistance(point, polyline, floor = -1) {
+  const floorSquared = floor >= 0 ? floor * floor : -1;
   let nearest = Infinity;
   for (let i = 0; i < polyline.length - 1; i++) {
-    nearest = Math.min(nearest, distanceToSegment(point, polyline[i], polyline[i + 1]));
+    const a = polyline[i];
+    const b = polyline[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const lengthSquared = dx * dx + dy * dy;
+    let t = 0;
+    if (lengthSquared > 0) {
+      t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+    }
+    const ex = point.x - (a.x + dx * t);
+    const ey = point.y - (a.y + dy * t);
+    const d = ex * ex + ey * ey;
+    if (d < nearest) {
+      nearest = d;
+      if (d <= floorSquared) {
+        break;
+      }
+    }
   }
-  return nearest;
+  return Math.sqrt(nearest);
 }
 
 function piecesPolyline(pieces, steps = CANDIDATE_POLYLINE_STEPS) {
