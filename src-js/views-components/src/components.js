@@ -97,8 +97,11 @@ function iconButtons(table) {
   };
   return row(
     cell("base", button()),
-    cell("active (badge)", button({ badge: true })),
-    cell("disabled", button({ disabled: true }))
+    cell("active", button({ on: true })),
+    cell("disabled", button({ disabled: true })),
+    cell("base, badge", button({ badge: true })),
+    cell("active, badge", button({ on: true, badge: true })),
+    cell("disabled, badge", button({ disabled: true, badge: true }))
   );
 }
 
@@ -281,7 +284,9 @@ const TABLE_ITEMS = [
   { id: "marked", name: "marked", marker: true },
   { id: "selected-1", name: "selected" },
   { id: "selected-2", name: "selected, marked", marker: true },
-  { id: "badge", name: "active icon", badge: true },
+  { id: "active", name: "active icon", active: true },
+  { id: "badge", name: "badged icon", badge: true },
+  { id: "selected-3", name: "selected, active icon", active: true },
   { id: "disabled", name: "disabled", disabled: true },
   { id: "last", name: "rest" },
 ];
@@ -314,6 +319,7 @@ function dataTable(look) {
           actionsCell(
             [ICON_2, ICON_3, ICON_4, ICON].map((src, index) => {
               const action = rowAction({ src, tooltip: "action", reveal: "hover" });
+              action.on = !!item.active && index === 0;
               action.badge = !!item.badge && index === 0;
               return action;
             })
@@ -323,7 +329,7 @@ function dataTable(look) {
       ),
     { rowId: (item) => item.id }
   );
-  table.setSelectedRows(["selected-1", "selected-2"]);
+  table.setSelectedRows(["selected-1", "selected-2", "selected-3"]);
   return table;
 }
 

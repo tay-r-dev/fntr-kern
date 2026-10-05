@@ -29,6 +29,7 @@ const colors = {
   "table-look-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
   "table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
   "table-look-icon-selection-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "table-look-icon-selection-hover-color": ["var(--bt-sgt-ic-select-hover)", "#c4dc6a"],
   "table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "table-look-selection-entry-hover-color": [
     "var(--tbl-lb-prim-hover-selection)",
@@ -363,6 +364,10 @@ export class UIList extends UnlitElement {
 
     :host([look]) .row inline-svg:hover {
       color: var(--table-look-icon-hover-color);
+    }
+
+    :host([look]) .contents > .selected inline-svg:hover {
+      color: var(--table-look-icon-selection-hover-color);
     }
 
     :host([look]) .row.disabled inline-svg {

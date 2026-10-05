@@ -80,6 +80,10 @@ const lookColors = {
   "data-table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
   "data-table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "data-table-look-selection-icon-hover-color": [
+    "var(--bt-sgt-ic-select-hover)",
+    "#a9c915",
+  ],
   "data-table-look-selection-icon-active-color": [
     "var(--bt-sgt-ic-select-active)",
     "#c4dc6a",
@@ -517,6 +521,7 @@ const DATA_TABLE_STYLES = `
      edge on hover, a lime face while pressed. */
   data-table[look] tr.data-table-row-selected icon-button {
     --icon-button-icon-color: var(--data-table-look-selection-icon-color);
+    --icon-button-icon-hover-color: var(--data-table-look-selection-icon-hover-color);
     --icon-button-icon-active-color: var(
       --data-table-look-selection-icon-active-color
     );
@@ -578,6 +583,11 @@ const DATA_TABLE_STYLES = `
   data-table[look] tbody tr.data-table-row-selected td > inline-svg,
   data-table[look] tbody tr.data-table-row-selected td > span > inline-svg {
     color: var(--data-table-look-selection-icon-color);
+  }
+
+  data-table[look] tbody tr.data-table-row-selected td > inline-svg:hover,
+  data-table[look] tbody tr.data-table-row-selected td > span > inline-svg:hover {
+    color: var(--data-table-look-selection-icon-hover-color);
   }
 
   data-table[look] tbody tr.data-table-row-disabled td > inline-svg,

@@ -141,15 +141,20 @@ export class IconButton extends UnlitElement {
       color: var(--icon-button-icon-press-color);
     }
 
-    /* The alert state (button/icon "active") darkens the resting icon. */
-    :host([badge]) button:not(:disabled) {
+    /* The on state is the design's "active" (button/icon and button/table
+       state=active): a darker icon at rest, the lime one under the pointer,
+       the press look while pressed. The badge is separate and optional on
+       any state. */
+    :host([on]) button:not(:disabled):not(.icon-button-latch) {
       color: var(--icon-button-icon-active-color);
     }
 
-    /* Active under the pointer: the lime icon (button/icon and button/table
-       "active, hover"). */
-    :host([badge]:hover) button:not(:disabled):not(.icon-button-latch) {
+    :host([on]:hover) button:not(:disabled):not(.icon-button-latch) {
       color: var(--icon-button-icon-active-hover-color);
+    }
+
+    :host([on]:active) button:not(:disabled):not(.icon-button-latch) {
+      color: var(--icon-button-icon-press-color);
     }
 
     button:disabled {
@@ -177,14 +182,6 @@ export class IconButton extends UnlitElement {
       top: -1px;
       right: -1px;
       pointer-events: none;
-    }
-
-    /* Ticket 11: the on state, off by default -- every existing
-       icon-button never sets this class, so this rule never applies to
-       them. */
-    button.icon-button-on {
-      background-color: var(--icon-button-on-background-color);
-      border-radius: 0.25em;
     }
 
     /* Ticket 47: the mixed state, for a toggle whose selection disagrees --
