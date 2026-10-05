@@ -76,6 +76,9 @@ const lookColors = {
     "var(--tbl-lb-sec-hover-selection)",
     "#a9b97a",
   ],
+  "data-table-look-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
+  "data-table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "data-table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
   "data-table-look-selection-icon-active-color": [
     "var(--bt-sgt-ic-select-active)",
@@ -558,6 +561,28 @@ const DATA_TABLE_STYLES = `
     height: 16px;
     vertical-align: middle;
     --icon-button-inner-radius: 4px;
+  }
+
+  /* A plain icon in a row is coloured like button/table: its rest colour
+  whatever the row's hover, the select colour on a selected row. */
+  data-table[look] tbody td > inline-svg,
+  data-table[look] tbody td > span > inline-svg {
+    color: var(--data-table-look-icon-color);
+  }
+
+  data-table[look] tbody td > inline-svg:hover,
+  data-table[look] tbody td > span > inline-svg:hover {
+    color: var(--data-table-look-icon-hover-color);
+  }
+
+  data-table[look] tbody tr.data-table-row-selected td > inline-svg,
+  data-table[look] tbody tr.data-table-row-selected td > span > inline-svg {
+    color: var(--data-table-look-selection-icon-color);
+  }
+
+  data-table[look] tbody tr.data-table-row-disabled td > inline-svg,
+  data-table[look] tbody tr.data-table-row-disabled td > span > inline-svg {
+    color: var(--data-table-look-icon-disabled-color);
   }
 
   data-table[look] tbody td > inline-svg,

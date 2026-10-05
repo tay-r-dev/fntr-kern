@@ -26,6 +26,9 @@ const colors = {
   "table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
   "table-look-selection-entry-color": ["var(--tbl-lb-prim-rest-selection)", "#c4dc6a"],
   "table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
+  "table-look-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
+  "table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "table-look-icon-selection-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
   "table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "table-look-selection-entry-hover-color": [
     "var(--tbl-lb-prim-hover-selection)",
@@ -345,6 +348,21 @@ export class UIList extends UnlitElement {
     :host([look]) .row.disabled,
     :host([look]) .row.disabled:hover {
       color: var(--table-look-entry-disabled-color);
+    }
+
+    /* Row icons are coloured like button/table, not like the row's text:
+       their rest colour whatever the row's hover, the select colour on a
+       selected row, darker only under the pointer. */
+    :host([look]) .row inline-svg {
+      color: var(--table-look-icon-color);
+    }
+
+    :host([look]) .contents > .selected inline-svg {
+      color: var(--table-look-icon-selection-color);
+    }
+
+    :host([look]) .row inline-svg:hover {
+      color: var(--table-look-icon-hover-color);
     }
 
     :host([look]) .row.disabled inline-svg {

@@ -25,6 +25,7 @@ const colors = {
   "icon-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#a9c915"],
   "icon-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "icon-button-icon-active-color": ["var(--bt-sgi-ic-active)", "#e0e0e0"],
+  "icon-button-icon-active-hover-color": ["var(--bt-sgc-ic-active-hover)", "#a9c915"],
   "icon-button-hover-background-color": ["var(--bt-sgi-sr-hover)", "#464646"],
   "icon-button-hover-border-color": [
     "var(--bt-sgi-ln-hover)",
@@ -143,6 +144,12 @@ export class IconButton extends UnlitElement {
     /* The alert state (button/icon "active") darkens the resting icon. */
     :host([badge]) button:not(:disabled) {
       color: var(--icon-button-icon-active-color);
+    }
+
+    /* Active under the pointer: the lime icon (button/icon and button/table
+       "active, hover"). */
+    :host([badge]:hover) button:not(:disabled):not(.icon-button-latch) {
+      color: var(--icon-button-icon-active-hover-color);
     }
 
     button:disabled {
