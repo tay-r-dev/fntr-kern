@@ -24,6 +24,8 @@ const colors = {
   "table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],
   "table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
   "table-look-selection-entry-color": ["var(--tbl-lb-prim-rest-selection)", "#c4dc6a"],
+  "table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
+  "table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
   "table-look-selection-entry-hover-color": [
     "var(--tbl-lb-prim-hover-selection)",
     "#e2f38f",
@@ -309,6 +311,16 @@ export class UIList extends UnlitElement {
       color: var(--table-look-selection-entry-hover-color);
     }
 
+    /* Disabled: pale text and icons, on hover too. */
+    :host([look]) .row.disabled,
+    :host([look]) .row.disabled:hover {
+      color: var(--table-look-entry-disabled-color);
+    }
+
+    :host([look]) .row.disabled inline-svg {
+      color: var(--table-look-icon-disabled-color);
+    }
+
     :host([look]) .selected > input {
       background-color: transparent;
     }
@@ -384,6 +396,9 @@ export class UIList extends UnlitElement {
     this.selectedItemIndices = new Set();
     this.allowEmptySelection = true;
     this.hiddenRowProperty = "hidden";
+    // An item with this property set draws as a disabled row: pale text and
+    // pale icons. It still works.
+    this.disabledRowProperty = "disabled";
     this._settingsStorageKey = null;
 
     this.columnWidths = {};
@@ -559,6 +574,9 @@ export class UIList extends UnlitElement {
       const row = html.div({ class: "row" });
       if (item[this.hiddenRowProperty]) {
         row.classList.add("hidden");
+      }
+      if (item[this.disabledRowProperty]) {
+        row.classList.add("disabled");
       }
       row.dataset.rowIndex = rowIndex;
       if (this.selectedItemIndices.has(rowIndex)) {

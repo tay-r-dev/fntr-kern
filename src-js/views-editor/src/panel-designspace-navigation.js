@@ -2409,11 +2409,10 @@ export default class DesignspaceNavigationPanel extends Panel {
       .bold {
         font-weight: bold;
       }
-      .font-source {
-        opacity: 40%;
-      }
     `);
     this.sourcesList.showHeader = true;
+    // A font source the glyph has no source at is drawn disabled.
+    this.sourcesList.disabledRowProperty = "isFontSource";
     this.sourcesList.columnDescriptions = columnDescriptions;
 
     this.addRemoveSourceButtons = this.accordion.querySelector(

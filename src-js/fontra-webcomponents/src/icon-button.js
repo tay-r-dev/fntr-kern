@@ -101,12 +101,13 @@ export class IconButton extends UnlitElement {
       letter-spacing: var(--ui-tracking-label-m);
     }
 
-    /* The design's icon is 16px in a 20px button; the icon scales with the
-       host and keeps its proportions, the button's width does not stretch
-       it. */
+    /* The design's icon is 15px whatever the button's size (button/icon,
+       Figma 2004:29230; button/table, Figma 4054:1391): the button grows or
+       shrinks around it, the icon does not scale with it. */
     button > inline-svg:not(.icon-button-chevron) {
       display: block;
-      height: var(--icon-button-icon-size, 80%);
+      flex: none;
+      height: var(--icon-button-icon-size, 15px);
       width: auto;
       aspect-ratio: 1;
     }
@@ -145,13 +146,6 @@ export class IconButton extends UnlitElement {
 
     button:disabled {
       color: var(--icon-button-icon-disabled-color);
-    }
-
-    /* button/table icon (Figma 411:28023): 16px, 18px in a table cell, the
-       icon inset 3px. */
-    :host([table]) button {
-      padding: 3px;
-      --icon-button-icon-size: 100%;
     }
 
     :host([table]:hover) button:not(:disabled):not(.icon-button-latch) {

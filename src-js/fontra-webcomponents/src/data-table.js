@@ -76,6 +76,26 @@ const lookColors = {
     "#a9b97a",
   ],
   "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "data-table-look-selection-icon-press-color": [
+    "var(--bt-sgt-ic-select-focus)",
+    "#c4dc6a",
+  ],
+  "data-table-look-selection-icon-disabled-color": [
+    "var(--bt-sgt-ic-select-disabled)",
+    "#5a6e1a",
+  ],
+  "data-table-look-selection-icon-hover-border-color": [
+    "var(--bt-sgt-ln-select-hover)",
+    "#5a6e1a",
+  ],
+  "data-table-look-selection-icon-press-fill": [
+    "var(--bt-sgt-sr-select-focus)",
+    "#4a5a20",
+  ],
+  "data-table-look-selection-icon-press-border-color": [
+    "var(--bt-sgt-ln-select-focus)",
+    "#5a6e1a",
+  ],
   "data-table-look-field-hover-color": ["var(--in-bsr-rest)", "#3a3a3a"],
   "data-table-look-field-selection-hover-color": ["var(--in-csr-focus)", "#2c2c2c"],
   "data-table-look-focus-border-color": ["var(--in-sln-focus)", "#8fae4a"],
@@ -211,12 +231,18 @@ const DATA_TABLE_STYLES = `
     overflow-y: auto;
   }
 
-  /* The head stays put while the rows scroll under it. */
+  /* The head stays put while the rows scroll under it, above any cell a
+     caller pins sideways. The position is not inside :where(): the head
+     cells' own position: relative (for the column grip) comes later and
+     would win a tie. */
   :where(data-table.data-table-scrollable thead th) {
+    background-color: var(--background-color, #fff);
+  }
+
+  :where(data-table.data-table-scrollable) thead th {
     position: sticky;
     top: 0;
-    z-index: 1;
-    background-color: var(--background-color, #fff);
+    z-index: 2;
   }
 
   /* The grip is the handle (Figma 379:22492) standing on the box's bottom
@@ -436,8 +462,21 @@ const DATA_TABLE_STYLES = `
     border-bottom: 1px solid var(--data-table-look-selection-rule-color);
   }
 
+  /* button/table's "select" variant on a selected row: lime icons, a lime
+     edge on hover, a lime face while pressed. */
   data-table[look] tr.data-table-row-selected icon-button {
     --icon-button-icon-color: var(--data-table-look-selection-icon-color);
+    --icon-button-icon-press-color: var(--data-table-look-selection-icon-press-color);
+    --icon-button-icon-disabled-color: var(
+      --data-table-look-selection-icon-disabled-color
+    );
+    --icon-button-table-hover-border-color: var(
+      --data-table-look-selection-icon-hover-border-color
+    );
+    --icon-button-press-background-color: var(--data-table-look-selection-icon-press-fill);
+    --icon-button-press-border-color: var(
+      --data-table-look-selection-icon-press-border-color
+    );
   }
 
   /* Disabled: pale text and icons, no hover. */
@@ -459,15 +498,13 @@ const DATA_TABLE_STYLES = `
     opacity: 0.3;
   }
 
-  /* The row's icons: button/table icon, a 16px slot with 4px corners, the
-     glyph 15px in it; 4px apart. */
+  /* The row's icons: button/table icon, a 16px slot with 4px corners
+     around icon-button's 15px glyph; 4px apart. */
   data-table[look] tbody icon-button {
     width: 16px;
     height: 16px;
     vertical-align: middle;
     --icon-button-inner-radius: 4px;
-    --icon-button-inner-padding: 0;
-    --icon-button-icon-size: 15px;
   }
 
   data-table[look] tbody td > inline-svg,
