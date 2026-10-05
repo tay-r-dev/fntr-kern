@@ -297,6 +297,12 @@ export class UIList extends UnlitElement {
       border-bottom-color: transparent;
     }
 
+    /* A selected row has its lime rule below and no line above: the row
+       before it drops its own rule. */
+    :host([look]) .row:not(.selected):has(+ .selected) {
+      border-bottom-color: transparent;
+    }
+
     :host([look]) .row:hover {
       color: var(--table-look-entry-hover-color);
     }

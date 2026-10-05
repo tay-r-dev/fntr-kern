@@ -414,6 +414,16 @@ const DATA_TABLE_STYLES = `
     border-bottom-color: transparent;
   }
 
+  /* A selected row has its lime rule below and no line above: the row
+     before it drops its own rule. */
+  data-table[look]
+    .data-table
+    tbody
+    tr:not(.data-table-row-selected):has(+ tr.data-table-row-selected)
+    td {
+    border-bottom-color: transparent;
+  }
+
   data-table[look].data-table-resizable .data-table tbody tr:last-child td {
     height: 38px;
     padding-bottom: 12px;
