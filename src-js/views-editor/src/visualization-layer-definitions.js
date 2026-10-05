@@ -5,7 +5,7 @@ import {
   LABEL_SCREEN_PARAMETERS,
   PLAQUE_SCREEN_PARAMETERS,
 } from "@fontra/core/canvas-labels.js";
-import { cachedSpeedPunkSamples } from "@fontra/core/curvature.js";
+import { cachedSpeedPunkSamples, speedPunkFillGroups } from "@fontra/core/curvature.js";
 import {
   calculateBadgeDimensions,
   calculateBadgePosition,
@@ -2098,24 +2098,34 @@ registerVisualizationLayerDefinition({
     context.lineCap = "round";
     context.lineJoin = "round";
     context.globalAlpha = opacity;
-    for (const quad of quads) {
-      // Built once and kept with the cached sample.
-      quad.path2d ??= quadPath2d(quad.points);
-      context.fillStyle = quad.color;
-      context.fill(quad.path2d);
+    // One fill per colour, built once and kept with the cached samples.
+    for (const { color, path2d } of speedPunkFills(quads)) {
+      context.fillStyle = color;
+      context.fill(path2d);
     }
     context.restore();
   },
 });
 
-function quadPath2d(points) {
-  const p = new Path2D();
-  p.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i++) {
-    p.lineTo(points[i][0], points[i][1]);
+const speedPunkFillCache = new WeakMap();
+
+function speedPunkFills(quads) {
+  let fills = speedPunkFillCache.get(quads);
+  if (!fills) {
+    fills = speedPunkFillGroups(quads).map(({ color, quads }) => {
+      const path2d = new Path2D();
+      for (const { points } of quads) {
+        path2d.moveTo(points[0][0], points[0][1]);
+        for (let i = 1; i < points.length; i++) {
+          path2d.lineTo(points[i][0], points[i][1]);
+        }
+        path2d.closePath();
+      }
+      return { color, path2d };
+    });
+    speedPunkFillCache.set(quads, fills);
   }
-  p.closePath();
-  return p;
+  return fills;
 }
 
 // Ticket 30: with the generated outline hidden, SpeedPunk leaves it out, and

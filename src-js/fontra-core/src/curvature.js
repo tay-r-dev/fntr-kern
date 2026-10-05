@@ -368,6 +368,8 @@ export function speedPunkStepRung(steps) {
 }
 
 const speedPunkCache = new WeakMap();
+// Made on first use: the class is declared further down.
+let speedPunkSegmentCache = null;
 const SPEEDPUNK_RESULTS_PER_OWNER = 6;
 
 // The comb for `owner` (the glyph as drawn), computed once per step rung and kept
@@ -406,7 +408,11 @@ export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "
     // Most recent last, so the oldest is the one let go.
     entry.results.delete(key);
   } else {
-    samples = computeSpeedPunkSamples(entry.path, { ...params, contourSegmentBudget });
+    samples = computeSpeedPunkSamples(
+      entry.path,
+      { ...params, contourSegmentBudget },
+      (speedPunkSegmentCache ??= new SpeedPunkSegmentCache())
+    );
     if (entry.results.size >= SPEEDPUNK_RESULTS_PER_OWNER) {
       entry.results.delete(entry.results.keys().next().value);
     }
@@ -415,7 +421,7 @@ export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "
   return samples;
 }
 
-export function computeSpeedPunkSamples(path, params = {}) {
+export function computeSpeedPunkSamples(path, params = {}, segmentCache = null) {
   const peakHeightGlyphUnits = params.peakHeightGlyphUnits ?? 24;
   // The anchor the height scale is stated in: a stretch of outline that turns
   // through this angle draws a fringe of exactly the peak height. A circle
@@ -503,9 +509,21 @@ export function computeSpeedPunkSamples(path, params = {}) {
     return lengths.reduce((a, b) => a + b, 0) / lengths.length;
   };
 
+  // Everything a segment's comb reads besides its own geometry.
+  const settings = {
+    peakHeightGlyphUnits,
+    referenceTurn,
+    colorFlatTurn,
+    colorTightTurn,
+    sharpness,
+    heightCeilingRatio,
+    illustrationPosition,
+    colorStops,
+  };
+  const settingsKey = segmentCache ? JSON.stringify(settings) : "";
+
   const quads = [];
   for (const segment of segments) {
-    const kind = segment.kind;
     const pts = segment.points;
     const startLength = meanLengthAt(segment.startPointIndex);
     const endLength = meanLengthAt(segment.endPointIndex);
@@ -517,60 +535,130 @@ export function computeSpeedPunkSamples(path, params = {}) {
           averageCurveLengthIn(segment.contourIndex)
         )
       : stepsPerSegment;
-    const samples =
-      kind === "cubic"
-        ? calculateCurvatureForSegment(...pts, steps)
-        : calculateCurvatureForQuadraticSegment(...pts, steps);
-
-    const onCurve = [];
-    const offCurve = [];
-    for (let s = 0; s < samples.length; s++) {
-      const absK = Math.abs(samples[s].curvature);
-      const t = samples[s].t;
-      const { r, r1 } =
-        kind === "cubic"
-          ? solveCubicBezier(...pts, t)
-          : solveQuadraticBezier(...pts, t);
-      const [x, y] = r;
-      // The turn: curvature times the local length, so it carries no unit of
-      // length and does not move when the drawing is scaled.
-      const turn = absK * (startLength + (endLength - startLength) * t);
-      onCurve.push({ x, y, turn });
-
-      let nx = illustrationPosition === "outsideOfCurve" ? -r1[1] : r1[1];
-      let ny = illustrationPosition === "outsideOfCurve" ? r1[0] : -r1[0];
-      const mag = Math.hypot(nx, ny) || 1;
-      nx /= mag;
-      ny /= mag;
-
-      // The fringe is the peak height where the outline turns through the
-      // reference turn, and proportional from there. No floor; the ceiling is
-      // soft and only bends what is already past the anchor. Sharpness is an
-      // exponent about that anchor, which the anchor survives.
-      const heightRatio = softCeilingRatio(
-        Math.pow(turn / referenceTurn, sharpness),
-        heightCeilingRatio
+    // A segment's comb reads its own points, its step count, the length at its
+    // two ends and the settings, and nothing else. So an edit recomputes the
+    // segments it moved and the two beside each, whose end length it changed.
+    const key = segmentCache
+      ? `${segment.kind}|${pts.flat().join(",")}|${steps}|${startLength}|${endLength}|${settingsKey}`
+      : null;
+    let segmentQuads = segmentCache?.get(key);
+    if (!segmentQuads) {
+      segmentQuads = combSegment(
+        segment.kind,
+        pts,
+        steps,
+        startLength,
+        endLength,
+        settings
       );
-      const h = -heightRatio * peakHeightGlyphUnits;
-      offCurve.push({ x: x + nx * h, y: y + ny * h });
+      segmentCache?.set(key, segmentQuads);
     }
-
-    for (let s = 0; s < onCurve.length - 1; s++) {
-      const a = onCurve[s];
-      const b = onCurve[s + 1];
-      quads.push({
-        points: [
-          [a.x, a.y],
-          [b.x, b.y],
-          [offCurve[s + 1].x, offCurve[s + 1].y],
-          [offCurve[s].x, offCurve[s].y],
-        ],
-        color: curvatureToColor(a.turn, colorFlatTurn, colorTightTurn, colorStops),
-      });
+    for (const quad of segmentQuads) {
+      quads.push(quad);
     }
   }
 
   return quads;
+}
+
+function combSegment(kind, pts, steps, startLength, endLength, settings) {
+  const solve = kind === "cubic" ? solveCubicBezier : solveQuadraticBezier;
+  const outside = settings.illustrationPosition === "outsideOfCurve";
+  const onCurve = [];
+  const offCurve = [];
+  for (let s = 0; s <= steps; s++) {
+    const t = s / steps;
+    // One solve gives the position, the direction and the curvature together.
+    const { r, r1, r2 } = solve(...pts, t);
+    const absK = solveCubicBezierCurvature(r1, r2);
+    const [x, y] = r;
+    // The turn: curvature times the local length, so it carries no unit of
+    // length and does not move when the drawing is scaled.
+    const turn = absK * (startLength + (endLength - startLength) * t);
+    onCurve.push({ x, y, turn });
+
+    let nx = outside ? -r1[1] : r1[1];
+    let ny = outside ? r1[0] : -r1[0];
+    const mag = Math.hypot(nx, ny) || 1;
+    nx /= mag;
+    ny /= mag;
+
+    // The fringe is the peak height where the outline turns through the
+    // reference turn, and proportional from there. No floor; the ceiling is
+    // soft and only bends what is already past the anchor. Sharpness is an
+    // exponent about that anchor, which the anchor survives.
+    const heightRatio = softCeilingRatio(
+      Math.pow(turn / settings.referenceTurn, settings.sharpness),
+      settings.heightCeilingRatio
+    );
+    const h = -heightRatio * settings.peakHeightGlyphUnits;
+    offCurve.push({ x: x + nx * h, y: y + ny * h });
+  }
+
+  const quads = [];
+  for (let s = 0; s < onCurve.length - 1; s++) {
+    const a = onCurve[s];
+    const b = onCurve[s + 1];
+    quads.push({
+      points: [
+        [a.x, a.y],
+        [b.x, b.y],
+        [offCurve[s + 1].x, offCurve[s + 1].y],
+        [offCurve[s].x, offCurve[s].y],
+      ],
+      color: curvatureToColor(
+        a.turn,
+        settings.colorFlatTurn,
+        settings.colorTightTurn,
+        settings.colorStops
+      ),
+    });
+  }
+  return quads;
+}
+
+// The comb's quads by colour, so a draw fills each colour once rather than
+// every quad on its own.
+export function speedPunkFillGroups(quads) {
+  const groups = new Map();
+  for (const quad of quads) {
+    let group = groups.get(quad.color);
+    if (!group) {
+      group = { color: quad.color, quads: [] };
+      groups.set(quad.color, group);
+    }
+    group.quads.push(quad);
+  }
+  return [...groups.values()];
+}
+
+// Combs per segment, keyed on everything a segment's comb reads. The most
+// recently used are kept, up to `limit`.
+export class SpeedPunkSegmentCache {
+  constructor(limit = 20000) {
+    this.limit = limit;
+    this.entries = new Map();
+    this.misses = 0;
+  }
+
+  get(key) {
+    const value = this.entries.get(key);
+    if (value) {
+      // Most recent last, so the oldest is the one let go.
+      this.entries.delete(key);
+      this.entries.set(key, value);
+    } else {
+      this.misses++;
+    }
+    return value;
+  }
+
+  set(key, value) {
+    this.entries.set(key, value);
+    while (this.entries.size > this.limit) {
+      this.entries.delete(this.entries.keys().next().value);
+    }
+  }
 }
 
 // The one segment walk. Every curve segment, once, in contour order.

@@ -1,6 +1,8 @@
 import {
   cachedSpeedPunkSamples,
   computeSpeedPunkSamples,
+  SpeedPunkSegmentCache,
+  speedPunkFillGroups,
   speedPunkStepRung,
 } from "@fontra/core/curvature.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
@@ -100,5 +102,82 @@ describe("SpeedPunk per-contour sampling", () => {
       params
     );
     expect(withRing.slice(0, alone.length)).to.deep.equal(alone);
+  });
+});
+
+// A closed ring of six curves, one handle of the first one pulled by `pull`.
+function hexRing(pull = 0) {
+  const points = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (i * Math.PI) / 3;
+    const b = ((i + 1) * Math.PI) / 3;
+    const k = 0.36;
+    const on = [100 * Math.cos(a), 100 * Math.sin(a)];
+    points.push({ x: on[0], y: on[1] });
+    points.push({
+      x: on[0] - k * 100 * Math.sin(a) + (i === 0 ? pull : 0),
+      y: on[1] + k * 100 * Math.cos(a),
+      type: "cubic",
+    });
+    points.push({
+      x: 100 * Math.cos(b) + k * 100 * Math.sin(b),
+      y: 100 * Math.sin(b) - k * 100 * Math.cos(b),
+      type: "cubic",
+    });
+  }
+  return VarPackedPath.fromUnpackedContours([{ points, isClosed: true }]);
+}
+
+describe("SpeedPunk per-segment cache", () => {
+  const params = { contourSegmentBudget: 64, minSegmentsPerCurve: 5 };
+
+  it("draws exactly what an uncached computation draws", () => {
+    const cache = new SpeedPunkSegmentCache();
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    const cached = computeSpeedPunkSamples(hexRing(30), params, cache);
+    expect(cached).to.deep.equal(computeSpeedPunkSamples(hexRing(30), params));
+  });
+
+  it("recomputes only the edited segment and the two beside it", () => {
+    const cache = new SpeedPunkSegmentCache();
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    expect(cache.misses).to.equal(6);
+    computeSpeedPunkSamples(hexRing(30), params, cache);
+    expect(cache.misses).to.equal(6 + 3);
+  });
+
+  it("recomputes nothing when nothing changed", () => {
+    const cache = new SpeedPunkSegmentCache();
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    expect(cache.misses).to.equal(6);
+  });
+
+  it("recomputes every segment when a comb setting changes", () => {
+    const cache = new SpeedPunkSegmentCache();
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    computeSpeedPunkSamples(hexRing(), { ...params, sharpness: 2 }, cache);
+    expect(cache.misses).to.equal(12);
+  });
+
+  it("lets the oldest entries go past its limit", () => {
+    const cache = new SpeedPunkSegmentCache(6);
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    computeSpeedPunkSamples(hexRing(30), params, cache);
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    expect(cache.misses).to.equal(6 + 3 + 3);
+  });
+});
+
+describe("speedPunkFillGroups", () => {
+  it("puts every quad in the one group of its colour", () => {
+    const quads = computeSpeedPunkSamples(hexRing(30), {
+      contourSegmentBudget: 64,
+      minSegmentsPerCurve: 5,
+    });
+    const groups = speedPunkFillGroups(quads);
+    const colours = new Set(quads.map((q) => q.color));
+    expect(groups.map((g) => g.color)).to.have.members([...colours]);
+    expect(groups.flatMap((g) => g.quads)).to.have.members(quads);
   });
 });
