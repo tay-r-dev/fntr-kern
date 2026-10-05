@@ -1247,7 +1247,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
           },
           [
-            selectLookList("layers-list"),
+            selectLookList("layers-list", "data"),
             html.createDomElement("add-remove-buttons", {
               style: "padding: 4px 0 0 0;",
               id: "source-layers-add-remove-buttons",
@@ -4131,9 +4131,10 @@ function stripLocation(location, locationBase, fontSources) {
     : location;
 }
 
-function selectLookList(id) {
+// `look`: "select" rules every row, "data" only the selected ones.
+function selectLookList(id, look = "select") {
   const list = html.createDomElement("ui-list", { id });
-  list.setAttribute("look", "select");
+  list.setAttribute("look", look);
   return list;
 }
 

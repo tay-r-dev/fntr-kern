@@ -297,10 +297,15 @@ export class UIList extends UnlitElement {
       border-bottom-color: transparent;
     }
 
-    /* A selected row has its lime rule below and no line above: the row
-       before it drops its own rule. */
+    /* A selected row is lined in lime above and below (Figma 2004:29833):
+       the line above it is the previous row's rule, turned lime; the first
+       row draws its own. */
     :host([look]) .row:not(.selected):has(+ .selected) {
-      border-bottom-color: transparent;
+      border-bottom-color: var(--table-look-selection-rule-color);
+    }
+
+    :host([look]) .contents > .selected:first-child {
+      box-shadow: inset 0 1px var(--table-look-selection-rule-color);
     }
 
     :host([look]) .row:hover {

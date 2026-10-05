@@ -414,14 +414,25 @@ const DATA_TABLE_STYLES = `
     border-bottom-color: transparent;
   }
 
-  /* A selected row has its lime rule below and no line above: the row
-     before it drops its own rule. */
+  /* A selected row is lined in lime above and below (Figma 2004:29833). In
+     a collapsed table the line above it is the previous row's rule, so that
+     rule turns lime. */
   data-table[look]
     .data-table
     tbody
     tr:not(.data-table-row-selected):has(+ tr.data-table-row-selected)
     td {
-    border-bottom-color: transparent;
+    border-bottom-color: var(--data-table-look-selection-rule-color);
+  }
+
+  /* The first row has no row above: its top line is drawn inside it. */
+  data-table[look] .data-table tbody tr.data-table-row-selected:first-child td {
+    box-shadow: inset 0 1px var(--data-table-look-selection-rule-color);
+  }
+
+  /* A selected row's marker covers its top line too. */
+  data-table[look] .data-table tr.data-table-row-selected.data-table-row-marked > td:first-child::before {
+    top: -1px;
   }
 
   data-table[look].data-table-resizable .data-table tbody tr:last-child td {
