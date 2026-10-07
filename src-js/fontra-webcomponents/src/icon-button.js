@@ -237,7 +237,7 @@ export class IconButton extends UnlitElement {
 
     /* The dropdown card: a native popover placed under the button, same as
        overflow-popover.js drew it before this became a shared implementation. */
-    .card {
+    .popover-card {
       position: fixed;
       inset: auto;
       margin: 0;
@@ -256,7 +256,7 @@ export class IconButton extends UnlitElement {
 
     /* settings overflow (Figma 4108:3038): white, ruled, 6px corners, a soft
        shadow; the content brings its own padding. */
-    :host([settings-card]) .card {
+    :host([settings-card]) .popover-card {
       padding: 0;
       border: 1px solid var(--line-base-basic-1);
       border-radius: 6px;
@@ -388,7 +388,7 @@ export class IconButton extends UnlitElement {
     }
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "card", popover: "auto" }, [
+      this._card = html.div({ class: "popover-card", popover: "auto" }, [
         html.createDomElement("slot", { name: "dropdown" }),
       ]);
       // Placed under the button's right edge, and kept on screen -- same

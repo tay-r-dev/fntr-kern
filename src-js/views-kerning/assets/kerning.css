@@ -957,25 +957,6 @@ data-table[look]
 /* The accordion bodies and the parameters card. ui-accordion and the
    popover show them through slots, so they stay in the page and this file
    styles them. */
-/* A body sits 10px under its switch, 12px in from the card's edge and 4px
-   over the next switch's 10px gap: the 8px the accordion gives, plus this. */
-.kerning-accordion-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 2px 4px 6px;
-}
-
-/* The last body ends 4px over the card's own 8px. */
-#kerning-analytics-section {
-  padding-bottom: 0;
-  margin-bottom: -4px;
-}
-
-#kerning-stale-section {
-  gap: 8px;
-}
-
 #kerning-stale-summary {
   display: flex;
   align-items: center;
@@ -1027,16 +1008,6 @@ data-table[look]
   display: flex;
   flex-direction: column;
   gap: 0.35em;
-}
-
-/* Figma 4121:8980: 4px under the switch and 12px in from the card's edge
-   (the accordion gives 8px), the toggle, the checks and the dropdowns 12px
-   apart. */
-#kerning-pairtable-filter-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 4px 4px;
 }
 
 /* The checks, 12px apart (Figma 4121:8982). */

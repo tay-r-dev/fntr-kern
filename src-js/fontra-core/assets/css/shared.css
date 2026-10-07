@@ -308,6 +308,7 @@ glyph-cell-view .placeholder-label {
 }
 
 glyph-cell-view .font-overview-accordion-item {
+  display: block;
   height: 100%;
   width: 100%;
   overflow-y: auto;

@@ -211,7 +211,7 @@ export class LatchButton extends UnlitElement {
 
     /* The dropdown card: a native popover under the button's right edge, as
        icon-button.js draws it. */
-    .card {
+    .popover-card {
       position: fixed;
       inset: auto;
       margin: 0;
@@ -335,7 +335,7 @@ export class LatchButton extends UnlitElement {
   set dropdown(element) {
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "card", popover: "auto" }, []);
+      this._card = html.div({ class: "popover-card", popover: "auto" }, []);
       // Placed under the button's right edge, and kept on screen -- the
       // placement icon-button.js uses.
       this._card.addEventListener("beforetoggle", (event) => {

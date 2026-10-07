@@ -525,10 +525,10 @@ export default class LetterspacerPanel extends Panel {
 
     this._bulkStatusElement = html.div({ class: "field-label" }, [this.bulkStatus]);
 
-    const content = html.div({ class: "field-group" }, [
+    const content = html.div({}, [
       glyphsetDropdown,
       html.div(
-        { class: "checkmark-wrap", style: "padding: 8px 0 10px;" },
+        { class: "checkmark-wrap" },
         BULK_SUBSETS.map((subset) =>
           this._checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
             this.bulkSubsets[subset.key] = checked;
