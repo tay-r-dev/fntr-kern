@@ -319,8 +319,8 @@ export default class CharactersGlyphsPanel extends Panel {
     `);
 
     this.accordion = new Accordion();
-    this.accordion.appendStyle(`
-      ui-list {
+    this._appendStyle(`
+      ui-accordion ui-list {
         box-sizing: border-box;
         height: 100%;
         overflow: hidden;

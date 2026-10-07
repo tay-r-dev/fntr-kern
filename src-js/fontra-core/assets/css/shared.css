@@ -40,3 +40,280 @@ button,
 input[type="button"]:focus {
   outline: none;
 }
+
+/*
+The shared panel look. Every shadow root links this file (html-utils.js's
+SimpleElement), so these rules reach panels, accordions and popovers alike;
+a panel keeps in its own styles only what is its alone. Colours are the
+design system's tokens (core.css), with hand-picked dark ones through the
+theme marker until the design has a dark mode.
+*/
+
+.card-column,
+.card,
+.card-heading,
+.field-label,
+.checkmark-row {
+  --shared-surface-light: var(--fontra-theme-marker) var(--surface-base-basic-1);
+  --shared-surface-dark: #1e1e1e;
+  --shared-surface: var(--shared-surface-light, var(--shared-surface-dark));
+  --shared-card-light: var(--fontra-theme-marker) #fff;
+  --shared-card-dark: #2a2a2a;
+  --shared-card: var(--shared-card-light, var(--shared-card-dark));
+  --shared-line-light: var(--fontra-theme-marker) var(--line-base-basic-1);
+  --shared-line-dark: rgba(255, 255, 255, 0.05);
+  --shared-line: var(--shared-line-light, var(--shared-line-dark));
+  --shared-heading-light: var(--fontra-theme-marker) var(--text-base-basic-5);
+  --shared-heading-dark: #6a6a6a;
+  --shared-heading: var(--shared-heading-light, var(--shared-heading-dark));
+  --shared-label-light: var(--fontra-theme-marker) var(--text-base-basic-3);
+  --shared-label-dark: #9a9a9a;
+  --shared-label: var(--shared-label-light, var(--shared-label-dark));
+  --shared-label-hover-light: var(--fontra-theme-marker) #303030;
+  --shared-label-hover-dark: #e0e0e0;
+  --shared-label-hover: var(--shared-label-hover-light, var(--shared-label-hover-dark));
+  --shared-label-disabled-light: var(--fontra-theme-marker) var(--text-base-basic-4);
+  --shared-label-disabled-dark: #6a6a6a;
+  --shared-label-disabled: var(
+    --shared-label-disabled-light,
+    var(--shared-label-disabled-dark)
+  );
+  --shared-check-light: var(--fontra-theme-marker) #e9e9e9;
+  --shared-check-dark: #444444;
+  --shared-check: var(--shared-check-light, var(--shared-check-dark));
+  --shared-check-hover-light: var(--fontra-theme-marker) #d9d9d9;
+  --shared-check-hover-dark: #555555;
+  --shared-check-hover: var(--shared-check-hover-light, var(--shared-check-hover-dark));
+  --shared-check-line-light: var(--fontra-theme-marker) rgba(21, 21, 21, 0.05);
+  --shared-check-line-dark: rgba(255, 255, 255, 0.05);
+  --shared-check-line: var(--shared-check-line-light, var(--shared-check-line-dark));
+  --shared-check-line-hover-light: var(--fontra-theme-marker) rgba(21, 21, 21, 0.1);
+  --shared-check-line-hover-dark: rgba(255, 255, 255, 0.1);
+  --shared-check-line-hover: var(
+    --shared-check-line-hover-light,
+    var(--shared-check-line-hover-dark)
+  );
+}
+
+/* A sidebar's run of cards on the panel grey, 8px in and 8px apart. */
+.card-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  overflow: hidden auto;
+  background-color: var(--shared-surface);
+}
+
+/* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
+   rule is drawn outside the fill, over the grey, as Figma strokes it. */
+.card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background-color: var(--shared-card);
+  background-clip: padding-box;
+  border: 1px solid var(--shared-line);
+  border-radius: 14px;
+}
+
+.card-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ./heading (Figma 2004:29687): ui/heading/h2, text/base/basic/5. */
+.card-heading {
+  margin: 0;
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking);
+  text-transform: uppercase;
+  color: var(--shared-heading);
+}
+
+/* A caption over its field: ui/label/XS, 4px above it. */
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field-label {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--shared-label);
+}
+
+/* Fields side by side, 4px apart, sharing the width. */
+.field-pair {
+  display: flex;
+  gap: 4px;
+}
+
+.field-pair > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* checkmark (Figma 379:22544): a native checkbox with our checkbox assets
+   and its name, ui/label/S -- a label.checkmark-row holding an
+   input.checkmark. At rest a checked box is the grey check and an empty one
+   the light box, both with grey names; hover lights the check lime or
+   darkens the box, and darkens the name. */
+.checkmark-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.checkmark-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--shared-label);
+  white-space: nowrap;
+}
+
+.checkmark {
+  appearance: none;
+  flex: none;
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--shared-check-line);
+  border-bottom: none;
+  border-radius: 4px;
+  background: var(--shared-check) center / contain no-repeat;
+  cursor: pointer;
+}
+
+.checkmark-row:hover .checkmark {
+  background-color: var(--shared-check-hover);
+  border-color: var(--shared-check-line-hover);
+}
+
+.checkmark:checked,
+.checkmark-row:hover .checkmark:checked {
+  border: none;
+  background-color: transparent;
+  background-image: url("/images/checkbox-on-rest.svg");
+}
+
+.checkmark-row:hover .checkmark:checked {
+  background-image: url("/images/checkbox-on-hover.svg");
+}
+
+.checkmark-row:hover {
+  color: var(--shared-label-hover);
+}
+
+.checkmark-row:has(:disabled) {
+  color: var(--shared-label-disabled);
+  cursor: default;
+}
+
+.checkmark:disabled {
+  border: none;
+  background: url("/images/checkbox-disabled.svg") center / contain no-repeat;
+}
+
+/* The settings overflow's content (Figma 4108:3038): a ruled ui/heading/h4
+   over its switches. Pair with overflow-popover's settings-card attribute. */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+}
+
+.settings-card-heading {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-base-basic-1);
+  font: var(--ui-text-heading-h4);
+  letter-spacing: var(--ui-tracking);
+  text-transform: uppercase;
+  color: var(--text-base-basic-3);
+}
+
+.settings-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 12px 16px;
+}
+
+/* The glyph sets UI (glyphsets-ui.js): the project and my glyph sets
+   sections of the glyph search and font overview accordions. */
+.glyph-set-container {
+  display: grid;
+  justify-items: left;
+  gap: 0.5em;
+}
+
+.checkbox-group {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: space-between;
+}
+
+.glyphset-button-group {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 0.2em;
+  align-items: center;
+}
+
+.glyph-set-container icon-button,
+.glyphset-add-button {
+  width: 1.3em;
+  height: 1.3em;
+}
+
+.glyphset-error-button {
+  color: var(--fontra-light-red-color);
+  opacity: 0;
+}
+
+.glyphset-error-button.glyphset-error {
+  opacity: 1;
+}
+
+.glyphset-error-button.loading {
+  opacity: 1;
+  color: #8888;
+  animation: loading-spinner 0.8s linear infinite;
+}
+
+@keyframes loading-spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* glyph-cell-view's sections: their label's count, the empty section's
+   placeholder, and the cell area. */
+glyph-cell-view .placeholder-label {
+  font-size: 0.9em;
+  opacity: 40%;
+}
+
+glyph-cell-view .font-overview-accordion-item {
+  height: 100%;
+  width: 100%;
+  overflow-y: auto;
+}
+
+glyph-cell-view .glyph-count {
+  font-weight: normal;
+  opacity: 50%;
+}

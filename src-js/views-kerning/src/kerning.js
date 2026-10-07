@@ -174,7 +174,6 @@ import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 // unmodified, not reinvented.
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import { SELECTION_ROW_GROUP_STYLES } from "@fontra/views-editor/selection-row-group-styles.js";
-import { KERNING_SHADOW_STYLES } from "./kerning-shadow-styles.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import {
   KerningTool,
@@ -940,7 +939,7 @@ export class KerningViewController extends ViewController {
     // bindings loop above.
     // The tray's segment styles are the editor's (selection-row-group-styles.js).
     const trayStyles = document.createElement("style");
-    trayStyles.textContent = SELECTION_ROW_GROUP_STYLES + KERNING_SHADOW_STYLES;
+    trayStyles.textContent = SELECTION_ROW_GROUP_STYLES;
     document.head.appendChild(trayStyles);
     const runButton = html.createDomElement("icon-button", {
       id: "kerning-run-button",
@@ -953,8 +952,6 @@ export class KerningViewController extends ViewController {
       "data-tooltipposition": "bottom",
     });
     parametersButton.dropdown = this._buildAutokernParamsDialogFields();
-    // The card renders in the button's shadow root.
-    parametersButton.appendStyle(KERNING_SHADOW_STYLES);
     document.querySelector("#kerning-run-row").append(runButton, parametersButton);
 
     // Task 5, spec F18: inclusive bounds, and no maximum by default. The field
@@ -1004,8 +1001,8 @@ export class KerningViewController extends ViewController {
     const params = this.autokernParamsController.model;
     const setItem = (key, value) => this.autokernParamsController.setItem(key, value);
     const labeled = (label, control) =>
-      html.div({ class: "kerning-field-group" }, [
-        html.span({ class: "kerning-field-label" }, [label]),
+      html.div({ class: "field-group" }, [
+        html.span({ class: "field-label" }, [label]),
         control,
       ]);
     const field = (id, key, { integer, minValue, step }) => {
@@ -1118,8 +1115,8 @@ export class KerningViewController extends ViewController {
     const settings = this.suggestionPreviewSettings.model;
     const setItem = (key, value) => this.suggestionPreviewSettings.setItem(key, value);
     const labeled = (label, control) =>
-      html.div({ class: "kerning-field-group" }, [
-        html.span({ class: "kerning-field-label" }, [label]),
+      html.div({ class: "field-group" }, [
+        html.span({ class: "field-label" }, [label]),
         control,
       ]);
 
@@ -1201,13 +1198,13 @@ export class KerningViewController extends ViewController {
     document
       .querySelector("#kerning-suggestion-preview-section")
       .append(
-        html.div({ class: "kerning-field-pair" }, [
+        html.div({ class: "field-pair" }, [
           labeled("pairs per row", pairsPerRowField),
           labeled("pair distance", pairDistanceField),
         ]),
         html.div({ class: "kerning-visual-stack" }, [
           labeled("suggestion stripe opacity", opacitySlider),
-          html.div({ class: "kerning-checkmark-wrap" }, [numbersRow, bandRow]),
+          html.div({ class: "checkmark-wrap" }, [numbersRow, bandRow]),
         ]),
         html.div({ class: "kerning-skip-group" }, [
           html.span({ class: "kerning-section-label" }, ["skip all suggestions"]),
@@ -1229,8 +1226,8 @@ export class KerningViewController extends ViewController {
     });
   }
 
-  // The AUTOKERN card's bodies move into the accordion's shadow root, out of
-  // document.querySelector's reach; this finds them on either side.
+  // The AUTOKERN card's bodies: ui-accordion slots them, so they stay in the
+  // page and document.querySelector finds them.
   autokernElement(selector) {
     return (
       document.querySelector(selector) ??
@@ -1278,8 +1275,6 @@ export class KerningViewController extends ViewController {
         // Losing the remembered state is not worth an error.
       }
     };
-    // The bodies render in the accordion's shadow root.
-    accordion.appendStyle(KERNING_SHADOW_STYLES);
     this._autokernAccordion = accordion;
     document.querySelector("#kerning-autokern-accordion-slot").replaceWith(accordion);
   }
@@ -2997,9 +2992,7 @@ export class KerningViewController extends ViewController {
     this.renderPairTable();
   }
 
-  // The filters fold under one accordion switch (Figma 4121:8979). Built
-  // after every control inside is wired, since the body then lives in the
-  // accordion's shadow root.
+  // The filters fold under one accordion switch (Figma 4121:8979).
   initFiltersAccordion() {
     const storageKey = "fontra-kerning-accordion-open.filters";
     let stored = null;
@@ -3017,8 +3010,6 @@ export class KerningViewController extends ViewController {
     const accordion = new Accordion();
     accordion.setAttribute("switch", "");
     accordion.id = "kerning-filters-accordion";
-    // The body renders in the accordion's shadow root.
-    accordion.appendStyle(KERNING_SHADOW_STYLES);
     accordion.items = [item];
     accordion.onItemOpenClose = (_, open) => {
       try {

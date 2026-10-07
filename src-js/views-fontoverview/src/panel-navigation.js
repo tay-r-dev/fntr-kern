@@ -6,7 +6,6 @@ import { groupByKeys, groupByProperties } from "@fontra/core/glyph-organizer.js"
 import {
   CheckboxGroup,
   getGlyphSetsUIControllers,
-  glyphSetsUIStyles,
 } from "@fontra/core/glyphsets-ui.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
@@ -61,14 +60,6 @@ export class FontOverviewNavigation extends HTMLElement {
 
     accordion.id = "panel-navigation-accordion";
 
-    accordion.appendStyle(
-      `
-      #font-source-location-container {
-        display: grid;
-        gap: 0.5em;
-      }
-    ` + glyphSetsUIStyles
-    );
 
     accordion.onItemOpenClose = (item, openClose) => {
       const setOp = openClose ? difference : union;

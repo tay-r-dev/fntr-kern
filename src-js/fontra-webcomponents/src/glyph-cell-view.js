@@ -187,22 +187,6 @@ export class GlyphCellView extends HTMLElement {
       user-select: none;
       -webkit-user-select: none; /* Safari */
     }
-
-    .placeholder-label {
-      font-size: 0.9em;
-      opacity: 40%;
-    }
-
-    .font-overview-accordion-item {
-      height: 100%;
-      width: 100%;
-      overflow-y: auto;
-    }
-
-    .glyph-count {
-      font-weight: normal;
-      opacity: 50%;
-    }
     `);
 
     this.accordion.onItemOpenClose = (item, openClose) => {

@@ -36,8 +36,6 @@ import "@fontra/web-components/overflow-popover.js"; // the settings overflow
 import "@fontra/web-components/text-button.js";
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import "@fontra/web-components/ui-text-input.js"; // the reference glyph
-import { CHECKMARK_STYLES } from "@fontra/web-components/checkmark-styles.js";
-import { METRICS_PANEL_STYLES } from "./metrics-panel-styles.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 
@@ -235,9 +233,9 @@ export default class LetterspacerPanel extends Panel {
 
   constructor(editorController) {
     super(editorController);
-    this.card = html.div({ class: "metrics-card" });
+    this.card = html.div({ class: "card" });
     this.contentElement.appendChild(this.card);
-    this._appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
+    this._appendStyle(LETTERSPACER_CARD_STYLES);
     this.fontController = this.editorController.fontController;
     this.sceneController = this.editorController.sceneController;
     this.sceneSettingsController = this.editorController.sceneSettingsController;
@@ -322,13 +320,10 @@ export default class LetterspacerPanel extends Panel {
       "data-tooltipposition": "left",
     });
     settings.setAttribute("settings-card", "");
-    // The card renders in the popover's own shadow root, which this panel's
-    // styles do not reach.
-    settings.appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
     settings.content = this._buildSettingsCard();
 
-    return html.div({ class: "metrics-heading-row" }, [
-      html.span({ class: "metrics-heading metrics-grow" }, [
+    return html.div({ class: "card-heading-row" }, [
+      html.span({ class: "card-heading metrics-grow" }, [
         translate("sidebar.letterspacer.title"),
       ]),
       settings,
@@ -381,7 +376,7 @@ export default class LetterspacerPanel extends Panel {
       );
       return field;
     };
-    return html.div({ class: "metrics-row" }, [
+    return html.div({ class: "field-pair" }, [
       makeField("area", translate("sidebar.letterspacer.area"), true),
       makeField("depth", translate("sidebar.letterspacer.depth"), true),
       makeField("overshoot", translate("sidebar.letterspacer.overshoot"), false),
@@ -535,12 +530,12 @@ export default class LetterspacerPanel extends Panel {
       this.bulkGlyphsetId = event.detail.checked || "";
     });
 
-    this._bulkStatusElement = html.div({ class: "metrics-label" }, [this.bulkStatus]);
+    this._bulkStatusElement = html.div({ class: "field-label" }, [this.bulkStatus]);
 
-    const content = html.div({ class: "ls-batch" }, [
+    const content = html.div({ class: "field-group" }, [
       glyphsetDropdown,
       html.div(
-        { class: "checkmark-wrap" },
+        { class: "checkmark-wrap", style: "padding: 8px 0 10px;" },
         BULK_SUBSETS.map((subset) =>
           this._checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
             this.bulkSubsets[subset.key] = checked;
@@ -559,9 +554,6 @@ export default class LetterspacerPanel extends Panel {
 
     const accordion = new Accordion();
     accordion.setAttribute("switch", "");
-    // The content renders in the accordion's own shadow root, which this
-    // panel's styles do not reach.
-    accordion.appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
     accordion.classList.add("ls-switch");
     accordion.items = [
       {
@@ -636,13 +628,13 @@ export default class LetterspacerPanel extends Panel {
 
       const children = [this._buildHeader()];
       if (this.algorithmEnabled) {
-        this._heldMessageElement = html.div({ class: "metrics-label" }, []);
+        this._heldMessageElement = html.div({ class: "field-label" }, []);
         this._renderHeldMessage();
         children.push(
           html.div({ class: "metrics-stack ls-body" }, [
             this._buildAreaDepthOvershootRow(),
             this._labeled("reference glyph", this._buildReferenceField()),
-            html.div({ class: "metrics-group" }, [
+            html.div({ class: "field-group" }, [
               this._buildCalculatedTable(),
               this._buildActionRow(),
             ]),
@@ -664,8 +656,8 @@ export default class LetterspacerPanel extends Panel {
 
   // A ui/label/XS caption over its control, 4px apart.
   _labeled(label, control) {
-    return html.div({ class: "metrics-group" }, [
-      html.span({ class: "metrics-label" }, [label]),
+    return html.div({ class: "field-group" }, [
+      html.span({ class: "field-label" }, [label]),
       control,
     ]);
   }
@@ -2056,12 +2048,26 @@ const LETTERSPACER_CARD_STYLES = `
     height: auto;
   }
 
-  .metrics-card {
+  /* The LETTERSPACER card (Figma 4108:2095): 12px over the heading, its
+     parts 10px apart. */
+  .card {
     gap: 10px;
+    padding: 12px 8px 8px;
+  }
+
+  .metrics-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .metrics-heading-icon {
+    width: 16px;
+    height: 16px;
   }
 
   /* Off, the card is the heading alone, 12px all round. */
-  .metrics-card.ls-card--off {
+  .card.ls-card--off {
     padding-bottom: 12px;
   }
 
@@ -2071,29 +2077,6 @@ const LETTERSPACER_CARD_STYLES = `
 
   .ls-body {
     padding-bottom: 4px;
-  }
-
-  .settings-card {
-    display: flex;
-    flex-direction: column;
-    min-width: 180px;
-  }
-
-  /* ui/heading/h4 */
-  .settings-card-heading {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--line-base-basic-1);
-    font: var(--ui-text-heading-h4);
-    letter-spacing: var(--ui-tracking);
-    text-transform: uppercase;
-    color: var(--text-base-basic-3);
-  }
-
-  .settings-card-body {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 12px 12px 16px;
   }
 
   .ls-table {
@@ -2151,18 +2134,4 @@ const LETTERSPACER_CARD_STYLES = `
     margin: 0 -8px;
   }
 
-  .ls-batch {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .checkmark-wrap {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px 12px;
-    padding: 8px 0 10px;
-  }
-
-  ${CHECKMARK_STYLES}
 `;

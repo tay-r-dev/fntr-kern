@@ -543,6 +543,40 @@ function makeUntitledSourceName(sources) {
   return sourceName;
 }
 
+// A source box's accordion content: it stays in the page (ui-accordion slots
+// it), so these are page styles.
+addStyleSheet(`
+.fontra-ui-font-info-sources-panel-column {
+  display: grid;
+  grid-template-columns: minmax(4.5em, max-content) minmax(max-content, 25em);
+  gap: 0.5em;
+  align-items: start;
+  align-content: start;
+  padding-bottom: 1em;
+}
+
+.fontra-ui-font-info-sources-panel-line-metrics-hor {
+  grid-template-columns: minmax(4.5em, max-content) 4em 4em;
+}
+
+.fontra-ui-font-info-sources-panel-list-element {
+  min-width: max-content;
+  max-width: 29.5em; // 4.5 + 25
+  max-height: 12em;
+}
+
+ui-accordion input {
+  background-color: var(--text-input-background-color);
+  color: var(--text-input-foreground-color);
+  border-radius: 0.25em;
+  border: none;
+  outline: none;
+  padding: 0.1em 0.3em;
+  font-family: "fontra-ui-regular";
+  font-size: 100%;
+}
+`);
+
 addStyleSheet(`
 .fontra-ui-font-info-sources-panel-source-box {
   background-color: var(--ui-element-background-color);
@@ -754,42 +788,6 @@ class SourceBox extends HTMLElement {
     });
 
     const accordion = new Accordion();
-    accordion.appendStyle(`
-.fontra-ui-font-info-sources-panel-column {
-  display: grid;
-  grid-template-columns: minmax(4.5em, max-content) minmax(max-content, 25em);
-  gap: 0.5em;
-  align-items: start;
-  align-content: start;
-  padding-bottom: 1em;
-}
-
-.fontra-ui-font-info-sources-panel-line-metrics-hor {
-  grid-template-columns: minmax(4.5em, max-content) 4em 4em;
-}
-
-.fontra-ui-font-info-sources-panel-list-element {
-  min-width: max-content;
-  max-width: 29.5em; // 4.5 + 25
-  max-height: 12em;
-}
-
-input {
-  background-color: var(--text-input-background-color);
-  color: var(--text-input-foreground-color);
-  border-radius: 0.25em;
-  border: none;
-  outline: none;
-  padding: 0.1em 0.3em;
-  font-family: "fontra-ui-regular";
-  font-size: 100%;
-}
-
-.ui-form-value input {
-  width: min(100%, 9.5em);
-  height: 1.6em;
-}
-    `);
     const accordionItems = [
       {
         label: getLabelFromKey("general"),

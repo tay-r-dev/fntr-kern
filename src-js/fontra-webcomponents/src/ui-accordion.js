@@ -111,10 +111,33 @@ export class Accordion extends UnlitElement {
     items: { type: Array },
   };
 
+  // The caller's parts of an item -- its content, its header's extra element
+  // and a label that is an element -- are not moved into this shadow root but
+  // shown through slots. They stay in the caller's tree, so the caller's own
+  // styles (a panel's, a page's) style them; nothing need be passed in.
+  // appendStyle is for this accordion's own chrome only.
+  _slotted(node, name) {
+    if (!(node instanceof Node)) {
+      return node;
+    }
+    node.slot = name;
+    if (node.parentNode !== this) {
+      this.appendChild(node);
+    }
+    return html.createDomElement("slot", { name });
+  }
+
   render() {
     const itemElements = [];
+    this._itemElements = new Map();
+    const slotNames = new Set();
     for (const [index, item] of enumerate(this.items || [])) {
       const id = item.id || `ui-accordion-item-${index}`;
+      const slotName = (part) => {
+        const name = `${index}-${part}`;
+        slotNames.add(name);
+        return name;
+      };
 
       const headerElement = html.div(
         {
@@ -126,16 +149,18 @@ export class Accordion extends UnlitElement {
             class: "open-close-icon",
             src: "/tabler-icons/chevron-up.svg",
           }),
-          item.label,
+          this._slotted(item.label, slotName("label")),
         ]
       );
       if (item.auxiliaryHeaderElement) {
-        headerElement.appendChild(item.auxiliaryHeaderElement);
+        headerElement.appendChild(
+          this._slotted(item.auxiliaryHeaderElement, slotName("aux"))
+        );
       }
 
       const contentElement = html.div(
         { class: "ui-accordion-item-content", hidden: !item.open },
-        [item.content]
+        [this._slotted(item.content, slotName("content"))]
       );
 
       const itemElement = html.div(
@@ -148,6 +173,13 @@ export class Accordion extends UnlitElement {
       }
 
       itemElements.push(itemElement);
+      this._itemElements.set(item, itemElement);
+    }
+    // Parts of items no longer shown go.
+    for (const child of [...this.children]) {
+      if (child.slot && !slotNames.has(child.slot)) {
+        child.remove();
+      }
     }
     return [
       html.link({ href: "/css/tooltip.css", rel: "stylesheet" }),
@@ -155,12 +187,16 @@ export class Accordion extends UnlitElement {
     ];
   }
 
+  // The caller's slotted parts first, then this accordion's own chrome.
   querySelector(selector) {
-    return this.shadowRoot.querySelector(selector);
+    return super.querySelector(selector) ?? this.shadowRoot.querySelector(selector);
   }
 
   querySelectorAll(selector) {
-    return this.shadowRoot.querySelectorAll(selector);
+    return [
+      ...super.querySelectorAll(selector),
+      ...this.shadowRoot.querySelectorAll(selector),
+    ];
   }
 
   _handleItemHeaderClick(event, item) {
@@ -178,7 +214,7 @@ export class Accordion extends UnlitElement {
 
   openCloseAccordionItem(item, openClose) {
     item.open = openClose;
-    const parent = parentWithClass(item.content, "ui-accordion-item");
+    const parent = this._itemElements?.get(item);
     if (parent) {
       parent.classList.toggle("ui-accordion-item-closed", !openClose);
     }
@@ -188,7 +224,7 @@ export class Accordion extends UnlitElement {
   showHideAccordionItem(item, onOff) {
     item.hidden = !onOff;
 
-    const parent = parentWithClass(item.content, "ui-accordion-item");
+    const parent = this._itemElements?.get(item);
 
     if (parent) {
       parent.hidden = !onOff;
@@ -197,14 +233,6 @@ export class Accordion extends UnlitElement {
 }
 
 customElements.define("ui-accordion", Accordion);
-
-function parentWithClass(element, className) {
-  let parent = element;
-  do {
-    parent = parent.parentElement;
-  } while (parent && !parent.classList.contains(className));
-  return parent;
-}
 
 export function makeClickableIconHeader(iconPath, onClick) {
   const focus = new FocusKeeper();

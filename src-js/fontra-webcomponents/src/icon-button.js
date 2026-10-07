@@ -380,10 +380,17 @@ export class IconButton extends UnlitElement {
     return this._dropdownContent;
   }
 
+  // The content is shown through a slot, not moved in: it stays in the
+  // caller's tree, so the caller's styles reach it.
   set dropdown(element) {
+    if (this._dropdownContent && this._dropdownContent !== element) {
+      this._dropdownContent.remove();
+    }
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "card", popover: "auto" }, []);
+      this._card = html.div({ class: "card", popover: "auto" }, [
+        html.createDomElement("slot", { name: "dropdown" }),
+      ]);
       // Placed under the button's right edge, and kept on screen -- same
       // placement overflow-popover.js used.
       this._card.addEventListener("beforetoggle", (event) => {
@@ -396,7 +403,8 @@ export class IconButton extends UnlitElement {
       });
     }
     if (element) {
-      this._card.replaceChildren(element);
+      element.slot = "dropdown";
+      this.appendChild(element);
     }
     this.requestUpdate();
   }

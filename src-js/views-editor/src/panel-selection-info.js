@@ -43,7 +43,6 @@ import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import LetterspacerPanel from "./panel-letterspacer.js";
 import { editSkeleton } from "./skeleton-editing.js";
-import { METRICS_PANEL_STYLES } from "./metrics-panel-styles.js";
 import Panel from "./panel.js";
 
 export default class SelectionInfoPanel extends Panel {
@@ -109,13 +108,13 @@ export default class SelectionInfoPanel extends Panel {
   getContentElement() {
     this.infoForm = new Form();
     this.letterspacerHost = html.div({ class: "metrics-host", hidden: true });
-    this.spacingCard = html.div({ class: "metrics-card", hidden: true });
-    this.kerningCard = html.div({ class: "metrics-card", hidden: true });
-    this.selectionCard = html.div({ class: "metrics-card metrics-card--form" }, [
+    this.spacingCard = html.div({ class: "card", hidden: true });
+    this.kerningCard = html.div({ class: "card", hidden: true });
+    this.selectionCard = html.div({ class: "card metrics-card--form" }, [
       this.infoForm,
     ]);
     this.cardsElement = html.div(
-      { class: "panel-section panel-section--flex metrics-cards" },
+      { class: "panel-section--flex card-column" },
       [this.spacingCard, this.letterspacerHost, this.kerningCard, this.selectionCard]
     );
     this._appendStyle(METRICS_PANEL_STYLES);
@@ -612,8 +611,8 @@ export default class SelectionInfoPanel extends Panel {
     };
 
     const rows = [
-      html.div({ class: "metrics-heading-row" }, [
-        html.span({ class: "metrics-heading" }, ["spacing"]),
+      html.div({ class: "card-heading-row" }, [
+        html.span({ class: "card-heading" }, ["spacing"]),
         this._lockButton,
       ]),
       infoLine,
@@ -621,7 +620,7 @@ export default class SelectionInfoPanel extends Panel {
         this._labeled(translate("sidebar.selection-info.advance-width"), advanceField),
         this._labeled(
           translate("sidebar.selection-info.sidebearings"),
-          html.div({ class: "metrics-row" }, [sideField("left"), sideField("right")])
+          html.div({ class: "field-pair" }, [sideField("left"), sideField("right")])
         ),
       ]),
     ];
@@ -636,7 +635,7 @@ export default class SelectionInfoPanel extends Panel {
       const isConfirming = this._metricsUnlinkConfirm === side;
       const isOverridden = metricsKeyDisplay[side].level === "source";
       keyControls.push(
-        html.span({ class: "metrics-label" }, [side === "left" ? "L" : "R"]),
+        html.span({ class: "field-label" }, [side === "left" ? "L" : "R"]),
         html.createDomElement("icon-button", {
           "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
           "disabled": editLocked,
@@ -693,8 +692,8 @@ export default class SelectionInfoPanel extends Panel {
       return field;
     };
     this.kerningCard.replaceChildren(
-      html.div({ class: "metrics-heading-row" }, [
-        html.span({ class: "metrics-heading" }, [
+      html.div({ class: "card-heading-row" }, [
+        html.span({ class: "card-heading" }, [
           translate("sidebar.selection-info.kerning-heading"),
         ]),
         html.createDomElement("text-button", {
@@ -705,7 +704,7 @@ export default class SelectionInfoPanel extends Panel {
       ]),
       this._labeled(
         "kern group",
-        html.div({ class: "metrics-row" }, [
+        html.div({ class: "field-pair" }, [
           groupField("L", kerningController.rightPairGroupMapping[glyphName], (v) =>
             kerningController.editGroupSide2(glyphName, v)
           ),
@@ -719,8 +718,8 @@ export default class SelectionInfoPanel extends Panel {
 
   // A ui/label/XS caption over its control, 4px apart.
   _labeled(label, control) {
-    return html.div({ class: "metrics-group" }, [
-      html.span({ class: "metrics-label" }, [label]),
+    return html.div({ class: "field-group" }, [
+      html.span({ class: "field-label" }, [label]),
       control,
     ]);
   }
@@ -1869,3 +1868,75 @@ function ensureFiniteNumber(value, fallback = 0) {
 
 customElements.define("panel-selection-info", SelectionInfoPanel);
 
+// What the metrics panel has that no other panel does; the cards, headings,
+// captions and field pairs are shared.css's.
+const METRICS_PANEL_STYLES = `
+  /* SPACING and KERNING (Figma 4108:2200, 4108:2941): 12px over the
+     heading, their parts 12px apart. */
+  .card {
+    gap: 12px;
+    padding: 12px 8px 8px;
+  }
+
+  .card[hidden],
+  .metrics-host[hidden] {
+    display: none;
+  }
+
+  .metrics-card--form {
+    padding: 8px;
+  }
+
+  .metrics-heading-icon,
+  .metrics-update {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* The glyph's name and unicode, ruled under (ui/label/S). */
+  .metrics-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line-base-basic-1);
+    font: var(--ui-text-label-s);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+    color: var(--text-base-basic-3);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .metrics-info-part {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  .metrics-info-dot {
+    flex: none;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background-color: var(--text-base-basic-4);
+  }
+
+  .metrics-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .metrics-key-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .metrics-key-controls icon-button {
+    width: 16px;
+    height: 16px;
+  }
+`;

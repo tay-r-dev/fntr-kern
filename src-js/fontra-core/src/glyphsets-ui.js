@@ -14,54 +14,6 @@ import {
 } from "./ui-utils.js";
 import { fetchJSON } from "./utils.ts";
 
-export const glyphSetsUIStyles = `
-.glyph-set-container {
-  display: grid;
-  justify-items: left;
-  gap: 0.5em;
-}
-
-.checkbox-group {
-  width: 100%;
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: space-between;
-}
-
-.glyphset-button-group {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 0.2em;
-  align-items: center;
-}
-
-icon-button {
-  width: 1.3em;
-  height: 1.3em;
-}
-
-.glyphset-error-button {
-  color: var(--fontra-light-red-color);
-  opacity: 0;
-}
-
-.glyphset-error-button.glyphset-error {
-  opacity: 1;
-}
-
-.glyphset-error-button.loading {
-  opacity: 1;
-  color: #8888;
-  animation: loading-spinner 0.8s linear infinite;
-}
-
-@keyframes loading-spinner {
-  to {
-    transform: rotate(360deg);
-  }
-}
-`;
-
 export class GlyphSetsUIController {
   constructor(settingsController, options) {
     const {
@@ -139,6 +91,7 @@ export class GlyphSetsUIController {
 
   makeAddGlyphSetButton(toolTip) {
     return html.createDomElement("icon-button", {
+      "class": "glyphset-add-button",
       "src": "/images/plus.svg",
       "onclick": (event) => this.addGlyphSet(event),
       "data-tooltip": toolTip,

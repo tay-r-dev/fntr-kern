@@ -84,7 +84,6 @@ import {
 
 import { LABEL_TUNING, LABEL_TUNING_DEFAULTS } from "@fontra/core/canvas-labels.js";
 import { NumberFormatter } from "@fontra/core/formatters.js";
-import { CHECKMARK_STYLES } from "@fontra/web-components/checkmark-styles.js";
 import Panel from "./panel.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
 import {
@@ -549,9 +548,7 @@ function readSnapParameter(path) {
 
 // Figma 379:22417's panel, card and field colours, light and dark.
 const DESIGNSPACE_PANEL_COLORS = {
-  "ds-panel-background-color": ["#f5f5f5", "#1e1e1e"],
   "ds-card-background-color": ["#ffffff", "#2a2a2a"],
-  "ds-card-border-color": ["rgba(0, 0, 0, 0.03)", "rgba(255, 255, 255, 0.05)"],
   "ds-heading-color": ["#848484", "#a0a0a0"],
   "ds-label-color": ["#8e8e8e", "#9a9a9a"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
@@ -582,29 +579,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._appendStyle(`
       ${themeColorCSS(DESIGNSPACE_PANEL_COLORS)}
 
-      /* Figma 379:22417: three white cards on the grey panel. */
-      .designspace-panel {
-        background-color: var(--ds-panel-background-color);
-        padding: 12px;
-        gap: 8px;
-        box-sizing: border-box;
-        overflow: hidden auto;
-      }
-
-      .ds-card {
-        flex: 0 0 auto;
-        display: flex;
-        flex-direction: column;
-        background-color: var(--ds-card-background-color);
-        border: 1px solid var(--ds-card-border-color);
-        border-radius: 14px;
-        /* Figma strokes the card outside its fill. A CSS border sits on the
-           card's own white, where 3% black does not show; clipped to the
-           padding, it lies over the grey panel as in the design. */
-        background-clip: padding-box;
-        padding: 8px;
-      }
-
       .ds-card--phrase {
         gap: 6px;
       }
@@ -614,27 +588,12 @@ export default class DesignspaceNavigationPanel extends Panel {
         padding: 8px 0;
       }
 
-      .ds-card--font > .ds-heading {
+      .ds-card--font > .card-heading {
         padding: 4px 8px 12px;
-      }
-
-      /* ui/heading/h2 */
-      .ds-heading {
-        font: var(--ui-text-heading-h2);
-        letter-spacing: var(--ui-tracking);
-        text-transform: uppercase;
-        color: var(--ds-heading-color);
-        opacity: 0.4;
       }
 
       .ds-heading--spaced {
         padding: 4px 0 12px;
-      }
-
-      .ds-heading-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
       }
 
       /* ui/heading/h3 */
@@ -744,8 +703,6 @@ export default class DesignspaceNavigationPanel extends Panel {
       .ds-popover-column .checkmark-row + .checkmark-row {
         margin-top: 6px;
       }
-
-      ${CHECKMARK_STYLES}
     `);
 
     this.fontController.ensureInitialized.then(() => {
@@ -843,9 +800,9 @@ export default class DesignspaceNavigationPanel extends Panel {
       align.value = event.newValue;
     });
 
-    return html.div({ class: "ds-card ds-card--phrase" }, [
-      html.div({ class: "ds-heading-row" }, [
-        html.div({ class: "ds-heading" }, ["phrase"]),
+    return html.div({ class: "card ds-card--phrase" }, [
+      html.div({ class: "card-heading-row" }, [
+        html.div({ class: "card-heading" }, ["phrase"]),
         align,
       ]),
       textarea,
@@ -919,8 +876,8 @@ export default class DesignspaceNavigationPanel extends Panel {
       }
     };
 
-    return html.div({ class: "ds-card" }, [
-      html.div({ class: "ds-heading ds-heading--spaced" }, ["display"]),
+    return html.div({ class: "card" }, [
+      html.div({ class: "card-heading ds-heading--spaced" }, ["display"]),
       html.div({ class: "ds-stack ds-stack--sections" }, [
         html.div({ id: "coarse-grid-content", class: "ds-stack" }, [
           html.div({ class: "ds-row" }, [
@@ -1089,7 +1046,7 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   getContentElement() {
     this.accordion = new Accordion();
-    this.accordion.appendStyle(`
+    this._appendStyle(`
       .interpolation-error-icon {
         display: inline-block;
         height: 1.35em;
@@ -1490,13 +1447,15 @@ export default class DesignspaceNavigationPanel extends Panel {
     this.displayCard = this._buildDisplayCard();
     this.accordion.setAttribute("switch", "");
 
-    return html.div({ class: "panel designspace-panel" }, [
-      this._buildPhraseSection(),
-      html.div({ class: "ds-card ds-card--font" }, [
-        html.div({ class: "ds-heading" }, ["font"]),
-        this.accordion,
+    return html.div({ class: "panel" }, [
+      html.div({ class: "card-column panel-section--flex" }, [
+        this._buildPhraseSection(),
+        html.div({ class: "card ds-card--font" }, [
+          html.div({ class: "card-heading" }, ["font"]),
+          this.accordion,
+        ]),
+        this.displayCard,
       ]),
-      this.displayCard,
     ]);
   }
 

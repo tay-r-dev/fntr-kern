@@ -373,7 +373,7 @@ export default class SkeletonParametersPanel {
     this.editorController = editorController;
     this.infoForm = new Form();
     // The Selection panel owns the one scroll area; this part only adds its form.
-    contentElement.appendChild(html.div({}, [this.infoForm]));
+    contentElement.appendChild(html.div({ class: "card" }, [this.infoForm]));
     this.fontController = this.editorController.fontController;
     this.sceneController = this.editorController.sceneController;
     this.sceneSettingsController = this.editorController.sceneSettingsController;

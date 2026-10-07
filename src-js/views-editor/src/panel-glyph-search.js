@@ -1,6 +1,5 @@
 import {
   getGlyphSetsUIControllers,
-  glyphSetsUIStyles,
 } from "@fontra/core/glyphsets-ui.js";
 import * as html from "@fontra/core/html-utils.js";
 import { glyphMapToItemList, isObjectEmpty } from "@fontra/core/utils.ts";
@@ -140,7 +139,6 @@ export default class GlyphSearchPanel extends Panel {
     const accordion = new Accordion();
     accordion.id = accordionId;
 
-    accordion.appendStyle(glyphSetsUIStyles);
 
     const accordionItems = [projectGlyphSets.accordionItem, myGlyphSets.accordionItem];
 

@@ -379,7 +379,7 @@ export default class TextEntryPanel extends Panel {
     });
 
     this.accordion = new Accordion();
-    this.accordion.appendStyle(`
+    this._appendStyle(`
       .features-container {
         display: grid;
         grid-template-columns: min-content auto;

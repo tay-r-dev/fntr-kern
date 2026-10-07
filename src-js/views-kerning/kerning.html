@@ -42,14 +42,14 @@
         <div class="sidebar-resize-gutter" data-grow-direction="right"></div>
         <div id="kerning-pairtable-section">
           <!-- The white card on the grey column (Figma 421:14557). -->
-          <div class="kerning-card">
+          <div class="card">
             <!-- Ticket 12 (UI-REFACTOR.md §3.2): the title row -- Kerning, with
                the Default / Potential exceptions tabs at its right end,
                drawn as one pill with the active half filled. Placement and
                styling only: the tablist roles and setResultsTab (kerning.js)
                are unchanged, only moved up from below the filters. -->
-            <div id="kerning-pairtable-title-row">
-              <h2 id="kerning-pairtable-title">Kerning</h2>
+            <div id="kerning-pairtable-title-row" class="card-heading-row">
+              <h2 id="kerning-pairtable-title" class="card-heading">Kerning</h2>
               <!-- The heading's pill segmented control (Figma 379:22418), the
                  same one the editor's Phrase heading carries; kerning.js
                  fills its two options. -->
@@ -430,11 +430,11 @@
                    The tray, the table and the hint are built in kerning.js's
                    initClassPanelSection. -->
               <section id="autokern-class-create">
-                <div class="kerning-card-heading-row">
-                  <h2 class="kerning-card-heading">classes</h2>
+                <div class="card-heading-row">
+                  <h2 class="card-heading">classes</h2>
                   <div id="autokern-class-new-row">
                     <span id="autokern-class-new-label">
-                      <span class="kerning-field-label">add class</span>
+                      <span class="field-label">add class</span>
                       <div id="autokern-class-help-slot"></div>
                     </span>
                     <div
@@ -467,9 +467,9 @@
         <div id="kerning-panel-container">
           <!-- SETUP card (Figma 4123:10276): the source in the heading, then
                the phrase presets, the alignment and the phrase itself. -->
-          <section class="kerning-card kerning-panel-card" id="kerning-setup-card">
-            <div class="kerning-card-heading-row">
-              <h2 class="kerning-card-heading">setup</h2>
+          <section class="card kerning-panel-card" id="kerning-setup-card">
+            <div class="card-heading-row">
+              <h2 class="card-heading">setup</h2>
               <!-- The source dropdown (kerning.js's initAutokernStatusSection). -->
               <div id="kerning-status-source-slot"></div>
             </div>
@@ -498,9 +498,9 @@
           </section>
 
           <!-- AUTOKERN card (Figma 4123:10281). -->
-          <section class="kerning-card kerning-panel-card" id="kerning-autokern-card">
-            <div class="kerning-card-heading-row">
-              <h2 class="kerning-card-heading">autokern</h2>
+          <section class="card kerning-panel-card" id="kerning-autokern-card">
+            <div class="card-heading-row">
+              <h2 class="card-heading">autokern</h2>
               <!-- Run analysis with the parameters menu joined to it. -->
               <!-- button/segmented (Figma 4128:2446): run analysis and the
                    parameters card, a tray of icon-button segments
@@ -509,15 +509,15 @@
             </div>
 
             <div id="kerning-parameters-section">
-              <div class="kerning-field-group">
-                <span class="kerning-field-label">thresholds</span>
-                <div class="kerning-field-pair">
+              <div class="field-group">
+                <span class="field-label">thresholds</span>
+                <div class="field-pair">
                   <div id="kerning-param-threshold-slot"></div>
                   <div id="kerning-param-max-threshold-slot"></div>
                 </div>
               </div>
-              <div class="kerning-field-group">
-                <span class="kerning-field-label">class tolerance</span>
+              <div class="field-group">
+                <span class="field-label">class tolerance</span>
                 <div id="kerning-param-group-threshold-slot"></div>
               </div>
               <!-- The run's counts, under class tolerance. -->

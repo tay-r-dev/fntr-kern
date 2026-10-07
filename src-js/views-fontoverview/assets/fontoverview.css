@@ -64,3 +64,8 @@ glyph-cell-view {
 #font-overview-no-glyphs.shown {
   display: block;
 }
+
+#font-source-location-container {
+  display: grid;
+  gap: 0.5em;
+}
