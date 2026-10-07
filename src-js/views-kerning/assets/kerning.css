@@ -833,7 +833,7 @@
   position: absolute;
   inset: 0;
   background-color: #fff;
-  mask: url("/tabler-icons/check.svg") center / 10px no-repeat;
+  mask: url("../../fontra-core/assets/tabler-icons/check.svg") center / 10px no-repeat;
   filter: drop-shadow(0 1px 1px var(--sl-bsb-sh-active-rest));
 }
 
