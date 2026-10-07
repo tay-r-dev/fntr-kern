@@ -71,18 +71,18 @@ export class Accordion extends UnlitElement {
   :host([switch]) .ui-accordion-item-header {
     gap: 4px;
     padding: 4px 6px 4px 4px;
-    background-color: var(--ui-accordion-switch-background-color, #fafafa);
-    border-top: 1px solid var(--ui-accordion-switch-border-color, #e9e9e9);
-    border-bottom: 1px solid var(--ui-accordion-switch-border-color, #e9e9e9);
+    background-color: var(--ui-accordion-switch-background-color, var(--surface-base-basic-1));
+    border-top: 1px solid var(--ui-accordion-switch-border-color, var(--line-base-basic-1));
+    border-bottom: 1px solid var(--ui-accordion-switch-border-color, var(--line-base-basic-1));
     /* ui/heading/h5 */
     font: var(--ui-text-heading-h5);
     text-transform: none;
-    color: var(--ui-accordion-switch-text-color, #b4b4b4);
+    color: var(--ui-accordion-switch-text-color, var(--text-base-basic-3));
     transition: color 120ms;
   }
 
   :host([switch]) .ui-accordion-item-header:hover {
-    color: var(--ui-accordion-switch-hover-text-color, #565656);
+    color: var(--ui-accordion-switch-hover-text-color, var(--text-base-basic-2));
   }
 
   :host([switch]) .ui-accordion-item + .ui-accordion-item .ui-accordion-item-header {

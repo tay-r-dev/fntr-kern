@@ -31,8 +31,8 @@ const colors = {
     "var(--sl-sgc-sh-active-rest)",
     "#9cbb12",
   ],
+  "segmented-control-on-shadow-color": ["var(--shadow-base-2)", "#000000a0"],
   "segmented-control-on-background-color": ["var(--sl-sgc-sr-active)", "#5a5a60"],
-  "segmented-control-on-shadow-color": ["var(--sl-sgc-sh-active-hover)", "#000000a0"],
   "segmented-control-off-text-color": ["var(--sl-sgc-lb-rest)", "#ffffff80"],
   "segmented-control-off-container-hover-text-color": [
     "var(--sl-sgc-lb-hover-container)",
@@ -66,7 +66,10 @@ export class SegmentedControl extends UnlitElement {
       padding: var(--segmented-control-tray-padding, 3px);
       gap: 0;
       background: var(--segmented-control-tray-color);
-      border: 1px solid var(--segmented-control-border-color);
+      /* The design draws the tray's line inside, so it takes no room: a
+         rule on top at rest, on top and at the sides on hover, all round when
+         disabled. */
+      box-shadow: inset 0 1px 0 var(--segmented-control-border-color);
       border-radius: 6px;
     }
 
@@ -92,12 +95,15 @@ export class SegmentedControl extends UnlitElement {
        stays, so nothing inside moves. */
     .row:hover:not(:has(button:disabled)) {
       background: var(--segmented-control-tray-hover-color);
-      border-color: var(--segmented-control-tray-hover-border-color);
+      box-shadow:
+        inset 0 1px 0 var(--segmented-control-tray-hover-border-color),
+        inset 1px 0 0 var(--segmented-control-tray-hover-border-color),
+        inset -1px 0 0 var(--segmented-control-tray-hover-border-color);
     }
 
     .row:hover button.on {
       background: var(--segmented-control-on-hover-background-color);
-      box-shadow: 0 1px 1px var(--segmented-control-on-hover-shadow-color);
+      box-shadow: 0 1px 2px var(--segmented-control-on-hover-shadow-color);
       color: var(--segmented-control-on-hover-text-color);
     }
 
@@ -109,7 +115,7 @@ export class SegmentedControl extends UnlitElement {
 
     button.on {
       background: var(--segmented-control-on-background-color);
-      box-shadow: 0 1px 1px var(--segmented-control-on-shadow-color);
+      box-shadow: 0 1px 3px var(--segmented-control-on-shadow-color);
       color: var(--segmented-control-on-text-color);
     }
 
@@ -126,7 +132,7 @@ export class SegmentedControl extends UnlitElement {
     /* Disabled: a pale border, every label pale, the chosen chip's face and
        shadow gone. */
     :host([disabled]) .row {
-      border-color: var(--segmented-control-disabled-border-color);
+      box-shadow: inset 0 0 0 1px var(--segmented-control-disabled-border-color);
     }
 
     :host([disabled]) button {

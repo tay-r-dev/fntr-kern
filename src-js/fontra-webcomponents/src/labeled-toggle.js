@@ -16,7 +16,8 @@ import { themeColorCSS } from "./theme-support.js";
 //
 // select/toggle (Figma 2004:29380): a 22x12 pill, the label 4px after it.
 // Off it is pale grey, darker on hover; on it is mid grey, lime on hover.
-// Each track has a line at the top and sides and a 1px shade under it.
+// Each track has a line at the top and sides, drawn inside; the thumb carries
+// the shade.
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
@@ -32,8 +33,8 @@ const colors = {
   "labeled-toggle-track-on-hover-color": ["var(--sl-bsb-sr-active-hover)", "#a9c915"],
   "labeled-toggle-line-on-hover-color": ["var(--sl-bsb-ln-active-hover)", "#b7d817"],
   "labeled-toggle-shade-on-hover-color": ["var(--sl-bsb-sh-active-hover)", "#71900a"],
-  "labeled-toggle-track-disabled-color": ["var(--sl-bsb-sr-disabled)", "#444"],
-  "labeled-toggle-line-disabled-color": ["var(--sl-bsb-ln-disabled)", "#4a4a4a"],
+  "labeled-toggle-track-disabled-color": ["var(--surface-base-basic-1)", "#444"],
+  "labeled-toggle-line-disabled-color": ["var(--line-base-basic-1)", "#4a4a4a"],
   "labeled-toggle-shade-disabled-color": ["var(--sl-bsb-sh-disabled)", "#333"],
   "labeled-toggle-thumb-color": ["#fff", "#fff"],
   "labeled-toggle-text-color": ["var(--sl-bsb-lb-rest)", "#b0b0b0"],
@@ -75,6 +76,7 @@ export class LabeledToggle extends UnlitElement {
       --track: var(--labeled-toggle-track-off-color);
       --line: var(--labeled-toggle-line-off-color);
       --shade: var(--labeled-toggle-shade-off-color);
+      --thumb-shadow: 0 0 3px var(--shade);
       appearance: none;
       -webkit-appearance: none;
       position: relative;
@@ -82,12 +84,15 @@ export class LabeledToggle extends UnlitElement {
       flex: none;
       width: 22px;
       height: 12px;
-      margin: 0 0 1px;
-      border: 1px solid var(--line);
-      border-bottom: none;
+      margin: 0;
+      border: none;
       border-radius: 6px;
       background-color: var(--track);
-      box-shadow: 0 1px 0 var(--shade);
+      /* The line is inside, at the top and sides. */
+      box-shadow:
+        inset 0 1px 0 var(--line),
+        inset 1px 0 0 var(--line),
+        inset -1px 0 0 var(--line);
       cursor: pointer;
       transition: background-color 120ms ease;
     }
@@ -95,12 +100,13 @@ export class LabeledToggle extends UnlitElement {
     input[type="checkbox"]::before {
       content: "";
       position: absolute;
-      top: 1px;
-      left: 1px;
+      top: 2px;
+      left: 2px;
       width: 8px;
       height: 8px;
       border-radius: 50%;
       background-color: var(--labeled-toggle-thumb-color);
+      box-shadow: var(--thumb-shadow);
       transition: transform 120ms ease;
     }
 
@@ -108,18 +114,21 @@ export class LabeledToggle extends UnlitElement {
       --track: var(--labeled-toggle-track-off-hover-color);
       --line: var(--labeled-toggle-line-off-hover-color);
       --shade: var(--labeled-toggle-shade-off-hover-color);
+      --thumb-shadow: 0 1px 1px var(--shade);
     }
 
     input[type="checkbox"]:checked {
       --track: var(--labeled-toggle-track-on-color);
       --line: var(--labeled-toggle-line-on-color);
       --shade: var(--labeled-toggle-shade-on-color);
+      --thumb-shadow: 0 1px 1px var(--shade);
     }
 
     label:hover input[type="checkbox"]:checked:not(:disabled) {
       --track: var(--labeled-toggle-track-on-hover-color);
       --line: var(--labeled-toggle-line-on-hover-color);
       --shade: var(--labeled-toggle-shade-on-hover-color);
+      --thumb-shadow: 0 1px 2px var(--shade);
     }
 
     input[type="checkbox"]:checked::before {
@@ -130,6 +139,7 @@ export class LabeledToggle extends UnlitElement {
       --track: var(--labeled-toggle-track-disabled-color);
       --line: var(--labeled-toggle-line-disabled-color);
       --shade: var(--labeled-toggle-shade-disabled-color);
+      --thumb-shadow: 0 0 3px var(--shade);
       cursor: default;
     }
   `;

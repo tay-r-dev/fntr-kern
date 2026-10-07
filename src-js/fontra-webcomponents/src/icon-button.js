@@ -48,11 +48,14 @@ const colors = {
   // button/latch (Figma 287:15701): rest/hover/press/active backgrounds and
   // the shared border color, plus the dropdown card's own colors (moved in
   // from overflow-popover.js, which is now a thin subclass of this button).
-  "icon-button-latch-background-color": ["#f5f5f5", "#3a3a3a"],
-  "icon-button-latch-hover-background-color": ["#f7f7f7", "#444"],
-  "icon-button-latch-press-background-color": ["#fcfcfc", "#4a4a4a"],
-  "icon-button-latch-active-background-color": ["#f0f0f0", "#505050"],
-  "icon-button-latch-border-color": ["#e0e0e0", "#555"],
+  "icon-button-latch-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
+  "icon-button-latch-hover-background-color": ["var(--bt-sgb-sr-hover)", "#444"],
+  "icon-button-latch-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
+  "icon-button-latch-active-background-color": [
+    "var(--bt-sgb-sr-active-rest)",
+    "#505050",
+  ],
+  "icon-button-latch-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
   "overflow-popover-background-color": ["#fff", "#2a2a2a"],
   "overflow-popover-shadow-color": ["#0003", "#0008"],
 };
