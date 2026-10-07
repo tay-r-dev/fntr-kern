@@ -145,8 +145,6 @@ import { ViewController } from "@fontra/core/view-controller.js";
 import { DataTable, editableCell } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
-import "@fontra/web-components/compact-scrub-field.js";
-import "@fontra/web-components/scrub-slider.js";
 import "@fontra/web-components/ui-text-input.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
@@ -688,16 +686,7 @@ export class KerningViewController extends ViewController {
   // step here: this whole method IS the first point both are ready.
   async initPhraseSection() {
     const phraseInput = document.querySelector("#kerning-phrase-input");
-    // select/dropdown (Figma 4123:10429): the presets, named "Preset" until
-    // one is picked. appendPresetOptions fills it.
-    const presetSelect = html.createDomElement("multi-select-dropdown", {
-      id: "kerning-preset-select",
-      label: "Preset",
-      singleChoice: true,
-      items: [],
-    });
-    document.querySelector("#kerning-preset-slot").replaceWith(presetSelect);
-    this._presetDropdown = presetSelect;
+    const presetSelect = document.querySelector("#kerning-preset-select");
     this.phraseInputElement = phraseInput;
 
     this.initAlignmentRow();
@@ -749,8 +738,8 @@ export class KerningViewController extends ViewController {
     }
     this.setInitialPreviewPair(phraseInput.value);
 
-    presetSelect.addEventListener("change", (event) => {
-      const preset = this.phrasePresets[event.detail.checked[0]];
+    presetSelect.addEventListener("change", () => {
+      const preset = this.phrasePresets[presetSelect.selectedIndex - 1];
       if (!preset) {
         return;
       }
@@ -777,14 +766,7 @@ export class KerningViewController extends ViewController {
     // not a replacement -- appending is the least-surprising default for a
     // designer adding a second presets file on top of the built-in one; the
     // backlog doc left this as an open product decision.
-    // The design's "load file" icon button beside the dropdown.
-    const presetAddButton = html.createDomElement("icon-button", {
-      "id": "kerning-preset-add-button",
-      "src": "/tabler-icons/notes.svg",
-      "data-tooltip": "Load a presets file",
-      "data-tooltipposition": "bottom",
-    });
-    document.querySelector("#kerning-preset-add-slot").replaceWith(presetAddButton);
+    const presetAddButton = document.querySelector("#kerning-preset-add-button");
     const presetFileInput = document.querySelector("#kerning-preset-file-input");
     presetAddButton.addEventListener("click", () => presetFileInput.click());
     presetFileInput.addEventListener("change", async () => {
@@ -800,19 +782,14 @@ export class KerningViewController extends ViewController {
     });
   }
 
-  // An item's value is the preset's index in this.phrasePresets, which only
-  // ever grows by appending.
   appendPresetOptions(presets) {
-    const dropdown = this._presetDropdown;
-    const start = dropdown.items.length;
-    dropdown.items = [
-      ...dropdown.items,
-      ...presets.map((preset, index) => ({
-        value: start + index,
-        label: preset.name,
-        checked: false,
-      })),
-    ];
+    const presetSelect = document.querySelector("#kerning-preset-select");
+    for (const preset of presets) {
+      const option = document.createElement("option");
+      option.value = preset.name;
+      option.textContent = preset.name;
+      presetSelect.appendChild(option);
+    }
   }
 
   // Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons under the
@@ -831,29 +808,43 @@ export class KerningViewController extends ViewController {
   // attribute in markup leaves `this.src` undefined at first render and
   // inline-svg fetches "undefined".
   initAlignmentRow() {
-    // select/segmented with icons, as the editor's phrase card has it
-    // (panel-designspace-navigation.js's _buildPhraseSection).
-    const align = html.createDomElement("segmented-control", {
-      id: "kerning-align-control",
-      options: ["left", "center", "right"].map((value) => ({
-        value,
-        label: `Align ${value}`,
-        icon: `/images/align${value}.svg`,
-      })),
-      value: this.sceneSettings.align,
-    });
-    align.setAttribute("small", "");
-    align.addEventListener("change", (event) => {
-      const value = event.detail.value;
-      this.sceneSettings.align = value;
+    const buttons = {
+      left: html.createDomElement("icon-button", {
+        "id": "kerning-align-left",
+        "src": "/images/alignleft.svg",
+        "data-tooltip": "Align left",
+      }),
+      center: html.createDomElement("icon-button", {
+        "id": "kerning-align-center",
+        "src": "/images/aligncenter.svg",
+        "data-tooltip": "Align center",
+      }),
+      right: html.createDomElement("icon-button", {
+        "id": "kerning-align-right",
+        "src": "/images/alignright.svg",
+        "data-tooltip": "Align right",
+      }),
+    };
+    const row = document.querySelector("#kerning-align-row");
+    for (const button of Object.values(buttons)) {
+      row.appendChild(button);
+    }
+    const applyAlign = (align) => {
+      this.sceneSettings.align = align;
+      for (const [key, button] of Object.entries(buttons)) {
+        button.on = key === align;
+      }
       try {
-        localStorage.setItem(KERNING_ALIGN_STORAGE_KEY, value);
+        localStorage.setItem(KERNING_ALIGN_STORAGE_KEY, align);
       } catch (error) {
         // Storage can legitimately fail (quota, private browsing) -- losing
         // persistence here is not worth surfacing an error over.
       }
-    });
-    document.querySelector("#kerning-align-row").appendChild(align);
+    };
+    for (const [key, button] of Object.entries(buttons)) {
+      button.onclick = () => applyAlign(key);
+    }
+    applyAlign(this.sceneSettings.align);
   }
 
   // Workstream 9, spec §7.2. `defaultOn` engine values here are placeholders
@@ -887,32 +878,17 @@ export class KerningViewController extends ViewController {
     );
     const params = this.autokernParamsController.model;
 
-    // input/field/basic (Figma 4128:2470): the caption inside the field.
-    const numberField = (id, label, value) => {
-      const field = html.createDomElement("compact-scrub-field", { id, label });
-      field.scrubIcon = false;
-      field.integer = true;
-      field.minValue = 0;
-      field.value = value;
-      document.querySelector(`#${id}-slot`).replaceWith(field);
-      return field;
-    };
-    const minField = numberField(
-      "kerning-param-threshold",
-      "min |Δ|",
-      params.threshold
-    );
-    minField.addEventListener("change", (event) => {
-      this.autokernParamsController.setItem("threshold", event.detail.value);
-    });
-    const toleranceField = numberField(
-      "kerning-param-group-threshold",
-      "",
-      params.groupThreshold
-    );
-    toleranceField.addEventListener("change", (event) => {
-      this.autokernParamsController.setItem("groupThreshold", event.detail.value);
-    });
+    const bindings = [
+      ["#kerning-param-threshold", "threshold", Number],
+      ["#kerning-param-group-threshold", "groupThreshold", Number],
+    ];
+    for (const [selector, key, convert] of bindings) {
+      const element = document.querySelector(selector);
+      element.value = params[key];
+      element.addEventListener("change", () => {
+        this.autokernParamsController.setItem(key, convert(element.value));
+      });
+    }
 
     // Ticket 10: reach/envelope/reduce/strength moved out of the always-
     // visible row into a dialog, opened by the Parameters button beside Run.
@@ -924,23 +900,35 @@ export class KerningViewController extends ViewController {
       .querySelector("#kerning-parameters-button")
       .addEventListener("click", () => this.openAutokernParamsDialog());
 
-    // Task 5, spec F18: inclusive bounds, and no maximum by default. The field
-    // takes numbers only, so 0 stands for "no maximum" and shows blank -- a
-    // maximum of zero would leave nothing above the minimum to show anyway.
-    // A maximum below the minimum is refused and the field put back.
-    const maxField = numberField(
-      "kerning-param-max-threshold",
-      "max |Δ|",
-      params.maxThreshold ?? null
-    );
-    maxField.addEventListener("change", (event) => {
-      const newMax = event.detail.value > 0 ? event.detail.value : null;
-      if (newMax != null && newMax < this.autokernParamsController.model.threshold) {
-        message("Maximum |Δ| cannot be smaller than minimum |Δ|.");
-        maxField.value = this.autokernParamsController.model.maxThreshold ?? null;
+    // Task 5, spec F18: "use inclusive bounds; a blank maximum means no
+    // maximum. Reject a minimum greater than the maximum with an inline
+    // explanation." Handled separately from the generic `bindings` loop
+    // above because Number("") is 0, not "no maximum".
+    const maxThresholdInput = document.querySelector("#kerning-param-max-threshold");
+    maxThresholdInput.value = params.maxThreshold ?? "";
+    maxThresholdInput.addEventListener("change", () => {
+      const raw = maxThresholdInput.value.trim();
+      const newMax = raw === "" ? null : Number(raw);
+      const minThreshold = this.autokernParamsController.model.threshold;
+      if (newMax != null && (!Number.isFinite(newMax) || newMax < 0)) {
+        maxThresholdInput.setCustomValidity(
+          "Maximum |Δ| must be a non-negative number."
+        );
+        maxThresholdInput.reportValidity();
+        maxThresholdInput.value =
+          this.autokernParamsController.model.maxThreshold ?? "";
         return;
       }
-      maxField.value = newMax;
+      if (newMax != null && newMax < minThreshold) {
+        maxThresholdInput.setCustomValidity(
+          "Maximum |Δ| cannot be smaller than Minimum |Δ|."
+        );
+        maxThresholdInput.reportValidity();
+        maxThresholdInput.value =
+          this.autokernParamsController.model.maxThreshold ?? "";
+        return;
+      }
+      maxThresholdInput.setCustomValidity("");
       this.autokernParamsController.setItem("maxThreshold", newMax);
     });
 
@@ -1084,9 +1072,6 @@ export class KerningViewController extends ViewController {
       showNumbers: true,
       showBand: true,
       pairsPerRow: 6,
-      // The gap between pair cells in font units; null is half an em
-      // (pair-preview-layout.js).
-      pairDistance: null,
       // Which way round the per-pair mark reads. Off: every pair previews
       // its proposal and a mark takes one out. On: no pair previews and a
       // mark puts one in. The same stored mark, read against the mode.
@@ -1097,152 +1082,126 @@ export class KerningViewController extends ViewController {
     );
 
     const settings = this.suggestionPreviewSettings.model;
-    const setItem = (key, value) => this.suggestionPreviewSettings.setItem(key, value);
-    const labeled = (label, control) =>
-      html.div({ class: "kerning-field-group" }, [
-        html.span({ class: "kerning-field-label" }, [label]),
-        control,
-      ]);
 
-    // input/field/basic (Figma 4128:2890).
-    const pairsPerRowField = html.createDomElement("compact-scrub-field", {
+    const pairsPerRowInput = html.input({
+      type: "number",
       id: "kerning-preview-pairs-per-row",
+      min: "1",
+      max: "100",
+      step: "1",
+      required: true,
     });
-    pairsPerRowField.scrubIcon = false;
-    pairsPerRowField.integer = true;
-    pairsPerRowField.minValue = 1;
-    pairsPerRowField.maxValue = 100;
-    pairsPerRowField.value = normalizePairsPerRow(settings.pairsPerRow);
-    pairsPerRowField.addEventListener("change", (event) =>
-      setItem("pairsPerRow", event.detail.value)
-    );
-
-    // scrub (Figma 4128:2893): the field with its scrub icon.
-    const pairDistanceField = html.createDomElement("compact-scrub-field", {
-      id: "kerning-preview-pair-distance",
+    pairsPerRowInput.value = String(normalizePairsPerRow(settings.pairsPerRow));
+    pairsPerRowInput.addEventListener("change", () => {
+      if (!pairsPerRowInput.reportValidity()) return;
+      this.suggestionPreviewSettings.setItem(
+        "pairsPerRow",
+        Number(pairsPerRowInput.value)
+      );
     });
-    pairDistanceField.integer = true;
-    pairDistanceField.minValue = 0;
-    pairDistanceField.value =
-      settings.pairDistance ?? Math.round((this.fontController.unitsPerEm || 1000) / 2);
-    pairDistanceField.addEventListener("change", (event) =>
-      setItem("pairDistance", event.detail.value)
-    );
 
-    // input/field/slider (Figma 4128:2814), in percent.
-    const opacitySlider = html.createDomElement("scrub-slider", {
+    const opacityInput = html.input({
+      type: "range",
       id: "kerning-suggestion-preview-opacity",
+      min: "0",
+      max: "1",
+      step: "0.05",
     });
-    opacitySlider.label = "%";
-    opacitySlider.integer = true;
-    opacitySlider.minValue = 0;
-    opacitySlider.maxValue = 100;
-    opacitySlider.value = Math.round(settings.opacity * 100);
-    opacitySlider.addEventListener("change", (event) =>
-      setItem("opacity", event.detail.value / 100)
-    );
+    opacityInput.value = String(settings.opacity);
+    opacityInput.addEventListener("input", () => {
+      this.suggestionPreviewSettings.setItem("opacity", Number(opacityInput.value));
+    });
 
-    // checkmark (Figma 4128:2857), the same rows the filters use.
-    const checkmark = (id, label, checked, onChange) => {
-      const input = html.input({ type: "checkbox", class: "kerning-checkmark", id });
-      input.checked = checked;
-      input.addEventListener("change", () => onChange(input.checked));
-      return [html.label({ class: "kerning-checkmark-row" }, [input, label]), input];
-    };
-    const [numbersRow] = checkmark(
-      "kerning-suggestion-preview-numbers",
-      "show numbers",
-      settings.showNumbers,
-      (checked) => setItem("showNumbers", checked)
-    );
-    const [bandRow, bandToggle] = checkmark(
-      "kerning-suggestion-preview-band",
-      "show bands",
-      settings.showBand,
-      (checked) => setItem("showBand", checked)
-    );
-    this._suggestionPreviewBandToggle = bandToggle;
+    const numbersToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-numbers",
+    });
+    numbersToggle.checked = settings.showNumbers;
+    numbersToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("showNumbers", numbersToggle.checked);
+    });
 
-    // select/segmented (Figma 4128:2912): off / on, full width.
-    const skipAllControl = html.createDomElement("segmented-control", {
+    const skipAllToggle = html.input({
+      type: "checkbox",
       id: "kerning-suggestion-preview-skip-all",
-      options: [
-        { value: "off", label: "off" },
-        { value: "on", label: "on" },
-      ],
-      value: settings.skipAll ? "on" : "off",
     });
-    skipAllControl.addEventListener("change", (event) => {
-      setItem("skipAll", event.detail.value === "on");
+    skipAllToggle.checked = settings.skipAll;
+    skipAllToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("skipAll", skipAllToggle.checked);
       this.sceneModel?.updateScene();
       this.renderPairTable?.();
     });
 
+    const bandToggle = html.input({
+      type: "checkbox",
+      id: "kerning-suggestion-preview-band",
+    });
+    bandToggle.checked = settings.showBand;
+    bandToggle.addEventListener("change", () => {
+      this.suggestionPreviewSettings.setItem("showBand", bandToggle.checked);
+    });
+    this._suggestionPreviewBandToggle = bandToggle;
+
+    const content = html.div(
+      {
+        style: `
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0.5em;
+          align-items: center;
+        `,
+      },
+      [
+        html.label({ for: "kerning-preview-pairs-per-row" }, ["Pairs per row"]),
+        pairsPerRowInput,
+        html.label({ for: "kerning-suggestion-preview-opacity" }, ["Opacity"]),
+        opacityInput,
+        html.label({ for: "kerning-suggestion-preview-numbers" }, ["Show numbers"]),
+        numbersToggle,
+        html.label({ for: "kerning-suggestion-preview-band" }, ["Show highlight band"]),
+        bandToggle,
+        html.label({ for: "kerning-suggestion-preview-skip-all" }, [
+          "Skip all suggestions",
+        ]),
+        skipAllToggle,
+      ]
+    );
+
+    // Ticket 08: open by default, and remembers open/closed across reloads --
+    // same plain localStorage-boolean idiom as initAnalyticsSection's own
+    // <details> persistence, since Accordion itself has no persistence of
+    // its own (unlike ObservableController's synchronizeWithLocalStorage,
+    // which is for model values, not accordion open state).
+    const visualSettingsOpenStorageKey = "fontra-kerning-visual-settings-open";
+    const storedVisualSettingsOpen = localStorage.getItem(visualSettingsOpenStorageKey);
+    const visualSettingsItem = {
+      id: "kerning-suggestion-preview-accordion-item",
+      label: "Visual settings",
+      open:
+        storedVisualSettingsOpen === null ? true : storedVisualSettingsOpen === "true",
+      content,
+    };
+
+    const accordion = new Accordion();
+    accordion.items = [visualSettingsItem];
+    accordion.onItemOpenClose = (item, open) => {
+      if (item === visualSettingsItem) {
+        localStorage.setItem(visualSettingsOpenStorageKey, String(open));
+      }
+    };
     document
       .querySelector("#kerning-suggestion-preview-section")
-      .append(
-        html.div({ class: "kerning-field-pair" }, [
-          labeled("pairs per row", pairsPerRowField),
-          labeled("pair distance", pairDistanceField),
-        ]),
-        labeled("suggestion stripe opacity", opacitySlider),
-        html.div({ class: "kerning-checkmark-wrap" }, [numbersRow, bandRow]),
-        labeled("skip all suggestions", skipAllControl)
-      );
+      .appendChild(accordion);
 
     this._updateSuggestionPreviewControlsEnabled();
 
     this.suggestionPreviewSettings.addListener((event) => {
-      if (
-        (event.key === "pairsPerRow" || event.key === "pairDistance") &&
-        this._chipMode === "pair"
-      ) {
+      if (event.key === "pairsPerRow" && this._chipMode === "pair") {
         this.sceneModel.updateScene();
       }
       this._updateSuggestionPreviewControlsEnabled();
       this.canvasController.requestUpdate();
     });
-  }
-
-  // The AUTOKERN card's three accordion switches (Figma 4123:10288,
-  // 4128:2654, 4128:2921): stale and new glyphs, visual settings, analytics.
-  // Each body is already in the page; each remembers open/closed.
-  initAutokernAccordion() {
-    const sections = [
-      ["stale", "stale and new glyphs", "#kerning-stale-section"],
-      ["visual", "visual settings", "#kerning-suggestion-preview-section"],
-      ["analytics", "analytics", "#kerning-analytics-section"],
-    ];
-    const storageKey = (key) => `fontra-kerning-accordion-open.${key}`;
-    this._autokernAccordionItems = {};
-    const items = sections.map(([key, label, selector]) => {
-      let stored = null;
-      try {
-        stored = localStorage.getItem(storageKey(key));
-      } catch (error) {
-        stored = null;
-      }
-      const item = {
-        id: `kerning-accordion-${key}`,
-        label,
-        open: stored === null ? true : stored === "true",
-        content: document.querySelector(selector),
-        storageKey: storageKey(key),
-      };
-      this._autokernAccordionItems[key] = item;
-      return item;
-    });
-    const accordion = new Accordion();
-    accordion.items = items;
-    accordion.onItemOpenClose = (item, open) => {
-      try {
-        localStorage.setItem(item.storageKey, String(open));
-      } catch (error) {
-        // Losing the remembered state is not worth an error.
-      }
-    };
-    this._autokernAccordion = accordion;
-    document.querySelector("#kerning-autokern-accordion-slot").replaceWith(accordion);
   }
 
   _updateSuggestionPreviewControlsEnabled() {
@@ -1484,21 +1443,31 @@ export class KerningViewController extends ViewController {
   }
 
   renderStaleSection() {
+    const emptyEl = document.querySelector("#kerning-stale-empty");
     const summaryEl = document.querySelector("#kerning-stale-summary");
     const countEl = document.querySelector("#kerning-stale-count");
-    const newCountEl = document.querySelector("#kerning-stale-new-count");
+    const namesEl = document.querySelector("#kerning-stale-names");
     const rerunButton = document.querySelector("#kerning-stale-rerun-button");
-    if (!summaryEl || !countEl || !newCountEl || !rerunButton) {
+    if (!emptyEl || !summaryEl || !countEl || !namesEl || !rerunButton) {
       return;
     }
     const { stale, added, all } = this.staleAndNewGlyphNames();
     const hasStale = all.length > 0;
+    emptyEl.hidden = hasStale;
+    summaryEl.hidden = !hasStale;
     // The two counts are stated separately, because they are different
-    // facts: one glyph was redrawn, the other has never been measured. The
-    // names are the line's tooltip.
-    countEl.textContent = String(stale.length);
-    newCountEl.textContent = String(added.length);
-    summaryEl.title = hasStale ? truncateGlyphList(all) : "";
+    // facts: one glyph was redrawn, the other has never been measured.
+    const parts = [];
+    if (stale.length) {
+      parts.push(`${stale.length} stale`);
+    }
+    if (added.length) {
+      parts.push(`${added.length} new`);
+    }
+    countEl.textContent = `${parts.join(", ")} glyph${
+      all.length === 1 ? "" : "s"
+    } need${all.length === 1 ? "s" : ""} recalculation:`;
+    namesEl.textContent = truncateGlyphList(all);
     // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
     // runStaleGlyphs below for the duration of one run.
     rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
@@ -1530,13 +1499,23 @@ export class KerningViewController extends ViewController {
   // this task's own "render it as text rather than a dead-looking button,"
   // and kerning.html gives it no button element to wire here.
   initAnalyticsSection() {
-    this.initAutokernAccordion();
+    // Ticket 08: open by default, remembers open/closed across reloads.
+    // Native <details>/toggle -- no observable needed for one boolean.
+    const analyticsSection = document.querySelector("#kerning-analytics-section");
+    if (analyticsSection) {
+      const storageKey = "fontra-kerning-analytics-open";
+      const stored = localStorage.getItem(storageKey);
+      if (stored !== null) {
+        analyticsSection.open = stored === "true";
+      }
+      analyticsSection.addEventListener("toggle", () => {
+        localStorage.setItem(storageKey, String(analyticsSection.open));
+      });
+    }
 
     document
       .querySelector("#kerning-analytics-stale")
       ?.addEventListener("click", () => {
-        const staleItem = this._autokernAccordionItems.stale;
-        this._autokernAccordion.openCloseAccordionItem(staleItem, true);
         document
           .querySelector("#kerning-stale-section")
           ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -3111,8 +3090,7 @@ export class KerningViewController extends ViewController {
         layoutPairPreview(
           scene,
           this.suggestionPreviewSettings?.model.pairsPerRow,
-          this.fontController.unitsPerEm,
-          this.suggestionPreviewSettings?.model.pairDistance ?? undefined
+          this.fontController.unitsPerEm
         );
       }
       return scene;
@@ -6076,8 +6054,8 @@ export class KerningViewController extends ViewController {
     return counts;
   }
 
-  // Renders the counts above under class tolerance (§7.5, kerning.html's
-  // #kerning-status-counts). No-ops if the strip's elements aren't in the
+  // Renders the counts above into the status strip (§7.5, kerning.html's
+  // #kerning-status-section). No-ops if the strip's elements aren't in the
   // DOM yet -- mirrors renderCalibration's own guard, for the same reason
   // (this can be called before initAutokernStatusSection's DOM lookups run,
   // e.g. from loadAutokernCacheFromStorage during construction).
@@ -6104,26 +6082,19 @@ export class KerningViewController extends ViewController {
   // from), in the same sorted order that panel builds its list in
   // (fontController.getSortedSourceIdentifiers()).
   initAutokernStatusSection() {
-    // The SETUP card's heading dropdown (select/dropdown, single choice).
-    const select = html.createDomElement("multi-select-dropdown", {
-      id: "kerning-status-source-select",
-      label: "source",
-      singleChoice: true,
-      items: this.fontController
-        .getSortedSourceIdentifiers()
-        .map((sourceIdentifier) => ({
-          value: sourceIdentifier,
-          label: this.fontController.sources[sourceIdentifier].name || sourceIdentifier,
-          checked: sourceIdentifier === this.autokernSource,
-        })),
-    });
-    document.querySelector("#kerning-status-source-slot").replaceWith(select);
+    const select = document.querySelector("#kerning-status-source-select");
+    const sourceIdentifiers = this.fontController.getSortedSourceIdentifiers();
+    for (const sourceIdentifier of sourceIdentifiers) {
+      const option = document.createElement("option");
+      option.value = sourceIdentifier;
+      option.textContent =
+        this.fontController.sources[sourceIdentifier].name || sourceIdentifier;
+      select.appendChild(option);
+    }
+    select.value = this.autokernSource;
 
-    select.addEventListener("change", async (event) => {
-      const sourceIdentifier = event.detail.checked[0];
-      if (!sourceIdentifier || sourceIdentifier === this.autokernSource) {
-        return;
-      }
+    select.addEventListener("change", async () => {
+      const sourceIdentifier = select.value;
       this._autokernSourceIdentifier = sourceIdentifier;
 
       // Task 12, spec F26/§12.3: "On a source change, cancel any armed
@@ -6213,34 +6184,30 @@ export class KerningViewController extends ViewController {
 
     const { bias, measurements, widened, band } = this.autokernCalibration;
 
-    // Figma 4128:2937: a "calibration" label over one table -- a column per
-    // control glyph, then the target band -- and the settled reach under it.
-    const label = document.createElement("span");
-    label.className = "kerning-field-label";
-    label.textContent = "calibration";
-    body.appendChild(label);
-
-    const format = (value) =>
-      Number.isFinite(value) ? value.toFixed(3) : String(value);
-    const table = document.createElement("table");
-    table.className = "kerning-calibration-table";
-    const headRow = table.insertRow();
-    const valueRow = table.insertRow();
+    const list = document.createElement("ul");
     CONTROL_GLYPH_NAMES.forEach((name, i) => {
-      headRow.insertCell().textContent = name;
-      valueRow.insertCell().textContent = format(measurements[i]);
+      const li = document.createElement("li");
+      const measured = measurements[i];
+      li.textContent = `${name}: measured ${
+        Number.isFinite(measured) ? measured.toFixed(3) : measured
+      }`;
+      list.appendChild(li);
     });
-    headRow.insertCell().textContent = "target";
-    valueRow.insertCell().textContent = `${format(band.min)}–${format(band.max)}`;
-    body.appendChild(table);
+    body.appendChild(list);
+
+    const bandLine = document.createElement("p");
+    bandLine.textContent = `Target band: ${band.min.toFixed(3)} – ${band.max.toFixed(3)}`;
+    body.appendChild(bandLine);
 
     const reachLine = document.createElement("p");
-    reachLine.className = "kerning-calibration-reach";
     reachLine.textContent = `Envelope reach settled at ${bias}`;
-    reachLine.title = widened
+    body.appendChild(reachLine);
+
+    const widenLine = document.createElement("p");
+    widenLine.textContent = widened
       ? "The three control glyphs disagreed, so calibration widened the reach."
       : "The three control glyphs agreed; calibration did not need to widen.";
-    body.appendChild(reachLine);
+    body.appendChild(widenLine);
   }
 
   buildPairRowElement(row) {
