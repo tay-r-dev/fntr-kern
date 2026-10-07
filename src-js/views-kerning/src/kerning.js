@@ -2554,6 +2554,7 @@ export class KerningViewController extends ViewController {
     ];
     const sideDropdown = html.createDomElement("multi-select-dropdown", {
       label: "side",
+      labelAbove: true,
       singleChoice: true,
       // Both reads as the empty field: the property name.
       items: sideLabels.map(([value, label]) => ({
@@ -2585,7 +2586,7 @@ export class KerningViewController extends ViewController {
     // Ticket 14: a <labeled-toggle> now, not a plain checkbox -- its label
     // text is a JS property, not a markup attribute (labeled-toggle.js's own
     // note on why), so it is set here rather than in kerning.html.
-    onlyMarkedCheckbox.label = "marked only";
+    onlyMarkedCheckbox.label = "show marked only";
     onlyMarkedCheckbox.checked = filters.onlyMarked;
     onlyMarkedCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("onlyMarked", onlyMarkedCheckbox.checked);
@@ -2621,7 +2622,8 @@ export class KerningViewController extends ViewController {
       ["composed", "Composed glyphs"],
     ];
     this._unicodeTypesDropdown = html.createDomElement("multi-select-dropdown", {
-      label: "types",
+      label: "subset",
+      labelAbove: true,
       items: unicodeTypeLabels.map(([value, label]) => ({
         value,
         label,
@@ -2646,6 +2648,7 @@ export class KerningViewController extends ViewController {
     ];
     const relationshipsDropdown = html.createDomElement("multi-select-dropdown", {
       label: "pair type",
+      labelAbove: true,
       items: relationshipLabels.map(([value, label]) => ({
         value,
         label,
@@ -2707,6 +2710,7 @@ export class KerningViewController extends ViewController {
     }
     const glyphsetDropdown = html.createDomElement("multi-select-dropdown", {
       label: "glyphset",
+      labelAbove: true,
       singleChoice: true,
       items: glyphsetItems,
     });
@@ -2969,8 +2973,40 @@ export class KerningViewController extends ViewController {
     // view-level dispose() this codebase has no other caller for.
     window.addEventListener("pagehide", () => this.disposeKerningChangeSubscription());
     this.initComposedGlyphTracking();
+    this.initFiltersAccordion();
 
     this.renderPairTable();
+  }
+
+  // The filters fold under one accordion switch (Figma 4121:8979). Built
+  // after every control inside is wired, since the body then lives in the
+  // accordion's shadow root.
+  initFiltersAccordion() {
+    const storageKey = "fontra-kerning-accordion-open.filters";
+    let stored = null;
+    try {
+      stored = localStorage.getItem(storageKey);
+    } catch (error) {
+      stored = null;
+    }
+    const item = {
+      id: "kerning-accordion-filters",
+      label: "filters",
+      open: stored === null ? true : stored === "true",
+      content: document.querySelector("#kerning-pairtable-filter-body"),
+    };
+    const accordion = new Accordion();
+    accordion.setAttribute("switch", "");
+    accordion.id = "kerning-filters-accordion";
+    accordion.items = [item];
+    accordion.onItemOpenClose = (_, open) => {
+      try {
+        localStorage.setItem(storageKey, String(open));
+      } catch (error) {
+        // Losing the remembered state is not worth an error.
+      }
+    };
+    document.querySelector("#kerning-filters-accordion-slot").replaceWith(accordion);
   }
 
   schedulePairTableRefresh({ rebuildScene = false } = {}) {

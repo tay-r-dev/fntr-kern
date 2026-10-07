@@ -70,79 +70,71 @@
                 role="status"
               ></span>
 
-              <!-- Ticket 14 (UI-REFACTOR.md §3.2, UI-NOMENCLATURE.md §14.1):
-                 one row, in order: Only marked as a labeled toggle
-                 (fontra-webcomponents/src/labeled-toggle.js), then
-                 zero-current, group members and show hidden as checkboxes.
-                 Same ids/behavior as before -- initPairTableSection in
-                 kerning.js binds these exactly as it bound the four
-                 scattered controls this replaces. -->
-              <div id="kerning-pairtable-switches">
+              <!-- filters (Figma 4121:8977): one accordion switch over the
+                 marked-only toggle, the three checks and the four dropdowns,
+                 built in kerning.js's initFiltersAccordion. -->
+              <div id="kerning-filters-accordion-slot"></div>
+              <div id="kerning-pairtable-filter-body">
                 <!-- The marks as a list. A mark is the exception to whatever
                    the global skip mode does, so this shows the pairs taken
                    out of the preview in ordinary mode and the pairs put into
-                   it under skip-all (kerning.js's pairRowVisible). Its own
-                   label text is set in JS (initPairTableSection) -- see
-                   labeled-toggle.js's own note on why. -->
+                   it under skip-all (kerning.js's pairRowVisible). Its label
+                   is set in JS (initPairTableSection). -->
                 <labeled-toggle
                   id="kerning-pairtable-filter-only-marked"
                 ></labeled-toggle>
-                <!-- Task 5, spec F13: the `Current == 0 && Proposed != 0`
-                   rows. Checked shows them (kerning.js inverts the stored
-                   hide flag). -->
-                <label class="kerning-checkmark-row"
-                  ><input
-                    type="checkbox"
-                    class="kerning-checkmark"
-                    id="kerning-pairtable-hide-zero-current"
-                  />
-                  zero value</label
-                >
-                <!-- Task 8, spec F22: broad exposure of every grouped member's
-                   individual row at once. Shorter label, same mechanics. -->
-                <label class="kerning-checkmark-row"
-                  ><input
-                    type="checkbox"
-                    class="kerning-checkmark"
-                    id="kerning-pairtable-show-members"
-                  />
-                  members</label
-                >
-                <!-- Task 11, spec F17: renamed from "Show junk." Hidden rows
-                   reappear here with the distinguishable hidden styling
-                   (kerning.css) plus their own restore (eye) action. -->
-                <label class="kerning-checkmark-row"
-                  ><input
-                    type="checkbox"
-                    class="kerning-checkmark"
-                    id="kerning-pairtable-filter-hidden"
-                  />
-                  hidden</label
-                >
-              </div>
+                <div id="kerning-pairtable-switches">
+                  <!-- Task 5, spec F13: the `Current == 0 && Proposed != 0`
+                     rows. Checked shows them (kerning.js inverts the stored
+                     hide flag). -->
+                  <label class="kerning-checkmark-row"
+                    ><input
+                      type="checkbox"
+                      class="kerning-checkmark"
+                      id="kerning-pairtable-hide-zero-current"
+                    />zero value</label
+                  >
+                  <!-- Task 8, spec F22: every grouped member's own row. -->
+                  <label class="kerning-checkmark-row"
+                    ><input
+                      type="checkbox"
+                      class="kerning-checkmark"
+                      id="kerning-pairtable-show-members"
+                    />class members</label
+                  >
+                  <!-- Task 11, spec F17: hidden rows reappear with their own
+                     restore (eye) action. -->
+                  <label class="kerning-checkmark-row"
+                    ><input
+                      type="checkbox"
+                      class="kerning-checkmark"
+                      id="kerning-pairtable-filter-hidden"
+                    />show hidden</label
+                  >
+                </div>
 
-              <div id="kerning-pairtable-filters">
-                <!-- Ticket 18 (UI-REFACTOR.md §3.3): Side is a singleChoice
+                <div id="kerning-pairtable-filters">
+                  <!-- Ticket 18 (UI-REFACTOR.md §3.3): Side is a singleChoice
                    multi-select-dropdown now, not a plain select -- first on
                    the row, same look as the other three dropdowns. -->
-                <div id="kerning-pairtable-filter-side-slot"></div>
-                <!-- Task 5, spec F16: the sign filter (negative/positive) is
+                  <div id="kerning-pairtable-filter-side-slot"></div>
+                  <!-- Task 5, spec F16: the sign filter (negative/positive) is
                    removed -- signs stay visible on Current/Proposed/Delta,
                    magnitude filtering is the Minimum/Maximum |Δ| pair
                    below. -->
-                <!-- Task 17, spec F01: the current/applied/stale filter is
+                  <!-- Task 17, spec F01: the current/applied/stale filter is
                    removed entirely. Its replacement is the Stale glyphs
                    section (#kerning-stale-section) below, and a stale row's
                    own warning presentation (F23) always stays visible
                    regardless of any other filter. -->
-                <!-- Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is
+                  <!-- Ticket 19 (UI-REFACTOR.md §3.4): the Columns fieldset is
                    gone -- Current, Proposed, Delta and Apply are now checked
                    entries in a context menu opened by right-clicking the
                    table header (initPairTableSection in kerning.js). Same
                    four filter keys, same display-only effect. -->
-                <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
+                  <!-- Ticket 14: Hide zero-current (as "Zero-current") moved to
                    #kerning-pairtable-switches above. -->
-                <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
+                  <!-- Task 9, spec F09, ledger §8.3: Unicode types, one
                    multi-select filter -- reuses the Columns fieldset's own
                    "grouped checkboxes under a legend" idiom immediately
                    above, rather than a bespoke dropdown widget, for the
@@ -153,7 +145,7 @@
                    non-restrictive default. Replaces the old Hide
                    non-standalone/numbers/punctuation checkboxes (Backlog
                    item 3) entirely. -->
-                <!-- Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14):
+                  <!-- Ticket 15 (UI-REFACTOR.md §3.3, UI-NOMENCLATURE.md §14):
                    the always-open Unicode types fieldset is gone -- a
                    <multi-select-dropdown> (fontra-webcomponents/src/
                    multi-select-dropdown.js) is mounted here in
@@ -161,18 +153,18 @@
                    The non-Unicode note (Task 9, ledger §8.2) is now a
                    trailing entry inside the open list instead of a fieldset
                    sibling -- see updateNonUnicodeNote in kerning.js. -->
-                <div id="kerning-pairtable-filter-unicode-slot"></div>
-                <!-- Task 9, spec F14: Class relationship, the same
+                  <div id="kerning-pairtable-filter-unicode-slot"></div>
+                  <!-- Task 9, spec F14: Class relationship, the same
                    OR-combined multi-select idiom as Unicode types above.
                    All four checked by default -- new filter, no prior
                    equivalent to preserve, so "everything" is the
                    non-restrictive default. -->
-                <!-- Ticket 16 (UI-REFACTOR.md §3.3): the always-open Class
+                  <!-- Ticket 16 (UI-REFACTOR.md §3.3): the always-open Class
                    relationship fieldset is gone -- a <multi-select-dropdown>
                    is mounted here in initPairTableSection, same four
                    buckets, same filter key. -->
-                <div id="kerning-pairtable-filter-relationships-slot"></div>
-                <!-- Ticket 17 (UI-REFACTOR.md §3.3): table Glyphset filter --
+                  <div id="kerning-pairtable-filter-relationships-slot"></div>
+                  <!-- Ticket 17 (UI-REFACTOR.md §3.3): table Glyphset filter --
                    single-choice, All by default (ledger §8.4), now a
                    <multi-select-dropdown> in singleChoice mode instead of a
                    plain select, same look as the other three dropdowns on
@@ -181,12 +173,13 @@
                    this control does not offer an "add a glyphset" UI of its
                    own. Distinct from the Font mode preview glyphset selector
                    (F08/Task 13) -- neither changes the other. -->
-                <div id="kerning-pairtable-filter-glyphset-slot"></div>
-                <!-- Ticket 14: Show members (as "Group members") moved to
+                  <div id="kerning-pairtable-filter-glyphset-slot"></div>
+                  <!-- Ticket 14: Show members (as "Group members") moved to
                    #kerning-pairtable-switches above. -->
-                <!-- Backlog item 11: the old two-state sort toggle button is
+                  <!-- Backlog item 11: the old two-state sort toggle button is
                    replaced by clicking a column header directly (one sort
                    UI, not two) -- see kerning-pairtable-sortable th's above. -->
+                </div>
               </div>
 
               <!-- Ticket 13 (UI-REFACTOR.md §3.2): Apply selected, Reset

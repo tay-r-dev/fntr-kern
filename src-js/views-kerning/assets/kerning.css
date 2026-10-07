@@ -108,7 +108,7 @@
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 12px;
+  padding: 8px;
   border-right: 1px solid var(--horizontal-rule-color, #ccc);
   background-color: var(--kerning-panel-background-color);
   display: flex;
@@ -665,7 +665,12 @@
 #kerning-pairtable-controls {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+}
+
+/* The left card (Figma 4121:8972) is 12px deep over its heading. */
+#kerning-pairtable-section > .kerning-card {
+  padding-top: 12px;
 }
 
 #kerning-pairtable-glyph {
@@ -673,25 +678,48 @@
   box-sizing: border-box;
 }
 
-#kerning-pairtable-filters,
 #kerning-pairtable-actions,
-#kerning-pairtable-class-controls,
+#kerning-pairtable-class-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+/* The filters (Figma 4121:8977) run edge to edge under their switch, ruled
+   under, 12px over the rule. */
+#kerning-filters-accordion {
+  margin: 0 -8px;
+  border-bottom: 1px solid var(--grey-deprecated-7);
+}
+
+/* Figma 4121:8980: 4px under the switch and 12px in from the card's edge
+   (the accordion gives 8px), the toggle, the checks and the dropdowns 12px
+   apart. */
+#kerning-pairtable-filter-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 4px 4px;
+}
+
+/* The checks, 12px apart (Figma 4121:8982). */
 #kerning-pairtable-switches {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5em;
+  gap: 12px;
 }
 
-/* Figma 421:14731 / 421:14567 / 421:14596: the switches 8px apart, the
-   dropdowns and the text keys 2px apart. */
-#kerning-pairtable-switches {
-  gap: 8px;
+/* The four dropdowns share the row, 4px apart (Figma 4121:8986). */
+#kerning-pairtable-filters {
+  display: flex;
+  gap: 4px;
 }
 
-#kerning-pairtable-filters,
-#kerning-pairtable-actions {
-  gap: 2px;
+#kerning-pairtable-filters > * {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
@@ -1183,6 +1211,10 @@ kerning-handle.negative {
 /* Task 7, spec F22 recommended detail: inline error for an unresolvable
    Glyph/Pair input token, instead of silently producing a misleading
    match. */
+.kerning-pairtable-input-error:empty {
+  display: none;
+}
+
 .kerning-pairtable-input-error {
   color: var(--negative-metrics-handle-color, #c00);
   font-size: 0.9em;
