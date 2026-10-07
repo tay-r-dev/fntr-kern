@@ -468,9 +468,14 @@
    (accordion switch, toggle track, chip shadow). Figma path with dashes. */
 :root {
   --surface-base-basic-1: #fafafa;
+  --line-base-basic-0: #f5f5f5;
   --line-base-basic-1: #ededed;
+  --text-base-basic-1: #1e1e1e;
   --text-base-basic-2: #515151;
   --text-base-basic-3: #8d8d8d;
+  --text-base-basic-4: #b8b8b8;
+  --text-base-basic-5: #c9c9c9;
+  --shadow-base-1: #ededed;
   --shadow-base-2: #b8b8b8;
 }
 
@@ -478,6 +483,7 @@
    component token (the "gradients" collection). Named as in Figma. */
 :root {
   --grey-deprecated-3: #565656;
+  --grey-deprecated-4: #8e8e8e;
   --grey-deprecated-5: #b4b4b4;
   --lime-deprecated-0: #3b5600;
   --lime-deprecated-7: #d5ed57;

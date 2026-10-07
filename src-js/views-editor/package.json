@@ -14,7 +14,8 @@
     "./edit-tools-hand.js": "./src/edit-tools-hand.js",
     "./visualization-layers.js": "./src/visualization-layers.js",
     "./visualization-layer-definitions.js": "./src/visualization-layer-definitions.js",
-    "./sidebar.js": "./src/sidebar.js"
+    "./sidebar.js": "./src/sidebar.js",
+    "./selection-row-group-styles.js": "./src/selection-row-group-styles.js"
   },
   "type": "module",
   "fontra": {

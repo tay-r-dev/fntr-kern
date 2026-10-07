@@ -431,96 +431,228 @@
   height: 100%;
 }
 
-/* Backlog item 16: matches #kerning-pairtable-section's own border-right on
-   the left column -- a plain 1px rule on the box that already has the
-   column's padding, delimiting the right panel from the scene column beside
-   it the same way the left column is already delimited from the scene. */
+/* The right column (Figma 4123:10275): two white cards on the grey panel,
+   8px in and 8px apart. */
 #kerning-panel-container {
   position: relative;
   height: 100%;
   overflow-y: auto;
   box-sizing: border-box;
-  padding: 1em;
-  border-left: 1px solid var(--horizontal-rule-color, #ccc);
+  padding: 8px;
+  background-color: var(--surface-base-basic-1);
+  border-left: 1px solid var(--line-base-basic-1);
   display: flex;
   flex-direction: column;
-  gap: 1em;
+  gap: 8px;
 }
 
-#kerning-panel-title {
+/* A right-column card: 12px over its heading, 8px under its last part. */
+.kerning-panel-card {
+  flex: 0 0 auto;
+  padding: 12px 8px 8px;
+  border-color: var(--line-base-basic-1);
+}
+
+#kerning-autokern-card {
+  gap: 10px;
+}
+
+.kerning-card-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* ./heading H1 (Figma 2004:29687): ui/heading/h2, text/base/basic/5 here. */
+.kerning-card-heading {
   margin: 0;
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking);
+  text-transform: uppercase;
+  color: var(--text-base-basic-5);
+}
+
+#kerning-status-source-select {
+  width: 110px;
 }
 
 #kerning-phrase-section {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
+  gap: 4px;
+}
+
+#kerning-phrase-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+#kerning-preset-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#kerning-preset-select {
+  width: 94px;
+}
+
+#kerning-preset-add-button {
+  width: 24px;
+  height: 24px;
 }
 
 #kerning-phrase-input {
   width: 100%;
 }
 
-#kerning-preset-select {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Ticket 11: the alignment row, under the phrase box. */
-#kerning-align-row {
+/* A field's label over it: ui/label/XS. */
+.kerning-field-group {
   display: flex;
-  gap: 0.35em;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
-#kerning-align-row icon-button {
-  width: 1.5rem;
-  height: 1.5rem;
+.kerning-field-label {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
 }
 
-/* Workstream 9 (spec §7.2): "Threshold and Run are always visible. The rest
-   may collapse." kerning-parameters-always-visible is a plain row, never
-   hidden; kerning-parameters-collapsible is a <details> holding the rest
-   (envelope reach, envelope type, reduction, strength). */
+/* Two fields side by side, 4px apart. */
+.kerning-field-pair {
+  display: flex;
+  gap: 4px;
+}
+
+.kerning-field-pair > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 #kerning-parameters-section {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
+  gap: 8px;
 }
 
-/* Always-visible params row (spec F28: "responsive layout rather than
-   clipping"). The right column is user-narrow (default 320px), so the three
-   |Δ| / tolerance fields plus Run never fit one line -- previously the row
-   didn't wrap and Run was pushed past the column edge at every width. Each
-   label+input is now a non-breaking .kerning-param-field unit, the row
-   wraps between units, and Run drops to its own full-width line. */
-#kerning-parameters-always-visible {
+#kerning-status-counts {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35em 0.5em;
+  gap: 4px 12px;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
 }
 
-.kerning-param-field {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35em;
-}
-
-#kerning-param-threshold,
-#kerning-param-max-threshold,
-#kerning-param-group-threshold {
-  width: 5em;
-}
-
-/* Ticket 10: Run and the Parameters button share one row, right of Run. */
+/* button/segmented (Figma 4128:2446): the editor's tray
+   (selection-row-group-styles.js), at this frame's 20px button height. */
 #kerning-run-row {
-  flex: 0 0 100%;
-  display: flex;
-  gap: 0.5em;
+  --bt-sgb-height: 20px;
 }
 
-/* Ticket 10: the dialog content built by openAutokernParamsDialog --
-   same field layout as the always-visible row above. */
+/* The accordion switches (Figma 4123:10288) run edge to edge across the
+   card; the switch-mode accordion pads each body 8px. */
+#kerning-autokern-card > ui-accordion {
+  margin: 0 -8px;
+}
+
+/* A body sits 10px under its switch, 12px in from the card's edge and 4px
+   over the next switch's 10px gap: the 8px the accordion gives, plus this. */
+.kerning-accordion-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 4px 6px;
+}
+
+/* The last body ends 4px over the card's own 8px. */
+#kerning-analytics-section {
+  padding-bottom: 0;
+  margin-bottom: -4px;
+}
+
+#kerning-stale-section {
+  gap: 8px;
+}
+
+#kerning-stale-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
+}
+
+.kerning-dot-separator {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-base-basic-4);
+}
+
+.kerning-button-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#kerning-stale-progress {
+  margin: 0;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
+}
+
+#kerning-stale-progress:empty {
+  display: none;
+}
+
+#kerning-stale-hint {
+  width: 24px;
+  height: 20px;
+}
+
+/* A sub-section's own label (Figma 4128:2911, 4128:2938): ui/heading/h5. */
+.kerning-section-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: var(--grey-deprecated-4);
+}
+
+/* The stripe opacity and the two checks (Figma 4128:2886). */
+.kerning-visual-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Skip all suggestions (Figma 4128:2910): label over the switch, 40px. */
+.kerning-skip-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 40px;
+  padding-bottom: 1px;
+  box-sizing: border-box;
+}
+
+.kerning-checkmark-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+#kerning-suggestion-preview-skip-all {
+  width: 100%;
+}
+
+/* Ticket 10: the dialog content built by openAutokernParamsDialog. */
 #kerning-parameters-dialog-fields {
   display: flex;
   flex-direction: column;
@@ -595,6 +727,10 @@
 
 /* checkmark (Figma 421:14733), the editor's designspace checkmark: a 14px
    light box, the lime check when on, ui/label/S beside it. */
+/* checkmark (Figma 2004:29411): a 12px box, 3px corners, ruled on top and
+   at the sides, and its ui/label/S label 4px after it. The select/basic
+   tokens give each state: off pale, darker on hover; on mid grey with a
+   white check, lime on hover; the label darkens on hover. */
 .kerning-checkmark-row {
   display: inline-flex;
   align-items: center;
@@ -602,38 +738,67 @@
   cursor: pointer;
   font: var(--ui-text-label-s);
   letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
-  color: var(--kerning-label-color);
+  color: var(--sl-bsb-lb-rest);
   white-space: nowrap;
+}
+
+.kerning-checkmark-row:hover {
+  color: var(--sl-bsb-lb-hover);
 }
 
 .kerning-checkmark {
   appearance: none;
+  position: relative;
   box-sizing: border-box;
   flex: none;
   margin: 0;
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(21, 21, 21, 0.05);
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--sl-bsb-ln-rest);
   border-bottom: none;
-  border-radius: 4px;
-  background: var(--kerning-checkmark-color) center / contain no-repeat;
+  border-radius: 3px;
+  background-color: var(--sl-bsb-sr-rest);
   cursor: pointer;
 }
 
 .kerning-checkmark-row:hover .kerning-checkmark {
-  background-color: var(--kerning-checkmark-hover-color);
+  border-color: var(--sl-bsb-ln-hover);
+  background-color: var(--sl-bsb-sr-hover);
 }
 
-.kerning-checkmark:checked,
-.kerning-checkmark-row:hover .kerning-checkmark:checked {
-  border: none;
-  background-color: transparent;
-  background-image: url("../../fontra-core/assets/images/checkbox-on-rest.svg");
+.kerning-checkmark:checked {
+  border-color: var(--sl-bsb-ln-active);
+  background-color: var(--sl-bsb-sr-active);
 }
 
 .kerning-checkmark-row:hover .kerning-checkmark:checked {
-  background-image: url("../../fontra-core/assets/images/checkbox-on-hover.svg");
+  border-color: var(--sl-bsb-ln-active-hover);
+  background-color: var(--sl-bsb-sr-active-hover);
+}
+
+.kerning-checkmark:checked::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: #fff;
+  mask: url("/tabler-icons/check.svg") center / 10px no-repeat;
+  filter: drop-shadow(0 1px 1px var(--sl-bsb-sh-active-rest));
+}
+
+.kerning-checkmark-row:hover .kerning-checkmark:checked::before {
+  filter: drop-shadow(0 1px 1px var(--sl-bsb-sh-active-hover));
+}
+
+.kerning-checkmark:disabled,
+.kerning-checkmark-row:hover .kerning-checkmark:disabled {
+  border-color: var(--sl-bsb-ln-disabled);
+  background-color: var(--sl-bsb-sr-disabled);
+  cursor: default;
+}
+
+.kerning-checkmark-row:has(.kerning-checkmark:disabled) {
+  color: var(--sl-bsb-lb-disabled);
+  cursor: default;
 }
 
 #kerning-derive-proposals {
@@ -687,44 +852,48 @@
   font-weight: bold;
 }
 
-/* Workstream 13 (spec §7.4): the calibration readout. Ticket 09: lives
-   inside #kerning-analytics-section now, last block under the four rows,
-   with no disclosure of its own -- a readout only, no controls live here. */
+/* Calibration (Figma 4128:2937): its label, one bordered table -- 24px rows,
+   the glyph row ruled under -- and the settled reach under it. */
 #kerning-calibration-body {
   display: flex;
   flex-direction: column;
-  gap: 0.25em;
-  font-size: 0.9em;
+  gap: 8px;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
 }
 
-/* Workstream 14 (spec §7.5), repositioned by the layout overhaul (design doc
-   §1.3): "the status strip... moves to the TOP of this column, always
-   visible." Unlike the sections below it, this one is a plain div, never a
-   <details>. Border moved from top to bottom since it now leads the column
-   instead of trailing it. */
-#kerning-status-section {
-  padding-bottom: 0.75em;
-  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+#kerning-calibration-body p {
+  margin: 0;
+}
+
+.kerning-calibration-table {
+  width: 100%;
+  border: 1px solid var(--line-base-basic-1);
+  border-radius: 6px;
+  border-spacing: 0;
+  color: var(--text-base-basic-2);
+}
+
+.kerning-calibration-table td {
+  height: 24px;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.kerning-calibration-table td:not(:last-child) {
+  width: 60px;
+}
+
+.kerning-calibration-table tr:first-child td {
+  border-bottom: 1px solid var(--line-base-basic-1);
+}
+
+.kerning-calibration-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-}
-
-#kerning-status-source-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5em;
-}
-
-#kerning-status-source-select {
-  flex: 1;
-}
-
-#kerning-status-counts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75em;
-  font-size: 0.9em;
+  gap: 6px;
+  padding-bottom: 1px;
 }
 
 /* Task 10, spec F12: the pair-exception lock/Remove-exception control in the
@@ -1019,61 +1188,37 @@ kerning-handle.negative {
   font-size: 0.9em;
 }
 
-/* Task 18, spec F03: the Analytics panel, same border/gap idiom as the
-   Stale glyphs section right above it. Ticket 08: a native <details>, so it
-   opens/closes and remembers state -- same summary styling as the other
-   <details> in this column. */
-#kerning-analytics-section {
-  padding-bottom: 0.75em;
-  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
-}
-
-#kerning-analytics-section summary {
-  cursor: pointer;
-  margin-bottom: 0.35em;
-  font-weight: bold;
-}
-
+/* Analytics (Figma 4128:3085): a name and its count per row, two even
+   columns, 7px apart. */
 #kerning-analytics-list {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.25em;
+  gap: 7px;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
 }
 
 .kerning-analytics-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5em;
+  align-items: center;
+  gap: 4px;
+}
+
+.kerning-analytics-row dt,
+.kerning-analytics-row dd {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
 }
 
 .kerning-analytics-row dt {
-  min-width: 0;
+  color: var(--text-base-basic-3);
 }
 
 .kerning-analytics-row dd {
-  margin: 0;
-  font-weight: bold;
+  color: var(--text-base-basic-2);
   white-space: nowrap;
-}
-
-/* A metric with a navigation target reads as a real (if understated)
-   button; "Saved pair exceptions" (kerning.js's own initAnalyticsSection
-   comment on why it has none) uses .kerning-analytics-metric-label instead,
-   plain text with the same hover/focus scope tooltip. */
-.kerning-analytics-metric-button {
-  background: none;
-  border: none;
-  padding: 0;
-  font: inherit;
-  text-decoration: underline dotted;
-  cursor: pointer;
-  color: inherit;
-}
-
-.kerning-analytics-metric-label {
-  cursor: help;
 }
 
 .kerning-pairtable-load-controls {

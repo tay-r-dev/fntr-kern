@@ -466,214 +466,127 @@
       <div class="kerning-column sidebar-container kerning-right">
         <div class="sidebar-resize-gutter" data-grow-direction="left"></div>
         <div id="kerning-panel-container">
-          <h2 id="kerning-panel-title">Autokern</h2>
-
-          <div id="kerning-status-section">
-            <div id="kerning-status-source-row">
-              <label for="kerning-status-source-select">Source</label>
-              <select id="kerning-status-source-select"></select>
+          <!-- SETUP card (Figma 4123:10276): the source in the heading, then
+               the phrase presets, the alignment and the phrase itself. -->
+          <section class="kerning-card kerning-panel-card" id="kerning-setup-card">
+            <div class="kerning-card-heading-row">
+              <h2 class="kerning-card-heading">setup</h2>
+              <!-- The source dropdown (kerning.js's initAutokernStatusSection). -->
+              <div id="kerning-status-source-slot"></div>
             </div>
-            <div id="kerning-status-counts">
-              <span id="kerning-status-cached"></span>
-              <span id="kerning-status-threshold"></span>
-              <span id="kerning-status-junk"></span>
-              <span id="kerning-status-coverage"></span>
+            <div id="kerning-phrase-section">
+              <div id="kerning-phrase-controls-row">
+                <div id="kerning-preset-row">
+                  <div id="kerning-preset-slot"></div>
+                  <!-- "load file": adds a presets file (initPhraseSection). -->
+                  <div id="kerning-preset-add-slot"></div>
+                  <input
+                    type="file"
+                    id="kerning-preset-file-input"
+                    accept=".txt"
+                    hidden
+                  />
+                </div>
+                <!-- Alignment, with the icons the editor's phrase card uses. -->
+                <div id="kerning-align-row"></div>
+              </div>
+              <ui-text-input
+                id="kerning-phrase-input"
+                placeholder="hint"
+                multiline
+              ></ui-text-input>
             </div>
-          </div>
+          </section>
 
-          <div id="kerning-parameters-section">
-            <div id="kerning-parameters-always-visible">
-              <!-- Task 5, spec F18: "Retain the lower threshold for absolute
-                   Delta and add an upper threshold." This control only ever
-                   fed the pair table's display filter (renderPairTable's
-                   `threshold`/isRowAboveThreshold), never the run itself --
-                   relabeled to say so plainly. Blank maximum means no
-                   maximum. -->
-              <span class="kerning-param-field">
-                <label for="kerning-param-threshold">Minimum |Δ|</label>
-                <input type="number" id="kerning-param-threshold" min="0" step="1" />
-              </span>
-              <span class="kerning-param-field">
-                <label for="kerning-param-max-threshold">Maximum |Δ|</label>
-                <input
-                  type="number"
-                  id="kerning-param-max-threshold"
-                  min="0"
-                  step="1"
-                />
-              </span>
-              <!-- Backlog item 8 part 1: a second, display-only threshold --
-                   divergence of a shadowing pair's suggestion from the value
-                   its class cell resolves to. Feeds only the pair-table
-                   render path (the "Potential overrides" section and the
-                   class×class median), never the run or the cache. Wired into
-                   autokernParamsController the same way Threshold is
-                   (initParametersSection in kerning.js). -->
-              <!-- Task 17, spec F18: "Recommended labels: ... Class
-                   tolerance." Renamed from "Group threshold" -- this is the
-                   ONLY UI-facing occurrence of that copy anywhere in this
-                   view (grepped); the id/`groupThreshold` model key are
-                   left unchanged (internal naming, not designer-facing). -->
-              <span class="kerning-param-field">
-                <label for="kerning-param-group-threshold">Class tolerance</label>
-                <input
-                  type="number"
-                  id="kerning-param-group-threshold"
-                  min="0"
-                  step="1"
-                />
-              </span>
-              <!-- Ticket 10: the four fields that used to live in the
-                   "Parameters" <details> below (envelope reach, envelope
-                   type, reduction, strength) now live in a modal-dialog,
-                   opened by this button -- see kerning.js's
-                   openAutokernParamsDialog. -->
-              <div id="kerning-run-row">
-                <button id="kerning-run-button">Run</button>
-                <button id="kerning-parameters-button" type="button">Parameters</button>
+          <!-- AUTOKERN card (Figma 4123:10281). -->
+          <section class="kerning-card kerning-panel-card" id="kerning-autokern-card">
+            <div class="kerning-card-heading-row">
+              <h2 class="kerning-card-heading">autokern</h2>
+              <!-- Run analysis with the parameters menu joined to it. -->
+              <!-- button/segmented (Figma 4128:2446): run analysis and the
+                   parameters card, a tray of icon-button segments
+                   (initParametersSection). -->
+              <div id="kerning-run-row" class="selection-row-group-icons tray"></div>
+            </div>
+
+            <div id="kerning-parameters-section">
+              <div class="kerning-field-group">
+                <span class="kerning-field-label">thresholds</span>
+                <div class="kerning-field-pair">
+                  <div id="kerning-param-threshold-slot"></div>
+                  <div id="kerning-param-max-threshold-slot"></div>
+                </div>
+              </div>
+              <div class="kerning-field-group">
+                <span class="kerning-field-label">class tolerance</span>
+                <div id="kerning-param-group-threshold-slot"></div>
+              </div>
+              <!-- The run's counts, under class tolerance. -->
+              <div id="kerning-status-counts">
+                <span id="kerning-status-cached"></span>
+                <span id="kerning-status-threshold"></span>
+                <span id="kerning-status-junk"></span>
+                <span id="kerning-status-coverage"></span>
               </div>
             </div>
-          </div>
 
-          <!-- Task 17, spec F01/F02: replaces the removed current/applied/
-               stale results filter. "Affected glyphs, their count, a rerun
-               action, and an explicit empty state" (F01), "Re-run stale
-               glyphs" with progress and the scope being processed (F02).
-               kerning.js's initStaleSection/renderStaleSection/
-               runStaleGlyphs own this markup. -->
-          <div id="kerning-stale-section">
-            <h3>Stale and new glyphs</h3>
-            <p id="kerning-stale-empty">No glyphs need recalculation.</p>
-            <p id="kerning-stale-summary" hidden>
-              <span id="kerning-stale-count"></span>
-              <span id="kerning-stale-names"></span>
-            </p>
-            <button id="kerning-stale-rerun-button" type="button" disabled>
-              Re-run stale and new glyphs
-            </button>
-            <!-- The cheap half of the button above: a glyph whose shape did
-                 not change, only its spacing, needs arithmetic rather than a
-                 measured run (kerning.js's recalculateMetricsOnlyGlyphs). -->
-            <button id="kerning-stale-recalc-button" type="button" disabled>
-              Recalculate spacing changes
-            </button>
-            <p id="kerning-stale-progress"></p>
-          </div>
+            <!-- Stale and new glyphs, visual settings and analytics are one
+                 ui-accordion, built in kerning.js's initAutokernAccordion from
+                 the three bodies below. -->
+            <div id="kerning-autokern-accordion-slot"></div>
 
-          <div id="kerning-phrase-section">
-            <select id="kerning-preset-select">
-              <option value="" selected disabled>Presets…</option>
-            </select>
-            <!-- Backlog item 1: load an additional presets file at runtime.
-                 Hidden file input, same pattern as panel-reference-font.js's
-                 own file-input-plus-click-proxy convention (an <input
-                 type="file"> never appended/visible, triggered by a plain
-                 button's click handler). Parsed results are APPENDED to
-                 this.phrasePresets, not a replacement -- see
-                 initPhraseSection's own comment in kerning.js for why. -->
-            <button id="kerning-preset-add-button" type="button">Add…</button>
-            <input type="file" id="kerning-preset-file-input" accept=".txt" hidden />
-            <ui-text-input
-              id="kerning-phrase-input"
-              placeholder="Type a phrase"
-              multiline
-            ></ui-text-input>
-
-            <!-- Ticket 11, spec §1.3/UI-NOMENCLATURE §14: three icon buttons
-                 set the preview's scene alignment, exactly one on. Not a
-                 component -- kerning.js's initAlignmentRow builds and wires
-                 all three with one listener. Icons match the editor's own
-                 Text Entry alignment row (panel-text-entry.js), which is
-                 left untouched. Built in JS, not declared here: every other
-                 <icon-button> in this tree is created with
-                 document.createElement/html.createDomElement and has `src`
-                 set as a property, never an HTML attribute -- UnlitElement's
-                 static properties are plain JS properties, never read from
-                 attributes, so a static `src="..."` attribute here left
-                 `this.src` undefined at first render. -->
-            <div id="kerning-align-row"></div>
-          </div>
-
-          <!-- Backlog items 9+10 (combined, see kerning.js's
-               initSuggestionPreviewSettingsSection): a settings-driven
-               visibility/opacity control for the on-canvas suggestion
-               overlay and its live glyph re-spacing preview. Built entirely
-               in JS below, mounted into this slot -- same convention
-               views-editor's own grid-layer settings accordion uses
-               (panel-designspace-navigation.js's "coarse-grid-accordion-item",
-               an Accordion item with a master display-toggle checkbox plus
-               dependent settings). Its open/closed state is persisted --
-               see initSuggestionPreviewSettingsSection's own comment. -->
-          <div id="kerning-suggestion-preview-section"></div>
-
-          <!-- Task 18, spec F03, ledger §8.6: four metrics, each with its
-               own scope disclosed via data-tooltip (hover/focus, tooltip.css)
-               rather than left implicit. "Stale glyphs" and "Potential
-               exceptions" and "Hidden results" are clickable (they have an
-               existing, single-control target to jump to); "Saved pair
-               exceptions" has none (see kerning.js's initAnalyticsSection
-               comment) and is deliberately plain text, not a button.
-               Ticket 08: a native <details>, open by default, persisted --
-               see kerning.js's initAnalyticsSection. -->
-          <details id="kerning-analytics-section" open>
-            <summary>Analytics</summary>
-            <dl id="kerning-analytics-list">
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-stale"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: active source, every glyph currently stale — ignores the table's own filters. Activates the Stale glyphs panel above."
-                  >
-                    Stale glyphs
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-stale-count">0 glyphs</dd>
+            <div id="kerning-stale-section" class="kerning-accordion-body">
+              <div id="kerning-stale-summary">
+                <span>Stale glyphs: <span id="kerning-stale-count"></span></span>
+                <span class="kerning-dot-separator"></span>
+                <span>New glyphs: <span id="kerning-stale-new-count"></span></span>
               </div>
-              <div class="kerning-analytics-row">
-                <dt
-                  class="kerning-analytics-metric-label"
-                  data-tooltip="Scope: all sources combined, every saved glyph-to-glyph exception in the font — ignores the table's own filters. No dedicated view to jump to yet."
+              <div class="kerning-button-row">
+                <text-button id="kerning-stale-rerun-button" size="S" disabled
+                  >re-run analysis</text-button
                 >
-                  Saved pair exceptions
-                </dt>
-                <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
+                <!-- The cheap half of the button above: a glyph whose shape did
+                     not change, only its spacing, needs arithmetic rather than a
+                     measured run (kerning.js's recalculateMetricsOnlyGlyphs). -->
+                <text-button id="kerning-stale-recalc-button" size="S" disabled
+                  >recalculate spacing</text-button
+                >
+                <div id="kerning-stale-hint-slot"></div>
               </div>
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-potential"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: current filtered view — pairs outside class tolerance, under today's filters. Activates the Potential exceptions tab."
-                  >
-                    Potential exceptions
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-potential-count">0 pairs</dd>
-              </div>
-              <div class="kerning-analytics-row">
-                <dt>
-                  <button
-                    id="kerning-analytics-hidden"
-                    type="button"
-                    class="kerning-analytics-metric-button"
-                    data-tooltip="Scope: active source, every hidden pair and hidden class row — ignores the table's own filters. Turns on Show hidden."
-                  >
-                    Hidden results
-                  </button>
-                </dt>
-                <dd id="kerning-analytics-hidden-count">0 rows</dd>
-              </div>
-            </dl>
+              <p id="kerning-stale-progress"></p>
+            </div>
 
-            <!-- Ticket 09: calibration is the last block inside Analytics,
-                 under the four rows above. Its own disclosure is gone; this
-                 body's content and id are unchanged (kerning.js's
-                 renderCalibration still fills it). -->
-            <div id="kerning-calibration-body"></div>
-          </details>
+            <!-- Visual settings: built in kerning.js's
+                 initSuggestionPreviewSettingsSection. -->
+            <div
+              id="kerning-suggestion-preview-section"
+              class="kerning-accordion-body"
+            ></div>
+
+            <div id="kerning-analytics-section" class="kerning-accordion-body">
+              <!-- Figma 4128:3085: a name and its count per row, plain text. -->
+              <dl id="kerning-analytics-list">
+                <div class="kerning-analytics-row">
+                  <dt>Stale glyphs</dt>
+                  <dd id="kerning-analytics-stale-count">0 glyphs</dd>
+                </div>
+                <div class="kerning-analytics-row">
+                  <dt>Saved pair exceptions</dt>
+                  <dd id="kerning-analytics-exceptions-count">0 pairs</dd>
+                </div>
+                <div class="kerning-analytics-row">
+                  <dt>Potential exceptions</dt>
+                  <dd id="kerning-analytics-potential-count">0 pairs</dd>
+                </div>
+                <div class="kerning-analytics-row">
+                  <dt>Hidden results</dt>
+                  <dd id="kerning-analytics-hidden-count">0 rows</dd>
+                </div>
+              </dl>
+              <!-- Calibration, the last block in analytics (renderCalibration). -->
+              <div id="kerning-calibration-body"></div>
+            </div>
+          </section>
         </div>
       </div>
     </div>
