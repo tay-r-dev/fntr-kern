@@ -108,7 +108,6 @@
   overflow-y: auto;
   box-sizing: border-box;
   padding: 8px;
-  border-right: 1px solid var(--horizontal-rule-color, #ccc);
   background-color: var(--kerning-panel-background-color);
   display: flex;
   flex-direction: column;
@@ -320,8 +319,10 @@
   --multi-select-dropdown-height: 20px;
 }
 
+/* A dropdown's width sizes its field only through the variable. */
 #kerning-font-preview-glyphset-select {
   width: 110px;
+  --multi-select-dropdown-width: 100%;
 }
 
 /* The row divider: straddles the 8px between the two cards. */
@@ -464,7 +465,6 @@
   box-sizing: border-box;
   padding: 8px;
   background-color: var(--surface-base-basic-1);
-  border-left: 1px solid var(--line-base-basic-1);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -499,6 +499,7 @@
 
 #kerning-status-source-select {
   width: 110px;
+  --multi-select-dropdown-width: 100%;
 }
 
 #kerning-phrase-section {
@@ -522,6 +523,7 @@
 
 #kerning-preset-select {
   width: 94px;
+  --multi-select-dropdown-width: 100%;
 }
 
 #kerning-preset-add-button {
@@ -531,6 +533,7 @@
 
 #kerning-phrase-input {
   width: 100%;
+  --ui-text-input-height: 120px;
 }
 
 #kerning-parameters-section {
@@ -552,6 +555,12 @@
    (selection-row-group-styles.js), at this frame's 20px button height. */
 #kerning-run-row {
   --bt-sgb-height: 20px;
+}
+
+/* Text segments hug their labels (the tray shares width out evenly). */
+#kerning-run-row icon-button,
+#autokern-class-new-controls icon-button {
+  flex: 0 0 auto;
 }
 
 /* The accordion switches (Figma 4123:10288) run edge to edge across the

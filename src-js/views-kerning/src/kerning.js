@@ -160,6 +160,7 @@ import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/compact-scrub-field.js";
 import "@fontra/web-components/scrub-slider.js";
+import "@fontra/web-components/radio-buttons.js";
 import "@fontra/web-components/ui-text-input.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
@@ -1017,22 +1018,15 @@ export class KerningViewController extends ViewController {
       element.addEventListener("change", (event) => setItem(key, event.detail.value));
       return element;
     };
+    // Radio buttons, not dropdowns: this is already a dropdown card.
     const choice = (id, key, label, options) => {
-      const element = html.createDomElement("multi-select-dropdown", {
+      const element = html.createDomElement("radio-buttons", {
         id,
-        label,
-        labelAbove: true,
-        singleChoice: true,
-        items: options.map(([value, optionLabel]) => ({
-          value,
-          label: optionLabel,
-          checked: params[key] === value,
-        })),
+        options: options.map(([value, optionLabel]) => ({ value, label: optionLabel })),
+        value: params[key],
       });
-      element.addEventListener("change", (event) =>
-        setItem(key, event.detail.checked[0])
-      );
-      return element;
+      element.addEventListener("change", (event) => setItem(key, event.detail.value));
+      return labeled(label, element);
     };
     return html.div({ id: "kerning-parameters-dialog-fields" }, [
       labeled(

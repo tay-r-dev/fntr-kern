@@ -146,6 +146,7 @@ export const KERNING_SHADOW_STYLES = `
 }
 
 #kerning-pairtable-filters > * {
+  --multi-select-dropdown-width: 100%;
   flex: 1 1 0;
   min-width: 0;
 }
@@ -225,6 +226,13 @@ export const KERNING_SHADOW_STYLES = `
 .kerning-analytics-row dd {
   color: var(--text-base-basic-2);
   white-space: nowrap;
+}
+
+/* The two checks under the stripe opacity, 10px and 12px apart. */
+.kerning-checkmark-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 
 /* The checkmark rows: our checkbox assets (fontra-core/assets/images),

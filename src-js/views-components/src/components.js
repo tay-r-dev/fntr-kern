@@ -32,6 +32,7 @@ import "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 import "@fontra/web-components/scrub-slider.js";
 import "@fontra/web-components/segmented-control.js";
+import "@fontra/web-components/radio-buttons.js";
 import "@fontra/web-components/slot-slider.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/ui-handle.js";
@@ -146,6 +147,20 @@ function toggles() {
     cell("off, disabled", toggle({ disabled: true })),
     cell("on, disabled", toggle({ checked: true, disabled: true }))
   );
+}
+
+function radioButtons() {
+  const radios = (props) =>
+    make("radio-buttons", {
+      options: [
+        { value: "a", label: "first" },
+        { value: "b", label: "second" },
+        { value: "c", label: "third" },
+      ],
+      value: "a",
+      ...props,
+    });
+  return row(cell("rest", radios()), cell("disabled", radios({ disabled: true })));
 }
 
 function dropdowns() {
@@ -399,6 +414,7 @@ export function buildComponentsGallery(container) {
     section("button/latch", "Figma 287:15701", latchButtons()),
     section("select/segmented", "Figma 2004:29330", segmentedControls()),
     section("select/toggle", "Figma 2004:29380", toggles()),
+    section("select/radio", "radio-buttons, the checkmark made round", radioButtons()),
     section(
       "select/dropdown",
       "Figma 2004:29427 field, 2004:29458 with its label above, 2004:29483 menu",
