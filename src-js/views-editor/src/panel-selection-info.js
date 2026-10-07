@@ -587,6 +587,9 @@ export default class SelectionInfoPanel extends Panel {
         sideFieldItem(side),
         side === "left" ? "L" : "R"
       );
+      if (metricsKeyDisplay[side]) {
+        field.note = formatResolvedMetricsValue(metricsKeyDisplay[side]);
+      }
       if (metricsKeyDisplay[side]?.stale) {
         field.appendChild(
           html.createDomElement("icon-button", {

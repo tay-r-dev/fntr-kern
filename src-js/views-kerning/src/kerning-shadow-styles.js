@@ -1,3 +1,5 @@
+import { CHECKMARK_STYLES } from "@fontra/web-components/checkmark-styles.js";
+
 // The styles of everything the kerning view puts inside a shadow root: the
 // bodies of its switch-mode accordions (filters; stale and new glyphs,
 // visual settings, analytics) and the parameters card under the run tray.
@@ -235,51 +237,5 @@ export const KERNING_SHADOW_STYLES = `
   gap: 10px 12px;
 }
 
-/* The checkmark rows: our checkbox assets (fontra-core/assets/images),
-   the same as the editor's designspace panel's checks. */
-.kerning-checkmark-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
-  color: var(--kerning-label-color);
-  white-space: nowrap;
-}
-
-.kerning-checkmark {
-  appearance: none;
-  box-sizing: border-box;
-  flex: none;
-  margin: 0;
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(21, 21, 21, 0.05);
-  border-bottom: none;
-  border-radius: 4px;
-  background: var(--kerning-checkmark-color) center / contain no-repeat;
-  cursor: pointer;
-}
-
-.kerning-checkmark-row:hover .kerning-checkmark {
-  background-color: var(--kerning-checkmark-hover-color);
-}
-
-.kerning-checkmark:checked,
-.kerning-checkmark-row:hover .kerning-checkmark:checked {
-  border: none;
-  background-color: transparent;
-  background-image: url("/images/checkbox-on-rest.svg");
-}
-
-.kerning-checkmark-row:hover .kerning-checkmark:checked {
-  background-image: url("/images/checkbox-on-hover.svg");
-}
-
-.kerning-checkmark:disabled {
-  border: none;
-  background: url("/images/checkbox-disabled.svg") center / contain no-repeat;
-}
+${CHECKMARK_STYLES}
 `;

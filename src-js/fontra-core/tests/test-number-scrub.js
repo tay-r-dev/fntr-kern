@@ -9,6 +9,7 @@ import {
   scrubFactor,
   scrubAmountSinceStart,
   scrubIncrement,
+  stepExpressionText,
 } from "@fontra/core/number-scrub.js";
 import { expect } from "chai";
 
@@ -170,5 +171,20 @@ describe("key step scrub value", () => {
   it("rounds to the grid and keeps to the bounds", () => {
     expect(keyStepScrubValue(0.3, 1, { step: 0.1, integer: false })).to.equal(1.3);
     expect(keyStepScrubValue(1, -1, { integer: true, minValue: 1 })).to.equal(1);
+  });
+});
+
+describe("stepExpressionText", () => {
+  it("steps a metrics key by a trailing offset, never as +-", () => {
+    expect(stepExpressionText("=H", 1)).to.equal("=H+1");
+    expect(stepExpressionText("=H", -1)).to.equal("=H-1");
+    expect(stepExpressionText("=H+1", -1)).to.equal("=H");
+    expect(stepExpressionText("=H-1", -10)).to.equal("=H-11");
+    expect(stepExpressionText("=H*-2", 1)).to.equal("=H*-2+1");
+  });
+
+  it("steps a plain number as a number", () => {
+    expect(stepExpressionText("120", 1)).to.equal("121");
+    expect(stepExpressionText(120, -10)).to.equal("110");
   });
 });

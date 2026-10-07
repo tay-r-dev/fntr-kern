@@ -84,6 +84,7 @@ import {
 
 import { LABEL_TUNING, LABEL_TUNING_DEFAULTS } from "@fontra/core/canvas-labels.js";
 import { NumberFormatter } from "@fontra/core/formatters.js";
+import { CHECKMARK_STYLES } from "@fontra/web-components/checkmark-styles.js";
 import Panel from "./panel.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
 import {
@@ -555,13 +556,6 @@ const DESIGNSPACE_PANEL_COLORS = {
   "ds-label-color": ["#8e8e8e", "#9a9a9a"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
-  "ds-checkmark-color": ["#e9e9e9", "#444444"],
-  "ds-checkmark-border-color": ["rgba(21, 21, 21, 0.05)", "rgba(255, 255, 255, 0.05)"],
-  "ds-checkmark-hover-color": ["#d9d9d9", "#555555"],
-  "ds-checkmark-hover-border-color": [
-    "rgba(21, 21, 21, 0.1)",
-    "rgba(255, 255, 255, 0.1)",
-  ],
   "ds-label-disabled-color": ["#b4b4b4", "#6a6a6a"],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
   "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
@@ -746,67 +740,12 @@ export default class DesignspaceNavigationPanel extends Panel {
         border-left: 1px solid var(--ds-popover-border-color);
       }
 
-      /* checkmark (Figma 379:22544), ui/label/S. Its checkbox parts are
-         named checkbox/<active|base>/<hover>, active being checked. At rest a
-         checked box is the grey check and an empty one the light box, both
-         with grey names; hover lights the check lime or darkens the box, and
-         darkens the name. */
-      .ds-checkmark-row {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        cursor: pointer;
-        font: var(--ui-text-label-s);
-        letter-spacing: var(--ui-tracking);
-        color: var(--ds-label-color);
-      }
-
-      .ds-checkmark-row + .ds-checkmark-row {
+      /* Stacked checkmarks in the point labels card, 6px apart. */
+      .ds-popover-column .checkmark-row + .checkmark-row {
         margin-top: 6px;
       }
 
-      .ds-checkmark {
-        appearance: none;
-        box-sizing: border-box;
-        margin: 0;
-        width: 14px;
-        height: 14px;
-        border: 1px solid var(--ds-checkmark-border-color);
-        border-bottom: none;
-        border-radius: 4px;
-        background: var(--ds-checkmark-color) center / contain no-repeat;
-        cursor: pointer;
-      }
-
-      .ds-checkmark-row:hover .ds-checkmark {
-        background-color: var(--ds-checkmark-hover-color);
-        border-color: var(--ds-checkmark-hover-border-color);
-      }
-
-      .ds-checkmark:checked,
-      .ds-checkmark-row:hover .ds-checkmark:checked {
-        border: none;
-        background-color: transparent;
-        background-image: url("/images/checkbox-on-rest.svg");
-      }
-
-      .ds-checkmark-row:hover .ds-checkmark:checked {
-        background-image: url("/images/checkbox-on-hover.svg");
-      }
-
-      .ds-checkmark-row:hover {
-        color: var(--ds-label-dark-color);
-      }
-
-      .ds-checkmark-row:has(:disabled) {
-        color: var(--ds-label-disabled-color);
-        cursor: default;
-      }
-
-      .ds-checkmark:disabled {
-        border: none;
-        background: url("/images/checkbox-disabled.svg") center / contain no-repeat;
-      }
+      ${CHECKMARK_STYLES}
     `);
 
     this.fontController.ensureInitialized.then(() => {
@@ -1077,7 +1016,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         const element = html.div({ class: "ds-popover-column" }, [
           html.div({ class: "ds-label ds-label--dark" }, [title]),
           ...Object.entries(keys).map(([label, key]) => {
-            const box = html.input({ type: "checkbox", class: "ds-checkmark" });
+            const box = html.input({ type: "checkbox", class: "checkmark" });
             box.checked = !!applicationSettingsController.model[key];
             box.addEventListener("change", () => {
               applicationSettingsController.model[key] = box.checked;
@@ -1086,7 +1025,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             applicationSettingsController.addKeyListener(key, (event) => {
               box.checked = !!event.newValue;
             });
-            return html.label({ class: "ds-checkmark-row" }, [box, label]);
+            return html.label({ class: "checkmark-row" }, [box, label]);
           }),
         ]);
         return element;

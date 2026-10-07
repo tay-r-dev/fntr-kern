@@ -1164,10 +1164,10 @@ export class KerningViewController extends ViewController {
 
     // checkmark (Figma 4128:2857), the same rows the filters use.
     const checkmark = (id, label, checked, onChange) => {
-      const input = html.input({ type: "checkbox", class: "kerning-checkmark", id });
+      const input = html.input({ type: "checkbox", class: "checkmark", id });
       input.checked = checked;
       input.addEventListener("change", () => onChange(input.checked));
-      return [html.label({ class: "kerning-checkmark-row" }, [input, label]), input];
+      return [html.label({ class: "checkmark-row" }, [input, label]), input];
     };
     const [numbersRow] = checkmark(
       "kerning-suggestion-preview-numbers",

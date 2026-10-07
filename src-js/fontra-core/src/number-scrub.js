@@ -117,3 +117,24 @@ export function scrubAmountSinceStart(value, startValue, kind) {
   }
   return value - startValue;
 }
+
+// One arrow step of a "text" field's typing. A number steps as a number. An
+// expression carries the step as a trailing offset: "=H" steps up to "=H+1",
+// down to "=H-1", and an offset that comes back to zero is dropped.
+export function stepExpressionText(text, delta) {
+  const trimmed = String(text ?? "").trim();
+  const number = Number(trimmed);
+  if (trimmed !== "" && Number.isFinite(number)) {
+    return String(number + delta);
+  }
+  let base = trimmed;
+  let offset = 0;
+  const match = trimmed.match(/^(.*?)\s*([+-])\s*(\d+(?:\.\d+)?)$/);
+  // "=H*-2" ends in a signed operand, not an offset.
+  if (match && match[1] !== "" && !/[*/+\-(]$/.test(match[1])) {
+    base = match[1];
+    offset = Number(match[2] + match[3]);
+  }
+  const next = Math.round((offset + delta) * 1e6) / 1e6;
+  return next === 0 ? base : `${base}${next > 0 ? "+" : ""}${next}`;
+}

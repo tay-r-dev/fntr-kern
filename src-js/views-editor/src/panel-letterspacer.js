@@ -36,6 +36,7 @@ import "@fontra/web-components/overflow-popover.js"; // the settings overflow
 import "@fontra/web-components/text-button.js";
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import "@fontra/web-components/ui-text-input.js"; // the reference glyph
+import { CHECKMARK_STYLES } from "@fontra/web-components/checkmark-styles.js";
 import { METRICS_PANEL_STYLES } from "./metrics-panel-styles.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
@@ -208,6 +209,16 @@ function setGlyphLetterspacerReference(glyph, value) {
 // the glyph category the automatic reference rules already sort a glyph into,
 // so a subset a designer checks is the same group the spacing engine treats
 // alike.
+const DOUBLE_CHECK_REVERSE_KEY = "fontra.letterspacer.double-check-reverse";
+
+function readDoubleCheckReverse() {
+  try {
+    return localStorage.getItem(DOUBLE_CHECK_REVERSE_KEY) !== "false";
+  } catch (error) {
+    return true;
+  }
+}
+
 const BULK_SUBSETS = [
   { key: "uppercase", label: "Uppercase" },
   { key: "lowercase", label: "Lowercase" },
@@ -285,6 +296,10 @@ export default class LetterspacerPanel extends Panel {
     );
     this.bulkStatus = "";
     this.bulkOpen = true;
+    // Reverse across a whole source asks for a second press, unless the
+    // designer has switched that off. A preference of the person, not of the
+    // font, so it is kept in the browser.
+    this.doubleCheckReverse = readDoubleCheckReverse();
   }
 
   getContentElement() {
@@ -307,6 +322,9 @@ export default class LetterspacerPanel extends Panel {
       "data-tooltipposition": "left",
     });
     settings.setAttribute("settings-card", "");
+    // The card renders in the popover's own shadow root, which this panel's
+    // styles do not reach.
+    settings.appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
     settings.content = this._buildSettingsCard();
 
     return html.div({ class: "metrics-heading-row" }, [
@@ -329,9 +347,21 @@ export default class LetterspacerPanel extends Panel {
     overrideToggle.addEventListener("change", () =>
       this._onMayReplaceMetricsKeysChange(overrideToggle.checked)
     );
+    const doubleCheckToggle = html.createDomElement("labeled-toggle", {
+      label: "double check on reverse",
+    });
+    doubleCheckToggle.checked = this.doubleCheckReverse;
+    doubleCheckToggle.addEventListener("change", () => {
+      this.doubleCheckReverse = doubleCheckToggle.checked;
+      try {
+        localStorage.setItem(DOUBLE_CHECK_REVERSE_KEY, String(this.doubleCheckReverse));
+      } catch (error) {
+        // Not remembered; the switch still holds for this session.
+      }
+    });
     return html.div({ class: "settings-card" }, [
       html.div({ class: "settings-card-heading" }, ["settings"]),
-      html.div({ class: "settings-card-body" }, [overrideToggle]),
+      html.div({ class: "settings-card-body" }, [doubleCheckToggle, overrideToggle]),
     ]);
   }
 
@@ -529,6 +559,9 @@ export default class LetterspacerPanel extends Panel {
 
     const accordion = new Accordion();
     accordion.setAttribute("switch", "");
+    // The content renders in the accordion's own shadow root, which this
+    // panel's styles do not reach.
+    accordion.appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
     accordion.classList.add("ls-switch");
     accordion.items = [
       {
@@ -1482,7 +1515,7 @@ export default class LetterspacerPanel extends Panel {
       return;
     }
     const guardInfo = await this.getReverseGuardInfo();
-    if (guardInfo.shouldGuard && !this.reverseWarningArmed) {
+    if (guardInfo.shouldGuard && this.doubleCheckReverse && !this.reverseWarningArmed) {
       this.reverseWarningArmed = true;
       this.reverseWarningMessage = guardInfo.message;
       this.showReverseWarningTooltip(event?.currentTarget, guardInfo.message);
@@ -2131,44 +2164,5 @@ const LETTERSPACER_CARD_STYLES = `
     padding: 8px 0 10px;
   }
 
-  .checkmark-row {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    font: var(--ui-text-label-s);
-    letter-spacing: var(--ui-tracking);
-    font-feature-settings: "case" 1;
-    color: var(--text-base-basic-2);
-    white-space: nowrap;
-  }
-
-  .checkmark {
-    appearance: none;
-    box-sizing: border-box;
-    flex: none;
-    margin: 0;
-    width: 12px;
-    height: 12px;
-    border: 1px solid rgba(21, 21, 21, 0.05);
-    border-bottom: none;
-    border-radius: 4px;
-    background: #e9e9e9 center / contain no-repeat;
-    cursor: pointer;
-  }
-
-  .checkmark-row:hover .checkmark {
-    background-color: #d9d9d9;
-  }
-
-  .checkmark:checked,
-  .checkmark-row:hover .checkmark:checked {
-    border: none;
-    background-color: transparent;
-    background-image: url("/images/checkbox-on-rest.svg");
-  }
-
-  .checkmark-row:hover .checkmark:checked {
-    background-image: url("/images/checkbox-on-hover.svg");
-  }
+  ${CHECKMARK_STYLES}
 `;

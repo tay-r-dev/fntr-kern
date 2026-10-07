@@ -8,6 +8,7 @@ import {
   keyStepScrubValue,
   roundScrubValue,
   scrubIncrement,
+  stepExpressionText,
 } from "@fontra/core/number-scrub.js";
 import { QueueIterator } from "@fontra/core/queue-iterator.js";
 import { InlineSVG } from "./inline-svg.js";
@@ -352,6 +353,14 @@ export class InputFieldLarge extends UnlitElement {
       opacity: 0;
     }
 
+    /* A read-only aside after the value, in parentheses: a metrics key's
+       resolved number. text/base/basic/4. */
+    .note {
+      flex: 0 0 auto;
+      white-space: nowrap;
+      color: var(--text-base-basic-4);
+    }
+
     /* The end slot: one icon the caller puts after the value. */
     ::slotted([slot="end"]) {
       flex: 0 0 auto;
@@ -386,6 +395,17 @@ export class InputFieldLarge extends UnlitElement {
     this._fill = false;
     this._scrubOnly = false;
     this._text = false;
+    this._note = "";
+  }
+
+  // Shown after the value in parentheses; empty shows nothing.
+  get note() {
+    return this._note;
+  }
+
+  set note(value) {
+    this._note = value == null ? "" : String(value);
+    this.requestUpdate();
   }
 
   get type() {
@@ -653,7 +673,8 @@ export class InputFieldLarge extends UnlitElement {
               ]
             : []),
           this._valueElement,
-          ...(this._scrubOnly || this._text ? [] : [this._hoverSteppers]),
+          ...(this._note ? [html.span({ class: "note" }, [`(${this._note})`])] : []),
+          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
           html.createDomElement("slot", { name: "end" }),
         ]),
       ]
@@ -696,6 +717,11 @@ export class InputFieldLarge extends UnlitElement {
           cancelable: true,
         })
       );
+      return;
+    }
+    if (this._text) {
+      this._commit(stepExpressionText(this._value, direction * (shiftKey ? 10 : 1)));
+      this.dispatchEvent(new CustomEvent("apply"));
       return;
     }
     const current = Number.isFinite(this._value) ? this._value : 0;
@@ -760,6 +786,12 @@ export class InputFieldLarge extends UnlitElement {
     const editStartValue = this._value;
     let steppedLive = false;
     const stepLive = (direction, shiftKey) => {
+      if (this._text) {
+        const text = stepExpressionText(input.value, direction * (shiftKey ? 10 : 1));
+        input.value = text;
+        applyLive(text);
+        return;
+      }
       const parsed = parseFloat(input.value);
       const value = keyStepScrubValue(
         Number.isFinite(parsed) ? parsed : editStartValue,
@@ -798,7 +830,9 @@ export class InputFieldLarge extends UnlitElement {
       if (!commit && steppedLive) {
         // Escape takes back what the arrows applied.
         this._commit(
-          roundScrubValue(editStartValue, this._boundsFieldItem),
+          this._text
+            ? editStartValue
+            : roundScrubValue(editStartValue, this._boundsFieldItem),
           SCRUB_CANCELLED
         );
         endLiveStream();
@@ -811,6 +845,7 @@ export class InputFieldLarge extends UnlitElement {
         } else {
           this._commit(typed);
         }
+        endLiveStream();
         return;
       }
       if (commit) {
@@ -838,10 +873,7 @@ export class InputFieldLarge extends UnlitElement {
     };
 
     input.addEventListener("keydown", (event) => {
-      const arrow = event.key === "ArrowUp" || event.key === "ArrowDown";
-      if (arrow && this._text && !Number.isFinite(Number(input.value))) {
-        // Expression text has no number to step.
-      } else if (arrow) {
+      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
         event.preventDefault();
         stepLive(event.key === "ArrowUp" ? 1 : -1, event.shiftKey);
       } else if (event.key === "Enter") {

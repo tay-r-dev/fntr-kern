@@ -5,7 +5,7 @@ export const METRICS_PANEL_STYLES = `
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 12px;
+    padding: 8px;
     box-sizing: border-box;
     overflow: hidden auto;
     background-color: var(--surface-base-basic-1);
