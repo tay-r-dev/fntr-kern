@@ -347,6 +347,11 @@ export class CompactScrubField extends UnlitElement {
       opacity: 0;
     }
 
+    /* The end slot: one icon the caller puts after the value. */
+    ::slotted([slot="end"]) {
+      flex: 0 0 auto;
+    }
+
     .box:hover:not(.disabled) .hover-steppers,
     .box.scrubbing .hover-steppers,
     .box:focus-within .hover-steppers {
@@ -375,6 +380,18 @@ export class CompactScrubField extends UnlitElement {
     this._scrubIcon = true;
     this._fill = false;
     this._scrubOnly = false;
+    this._text = false;
+  }
+
+  // A plain field (scrubIcon off) whose typing is text, sent as typed: a
+  // metrics key such as "=H+10". The caller evaluates it.
+  get text() {
+    return this._text;
+  }
+
+  set text(value) {
+    this._text = !!value;
+    this.requestUpdate();
   }
 
   // A field whose value only a drag sets: no typing, no stepper arrows. For a
@@ -645,7 +662,8 @@ export class CompactScrubField extends UnlitElement {
               ]
             : []),
           this._valueElement,
-          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
+          ...(this._scrubOnly || this._text ? [] : [this._hoverSteppers]),
+          html.createDomElement("slot", { name: "end" }),
         ]),
       ]
     );
@@ -725,7 +743,7 @@ export class CompactScrubField extends UnlitElement {
     this._editing = true;
     this._box.classList.add("editing");
     const input = html.createDomElement("input", {
-      type: "number",
+      type: this._text ? "text" : "number",
       value: this._displayValue(),
       placeholder: this._showsMixed() ? "mixed" : "",
     });
@@ -795,6 +813,15 @@ export class CompactScrubField extends UnlitElement {
         endLiveStream();
         return;
       }
+      if (commit && this._text) {
+        const typed = input.value.trim();
+        if (typed === "" || typed === this._displayValue()) {
+          this._renderValue();
+        } else {
+          this._commit(typed);
+        }
+        return;
+      }
       if (commit) {
         const parsed = parseFloat(input.value);
         // Nothing typed leaves the values alone. Committing the old value would
@@ -820,7 +847,10 @@ export class CompactScrubField extends UnlitElement {
     };
 
     input.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      const arrow = event.key === "ArrowUp" || event.key === "ArrowDown";
+      if (arrow && this._text && !Number.isFinite(Number(input.value))) {
+        // Expression text has no number to step.
+      } else if (arrow) {
         event.preventDefault();
         stepLive(event.key === "ArrowUp" ? 1 : -1, event.shiftKey);
       } else if (event.key === "Enter") {

@@ -253,6 +253,18 @@ export class IconButton extends UnlitElement {
       font-family: var(--ui-font-old);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }
+
+    /* settings overflow (Figma 4108:3038): white, ruled, 6px corners, a soft
+       shadow; the content brings its own padding. */
+    :host([settings-card]) .card {
+      padding: 0;
+      border: 1px solid var(--line-base-basic-1);
+      border-radius: 6px;
+      background: var(--ui-element-background-color);
+      box-shadow: 0 2px 4px var(--shadow-base-1);
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
+    }
   `;
 
   constructor(src) {

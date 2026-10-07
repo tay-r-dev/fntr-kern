@@ -28,11 +28,15 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
-import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 35's Area/Depth/Overshoot row
+import "@fontra/web-components/compact-scrub-field.js"; // the Area/Depth/Overshoot row
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
-import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 36's Reverse icon
-import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, the header Enabled toggle
-import { Form } from "@fontra/web-components/ui-form.js";
+import "@fontra/web-components/labeled-toggle.js"; // the heading switch and the settings
+import "@fontra/web-components/multi-select-dropdown.js"; // batch apply's glyph set
+import "@fontra/web-components/overflow-popover.js"; // the settings overflow
+import "@fontra/web-components/text-button.js";
+import { Accordion } from "@fontra/web-components/ui-accordion.js";
+import "@fontra/web-components/ui-text-input.js"; // the reference glyph
+import { METRICS_PANEL_STYLES } from "./metrics-panel-styles.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 
@@ -220,13 +224,9 @@ export default class LetterspacerPanel extends Panel {
 
   constructor(editorController) {
     super(editorController);
-    this.infoForm = new Form();
-    this.contentElement.appendChild(
-      html.div(
-        { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [this.infoForm]
-      )
-    );
+    this.card = html.div({ class: "metrics-card" });
+    this.contentElement.appendChild(this.card);
+    this._appendStyle(METRICS_PANEL_STYLES + LETTERSPACER_CARD_STYLES);
     this.fontController = this.editorController.fontController;
     this.sceneController = this.editorController.sceneController;
     this.sceneSettingsController = this.editorController.sceneSettingsController;
@@ -284,65 +284,77 @@ export default class LetterspacerPanel extends Panel {
       BULK_SUBSETS.map((subset) => [subset.key, true])
     );
     this.bulkStatus = "";
+    this.bulkOpen = true;
   }
 
   getContentElement() {
     return html.div({ class: "panel" }, []);
   }
 
-  buildHeaderControls() {
-    // Ticket 34, spec §4.4: the shared header toggle (labeled-toggle.js),
-    // bound to the same per-font enabled flag the checkbox used to write.
+  // LETTERSPACER (Figma 4108:2095): the heading with the settings overflow and
+  // the switch. Off, the switch hides everything under the heading (Figma
+  // 4108:3086).
+  _buildHeader() {
     const toggle = html.createDomElement("labeled-toggle", {
-      label: "Enabled",
-      checked: this.algorithmEnabled,
       title: "Enable letterspacer",
     });
+    toggle.checked = this.algorithmEnabled;
     toggle.addEventListener("change", () => this.setAlgorithmEnabled(toggle.checked));
 
-    return html.div({ style: "display: flex; align-items: center; gap: 0.5rem;" }, [
+    const settings = html.createDomElement("overflow-popover", {
+      "class": "metrics-heading-icon",
+      "data-tooltip": "Settings",
+      "data-tooltipposition": "left",
+    });
+    settings.setAttribute("settings-card", "");
+    settings.content = this._buildSettingsCard();
+
+    return html.div({ class: "metrics-heading-row" }, [
+      html.span({ class: "metrics-heading metrics-grow" }, [
+        translate("sidebar.letterspacer.title"),
+      ]),
+      settings,
       toggle,
     ]);
   }
 
-  // Ticket 35, spec §4.4: Area, Depth and Overshoot as three compact scrub
-  // fields on one row, in place of three separate edit-number form rows.
+  // The settings overflow (Figma 4108:3038): a ruled SETTINGS heading over the
+  // switches.
+  _buildSettingsCard() {
+    const overrideToggle = html.createDomElement("labeled-toggle", {
+      label: "override metric variables",
+      title: translate("sidebar.letterspacer.may-replace-metrics-keys.tooltip"),
+    });
+    overrideToggle.checked = this.mayReplaceMetricsKeys;
+    overrideToggle.addEventListener("change", () =>
+      this._onMayReplaceMetricsKeysChange(overrideToggle.checked)
+    );
+    return html.div({ class: "settings-card" }, [
+      html.div({ class: "settings-card-heading" }, ["settings"]),
+      html.div({ class: "settings-card-body" }, [overrideToggle]),
+    ]);
+  }
+
+  // Area and Depth scrub; Overshoot is a plain field (Figma: "not scrub").
   _buildAreaDepthOvershootRow() {
-    const makeField = (key, label) => {
+    const makeField = (key, label, scrub) => {
       const field = html.createDomElement("compact-scrub-field", {
         label,
         value: this.params[key],
-        // The old edit-number rows scrubbed and typed whole numbers only
-        // (ui-form's own scrub defaults to integer when a field doesn't say
-        // otherwise); compact-scrub-field defaults the other way, so it has
-        // to be told here.
+        // The old edit-number rows scrubbed and typed whole numbers only.
         integer: true,
       });
-      field.style.flex = "1 1 0";
+      field.scrubIcon = scrub;
       field.defaultValue = LETTERSPACER_DEFAULTS[key];
       field.addEventListener("change", (event) =>
         this._onSpacingParamChange(key, event.detail.value)
       );
       return field;
     };
-    // Ticket 36, spec §4.4: Reverse becomes a round-arrows icon at the left
-    // end of the Area field -- same reverseSpacing guard and tooltip, only
-    // the anchor element changes.
-    const reverseIcon = html.createDomElement("icon-button", {
-      src: "/tabler-icons/refresh.svg",
-      style: "width: 1.1em; height: 1.1em; flex: 0 0 auto;",
-      disabled: !this.hasCurrentMaster,
-      onclick: (event) => this.reverseSpacing(event),
-    });
-    const areaField = html.div(
-      { style: "display: flex; align-items: center; gap: 0.25em; flex: 1 1 0;" },
-      [reverseIcon, makeField("area", translate("sidebar.letterspacer.area"))]
-    );
-
-    return html.div({ style: "display: flex; gap: 0.5em;" }, [
-      areaField,
-      makeField("depth", translate("sidebar.letterspacer.depth")),
-      makeField("overshoot", translate("sidebar.letterspacer.overshoot")),
+    return html.div({ class: "metrics-row" }, [
+      makeField("area", translate("sidebar.letterspacer.area"), true),
+      makeField("depth", translate("sidebar.letterspacer.depth"), true),
+      makeField("overshoot", translate("sidebar.letterspacer.overshoot"), false),
     ]);
   }
 
@@ -359,62 +371,16 @@ export default class LetterspacerPanel extends Panel {
     this.calculatedLSB = null;
     this.calculatedRSB = null;
     this.clearVisualizationData();
-    // Update value display without rebuilding the form
+    // Update value display without rebuilding the card
     this.updateValueDisplay();
   }
 
-  // Ticket 35, spec §4.4: Apply left, Apply right and May replace metrics
-  // keys become Left, Right and Override variables checkboxes, sharing one
-  // row with Reference.
-  _buildApplyRow() {
-    const referenceInput = html.input({
-      type: "text",
-      value: this.params.referenceGlyph,
-      style: "width: 6em;",
-      onchange: (event) => this._onReferenceGlyphChange(event.target.value),
-    });
-    const referenceLabel = html.label(
-      { style: "display: flex; align-items: center; gap: 0.35em;" },
-      [html.span({}, [translate("sidebar.letterspacer.reference")]), referenceInput]
-    );
-
-    const makeCheckbox = (checked, labelKey, onchange, tooltip) => {
-      const input = html.input({
-        type: "checkbox",
-        checked,
-        onchange: (event) => onchange(event.target.checked),
-      });
-      return html.label(
-        {
-          style: "display: flex; align-items: center; gap: 0.25em;",
-          title: tooltip,
-        },
-        [input, html.span({}, [translate(labelKey)])]
-      );
-    };
-
-    return html.div(
-      { style: "display: flex; align-items: center; gap: 1em; flex-wrap: wrap;" },
-      [
-        referenceLabel,
-        makeCheckbox(
-          !!this.params.applyLSB,
-          "sidebar.letterspacer.apply-lsb",
-          (checked) => this._onApplySideChange("applyLSB", checked)
-        ),
-        makeCheckbox(
-          !!this.params.applyRSB,
-          "sidebar.letterspacer.apply-rsb",
-          (checked) => this._onApplySideChange("applyRSB", checked)
-        ),
-        makeCheckbox(
-          this.mayReplaceMetricsKeys,
-          "sidebar.letterspacer.may-replace-metrics-keys",
-          (checked) => this._onMayReplaceMetricsKeysChange(checked),
-          translate("sidebar.letterspacer.may-replace-metrics-keys.tooltip")
-        ),
-      ]
-    );
+  _buildReferenceField() {
+    const input = html.createDomElement("ui-text-input", {});
+    input.placeholder = "auto";
+    input.value = this.params.referenceGlyph;
+    input.addEventListener("change", () => this._onReferenceGlyphChange(input.value));
+    return input;
   }
 
   _onReferenceGlyphChange(value) {
@@ -430,13 +396,12 @@ export default class LetterspacerPanel extends Panel {
     this.calculatedLSB = null;
     this.calculatedRSB = null;
     this.clearVisualizationData();
-    // Update value display without rebuilding the form
+    // Update value display without rebuilding the card
     this.updateValueDisplay();
   }
 
-  // Session state only, same as the 0/1 number fields these replace --
-  // persistParam has never had a branch for these two keys (see its own
-  // code: only "referenceGlyph", "area", "depth" and "overshoot" persist).
+  // Session state only -- persistParam has never had a branch for these two
+  // keys (only "referenceGlyph", "area", "depth" and "overshoot" persist).
   _onApplySideChange(key, checked) {
     if (this._suppressPersist) {
       this.params[key] = checked;
@@ -454,83 +419,135 @@ export default class LetterspacerPanel extends Panel {
     this.mayReplaceMetricsKeys = checked;
     if (!this._suppressPersist) {
       await this.persistMayReplaceMetricsKeys(checked);
+      await this.updateMetricsKeyHeldMessage();
+      this._renderHeldMessage();
     }
   }
 
-  // Ticket 37, spec §4.5: the Current/Calculated L/R table, with Calculate
-  // and Apply stacked to its right. Both buttons keep the disabled state
-  // (hasCurrentMaster) and the click handlers they already had.
-  _buildCalculatedSection() {
-    const cellStyle = "padding: 0.1em 0.6em; text-align: right;";
-    const cell = () => html.createDomElement("td", { style: cellStyle }, [""]);
-    this._currentLCell = cell();
-    this._currentRCell = cell();
-    this._calculatedLCell = cell();
-    this._calculatedRCell = cell();
-
-    const th = (text) => html.createDomElement("th", { style: cellStyle }, [text]);
-    const rowHeader = (text) =>
-      html.createDomElement(
-        "th",
-        {
-          style: `${cellStyle} text-align: left; font-weight: normal;`,
-        },
-        [text]
-      );
-
-    const table = html.createDomElement(
-      "table",
-      { style: "border-collapse: collapse;" },
-      [
-        html.createDomElement("thead", {}, [
-          html.createDomElement("tr", {}, [th(""), th("L"), th("R")]),
-        ]),
-        html.createDomElement("tbody", {}, [
-          html.createDomElement("tr", {}, [
-            rowHeader("Current"),
-            this._currentLCell,
-            this._currentRCell,
-          ]),
-          html.createDomElement("tr", {}, [
-            rowHeader("Calculated"),
-            this._calculatedLCell,
-            this._calculatedRCell,
-          ]),
-        ]),
-      ]
-    );
-
-    const buttonStack = html.div(
-      {
-        class: "button-container",
-        style: "display: flex; flex-direction: column; gap: 0.25em;",
-      },
-      [
-        html.button(
-          {
-            onclick: () => this.calculateSpacing(),
-            class: "calculate-button",
-            disabled: !this.hasCurrentMaster,
-          },
-          ["Calculate"]
-        ),
-        html.button(
-          {
-            onclick: () => this.applySpacing(),
-            class: "apply-button",
-            disabled: !this.hasCurrentMaster,
-          },
-          ["Apply"]
-        ),
-      ]
-    );
-
-    this._updateCalculatedValueCells();
-
-    return html.div({ style: "display: flex; align-items: flex-start; gap: 0.75em;" }, [
-      table,
-      buttonStack,
+  // A checkmark (Figma 379:22544): our checkbox assets, with an optional name.
+  _checkmark(checked, label, onchange) {
+    return html.label({ class: "checkmark-row" }, [
+      html.input({
+        type: "checkbox",
+        class: "checkmark",
+        checked,
+        onchange: (event) => onchange(event.target.checked),
+      }),
+      ...(label ? [html.span({}, [label])] : []),
     ]);
+  }
+
+  // The static table (Figma 4108:2787): the side checks heading the L and R
+  // columns (which sides Apply writes), then Current and Calculated.
+  _buildCalculatedTable() {
+    const cell = (content, extraClass = "") =>
+      html.div({ class: `ls-cell ${extraClass}`.trim() }, content);
+    this._currentLCell = cell([""], "ls-value");
+    this._currentRCell = cell([""], "ls-value");
+    this._calculatedLCell = cell([""], "ls-value");
+    this._calculatedRCell = cell([""], "ls-value");
+    const sideHead = (key, side) =>
+      cell(
+        [
+          this._checkmark(!!this.params[key], "", (checked) =>
+            this._onApplySideChange(key, checked)
+          ),
+          html.span({ class: "ls-side" }, [side]),
+        ],
+        "ls-head"
+      );
+    this._updateCalculatedValueCells();
+    return html.div({ class: "ls-table" }, [
+      cell([""]),
+      sideHead("applyLSB", "L"),
+      sideHead("applyRSB", "R"),
+      cell(["Current"]),
+      this._currentLCell,
+      this._currentRCell,
+      cell(["Calculated"]),
+      this._calculatedLCell,
+      this._calculatedRCell,
+    ]);
+  }
+
+  _buildActionRow() {
+    const button = (label, onclick) =>
+      html.createDomElement("text-button", {
+        label,
+        size: "S",
+        disabled: !this.hasCurrentMaster,
+        onclick,
+      });
+    return html.div({ class: "ls-actions" }, [
+      html.div({ class: "ls-actions-group" }, [
+        button("calculate", () => this.calculateSpacing()),
+        button("apply", () => this.applySpacing()),
+      ]),
+      button("reverse", (event) => this.reverseSpacing(event)),
+    ]);
+  }
+
+  // batch apply (Figma 4108:2102): an accordion switch over the glyph set,
+  // its subsets and the apply button. It spaces the glyphset it is pointed
+  // at, not the glyph on the canvas, so it stays enabled where Calculate and
+  // Apply cannot.
+  _buildBatchApply() {
+    const glyphsetDropdown = html.createDomElement("multi-select-dropdown", {
+      label: "glyph set",
+      labelAbove: true,
+      singleChoice: true,
+      items: this.getBulkGlyphsetOptions().map((option) => ({
+        ...option,
+        checked: option.value === this.bulkGlyphsetId,
+      })),
+    });
+    glyphsetDropdown.addEventListener("change", (event) => {
+      this.bulkGlyphsetId = event.detail.checked || "";
+    });
+
+    this._bulkStatusElement = html.div({ class: "metrics-label" }, [this.bulkStatus]);
+
+    const content = html.div({ class: "ls-batch" }, [
+      glyphsetDropdown,
+      html.div(
+        { class: "checkmark-wrap" },
+        BULK_SUBSETS.map((subset) =>
+          this._checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
+            this.bulkSubsets[subset.key] = checked;
+          })
+        )
+      ),
+      html.div({}, [
+        html.createDomElement("text-button", {
+          label: "apply to set",
+          size: "S",
+          onclick: () => this.applySpacingToGlyphSet(),
+        }),
+      ]),
+      this._bulkStatusElement,
+    ]);
+
+    const accordion = new Accordion();
+    accordion.setAttribute("switch", "");
+    accordion.classList.add("ls-switch");
+    accordion.items = [
+      {
+        label: translate("sidebar.letterspacer.bulk.title"),
+        open: this.bulkOpen,
+        content,
+      },
+    ];
+    accordion.onItemOpenClose = (item, open) => {
+      this.bulkOpen = open;
+    };
+    return accordion;
+  }
+
+  _renderHeldMessage() {
+    if (this._heldMessageElement) {
+      this._heldMessageElement.textContent = this.metricsKeyHeldMessage;
+      this._heldMessageElement.hidden = !this.metricsKeyHeldMessage;
+    }
   }
 
   _updateCalculatedValueCells() {
@@ -565,7 +582,7 @@ export default class LetterspacerPanel extends Panel {
   }
 
   async update(senderInfo) {
-    if (!this.infoForm.contentElement.offsetParent) return;
+    if (!this.card.offsetParent) return;
     await this.fontController.ensureInitialized;
 
     this._suppressPersist = true;
@@ -584,111 +601,25 @@ export default class LetterspacerPanel extends Panel {
         ? await this.hasCurrentMasterForGlyph()
         : false;
 
-      const headerControls = this.buildHeaderControls();
-      const formContents = [
-        {
-          type: "header",
-          label: translate("sidebar.letterspacer.title"),
-          auxiliaryElement: headerControls,
-        },
-      ];
-
+      const children = [this._buildHeader()];
       if (this.algorithmEnabled) {
-        formContents.push(
-          {
-            type: "single-icon",
-            element: this._buildAreaDepthOvershootRow(),
-          },
-
-          { type: "divider" },
-
-          {
-            type: "single-icon",
-            element: this._buildApplyRow(),
-          },
-
-          { type: "divider" },
-
-          // Ticket 37, spec §4.5: a small L/R table (Current above
-          // Calculated), with Calculate and Apply stacked to its right,
-          // replacing the two header lines and the button container that
-          // used to sit under the section.
-          {
-            type: "single-icon",
-            element: this._buildCalculatedSection(),
-          },
-
-          ...(this.metricsKeyHeldMessage
-            ? [
-                {
-                  type: "header",
-                  label: this.metricsKeyHeldMessage,
-                  class: "metrics-key-held",
-                },
-              ]
-            : []),
-
-          { type: "divider" },
-
-          {
-            type: "header",
-            label: translate("sidebar.letterspacer.bulk.title"),
-          },
-
-          {
-            type: "select",
-            key: "bulkGlyphset",
-            label: translate("sidebar.letterspacer.bulk.glyphset"),
-            value: this.bulkGlyphsetId,
-            options: this.getBulkGlyphsetOptions(),
-          },
-
-          ...BULK_SUBSETS.map((subset) => ({
-            type: "checkbox",
-            key: `bulkSubset.${subset.key}`,
-            label: subset.label,
-            value: !!this.bulkSubsets[subset.key],
-          })),
-
-          {
-            type: "header",
-            label: this.bulkStatus,
-            class: "bulk-status",
-          },
-
-          { type: "spacer" }
+        this._heldMessageElement = html.div({ class: "metrics-label" }, []);
+        this._renderHeldMessage();
+        children.push(
+          html.div({ class: "metrics-stack ls-body" }, [
+            this._buildAreaDepthOvershootRow(),
+            this._labeled("reference glyph", this._buildReferenceField()),
+            html.div({ class: "metrics-group" }, [
+              this._buildCalculatedTable(),
+              this._buildActionRow(),
+            ]),
+            this._heldMessageElement,
+          ]),
+          this._buildBatchApply()
         );
       }
-
-      this.infoForm.setFieldDescriptions(formContents);
-      this.infoForm.onFieldChange = async (fieldItem, value) => {
-        // Bulk apply is a one-shot action, not a spacing parameter: its two
-        // controls are held on the panel and never written to the font.
-        if (fieldItem.key === "bulkGlyphset") {
-          this.bulkGlyphsetId = value || "";
-          return;
-        }
-        if (fieldItem.key.startsWith("bulkSubset.")) {
-          this.bulkSubsets[fieldItem.key.slice("bulkSubset.".length)] = !!value;
-          return;
-        }
-      };
-
-      if (this.algorithmEnabled) {
-        // The bulk action sits below the section, under its own controls. It
-        // does not need a glyph on the canvas: it spaces the glyphset it is
-        // pointed at, so it stays enabled where Calculate and Apply cannot.
-        const bulkButtonContainer = html.div({ class: "button-container" }, [
-          html.button(
-            {
-              onclick: () => this.applySpacingToGlyphSet(),
-              class: "apply-button",
-            },
-            [translate("sidebar.letterspacer.bulk.apply")]
-          ),
-        ]);
-        this.infoForm.contentElement.appendChild(bulkButtonContainer);
-      }
+      this.card.classList.toggle("ls-card--off", !this.algorithmEnabled);
+      this.card.replaceChildren(...children);
     } finally {
       this._suppressPersist = false;
     }
@@ -696,6 +627,14 @@ export default class LetterspacerPanel extends Panel {
     if (this.algorithmEnabled) {
       this.updateValueDisplay();
     }
+  }
+
+  // A ui/label/XS caption over its control, 4px apart.
+  _labeled(label, control) {
+    return html.div({ class: "metrics-group" }, [
+      html.span({ class: "metrics-label" }, [label]),
+      control,
+    ]);
   }
 
   updateValueDisplay() {
@@ -1043,9 +982,8 @@ export default class LetterspacerPanel extends Panel {
   }
 
   updateBulkStatus() {
-    const label = this.infoForm.contentElement.querySelector(".bulk-status");
-    if (label) {
-      label.textContent = this.bulkStatus;
+    if (this._bulkStatusElement) {
+      this._bulkStatusElement.textContent = this.bulkStatus;
     }
   }
 
@@ -1837,7 +1775,7 @@ export default class LetterspacerPanel extends Panel {
   }
 
   async refreshPersistedParams() {
-    if (!this.infoForm.contentElement.offsetParent) {
+    if (!this.card.offsetParent) {
       return;
     }
     await this.update();
@@ -2075,3 +2013,162 @@ export default class LetterspacerPanel extends Panel {
 }
 
 customElements.define("panel-letterspacer", LetterspacerPanel);
+
+// The letterspacer card's own parts: the settings overflow (Figma 4108:3038),
+// the checkmarks (Figma 379:22544, our checkbox assets), the static table
+// (Figma 4108:2787) and the batch apply switch (Figma 4108:2102).
+const LETTERSPACER_CARD_STYLES = `
+  /* Hosted in the metrics panel's column: as tall as its card. */
+  .panel {
+    height: auto;
+  }
+
+  .metrics-card {
+    gap: 10px;
+  }
+
+  /* Off, the card is the heading alone, 12px all round. */
+  .metrics-card.ls-card--off {
+    padding-bottom: 12px;
+  }
+
+  .metrics-grow {
+    flex: 1 1 auto;
+  }
+
+  .ls-body {
+    padding-bottom: 4px;
+  }
+
+  .settings-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 180px;
+  }
+
+  /* ui/heading/h4 */
+  .settings-card-heading {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line-base-basic-1);
+    font: var(--ui-text-heading-h4);
+    letter-spacing: var(--ui-tracking);
+    text-transform: uppercase;
+    color: var(--text-base-basic-3);
+  }
+
+  .settings-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 12px 16px;
+  }
+
+  .ls-table {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid var(--line-base-basic-1);
+    border-radius: 6px;
+  }
+
+  /* ui/label/S; every row but the last ruled under. */
+  .ls-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    overflow: hidden;
+    white-space: nowrap;
+    font: var(--ui-text-label-s);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+    color: var(--text-base-basic-3);
+  }
+
+  .ls-cell:nth-child(-n + 6) {
+    border-bottom: 1px solid var(--line-base-basic-1);
+  }
+
+  .ls-value {
+    color: var(--text-base-basic-2);
+  }
+
+  /* ui/heading/h4 */
+  .ls-side {
+    font: var(--ui-text-heading-h4);
+    letter-spacing: var(--ui-tracking);
+    text-transform: uppercase;
+  }
+
+  .ls-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
+
+  .ls-actions-group {
+    display: flex;
+    gap: 4px;
+  }
+
+  /* The switch runs to the card's edges. */
+  .ls-switch {
+    margin: 0 -8px;
+  }
+
+  .ls-batch {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .checkmark-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    padding: 8px 0 10px;
+  }
+
+  .checkmark-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    font: var(--ui-text-label-s);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+    color: var(--text-base-basic-2);
+    white-space: nowrap;
+  }
+
+  .checkmark {
+    appearance: none;
+    box-sizing: border-box;
+    flex: none;
+    margin: 0;
+    width: 12px;
+    height: 12px;
+    border: 1px solid rgba(21, 21, 21, 0.05);
+    border-bottom: none;
+    border-radius: 4px;
+    background: #e9e9e9 center / contain no-repeat;
+    cursor: pointer;
+  }
+
+  .checkmark-row:hover .checkmark {
+    background-color: #d9d9d9;
+  }
+
+  .checkmark:checked,
+  .checkmark-row:hover .checkmark:checked {
+    border: none;
+    background-color: transparent;
+    background-image: url("/images/checkbox-on-rest.svg");
+  }
+
+  .checkmark-row:hover .checkmark:checked {
+    background-image: url("/images/checkbox-on-hover.svg");
+  }
+`;

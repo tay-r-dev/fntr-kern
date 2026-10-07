@@ -34,10 +34,16 @@ import {
   throttleCalls,
 } from "@fontra/core/utils.ts";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
+import "@fontra/web-components/compact-scrub-field.js"; // the plain metrics fields
+import "@fontra/web-components/icon-button.js";
+import "@fontra/web-components/labeled-toggle.js";
+import "@fontra/web-components/text-button.js";
+import "@fontra/web-components/ui-text-input.js";
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import LetterspacerPanel from "./panel-letterspacer.js";
 import { editSkeleton } from "./skeleton-editing.js";
+import { METRICS_PANEL_STYLES } from "./metrics-panel-styles.js";
 import Panel from "./panel.js";
 
 export default class SelectionInfoPanel extends Panel {
@@ -52,6 +58,7 @@ export default class SelectionInfoPanel extends Panel {
     this._metricsRowHasKeys = false;
     this._metricsUnlinkConfirm = null;
     this._metricsUnlinkConfirmGlyph = null;
+    this.getBehaviorToggle();
     this.letterspacerPanel = new LetterspacerPanel(this.editorController);
     if (this.letterspacerHost) {
       this.letterspacerHost.appendChild(this.letterspacerPanel);
@@ -96,24 +103,23 @@ export default class SelectionInfoPanel extends Panel {
     );
   }
 
+  // Figma 4108:2089: the SPACING, LETTERSPACER and KERNING cards on the grey
+  // panel. What a selection adds (dimensions, components, a background image)
+  // stays in the form, on a card of its own below them.
   getContentElement() {
     this.infoForm = new Form();
-    this.letterspacerHost = html.div({});
-    return html.div(
-      {
-        class: "panel",
-      },
-      [
-        html.div(
-          { class: "panel-section panel-section--flex panel-section--scrollable" },
-          [this.infoForm]
-        ),
-        html.div(
-          { class: "panel-section panel-section--checkbox" },
-          this.getBehaviorElements()
-        ),
-      ]
+    this.letterspacerHost = html.div({ class: "metrics-host", hidden: true });
+    this.spacingCard = html.div({ class: "metrics-card", hidden: true });
+    this.kerningCard = html.div({ class: "metrics-card", hidden: true });
+    this.selectionCard = html.div({ class: "metrics-card metrics-card--form" }, [
+      this.infoForm,
+    ]);
+    this.cardsElement = html.div(
+      { class: "panel-section panel-section--flex metrics-cards" },
+      [this.spacingCard, this.letterspacerHost, this.kerningCard, this.selectionCard]
     );
+    this._appendStyle(METRICS_PANEL_STYLES);
+    return html.div({ class: "panel" }, [this.cardsElement]);
   }
 
   async toggle(on, focus) {
@@ -125,24 +131,23 @@ export default class SelectionInfoPanel extends Panel {
     }
   }
 
-  getBehaviorElements() {
-    const storageKey = "fontra.selection-info.absolute-value-changes";
-    this.multiEditChangesAreAbsolute = localStorage.getItem(storageKey) === "true";
-    return [
-      html.input({
-        type: "checkbox",
-        id: "behavior-checkbox",
-        checked: this.multiEditChangesAreAbsolute,
-        onchange: (event) => {
-          this.multiEditChangesAreAbsolute = event.target.checked;
-          localStorage.setItem(storageKey, event.target.checked);
-        },
-      }),
-      html.label(
-        { for: "behavior-checkbox" },
-        translate("sidebar.selection-info.multi-source")
-      ),
-    ];
+  // Not in the design, kept so a multi-source edit still has its switch: the
+  // last row of the SPACING card, the fields it governs.
+  getBehaviorToggle() {
+    if (!this._behaviorToggle) {
+      const storageKey = "fontra.selection-info.absolute-value-changes";
+      this.multiEditChangesAreAbsolute = localStorage.getItem(storageKey) === "true";
+      const toggle = html.createDomElement("labeled-toggle", {
+        label: translate("sidebar.selection-info.multi-source"),
+      });
+      toggle.checked = this.multiEditChangesAreAbsolute;
+      toggle.addEventListener("change", () => {
+        this.multiEditChangesAreAbsolute = toggle.checked;
+        localStorage.setItem(storageKey, toggle.checked);
+      });
+      this._behaviorToggle = toggle;
+    }
+    return this._behaviorToggle;
   }
 
   async update(senderInfo) {
@@ -157,8 +162,8 @@ export default class SelectionInfoPanel extends Panel {
       await this.updateDimensions();
       return;
     }
-    if (!this.infoForm.contentElement.offsetParent) {
-      // If the info form is not visible, do nothing
+    if (!this.cardsElement.offsetParent) {
+      // If the panel is not visible, do nothing
       return;
     }
 
@@ -223,250 +228,24 @@ export default class SelectionInfoPanel extends Panel {
     const kerningController = await this.fontController.getKerningController("kern");
 
     const formContents = [];
-    // Whether this rebuild puts the two hosted panels' elements back in the
-    // form. They are in the DOM only while it does.
-    let hostedPanelsInForm = false;
-    if (glyphName) {
-      formContents.push({
-        type: "header",
-        label: translate("sidebar.selection-info.title"),
-        auxiliaryElement: html.createDomElement("icon-button", {
-          "id": "glyphLocking",
-          "style": `width: 1.3em; height: 1.3em;`,
-          "src":
-            glyphLocked || this.fontController.readOnly
-              ? "/tabler-icons/lock.svg"
-              : "/tabler-icons/lock-open-2.svg",
-          "onclick": (event) => this._toggleGlyphLock(varGlyphController.glyph),
-          "data-tooltip": translate(
-            this.fontController.readOnly
-              ? "sidebar.selection-info.glyph-locking.tooltip.read-only"
-              : glyphLocked
-                ? "sidebar.selection-info.glyph-locking.tooltip.unlock"
-                : "sidebar.selection-info.glyph-locking.tooltip.lock"
-          ),
-          "data-tooltipposition": "left",
-        }),
+    const showsGlyph = !!(glyphName && instance);
+    const letterspacerWasHidden = this.letterspacerHost.hidden;
+    this.spacingCard.hidden = !showsGlyph;
+    this.kerningCard.hidden = !showsGlyph;
+    this.letterspacerHost.hidden = !showsGlyph;
+    this._metricFields = {};
+    if (showsGlyph) {
+      this._buildSpacingCard({
+        glyphName,
+        codePointsStr,
+        baseCodePointsStr,
+        instance,
+        glyphController,
+        varGlyphController,
+        metricsKeyDisplay,
+        glyphLocked,
       });
-      formContents.push({
-        key: "glyphName",
-        type: "text",
-        label: translate("sidebar.selection-info.glyph-name"),
-        value: glyphName,
-      });
-      formContents.push({
-        key: "unicodes",
-        type: "text",
-        label: translate("sidebar.selection-info.unicode"),
-        value: codePointsStr,
-      });
-      if (baseCodePointsStr) {
-        formContents.push({
-          key: "baseUnicodes",
-          type: "text",
-          label: translate("sidebar.selection-info.base-unicode"),
-          value: baseCodePointsStr,
-        });
-      }
-      if (instance) {
-        formContents.push({
-          type: "edit-number",
-          key: '["xAdvance"]',
-          label: translate("sidebar.selection-info.advance-width"),
-          value: instance.xAdvance,
-          numDigits: 1,
-          evaluateExpression: async (expression) =>
-            await this._evaluateMetricsExpression(
-              expression,
-              varGlyphController,
-              "xAdvance"
-            ),
-          minValue: 0,
-        });
-        formContents.push({
-          type: "edit-number-x-y",
-          key: '["sidebearings"]',
-          label: translate("sidebar.selection-info.sidebearings"),
-          fieldX: {
-            "key": '["leftMargin"]',
-            "value": metricsKeyDisplay.left
-              ? formatMetricsKeyDisplay(metricsKeyDisplay.left.expression)
-              : glyphController.leftMargin,
-            "displayValue": metricsKeyDisplay.left
-              ? formatResolvedMetricsValue(metricsKeyDisplay.left)
-              : undefined,
-            "displayValuePending": metricsKeyDisplay.left
-              ? formatPendingMetricsValue(metricsKeyDisplay.left)
-              : undefined,
-            "stale": !!metricsKeyDisplay.left?.stale,
-            "data-tooltip": metricsKeyDisplay.left?.stale
-              ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
-              : undefined,
-            "numDigits": 1,
-            "disabled": glyphController.leftMargin == undefined,
-            "evaluateExpression": async (input) =>
-              await this._evaluateSidebearingInput(input, varGlyphController, "left"),
-            "recordExtraChanges": (glyph, layerInfo, value) =>
-              this._recordPendingMetricsKey(glyph, layerInfo, "left", value),
-            "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
-              return layerGlyphController.leftMargin;
-            },
-            "setValue": (layerGlyph, layerGlyphController, fieldItem, value) => {
-              setLeftMarginOnLayer(layerGlyph, layerGlyphController, value);
-            },
-          },
-          fieldY: {
-            "key": '["rightMargin"]',
-            "value": metricsKeyDisplay.right
-              ? formatMetricsKeyDisplay(metricsKeyDisplay.right.expression)
-              : glyphController.rightMargin,
-            "displayValue": metricsKeyDisplay.right
-              ? formatResolvedMetricsValue(metricsKeyDisplay.right)
-              : undefined,
-            "displayValuePending": metricsKeyDisplay.right
-              ? formatPendingMetricsValue(metricsKeyDisplay.right)
-              : undefined,
-            "stale": !!metricsKeyDisplay.right?.stale,
-            "data-tooltip": metricsKeyDisplay.right?.stale
-              ? translate("sidebar.selection-info.metrics-key.stale.tooltip")
-              : undefined,
-            "numDigits": 1,
-            "evaluateExpression": async (input) =>
-              await this._evaluateSidebearingInput(input, varGlyphController, "right"),
-            "recordExtraChanges": (glyph, layerInfo, value) =>
-              this._recordPendingMetricsKey(glyph, layerInfo, "right", value),
-            "disabled": glyphController.rightMargin == undefined,
-            "getValue": (layerGlyph, layerGlyphController, fieldItem) => {
-              return layerGlyphController.rightMargin;
-            },
-            "setValue": (layerGlyph, layerGlyphController, fieldItem, value) => {
-              setRightMarginOnLayer(layerGlyph, layerGlyphController, value);
-            },
-          },
-        });
-        // Every icon row in this app wraps its buttons in a flex box. An
-        // icon-button is inline by default, and an inline box ignores width and
-        // height, so a bare one in the form's full-width div draws at whatever
-        // size its artwork happens to be.
-        const metricsKeyControls = [];
-        if (this._glyphHasMetricsKeys(varGlyphController)) {
-          metricsKeyControls.push(
-            html.createDomElement("icon-button", {
-              "src": "/tabler-icons/refresh.svg",
-              "style": "width: 1.3em; height: 1.3em; flex: 0 0 auto;",
-              "disabled": glyphLocked || this.fontController.readOnly,
-              "data-tooltip": translate(
-                "sidebar.selection-info.metrics-key.update.tooltip"
-              ),
-              "data-tooltipposition": "left",
-              "onclick": async () => {
-                await this._updateMetricsForGlyph(glyphName, varGlyphController);
-                await this.update();
-              },
-            })
-          );
-        }
-        for (const side of ["left", "right"]) {
-          if (!metricsKeyDisplay[side]) {
-            continue;
-          }
-          const isConfirming = this._metricsUnlinkConfirm === side;
-          const isOverridden = metricsKeyDisplay[side].level === "source";
-          metricsKeyControls.push(
-            html.span({ style: "opacity: 0.5;" }, [side === "left" ? "L" : "R"]),
-            html.createDomElement("icon-button", {
-              "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
-              "style": "width: 1.1em; height: 1.1em; flex: 0 0 auto;",
-              "disabled": glyphLocked || this.fontController.readOnly,
-              "data-tooltip": translate(
-                isConfirming
-                  ? "sidebar.selection-info.metrics-key.unlink.confirm"
-                  : "sidebar.selection-info.metrics-key.unlink.tooltip"
-              ),
-              "data-tooltipposition": "left",
-              "onclick": async () => {
-                if (this._metricsUnlinkConfirm !== side) {
-                  this._metricsUnlinkConfirm = side;
-                  await this.update();
-                  return;
-                }
-                this._metricsUnlinkConfirm = null;
-                await this._unlinkMetricsKey(glyphName, varGlyphController, side);
-                await this.update();
-              },
-            }),
-            html.createDomElement("icon-button", {
-              "src": isOverridden
-                ? "/tabler-icons/link.svg"
-                : "/tabler-icons/link-plus.svg",
-              "style": `width: 1.1em; height: 1.1em; flex: 0 0 auto; opacity: ${
-                isOverridden ? "1" : "0.6"
-              };`,
-              "disabled": glyphLocked || this.fontController.readOnly,
-              "data-tooltip": translate(
-                isOverridden
-                  ? "sidebar.selection-info.metrics-key.reset-to-shared.tooltip"
-                  : "sidebar.selection-info.metrics-key.override.tooltip"
-              ),
-              "data-tooltipposition": "left",
-              "onclick": async () => {
-                await this._toggleMetricsSourceOverride(
-                  glyphName,
-                  varGlyphController,
-                  side
-                );
-                await this.update();
-              },
-            })
-          );
-        }
-        if (metricsKeyControls.length) {
-          formContents.push({
-            type: "single-icon",
-            element: html.div(
-              {
-                style:
-                  "display: flex; gap: 0.4rem; align-items: center;" +
-                  " justify-content: flex-end; font-size: 0.9em;",
-              },
-              metricsKeyControls
-            ),
-          });
-        }
-        formContents.push({ type: "single-icon", element: this.letterspacerHost });
-        hostedPanelsInForm = true;
-        formContents.push({
-          type: "header",
-          label: translate("sidebar.selection-info.kerning-heading"),
-        });
-        formContents.push({
-          type: "edit-text-double",
-          key: '["kern-l-r"]',
-          label: translate("sidebar.selection-info.kern-group-l-r"),
-          auxiliaryElement: html.button(
-            {
-              style:
-                "margin-left: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;",
-              onclick: (event) => this._goToKerningView(glyphName),
-            },
-            [translate("sidebar.selection-info.go-to-kerning-view")]
-          ),
-          field1: {
-            key: '["kernLeft"]',
-            value: kerningController.rightPairGroupMapping[glyphName] || "",
-            setValuePlain: (fieldItem, value) => {
-              kerningController.editGroupSide2(glyphName, value.trim());
-            },
-          },
-          field2: {
-            key: '["kernRight"]',
-            value: kerningController.leftPairGroupMapping[glyphName] || "",
-            setValuePlain: (fieldItem, value) => {
-              kerningController.editGroupSide1(glyphName, value.trim());
-            },
-          },
-        });
-      }
+      this._buildKerningCard(glyphName, kerningController);
     }
 
     const { pointIndices, componentIndices, backgroundImageIndices } =
@@ -687,21 +466,16 @@ export default class SelectionInfoPanel extends Panel {
       }
     }
 
-    // The hosted panel draws nothing while its host is out of the DOM, and this
-    // rebuild is what puts it back. Its own toggle runs once, when this panel is
-    // switched on, which on a fresh load is before this form has ever been built
-    // — so it came up blank and stayed blank until the panel was switched off
-    // and on again.
-    //
-    // Only on the rebuild that re-attaches the host, not on every one: this
-    // form is rebuilt on every selection change, and redrawing the panel there
-    // would replace a control the user is still holding.
-    const hostsWereDetached = hostedPanelsInForm && !this.letterspacerHost.offsetParent;
-
+    // A card starts at its own edge: a divider that opened the form's run of
+    // sections in the old one-column layout has nothing above it here.
+    if (formContents[0]?.type === "divider") {
+      formContents.shift();
+    }
+    this.selectionCard.hidden = showsGlyph && !formContents.length;
     if (!formContents.length) {
-      this.infoForm.setFieldDescriptions([
-        { type: "text", value: translate("selection.none") },
-      ]);
+      this.infoForm.setFieldDescriptions(
+        showsGlyph ? [] : [{ type: "text", value: translate("selection.none") }]
+      );
     } else {
       this.infoForm.setFieldDescriptions(formContents);
       if (glyphController) {
@@ -709,9 +483,283 @@ export default class SelectionInfoPanel extends Panel {
       }
     }
 
-    if (hostsWereDetached) {
+    // The hosted panel draws nothing while its host is hidden, so the rebuild
+    // that shows the host again redraws it -- only that one: this panel is
+    // rebuilt on every selection change, and redrawing the letterspacer there
+    // would replace a control the user is still holding.
+    if (showsGlyph && letterspacerWasHidden) {
       await this.letterspacerPanel?.update();
     }
+  }
+
+  // SPACING (Figma 4108:2200): the heading, the glyph's name and unicode on a
+  // ruled line, then advance width and the two sidebearings as plain fields.
+  // A sidebearing whose metrics key would give another value shows the
+  // update icon in its field's end slot; a current one shows nothing there.
+  _buildSpacingCard({
+    glyphName,
+    codePointsStr,
+    baseCodePointsStr,
+    instance,
+    glyphController,
+    varGlyphController,
+    metricsKeyDisplay,
+    glyphLocked,
+  }) {
+    const editLocked = glyphLocked || this.fontController.readOnly;
+
+    this._lockButton = html.createDomElement("icon-button", {
+      "class": "metrics-heading-icon",
+      "src": editLocked ? "/tabler-icons/lock.svg" : "/tabler-icons/lock-open-2.svg",
+      "onclick": () => this._toggleGlyphLock(varGlyphController.glyph),
+      "data-tooltip": translate(
+        this.fontController.readOnly
+          ? "sidebar.selection-info.glyph-locking.tooltip.read-only"
+          : glyphLocked
+            ? "sidebar.selection-info.glyph-locking.tooltip.unlock"
+            : "sidebar.selection-info.glyph-locking.tooltip.lock"
+      ),
+      "data-tooltipposition": "left",
+    });
+
+    const infoPart = (label, value) =>
+      html.span({ class: "metrics-info-part" }, [
+        html.span({}, [label]),
+        html.span({}, [value]),
+      ]);
+    const infoParts = [
+      infoPart(translate("sidebar.selection-info.glyph-name"), glyphName),
+    ];
+    if (codePointsStr) {
+      infoParts.push(
+        infoPart(translate("sidebar.selection-info.unicode"), codePointsStr)
+      );
+    }
+    if (baseCodePointsStr) {
+      infoParts.push(
+        infoPart(translate("sidebar.selection-info.base-unicode"), baseCodePointsStr)
+      );
+    }
+    const infoLine = html.div(
+      { class: "metrics-info" },
+      infoParts.flatMap((part, i) =>
+        i ? [html.span({ class: "metrics-info-dot" }), part] : [part]
+      )
+    );
+
+    const advanceField = this._makeMetricField({
+      type: "edit-number",
+      key: '["xAdvance"]',
+      value: instance.xAdvance,
+      numDigits: 1,
+      evaluateExpression: async (expression) =>
+        await this._evaluateMetricsExpression(
+          expression,
+          varGlyphController,
+          "xAdvance"
+        ),
+      minValue: 0,
+    });
+
+    const sideFieldItem = (side) => {
+      const display = metricsKeyDisplay[side];
+      const marginKey = side === "left" ? "leftMargin" : "rightMargin";
+      const margin = glyphController[marginKey];
+      return {
+        key: JSON.stringify([marginKey]),
+        value: display ? formatMetricsKeyDisplay(display.expression) : margin,
+        numDigits: 1,
+        disabled: margin == undefined,
+        evaluateExpression: async (input) =>
+          await this._evaluateSidebearingInput(input, varGlyphController, side),
+        recordExtraChanges: (glyph, layerInfo, value) =>
+          this._recordPendingMetricsKey(glyph, layerInfo, side, value),
+        getValue: (layerGlyph, layerGlyphController) =>
+          layerGlyphController[marginKey],
+        setValue: (layerGlyph, layerGlyphController, fieldItem, value) =>
+          side === "left"
+            ? setLeftMarginOnLayer(layerGlyph, layerGlyphController, value)
+            : setRightMarginOnLayer(layerGlyph, layerGlyphController, value),
+      };
+    };
+    const sideField = (side) => {
+      const field = this._makeMetricField(
+        sideFieldItem(side),
+        side === "left" ? "L" : "R"
+      );
+      if (metricsKeyDisplay[side]?.stale) {
+        field.appendChild(
+          html.createDomElement("icon-button", {
+            "slot": "end",
+            "class": "metrics-update",
+            "src": "/tabler-icons/refresh.svg",
+            "disabled": editLocked,
+            "data-tooltip": translate(
+              "sidebar.selection-info.metrics-key.stale.tooltip"
+            ),
+            "data-tooltipposition": "left",
+            "onclick": async () => {
+              await this._updateMetricsForGlyph(glyphName, varGlyphController);
+              await this.update();
+            },
+          })
+        );
+      }
+      return field;
+    };
+
+    const rows = [
+      html.div({ class: "metrics-heading-row" }, [
+        html.span({ class: "metrics-heading" }, ["spacing"]),
+        this._lockButton,
+      ]),
+      infoLine,
+      html.div({ class: "metrics-stack" }, [
+        this._labeled(translate("sidebar.selection-info.advance-width"), advanceField),
+        this._labeled(
+          translate("sidebar.selection-info.sidebearings"),
+          html.div({ class: "metrics-row" }, [sideField("left"), sideField("right")])
+        ),
+      ]),
+    ];
+
+    // Unlink and override for a keyed side. Not in the design; kept so a key
+    // can still be cut or detached for this source.
+    const keyControls = [];
+    for (const side of ["left", "right"]) {
+      if (!metricsKeyDisplay[side]) {
+        continue;
+      }
+      const isConfirming = this._metricsUnlinkConfirm === side;
+      const isOverridden = metricsKeyDisplay[side].level === "source";
+      keyControls.push(
+        html.span({ class: "metrics-label" }, [side === "left" ? "L" : "R"]),
+        html.createDomElement("icon-button", {
+          "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
+          "disabled": editLocked,
+          "data-tooltip": translate(
+            isConfirming
+              ? "sidebar.selection-info.metrics-key.unlink.confirm"
+              : "sidebar.selection-info.metrics-key.unlink.tooltip"
+          ),
+          "data-tooltipposition": "left",
+          "onclick": async () => {
+            if (this._metricsUnlinkConfirm !== side) {
+              this._metricsUnlinkConfirm = side;
+              await this.update();
+              return;
+            }
+            this._metricsUnlinkConfirm = null;
+            await this._unlinkMetricsKey(glyphName, varGlyphController, side);
+            await this.update();
+          },
+        }),
+        html.createDomElement("icon-button", {
+          "src": isOverridden ? "/tabler-icons/link.svg" : "/tabler-icons/link-plus.svg",
+          "on": isOverridden,
+          "disabled": editLocked,
+          "data-tooltip": translate(
+            isOverridden
+              ? "sidebar.selection-info.metrics-key.reset-to-shared.tooltip"
+              : "sidebar.selection-info.metrics-key.override.tooltip"
+          ),
+          "data-tooltipposition": "left",
+          "onclick": async () => {
+            await this._toggleMetricsSourceOverride(glyphName, varGlyphController, side);
+            await this.update();
+          },
+        })
+      );
+    }
+    if (keyControls.length) {
+      rows.push(html.div({ class: "metrics-key-controls" }, keyControls));
+    }
+    rows.push(this.getBehaviorToggle());
+
+    this.spacingCard.replaceChildren(...rows);
+  }
+
+  // KERNING (Figma 4108:2941): the heading with the way to the kerning view,
+  // and the glyph's two kern groups.
+  _buildKerningCard(glyphName, kerningController) {
+    const groupField = (placeholder, value, setGroup) => {
+      const field = html.createDomElement("ui-text-input", {});
+      field.placeholder = placeholder;
+      field.value = value || "";
+      field.addEventListener("change", () => setGroup(field.value.trim()));
+      return field;
+    };
+    this.kerningCard.replaceChildren(
+      html.div({ class: "metrics-heading-row" }, [
+        html.span({ class: "metrics-heading" }, [
+          translate("sidebar.selection-info.kerning-heading"),
+        ]),
+        html.createDomElement("text-button", {
+          label: "to kerning view →",
+          size: "S",
+          onclick: () => this._goToKerningView(glyphName),
+        }),
+      ]),
+      this._labeled(
+        "kern group",
+        html.div({ class: "metrics-row" }, [
+          groupField("L", kerningController.rightPairGroupMapping[glyphName], (v) =>
+            kerningController.editGroupSide2(glyphName, v)
+          ),
+          groupField("R", kerningController.leftPairGroupMapping[glyphName], (v) =>
+            kerningController.editGroupSide1(glyphName, v)
+          ),
+        ])
+      )
+    );
+  }
+
+  // A ui/label/XS caption over its control, 4px apart.
+  _labeled(label, control) {
+    return html.div({ class: "metrics-group" }, [
+      html.span({ class: "metrics-label" }, [label]),
+      control,
+    ]);
+  }
+
+  // input/field/basic: the plain field (no scrub), as the transformation
+  // panel's origin X and Y. It takes a metrics key as typed text, which the
+  // field item's own evaluateExpression resolves.
+  _makeMetricField(fieldItem, label = "") {
+    const field = html.createDomElement("compact-scrub-field", { label });
+    field.scrubIcon = false;
+    field.text = true;
+    field.value =
+      typeof fieldItem.value === "number"
+        ? round(fieldItem.value, fieldItem.numDigits)
+        : fieldItem.value;
+    field.disabled = !!fieldItem.disabled;
+    field.addEventListener("change", (event) =>
+      this._commitMetricField(fieldItem, event.detail.value)
+    );
+    this._metricFields[fieldItem.key] = field;
+    return field;
+  }
+
+  async _commitMetricField(fieldItem, typed) {
+    let value = typed;
+    if (typeof typed === "string") {
+      value = await fieldItem.evaluateExpression(typed);
+    }
+    const number = value != null && typeof value === "object" ? value.value : value;
+    const rejected =
+      value?.error ||
+      (typeof number === "number" &&
+        (!Number.isFinite(number) ||
+          (fieldItem.minValue != undefined && number < fieldItem.minValue)));
+    if (rejected) {
+      // Put back what the glyph has.
+      await this.update();
+      return;
+    }
+    const glyphName = this.sceneController.sceneSettings.selectedGlyphName;
+    const varGlyph = await this.fontController.getGlyph(glyphName);
+    await this._onFieldChangeForGlyph(glyphName, varGlyph, fieldItem, value);
   }
 
   showComponentAxesOptionsMenu(event) {
@@ -775,7 +823,7 @@ export default class SelectionInfoPanel extends Panel {
       }
     }
 
-    const iconElement = this.infoForm.shadowRoot.querySelectorAll("#glyphLocking")[0];
+    const iconElement = this._lockButton;
     iconElement.src = varGlyph.customData["fontra.glyph.locked"]
       ? "/tabler-icons/lock-open-2.svg"
       : "/tabler-icons/lock.svg";
@@ -1104,8 +1152,10 @@ export default class SelectionInfoPanel extends Panel {
     );
 
     const keyToUpdata = keyMap[changedKey];
-    const fieldKey = JSON.stringify([keyToUpdata]);
-    this.infoForm.setValue(fieldKey, glyphController[keyToUpdata]);
+    const field = this._metricFields?.[JSON.stringify([keyToUpdata])];
+    if (field) {
+      field.value = round(glyphController[keyToUpdata], 1);
+    }
   }
 
   async _evaluateMetricsExpression(expression, varGlyphController, metricProperty) {
@@ -1816,3 +1866,4 @@ function ensureFiniteNumber(value, fallback = 0) {
 }
 
 customElements.define("panel-selection-info", SelectionInfoPanel);
+
