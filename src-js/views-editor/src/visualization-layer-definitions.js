@@ -105,7 +105,7 @@ registerVisualizationLayerDefinition({
   zIndex: 0,
   dontTranslate: true,
   screenParameters: { strokeWidth: 2 },
-  colors: { strokeColor: "#FFF" },
+  colors: { strokeColor: "#F5F5F5" }, // --line-base-basic-0
   colorsDarkMode: { strokeColor: "#3C3C3C" },
   draw: ({ context, positionedGlyph, parameters, model, controller }) => {
     if (controller.magnification < 4) {
