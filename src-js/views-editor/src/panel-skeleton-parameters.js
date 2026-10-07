@@ -35,12 +35,11 @@ import {
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
-import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 46
+import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 46
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
 import "@fontra/web-components/latch-button.js"; // for the Rib group's latch buttons
 import "@fontra/web-components/overflow-popover.js"; // for the Rib card
-import "@fontra/web-components/scrub-slider.js"; // for <scrub-slider>
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
@@ -1092,16 +1091,16 @@ export default class SkeletonParametersPanel {
   // `defaultValue`, in the field's own units, is what a double-click on the
   // scrub area puts back. Leave it out where a parameter has no default.
   // `label`, where given, is the text in the box itself, for a field whose row
-  // already carries the name. `slider` draws the field as a scrub-slider: the
-  // same control with a fill showing the value's place in its range.
+  // already carries the name. `slider` draws the field as a slider: the same
+  // control with a fill showing the value's place in its range.
   _makeCompactField(key, labelKey, { scrub, commit, defaultValue, label, slider }) {
-    const field = html.createDomElement(
-      slider ? "scrub-slider" : "compact-scrub-field",
-      {
-        label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
-        integer: true,
-      }
-    );
+    const field = html.createDomElement("input-field-large", {
+      label: label ?? translate(`sidebar.skeleton-parameters.${labelKey}`),
+      integer: true,
+    });
+    if (slider) {
+      field.type = "slider";
+    }
     field.defaultValue = defaultValue;
     field.style.flex = "1 1 0";
     field.style.minWidth = "0";

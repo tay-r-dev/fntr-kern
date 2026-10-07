@@ -31,7 +31,7 @@ import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, tick
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
-import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 74
+import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 74
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
 import { dialog, dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
@@ -206,7 +206,7 @@ export default class SkeletonSettingsPanel extends Panel {
     // Ticket 78: the default width of the selected contours, under Delete
     // collapsing points. It is per contour, so it reads and writes the contours
     // the selection touches, and greys with none.
-    this.contourWidthField = html.createDomElement("compact-scrub-field", {
+    this.contourWidthField = html.createDomElement("input-field-large", {
       label: translate("sidebar.skeleton-parameters.contour-default-width"),
       integer: true,
     });
@@ -1048,7 +1048,7 @@ export default class SkeletonSettingsPanel extends Panel {
       onValue,
       { toDisplay = Math.round, fromDisplay = (v) => v } = {}
     ) => {
-      const element = html.createDomElement("compact-scrub-field", {
+      const element = html.createDomElement("input-field-large", {
         label: label(labelKey),
         integer: true,
       });

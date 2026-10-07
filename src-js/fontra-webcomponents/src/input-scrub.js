@@ -1,10 +1,10 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
-import "./compact-scrub-field.js";
+import "./input-field-large.js";
 import "./link-button.js";
 
 // The paired scrub input from the Figma design (_external/component-code/
-// scrub/scrub input.txt): two compact-scrub-fields with a ui-link-button
+// scrub/scrub input.txt): two input-field-larges with a ui-link-button
 // between them. With the link on, editing the left side mirrors into the
 // right, and the right field is disabled (per the design's screenshot); with
 // the link "n/a" there is no button at all and the two fields stand alone.
@@ -42,7 +42,7 @@ export class InputScrub extends UnlitElement {
       gap: var(--link-gap);
     }
 
-    compact-scrub-field {
+    input-field-large {
       flex: 1 1 auto;
       min-width: 0;
     }
@@ -82,7 +82,7 @@ export class InputScrub extends UnlitElement {
     this._syncFields();
   }
 
-  // The inner compact-scrub-fields, for a consumer that needs a plain field's
+  // The inner input-field-larges, for a consumer that needs a plain field's
   // API (writing .value on an undo restore, say). Events still come from the
   // composite.
   get leftField() {
@@ -176,7 +176,7 @@ export class InputScrub extends UnlitElement {
   }
 
   // One icon for both fields (the row's icon, decorative only, per
-  // compact-scrub-field.js).
+  // input-field-large.js).
   get icon() {
     return this._icon;
   }
@@ -266,7 +266,7 @@ export class InputScrub extends UnlitElement {
   }
 
   _makeField(side) {
-    const field = html.createDomElement("compact-scrub-field", { side });
+    const field = html.createDomElement("input-field-large", { side });
 
     field.addEventListener("change", (event) => this._handleFieldChange(side, event));
     field.addEventListener("scrubstart", (event) => {

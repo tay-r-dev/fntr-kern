@@ -28,7 +28,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
-import "@fontra/web-components/compact-scrub-field.js"; // the Area/Depth/Overshoot row
+import "@fontra/web-components/input-field-large.js"; // the Area/Depth/Overshoot row
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/labeled-toggle.js"; // the heading switch and the settings
 import "@fontra/web-components/multi-select-dropdown.js"; // batch apply's glyph set
@@ -338,13 +338,13 @@ export default class LetterspacerPanel extends Panel {
   // Area and Depth scrub; Overshoot is a plain field (Figma: "not scrub").
   _buildAreaDepthOvershootRow() {
     const makeField = (key, label, scrub) => {
-      const field = html.createDomElement("compact-scrub-field", {
+      const field = html.createDomElement("input-field-large", {
         label,
         value: this.params[key],
         // The old edit-number rows scrubbed and typed whole numbers only.
         integer: true,
       });
-      field.scrubIcon = scrub;
+      field.type = scrub ? "scrub" : "number";
       field.defaultValue = LETTERSPACER_DEFAULTS[key];
       field.addEventListener("change", (event) =>
         this._onSpacingParamChange(key, event.detail.value)

@@ -63,7 +63,7 @@ import {
   mapAxesFromUserSpaceToSourceSpace,
   piecewiseLinearMap,
 } from "@fontra/core/var-model.js";
-import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 26's SpeedPunk fields
+import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 26's SpeedPunk fields
 import "@fontra/web-components/designspace-location.js";
 import { IconButton } from "@fontra/web-components/icon-button.js";
 import { InlineSVG } from "@fontra/web-components/inline-svg.js";
@@ -917,10 +917,9 @@ export default class DesignspaceNavigationPanel extends Panel {
   // are the ones the grid wiring (_setupCoarseGridControls) has always looked up.
   _buildDisplayCard() {
     const scrubField = (id, label, fill) => {
-      const field = html.createDomElement("compact-scrub-field", { id, label });
-      field.scrubIcon = false;
+      const field = html.createDomElement("input-field-large", { id, label });
+      field.type = fill ? "slider" : "number";
       field.integer = true;
-      field.fill = fill;
       // The spacing snaps to its steps; only a drag sets it.
       field.scrubOnly = fill;
       return field;
@@ -1338,7 +1337,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               label: translate("sidebar.designspace-navigation.skeleton.speedpunk"),
               style: "grid-column: 1 / -1;",
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "skeleton-width-input",
               defaultValue: 1.5,
               label: translate("sidebar.designspace-navigation.skeleton.width"),
@@ -1347,7 +1346,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.5,
               integer: false,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "skeleton-width-ungenerated-input",
               defaultValue: 3,
               label: translate(
@@ -1358,7 +1357,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.5,
               integer: false,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "skeleton-ribs-opacity-input",
               defaultValue: 100,
               label: translate("sidebar.designspace-navigation.skeleton.ribs"),
@@ -1386,7 +1385,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           [
             // Ticket 26, spec §2.5: two per row -- Peak height/Tight colour at
             // turn, Full height at turn/Sharpness, Full colour at turn/Opacity.
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-peak-height-input",
               defaultValue: SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM,
               label: translate("sidebar.designspace-navigation.speedpunk.peak-height"),
@@ -1394,7 +1393,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
               integer: true,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-color-tight-turn-input",
               defaultValue: SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1404,7 +1403,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-reference-turn-input",
               defaultValue: SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1414,7 +1413,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-sharpness-input",
               defaultValue: SPEEDPUNK_SHARPNESS_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
@@ -1423,7 +1422,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.1,
               integer: false,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-color-flat-turn-input",
               defaultValue: SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1433,7 +1432,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("compact-scrub-field", {
+            html.createDomElement("input-field-large", {
               id: "speedpunk-opacity-input",
               defaultValue: SPEEDPUNK_OPACITY_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
@@ -2232,7 +2231,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._syncSpeedPunkControls();
     this._persistSpeedPunkSettings();
 
-    // Ticket 26: compact-scrub-field fires "change" on every scrub move, not
+    // Ticket 26: input-field-large fires "change" on every scrub move, not
     // only on commit, so the comb redraws while dragging as well as on type.
     const bindNumberInput = (field, normalize, appKey, sceneKey) => {
       if (!field) return;

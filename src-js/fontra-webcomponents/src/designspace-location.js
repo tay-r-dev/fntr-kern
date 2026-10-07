@@ -1,6 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement, htmlToElement } from "@fontra/core/html-utils.js";
-import "./compact-scrub-field.js";
+import "./input-field-large.js";
 import { RangeSlider } from "./range-slider.js";
 import "./slot-slider.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -102,7 +102,7 @@ export class DesignspaceLocation extends UnlitElement {
       gap: 8px;
     }
 
-    .slot-row compact-scrub-field {
+    .slot-row input-field-large {
       flex: none;
       width: 44px;
     }
@@ -368,8 +368,8 @@ export class DesignspaceLocation extends UnlitElement {
     const maxValue = discrete ? Math.max(...axis.values) : axis.maxValue;
     const value = modelValue ?? axis.defaultValue;
 
-    const field = html.createDomElement("compact-scrub-field");
-    field.scrubIcon = false;
+    const field = html.createDomElement("input-field-large");
+    field.type = "number";
     field.integer = true;
     field.minValue = minValue;
     field.maxValue = maxValue;

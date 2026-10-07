@@ -158,8 +158,7 @@ import {
 } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
-import "@fontra/web-components/compact-scrub-field.js";
-import "@fontra/web-components/scrub-slider.js";
+import "@fontra/web-components/input-field-large.js";
 import "@fontra/web-components/radio-buttons.js";
 import "@fontra/web-components/ui-text-input.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
@@ -909,8 +908,8 @@ export class KerningViewController extends ViewController {
 
     // input/field/basic (Figma 4128:2470): the caption inside the field.
     const numberField = (id, label, value) => {
-      const field = html.createDomElement("compact-scrub-field", { id, label });
-      field.scrubIcon = false;
+      const field = html.createDomElement("input-field-large", { id, label });
+      field.type = "number";
       field.integer = true;
       field.minValue = 0;
       field.value = value;
@@ -1010,8 +1009,8 @@ export class KerningViewController extends ViewController {
         control,
       ]);
     const field = (id, key, { integer, minValue, step }) => {
-      const element = html.createDomElement("compact-scrub-field", { id });
-      element.scrubIcon = false;
+      const element = html.createDomElement("input-field-large", { id });
+      element.type = "number";
       element.integer = integer;
       element.minValue = minValue;
       if (step) {
@@ -1125,10 +1124,10 @@ export class KerningViewController extends ViewController {
       ]);
 
     // input/field/basic (Figma 4128:2890).
-    const pairsPerRowField = html.createDomElement("compact-scrub-field", {
+    const pairsPerRowField = html.createDomElement("input-field-large", {
       id: "kerning-preview-pairs-per-row",
     });
-    pairsPerRowField.scrubIcon = false;
+    pairsPerRowField.type = "number";
     pairsPerRowField.integer = true;
     pairsPerRowField.minValue = 1;
     pairsPerRowField.maxValue = 100;
@@ -1138,7 +1137,7 @@ export class KerningViewController extends ViewController {
     );
 
     // scrub (Figma 4128:2893): the field with its scrub icon.
-    const pairDistanceField = html.createDomElement("compact-scrub-field", {
+    const pairDistanceField = html.createDomElement("input-field-large", {
       id: "kerning-preview-pair-distance",
     });
     pairDistanceField.integer = true;
@@ -1150,9 +1149,10 @@ export class KerningViewController extends ViewController {
     );
 
     // input/field/slider (Figma 4128:2814), in percent.
-    const opacitySlider = html.createDomElement("scrub-slider", {
+    const opacitySlider = html.createDomElement("input-field-large", {
       id: "kerning-suggestion-preview-opacity",
     });
+    opacitySlider.type = "slider";
     opacitySlider.label = "%";
     opacitySlider.integer = true;
     opacitySlider.minValue = 0;

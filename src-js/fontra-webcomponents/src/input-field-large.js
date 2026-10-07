@@ -14,20 +14,25 @@ import { InlineSVG } from "./inline-svg.js";
 import { EdgeScrub } from "./edge-scrub.js";
 import { themeColorCSS } from "./theme-support.js";
 
-// Ticket 26 (UI-REFACTOR.md §2.5, UI-NOMENCLATURE.md §14): the compact scrub
-// field -- one box holding its own name, a scrub icon and a right-aligned
-// value. Dragging anywhere in the box but the value text scrubs it; clicking
-// the value edits it. Works standalone (this ticket's SpeedPunk group) and,
-// because it is a plain custom element, inside a `ui-form` row too (a later
-// ticket's job, not this one).
+// The large input field (Figma input/field: basic 2004:29576, scrub
+// 2004:29534, slider 2004:29608): one box holding its own name and its value.
+// `type` picks what the box does:
 //
-// A double-click on the scrub area (anywhere but the value, whose click opens
-// the keyboard editor) puts back `defaultValue`, as a typed value would. A
-// field with no default leaves it unset and ignores the double-click.
+// - "scrub" (the default): a scrub icon after the name; dragging anywhere but
+//   the value scrubs it, clicking the value types it;
+// - "number": a plain numeric field -- no icon, no drag, a press types;
+// - "text": as "number", but the typing is sent as typed text (a metrics key
+//   such as "=H+10"), for the caller to evaluate;
+// - "slider": a bar behind the name showing where the value sits between
+//   minValue and maxValue; dragging moves it, as "scrub" does.
+//
+// `scrubOnly` keeps a dragging type from being typed in. A double-click on the
+// scrub area puts back `defaultValue`, as a typed value would; a field with no
+// default ignores it. An element with slot="end" sits after the value, for one
+// icon.
 //
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
-// ones ui-form.js's own label-drag scrub uses -- this is a second place to
-// grab a field, not a second scrub.
+// ones ui-form.js's own label-drag scrub uses.
 // input/field/basic and ./scrub-field (Figma 2004:29576, 2004:29534): a grey
 // tray ruled on top holding the box the label and value sit in. The box is
 // invisible at rest, ruled on hover, and white with the lime line while
@@ -35,46 +40,46 @@ import { themeColorCSS } from "./theme-support.js";
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
-  "compact-scrub-field-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
-  "compact-scrub-field-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
-  "compact-scrub-field-tray-active-color": ["var(--in-bsr-focus)", "#333"],
-  "compact-scrub-field-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
-  "compact-scrub-field-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
-  "compact-scrub-field-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
-  "compact-scrub-field-hover-background-color": ["var(--in-csr-hover)", "#464646"],
-  "compact-scrub-field-hover-border-color": [
+  "input-field-large-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "input-field-large-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
+  "input-field-large-tray-active-color": ["var(--in-bsr-focus)", "#333"],
+  "input-field-large-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
+  "input-field-large-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
+  "input-field-large-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
+  "input-field-large-hover-background-color": ["var(--in-csr-hover)", "#464646"],
+  "input-field-large-hover-border-color": [
     "var(--in-sln-hover)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "compact-scrub-field-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
-  "compact-scrub-field-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
+  "input-field-large-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
+  "input-field-large-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
   // The label: grey at rest, dark on hover and while active.
-  "compact-scrub-field-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
-  "compact-scrub-field-hover-text-color": ["var(--in-lbl-hover)", "#e0e0e0"],
-  "compact-scrub-field-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
+  "input-field-large-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
+  "input-field-large-hover-text-color": ["var(--in-lbl-hover)", "#e0e0e0"],
+  "input-field-large-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
   // The value: darker than the label at rest, near-black while active.
-  "compact-scrub-field-value-rest-text-color": ["var(--in-vl-rest)", "#b0b0b0"],
-  "compact-scrub-field-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
-  "compact-scrub-field-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
+  "input-field-large-value-rest-text-color": ["var(--in-vl-rest)", "#b0b0b0"],
+  "input-field-large-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
+  "input-field-large-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
   // The scrub (drag-arrows) icon.
-  "compact-scrub-field-handle-color": ["var(--in-ic-rest)", "#777777"],
-  "compact-scrub-field-handle-active-color": ["var(--in-ic-focus)", "#999999"],
-  "compact-scrub-field-handle-disabled-color": ["var(--in-ic-disabled)", "#555555"],
+  "input-field-large-handle-color": ["var(--in-ic-rest)", "#777777"],
+  "input-field-large-handle-active-color": ["var(--in-ic-focus)", "#999999"],
+  "input-field-large-handle-disabled-color": ["var(--in-ic-disabled)", "#555555"],
   // input/field/slider (Figma 2004:29608): the value's share of the range as
   // a bar -- grey at rest (a Figma literal), lime while active.
-  "compact-scrub-field-fill-color": ["#e9e9e9", "#4a4a4a"],
-  "compact-scrub-field-active-fill-color": ["var(--in-sln-focus)", "#6f8a1e"],
-  "compact-scrub-field-selection-color": ["var(--in-sln-focus)", "#5c7033"],
-  "compact-scrub-field-stepper-color": ["#d9d9d9", "#666666"],
-  "compact-scrub-field-stepper-active-color": ["#303030", "#dddddd"],
+  "input-field-large-fill-color": ["#e9e9e9", "#4a4a4a"],
+  "input-field-large-active-fill-color": ["var(--in-sln-focus)", "#6f8a1e"],
+  "input-field-large-selection-color": ["var(--in-sln-focus)", "#5c7033"],
+  "input-field-large-stepper-color": ["#d9d9d9", "#666666"],
+  "input-field-large-stepper-active-color": ["#303030", "#dddddd"],
   // button/increment (Figma 2004:29110): the hovered half lifts to white.
-  "compact-scrub-field-stepper-hover-background-color": [
+  "input-field-large-stepper-hover-background-color": [
     "var(--bt-sgb-sr-hover)",
     "#555",
   ],
 };
 
-export class CompactScrubField extends UnlitElement {
+export class InputFieldLarge extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
 
@@ -86,14 +91,14 @@ export class CompactScrubField extends UnlitElement {
        background and padding; the inner container carries the border and all
        hover/scrub/manual-input background and text changes. */
     .box {
-      background-color: var(--compact-scrub-field-background-color);
-      border: 0 solid var(--compact-scrub-field-border-color);
+      background-color: var(--input-field-large-background-color);
+      border: 0 solid var(--input-field-large-border-color);
       border-top-width: 1px;
       border-radius: 6px;
       box-sizing: border-box;
       height: 24px;
       padding: 3px;
-      color: var(--compact-scrub-field-text-color);
+      color: var(--input-field-large-text-color);
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
@@ -136,22 +141,22 @@ export class CompactScrubField extends UnlitElement {
     .fill {
       position: absolute;
       inset: 0 auto 0 0;
-      background-color: var(--compact-scrub-field-fill-color);
+      background-color: var(--input-field-large-fill-color);
       pointer-events: none;
     }
 
     .box.scrubbing .fill,
     .box.editing .fill {
-      background-color: var(--compact-scrub-field-active-fill-color);
+      background-color: var(--input-field-large-active-fill-color);
     }
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {
-      background-color: var(--compact-scrub-field-hover-background-color);
-      color: var(--compact-scrub-field-hover-text-color);
+      background-color: var(--input-field-large-hover-background-color);
+      color: var(--input-field-large-hover-text-color);
     }
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner::after {
-      box-shadow: inset 0 0 0 1px var(--compact-scrub-field-hover-border-color);
+      box-shadow: inset 0 0 0 1px var(--input-field-large-hover-border-color);
     }
 
     /* Scrubbing and manual input share the design's active look: lime accent
@@ -159,21 +164,21 @@ export class CompactScrubField extends UnlitElement {
     .box.scrubbing .inner,
     .box.editing .inner,
     .box:focus-within .inner {
-      background-color: var(--compact-scrub-field-active-background-color);
-      color: var(--compact-scrub-field-active-text-color);
+      background-color: var(--input-field-large-active-background-color);
+      color: var(--input-field-large-active-text-color);
     }
 
     .box.scrubbing .inner::after,
     .box.editing .inner::after,
     .box:focus-within .inner::after {
-      box-shadow: inset 0 0 0 1px var(--compact-scrub-field-active-border-color);
+      box-shadow: inset 0 0 0 1px var(--input-field-large-active-border-color);
     }
 
     .box.scrubbing,
     .box.editing,
     .box:focus-within {
-      background-color: var(--compact-scrub-field-tray-active-color);
-      border-color: var(--compact-scrub-field-tray-active-border-color);
+      background-color: var(--input-field-large-tray-active-color);
+      border-color: var(--input-field-large-tray-active-border-color);
       border-width: 1px 1px 0;
     }
 
@@ -188,11 +193,11 @@ export class CompactScrubField extends UnlitElement {
     }
 
     .box:is(.scrubbing, .editing, :focus-within) .name {
-      color: var(--compact-scrub-field-hover-text-color);
+      color: var(--input-field-large-hover-text-color);
     }
 
     .box:is(.scrubbing, .editing, :focus-within) .scrub-icon {
-      color: var(--compact-scrub-field-handle-active-color);
+      color: var(--input-field-large-handle-active-color);
     }
 
     .box.string {
@@ -204,17 +209,17 @@ export class CompactScrubField extends UnlitElement {
     }
 
     .box.disabled {
-      background-color: var(--compact-scrub-field-tray-disabled-color);
-      border-color: var(--compact-scrub-field-tray-disabled-border-color);
-      color: var(--compact-scrub-field-disabled-text-color);
+      background-color: var(--input-field-large-tray-disabled-color);
+      border-color: var(--input-field-large-tray-disabled-border-color);
+      color: var(--input-field-large-disabled-text-color);
     }
 
     .box.disabled .value {
-      color: var(--compact-scrub-field-value-disabled-text-color);
+      color: var(--input-field-large-value-disabled-text-color);
     }
 
     .box.disabled .scrub-icon {
-      color: var(--compact-scrub-field-handle-disabled-color);
+      color: var(--input-field-large-handle-disabled-color);
     }
 
     .name {
@@ -235,7 +240,7 @@ export class CompactScrubField extends UnlitElement {
       flex: 0 0 auto;
       width: 10px;
       height: 10px;
-      color: var(--compact-scrub-field-handle-color);
+      color: var(--input-field-large-handle-color);
     }
 
     /* Stretched to the inner container's height, so a blank value -- a mixed
@@ -264,7 +269,7 @@ export class CompactScrubField extends UnlitElement {
     }
 
     .box:not(:hover):not(.scrubbing):not(.editing):not(.disabled) .value {
-      color: var(--compact-scrub-field-value-rest-text-color);
+      color: var(--input-field-large-value-rest-text-color);
     }
 
     .value input {
@@ -289,7 +294,7 @@ export class CompactScrubField extends UnlitElement {
     }
 
     .value input::selection {
-      background: var(--compact-scrub-field-selection-color);
+      background: var(--input-field-large-selection-color);
       color: #151515;
     }
 
@@ -303,13 +308,13 @@ export class CompactScrubField extends UnlitElement {
       padding: 0;
       border: 0;
       background: transparent;
-      color: var(--compact-scrub-field-stepper-color);
+      color: var(--input-field-large-stepper-color);
       cursor: pointer;
     }
 
     .stepper:hover {
-      color: var(--compact-scrub-field-stepper-active-color);
-      background: var(--compact-scrub-field-stepper-hover-background-color);
+      color: var(--input-field-large-stepper-active-color);
+      background: var(--input-field-large-stepper-hover-background-color);
       border-radius: 2px;
     }
 
@@ -383,14 +388,20 @@ export class CompactScrubField extends UnlitElement {
     this._text = false;
   }
 
-  // A plain field (scrubIcon off) whose typing is text, sent as typed: a
-  // metrics key such as "=H+10". The caller evaluates it.
-  get text() {
-    return this._text;
+  get type() {
+    if (this._fill) {
+      return "slider";
+    }
+    if (this._scrubIcon) {
+      return "scrub";
+    }
+    return this._text ? "text" : "number";
   }
 
-  set text(value) {
-    this._text = !!value;
+  set type(value) {
+    this._fill = value === "slider";
+    this._scrubIcon = !value || value === "scrub";
+    this._text = value === "text";
     this.requestUpdate();
   }
 
@@ -406,19 +417,8 @@ export class CompactScrubField extends UnlitElement {
     this.requestUpdate();
   }
 
-  // input/slider: a bar behind the name showing where the value sits between
-  // minValue and maxValue.
-  get fill() {
-    return this._fill;
-  }
-
-  set fill(value) {
-    this._fill = !!value;
-    this.requestUpdate();
-  }
-
-  // input/string: neither the scrub icon nor the slider's fill, so nothing
-  // says the field drags, and it does not.
+  // "number" and "text": neither the scrub icon nor the slider's fill, so
+  // nothing says the field drags, and it does not.
   _isStringInput() {
     return !this._scrubIcon && !this._fill;
   }
@@ -432,15 +432,6 @@ export class CompactScrubField extends UnlitElement {
     const share = max > min ? (Number(this._value) - min) / (max - min) : 0;
     const clamped = Math.max(0, Math.min(1, share || 0));
     this._fillElement.style.width = `${clamped * 100}%`;
-  }
-
-  get scrubIcon() {
-    return this._scrubIcon;
-  }
-
-  set scrubIcon(value) {
-    this._scrubIcon = value == null ? true : !!value;
-    this.requestUpdate();
   }
 
   // Ticket 38: the transform row's own icon, drawn inside the field rather
@@ -990,4 +981,4 @@ export class CompactScrubField extends UnlitElement {
   }
 }
 
-customElements.define("compact-scrub-field", CompactScrubField);
+customElements.define("input-field-large", InputFieldLarge);

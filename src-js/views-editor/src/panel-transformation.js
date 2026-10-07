@@ -27,7 +27,7 @@ import {
 } from "@fontra/core/utils.ts";
 import { copyBackgroundImage, copyComponent } from "@fontra/core/var-glyph.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
-import "@fontra/web-components/compact-scrub-field.js"; // for <compact-scrub-field>, ticket 38
+import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 38
 import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Scale row's linked pair
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
@@ -66,7 +66,7 @@ export default class TransformationPanel {
 
   /* Every packed row: the row's icon in the label column, then its fields
      splitting the value column evenly. */
-  .ui-form-value.universal-row > compact-scrub-field,
+  .ui-form-value.universal-row > input-field-large,
   .ui-form-value.universal-row > ui-input-scrub {
     flex: 1 1 0;
     min-width: 0;
@@ -94,7 +94,7 @@ export default class TransformationPanel {
     gap: 4px;
   }
 
-  .origin-row > compact-scrub-field {
+  .origin-row > input-field-large {
     flex: 1 1 0;
     min-width: 0;
   }
@@ -360,8 +360,8 @@ export default class TransformationPanel {
 
   // Ticket 38 (+ live-preview follow-up): Move/Scale/Skew/Dimensions each
   // become one universal-row: a plain text label on the left (the row's own
-  // name, e.g. "Move"), then two compact-scrub fields, each carrying the
-  // row's icon -- decorative only, per compact-scrub-field.js. A drag
+  // name, e.g. "Move"), then two large input fields, each carrying the
+  // row's icon -- decorative only, per input-field-large.js. A drag
   // applies live, through transformSelectionStream: the field's own
   // "scrubstart" opens one streaming edit for the whole gesture, so it ends
   // as a single undo step and never compounds (every frame recomputes the
@@ -410,12 +410,12 @@ export default class TransformationPanel {
     makeTransformationForY,
     undoLabel,
   }) {
-    const fieldX = html.createDomElement("compact-scrub-field", {
+    const fieldX = html.createDomElement("input-field-large", {
       label: labels[0],
       value: valueX,
       step,
     });
-    const fieldY = html.createDomElement("compact-scrub-field", {
+    const fieldY = html.createDomElement("input-field-large", {
       label: labels[1],
       value: valueY,
       step,
@@ -524,11 +524,11 @@ export default class TransformationPanel {
     // The typed origin: two plain fields, no scrub. A typed value is the pin,
     // and no grid position is checked then.
     const originField = (label, key) => {
-      const field = html.createDomElement("compact-scrub-field", {
+      const field = html.createDomElement("input-field-large", {
         label,
         value: this.transformParameters[`${key}Button`],
       });
-      field.scrubIcon = false;
+      field.type = "number";
       field.addEventListener("change", (event) => {
         this.transformParameters[key] = event.detail.value;
         this.transformParameters[`${key}Button`] = event.detail.value;
@@ -592,7 +592,7 @@ export default class TransformationPanel {
     // The Scale row is the linked-pair composite: X, the link button, Y in one
     // element. Linked, Y follows X and is greyed -- the composite's own link
     // "on" semantics, mirroring and disabling the right field itself. The
-    // fields are the composite's inner compact-scrub-fields, so the reset and
+    // fields are the composite's inner input-field-larges, so the reset and
     // undo-restore write them through RELATIVE_TRANSFORM_FIELDS as before.
     const scaleInput = html.createDomElement("ui-input-scrub");
     scaleInput.leftLabel = "X";
@@ -666,7 +666,7 @@ export default class TransformationPanel {
       field3: {},
     };
 
-    const rotateField = html.createDomElement("compact-scrub-field", {
+    const rotateField = html.createDomElement("input-field-large", {
       label: "Angle",
       value: this.transformParameters.rotation,
       step: 0.1,
@@ -1109,7 +1109,7 @@ export default class TransformationPanel {
       ? rectSize(bounds)
       : { width: null, height: null };
     // One decimal place, same precision the field showed before it became a
-    // compact-scrub-field (numDigits: 1).
+    // input-field-large (numDigits: 1).
     const width = rawWidth == null ? null : Math.round(rawWidth * 10) / 10;
     const height = rawHeight == null ? null : Math.round(rawHeight * 10) / 10;
     if (this.dimensionWidthField) {

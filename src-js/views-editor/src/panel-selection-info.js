@@ -34,7 +34,7 @@ import {
   throttleCalls,
 } from "@fontra/core/utils.ts";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
-import "@fontra/web-components/compact-scrub-field.js"; // the plain metrics fields
+import "@fontra/web-components/input-field-large.js"; // the plain metrics fields
 import "@fontra/web-components/icon-button.js";
 import "@fontra/web-components/labeled-toggle.js";
 import "@fontra/web-components/text-button.js";
@@ -726,9 +726,8 @@ export default class SelectionInfoPanel extends Panel {
   // panel's origin X and Y. It takes a metrics key as typed text, which the
   // field item's own evaluateExpression resolves.
   _makeMetricField(fieldItem, label = "") {
-    const field = html.createDomElement("compact-scrub-field", { label });
-    field.scrubIcon = false;
-    field.text = true;
+    const field = html.createDomElement("input-field-large", { label });
+    field.type = "text";
     field.value =
       typeof fieldItem.value === "number"
         ? round(fieldItem.value, fieldItem.numDigits)

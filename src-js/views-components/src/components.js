@@ -11,7 +11,7 @@
 import * as html from "@fontra/core/html-utils.js";
 import "@fontra/web-components/add-remove-buttons.js";
 import "@fontra/web-components/chain-link.js";
-import "@fontra/web-components/compact-scrub-field.js";
+import "@fontra/web-components/input-field-large.js";
 import {
   actionsCell,
   additionalText,
@@ -30,7 +30,6 @@ import "@fontra/web-components/latch-button.js";
 import "@fontra/web-components/link-button.js";
 import "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/multi-select-dropdown.js";
-import "@fontra/web-components/scrub-slider.js";
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/radio-buttons.js";
 import "@fontra/web-components/slot-slider.js";
@@ -208,27 +207,19 @@ function textInputs() {
 
 function scrubFields() {
   const field = (props) => {
-    const f = make("compact-scrub-field", { label: "label", value: 12, ...props });
+    const f = make("input-field-large", { label: "label", value: 12, ...props });
     f.classList.add("gallery-field");
     return f;
   };
-  const slider = (props) => {
-    const s = make("scrub-slider", {
-      label: "label",
-      minValue: 0,
-      maxValue: 100,
-      value: 40,
-      ...props,
-    });
-    s.classList.add("gallery-field");
-    return s;
-  };
+  const slider = (props) =>
+    field({ type: "slider", minValue: 0, maxValue: 100, value: 40, ...props });
   return [
     row(
-      cell("field", field()),
-      cell("field, no scrub icon", field({ scrubIcon: false })),
-      cell("field, mixed", field({ mixed: true })),
-      cell("field, disabled", field({ disabled: true }))
+      cell("scrub", field()),
+      cell("number", field({ type: "number" })),
+      cell("text", field({ type: "text", value: "=H" })),
+      cell("mixed", field({ mixed: true })),
+      cell("disabled", field({ disabled: true }))
     ),
     row(cell("slider", slider()), cell("slider, disabled", slider({ disabled: true }))),
   ];
