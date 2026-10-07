@@ -479,3 +479,12 @@ export function glyphTypeMatches(glyphName, types, glyphMap, composedNames) {
       category !== "composed" && glyphMatchesCategory(glyphName, category, glyphMap)
   );
 }
+
+// The results modes. "all" lists every row whatever its delta; the other
+// modes narrow the list by the suggestion threshold.
+export function deltaBoundsForTab(tab, minDelta, maxDelta) {
+  if (tab === "all") {
+    return { minDelta: 0, maxDelta: null };
+  }
+  return { minDelta, maxDelta };
+}

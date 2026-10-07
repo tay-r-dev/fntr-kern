@@ -175,7 +175,11 @@ import {
   VisualizationLayers,
 } from "@fontra/views-editor/visualization-layers.js";
 import { SelectTool } from "./edit-tools-select.js";
-import { layoutPairPreview, normalizePairsPerRow } from "./pair-preview-layout.js";
+import {
+  firstPairOfLines,
+  layoutPairPreview,
+  normalizePairsPerRow,
+} from "./pair-preview-layout.js";
 import {
   crossProductPairs,
   adjacentPairsForGlyph,
@@ -202,6 +206,7 @@ import {
   isStaleAsyncResult,
   pairMatchesGlyphset,
   passesNumericFilters,
+  deltaBoundsForTab,
   rowId,
   rowMatchesRelationships,
   rowVisibleForHiddenState,
@@ -731,6 +736,7 @@ export class KerningViewController extends ViewController {
       phraseInput.value = restoredText;
       setText();
     }
+    this.setInitialPreviewPair(phraseInput.value);
 
     presetSelect.addEventListener("change", () => {
       const preset = this.phrasePresets[presetSelect.selectedIndex - 1];
@@ -2883,13 +2889,14 @@ export class KerningViewController extends ViewController {
     // here, like every other control in this method; renderPairTable reads
     // this.activeResultsTab and rebuilds the one row list for whichever tab
     // is active.
-    this.activeResultsTab = "default";
+    this.activeResultsTab = "all";
     const tabs = document.querySelector("#kerning-pairtable-tabs");
     tabs.options = [
-      { value: "default", label: "Default" },
-      { value: "potential", label: "Potential exceptions" },
+      { value: "all", label: "all" },
+      { value: "suggestions", label: "suggestions" },
+      { value: "potential", label: "potential overrides" },
     ];
-    tabs.value = "default";
+    tabs.value = "all";
     tabs.addEventListener("change", (event) => this.setResultsTab(event.detail.value));
 
     // Ticket 04: the select-all tick's own wiring moved to
@@ -3121,7 +3128,7 @@ export class KerningViewController extends ViewController {
   // switch reads exactly like any other renderPairTable trigger (filter
   // change, threshold change, run finishing).
   setResultsTab(tab) {
-    if (tab !== "default" && tab !== "potential") {
+    if (!["all", "suggestions", "potential"].includes(tab)) {
       return;
     }
     this.activeResultsTab = tab;
@@ -3400,8 +3407,11 @@ export class KerningViewController extends ViewController {
     const display = valuesForDisplay(row.current, row.suggestion, row.stale);
     if (
       !passesNumericFilters(display, {
-        minDelta: threshold,
-        maxDelta: this.autokernParamsController.model.maxThreshold,
+        ...deltaBoundsForTab(
+          this.activeResultsTab,
+          threshold,
+          this.autokernParamsController.model.maxThreshold
+        ),
         hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
       })
     ) {
@@ -3798,7 +3808,7 @@ export class KerningViewController extends ViewController {
     this._previewPairsChipLabel.textContent = previewPairs.length
       ? `Preview pairs: ${previewPairs.map(([l, r]) => `${l}–${r}`).join(", ")}`
       : "";
-    const tab = this.activeResultsTab || "default";
+    const tab = this.activeResultsTab || "all";
 
     // Task 9, spec F09/F14: converted once per render (plan's own bullet:
     // "Normalize persisted arrays into Sets at the UI boundary"), read by
@@ -4035,7 +4045,7 @@ export class KerningViewController extends ViewController {
         // A class rule carries a mark of its own now, so it belongs in a
         // list of marked rows when it holds one.
         return (
-          tab === "default" &&
+          tab !== "potential" &&
           (!filters.onlyMarked ||
             this.isPairMarkedForPreview(item.group.left, item.group.right)) &&
           item.group.summaryVisible &&
@@ -4303,8 +4313,11 @@ export class KerningViewController extends ViewController {
         this._relationshipsSet.has(relationship) &&
         (appliedThisSession ||
           passesNumericFilters(valuesForDisplay(current, stats.median, stats.stale), {
-            minDelta: threshold,
-            maxDelta: this.autokernParamsController.model.maxThreshold,
+            ...deltaBoundsForTab(
+              this.activeResultsTab,
+              threshold,
+              this.autokernParamsController.model.maxThreshold
+            ),
             hideZeroCurrentSuggestions: filters.hideZeroCurrentSuggestions,
           }));
       // Member exceptions have their own filters; hiding a summary must
@@ -6300,7 +6313,7 @@ export class KerningViewController extends ViewController {
     // between them and left the other empty on every row.
     const applyCell = document.createElement("td");
     applyCell.className = "kerning-pairtable-apply-col";
-    const tab = this.activeResultsTab || "default";
+    const tab = this.activeResultsTab || "all";
     const hasApplicableClass =
       this.isLeftClassed(row.left) || this.isRightClassed(row.right);
 
@@ -7835,25 +7848,9 @@ export class KerningViewController extends ViewController {
       // to it. Which mode is on screen is the designer's own choice, made on
       // the chips -- a click in the table used to take it away from them.
       this.setPreviewPairs(previewPairs);
-    } else if (this._selectedPairText) {
-      // Deselecting keeps the pair on screen: only picking another pair
-      // changes what pair mode shows, and nothing here falls back to the
-      // phrase.
-      return;
-    } else {
-      this._selectedPairText = null;
-      this._selectedPairLeft = null;
-      this._selectedPairRight = null;
-      const pairButton = this._chipButtons?.pair;
-      if (pairButton) {
-        pairButton.disabled = true;
-      }
-      // Spec F06/Task 7: "If the active Pair mode loses every pair, restore
-      // Phrase mode and its phrase."
-      if (this._chipMode === "pair") {
-        this.setChipMode("phrase");
-      }
     }
+    // Otherwise the pair stays: pair mode always holds one, and only
+    // picking another pair replaces it.
   }
 
   // F04's own open decision, resolved by the ledger (§8.1) and closed by
@@ -7939,6 +7936,23 @@ export class KerningViewController extends ViewController {
           : kernData.groupsSide2?.[className];
       },
     };
+  }
+
+  // Pair mode always holds a pair, so it starts with the phrase's first one,
+  // or the font's first two glyphs when the phrase has none.
+  setInitialPreviewPair(phraseText) {
+    if (this._selectedPairText) {
+      return;
+    }
+    const { characterMap, glyphMap } = this.fontController;
+    const pair =
+      firstPairOfLines(
+        characterLinesFromString(phraseText || "", characterMap, glyphMap)
+      ) ||
+      firstPairOfLines([Object.keys(glyphMap).map((glyphName) => ({ glyphName }))]);
+    if (pair) {
+      this.setPreviewPairs([pair]);
+    }
   }
 
   // Independent lines prevent accidental kerning between separate preview pairs.

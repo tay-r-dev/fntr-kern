@@ -5,19 +5,30 @@ export function normalizePairsPerRow(value) {
 
 // Arrange independently shaped pair lines without introducing cross-pair kerns.
 // Called once on a freshly built scene, before its geometry is published.
-export function layoutPairPreview(scene, pairsPerRow, unitsPerEm) {
+// `pairDistance` is the gap between cells in font units; half an em when unset.
+export function layoutPairPreview(scene, pairsPerRow, unitsPerEm, pairDistance) {
   const lines = scene.positionedLines;
   if (!lines.length) return scene;
   const columns = normalizePairsPerRow(pairsPerRow);
   const em = unitsPerEm || 1000;
+  const gap =
+    Number.isFinite(pairDistance) && pairDistance >= 0 ? pairDistance : em * 0.5;
   // Use advances, not kerned widths, so dragging a kern cannot move other cells.
-  const cellWidth = Math.max(em, ...lines.map((line) =>
-    line.glyphs.reduce((width, item) => width + (item.glyph.xAdvance || 0), 0))) + em * 0.5;
+  const cellWidth =
+    Math.max(
+      em,
+      ...lines.map((line) =>
+        line.glyphs.reduce((width, item) => width + (item.glyph.xAdvance || 0), 0)
+      )
+    ) + gap;
   const rowHeight = em * 1.1;
-  const moveBounds = (bounds, dx, dy) => bounds && ({
-    xMin: bounds.xMin + dx, xMax: bounds.xMax + dx,
-    yMin: bounds.yMin + dy, yMax: bounds.yMax + dy,
-  });
+  const moveBounds = (bounds, dx, dy) =>
+    bounds && {
+      xMin: bounds.xMin + dx,
+      xMax: bounds.xMax + dx,
+      yMin: bounds.yMin + dy,
+      yMax: bounds.yMax + dy,
+    };
   let rightEdge = 0;
   lines.forEach((line, index) => {
     const x = (index % columns) * cellWidth;
@@ -36,4 +47,19 @@ export function layoutPairPreview(scene, pairsPerRow, unitsPerEm) {
   });
   scene.longestLineLength = rightEdge;
   return scene;
+}
+
+// The pair the pair chip starts with: the first two named glyphs standing
+// side by side in the phrase. Null when no line holds two.
+export function firstPairOfLines(lines) {
+  for (const line of lines) {
+    for (let i = 0; i + 1 < line.length; i++) {
+      const left = line[i].glyphName;
+      const right = line[i + 1].glyphName;
+      if (left && right) {
+        return [left, right];
+      }
+    }
+  }
+  return null;
 }
