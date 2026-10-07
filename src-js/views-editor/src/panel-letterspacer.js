@@ -28,6 +28,7 @@ import {
 } from "@fontra/core/metrics-keys.js";
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
+import { checkmark } from "@fontra/core/ui-utils.js";
 import "@fontra/web-components/input-field-large.js"; // the Area/Depth/Overshoot row
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/labeled-toggle.js"; // the heading switch and the settings
@@ -449,19 +450,6 @@ export default class LetterspacerPanel extends Panel {
     }
   }
 
-  // A checkmark (Figma 379:22544): our checkbox assets, with an optional name.
-  _checkmark(checked, label, onchange) {
-    return html.label({ class: "checkmark-row" }, [
-      html.input({
-        type: "checkbox",
-        class: "checkmark",
-        checked,
-        onchange: (event) => onchange(event.target.checked),
-      }),
-      ...(label ? [html.span({}, [label])] : []),
-    ]);
-  }
-
   // The static table (Figma 4108:2787): the side checks heading the L and R
   // columns (which sides Apply writes), then Current and Calculated.
   _buildCalculatedTable() {
@@ -474,7 +462,7 @@ export default class LetterspacerPanel extends Panel {
     const sideHead = (key, side) =>
       td([
         html.div({ class: "ls-side" }, [
-          this._checkmark(!!this.params[key], "", (checked) =>
+          checkmark(!!this.params[key], "", (checked) =>
             this._onApplySideChange(key, checked)
           ),
           side,
@@ -530,7 +518,7 @@ export default class LetterspacerPanel extends Panel {
       html.div(
         { class: "checkmark-wrap" },
         BULK_SUBSETS.map((subset) =>
-          this._checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
+          checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
             this.bulkSubsets[subset.key] = checked;
           })
         )
@@ -547,7 +535,6 @@ export default class LetterspacerPanel extends Panel {
 
     const accordion = new Accordion();
     accordion.setAttribute("switch", "");
-    accordion.classList.add("ls-switch");
     accordion.items = [
       {
         label: translate("sidebar.letterspacer.bulk.title"),
@@ -2095,11 +2082,6 @@ const LETTERSPACER_CARD_STYLES = `
     align-items: center;
     justify-content: space-between;
     gap: 4px;
-  }
-
-  /* The switch runs to the card's edges. */
-  .ls-switch {
-    margin: 0 -8px;
   }
 
 `;

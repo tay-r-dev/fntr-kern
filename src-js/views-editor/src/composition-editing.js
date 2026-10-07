@@ -514,10 +514,20 @@ export async function computeMarkCloud(sceneController, glyphName, markNames) {
     return [];
   }
   const baseMap = anchorMap(baseInstance.anchors || []);
+  if (!Object.keys(baseMap).length) {
+    return [];
+  }
   const placed = [];
 
-  for (const markName of markNames) {
-    const markInstance = await fontController.getGlyphInstance(markName, location);
+  // Loaded side by side, and a glyph that fails to load is passed over rather
+  // than ending the cloud.
+  const markInstances = await Promise.all(
+    markNames.map((markName) =>
+      fontController.getGlyphInstance(markName, location).catch(() => null)
+    )
+  );
+  for (const [index, markName] of markNames.entries()) {
+    const markInstance = markInstances[index];
     if (!markInstance) {
       continue;
     }

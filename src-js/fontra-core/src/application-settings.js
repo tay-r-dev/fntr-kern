@@ -52,6 +52,10 @@ export const applicationSettingsController = new ObservableController({
   // fork: related-glyphs preview tiles follow their glyph live, or hold still
   // until asked (app-level, per D9 — not written to project files)
   relatedGlyphsLivePreviews: false,
+  // fork: the compose panel's previews list only glyphs from the font and the
+  // added glyph sets, and optionally only glyphs carrying anchors
+  relatedGlyphsOnlyAddedGlyphSets: true,
+  relatedGlyphsOnlyWithAnchors: false,
   compositionMarkCloudSets: {},
   // fork: point-label kinds shown by the fontra.point.labels visualization
   // layer (app-level, per D9 — not written to project files). Single source

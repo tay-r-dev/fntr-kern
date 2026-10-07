@@ -10,7 +10,10 @@ import {
   throttleCalls,
 } from "@fontra/core/utils.ts";
 import { GlyphSearchField } from "./glyph-search-field.js";
+import "./ui-handle.js";
 import { UIList } from "./ui-list.js";
+
+const MIN_LIST_HEIGHT = 60;
 
 export class GlyphSearchList extends SimpleElement {
   static styles = `
@@ -20,6 +23,30 @@ export class GlyphSearchList extends SimpleElement {
       grid-template-rows: auto 1fr;
       overflow: hidden;
       align-content: start;
+    }
+
+    /* Resizable: the table keeps its own height, set by the handle on its
+       bottom edge (Figma 4098:10205), instead of filling the host. */
+    :host([resizable]) {
+      gap: 6px;
+      grid-template-rows: auto auto;
+    }
+
+    :host([resizable]) ui-list {
+      height: var(--glyph-search-list-height, 240px);
+      padding-bottom: 8px;
+    }
+
+    .grip {
+      height: 0;
+      position: relative;
+    }
+
+    .grip > ui-handle {
+      position: absolute;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
     }
   `;
 
@@ -44,8 +71,8 @@ export class GlyphSearchList extends SimpleElement {
     const columnDescriptions = [
       {
         key: "char",
-        title: " ",
-        width: "1.8em",
+        title: "symbol",
+        width: "72px",
         cellFactory: (item, description) => {
           if (item.codePoints[0]) {
             return getCharFromCodePoint(item.codePoints[0]);
@@ -56,8 +83,8 @@ export class GlyphSearchList extends SimpleElement {
       },
       {
         key: "glyphName",
-        title: "glyph name",
-        width: "10em",
+        title: "name",
+        width: "72px",
         isIdentifierKey: true,
         get: (item) => item.glyphName,
         cellFactory: (item, description) => this._cellFactory(item, description),
@@ -70,6 +97,8 @@ export class GlyphSearchList extends SimpleElement {
       },
     ];
     const glyphNamesList = new UIList();
+    // table, look "select" (Figma 4098:10206).
+    glyphNamesList.setAttribute("look", "select");
     glyphNamesList.appendStyle(`
       .dimmed {
         color: #999;
@@ -105,6 +134,42 @@ export class GlyphSearchList extends SimpleElement {
 
   focusSearchField() {
     this.searchField.focusSearchField();
+  }
+
+  // The table takes a fixed height with a handle under it; the height is kept
+  // under `storageKey`.
+  makeResizable(storageKey) {
+    this.setAttribute("resizable", "");
+    const applyHeight = (height) =>
+      this.style.setProperty("--glyph-search-list-height", `${height}px`);
+    try {
+      const stored = parseInt(localStorage.getItem(storageKey));
+      if (Number.isFinite(stored)) {
+        applyHeight(Math.max(MIN_LIST_HEIGHT, stored));
+      }
+    } catch {
+      // The default height applies.
+    }
+    let startHeight, height;
+    const handle = html.createDomElement("ui-handle");
+    handle.addEventListener("handle-drag-start", () => {
+      startHeight = this.glyphNamesList.getBoundingClientRect().height;
+    });
+    handle.addEventListener("handle-drag", (event) => {
+      height = Math.max(MIN_LIST_HEIGHT, startHeight + event.detail.dy);
+      applyHeight(height);
+    });
+    handle.addEventListener("handle-drag-end", () => {
+      if (height === undefined) {
+        return;
+      }
+      try {
+        localStorage.setItem(storageKey, height);
+      } catch {
+        // The height still applies for this page.
+      }
+    });
+    this.shadowRoot.appendChild(html.div({ class: "grip" }, [handle]));
   }
 
   update() {

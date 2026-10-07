@@ -1,5 +1,11 @@
+import {
+  actionsCell,
+  rowAction,
+  tableCell,
+  tableRow,
+} from "@fontra/web-components/data-table.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // required for "icon-button"
-import { showMenu } from "@fontra/web-components/menu-panel.js";
+import "@fontra/web-components/text-button.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import * as html from "./html-utils.js";
 import { translate } from "./localization.js";
@@ -9,6 +15,7 @@ import { union } from "./set-ops.js";
 import {
   labeledCheckbox,
   labeledPopupSelect,
+  checkmark,
   labeledTextInput,
   popupSelect,
 } from "./ui-utils.js";
@@ -35,17 +42,18 @@ export class GlyphSetsUIController {
     this.otherCollectionKey = otherCollectionKey;
     this.accordionId = accordionId;
 
+    this.addGlyphSetToolTip = addGlyphSetToolTip;
     this.glyphSetErrorButtons = {};
-    this.checkboxGroup = new CheckboxGroup(settingsController, selectionKey);
     this.accordionItem = {
       label,
       id,
       content: html.div(),
-      auxiliaryHeaderElement: this.makeAddGlyphSetButton(addGlyphSetToolTip),
       open: true,
     };
 
-    settingsController.addKeyListener(collectionKey, (event) => this.updateGlyphSets());
+    settingsController.addKeyListener([collectionKey, selectionKey], (event) =>
+      this.updateGlyphSets()
+    );
 
     settingsController.addKeyListener(
       "glyphSetErrors",
@@ -87,16 +95,6 @@ export class GlyphSetsUIController {
   updateGlyphSets() {
     this.accordionItem.content.innerHTML = "";
     this.accordionItem.content.appendChild(this.makeGlyphSetsUI());
-  }
-
-  makeAddGlyphSetButton(toolTip) {
-    return html.createDomElement("icon-button", {
-      "class": "glyphset-add-button",
-      "src": "/images/plus.svg",
-      "onclick": (event) => this.addGlyphSet(event),
-      "data-tooltip": toolTip,
-      "data-tooltipposition": "left",
-    });
   }
 
   async addGlyphSet(event) {
@@ -152,26 +150,62 @@ export class GlyphSetsUIController {
     };
   }
 
+  // The glyph sets as a table (Figma 4099:10349, look "select"): the shown
+  // tick, the name and the row actions, over the add button. The head tick
+  // shows or hides them all.
   makeGlyphSetsUI() {
     const glyphSets = this.prepareGlyphSets(this.settings[this.collectionKey]);
+    const selected = new Set(this.settings[this.selectionKey]);
+    const setSelected = (keys) => {
+      this.settings[this.selectionKey] = [...keys];
+    };
+
+    const table = html.createDomElement("data-table");
+    table.look = "select";
+    table.selectAllClassName = "checkmark";
+    table.columns = [{ label: "", selectAll: true }, { label: "name" }, { label: "" }];
+    table.resizable = true;
+    table.minHeight = 48;
+    table.style.setProperty("--data-table-height", "76px");
+    table.heightStorageKey = `fontra-glyph-sets-table-height-${this.collectionKey}`;
+    table.onSelectAllChange = (checked) =>
+      setSelected(checked ? glyphSets.map(({ key }) => key) : []);
+    table.setRows(
+      glyphSets,
+      ({ key, label, glyphSet }) =>
+        tableRow(key, [
+          tableCell([
+            checkmark(selected.has(key), "", (checked) => {
+              const keys = new Set(selected);
+              checked ? keys.add(key) : keys.delete(key);
+              setSelected(keys);
+            }),
+          ]),
+          tableCell([label]),
+          actionsCell(glyphSet.url ? this.glyphSetActions(glyphSet) : []),
+        ]),
+      { rowId: ({ key }) => key }
+    );
+    const shownCount = glyphSets.filter(({ key }) => selected.has(key)).length;
+    table.setSelectAllState({
+      checked: !!glyphSets.length && shownCount === glyphSets.length,
+      indeterminate: shownCount > 0 && shownCount < glyphSets.length,
+    });
 
     return html.div({ class: "glyph-set-container" }, [
-      this.checkboxGroup.makeCheckboxUI(glyphSets),
+      table,
+      html.createDomElement("text-button", {
+        "label": "add",
+        "size": "S",
+        "data-tooltip": this.addGlyphSetToolTip,
+        "onclick": (event) => this.addGlyphSet(event),
+      }),
     ]);
   }
 
   prepareGlyphSets(glyphSets) {
     return Object.entries(glyphSets)
-      .map(([key, glyphSet]) => ({
-        key,
-        label: glyphSet.name,
-        extraItem: glyphSet.url
-          ? html.div({ class: "glyphset-button-group" }, [
-              this.makeGlyphSetErrorButton(glyphSet),
-              this.makeGlyphSetMenuButton(glyphSet),
-            ])
-          : null,
-      }))
+      .map(([key, glyphSet]) => ({ key, label: glyphSet.name, glyphSet }))
       .sort((a, b) => {
         if (a.label == b.label) {
           return 0;
@@ -185,60 +219,49 @@ export class GlyphSetsUIController {
       });
   }
 
-  makeGlyphSetMenuButton(glyphSet) {
-    return html.createDomElement("icon-button", {
-      src: "/tabler-icons/pencil.svg",
-      onclick: (event) => {
-        const buttonRect = event.target.getBoundingClientRect();
-        showMenu(
-          [
-            {
-              title: translate("action-topics.menu.edit"),
-              callback: (event) => {
-                this.editGlyphSet(event, glyphSet);
-              },
-            },
-            {
-              title: translate("action.delete"),
-              callback: (event) => {
-                this.deleteGlyphSet(event, glyphSet);
-              },
-            },
-            {
-              title: translate("glyph-organizing.glyph-set.reload"),
-              callback: (event) => {
-                this.reloadGlyphSet(event, glyphSet);
-              },
-            },
-            {
-              title: translate("glyph-organizing.glyph-set.copy-to", this.copyToLabel),
-              callback: (event) => {
-                this.copyGlyphSet(event, glyphSet);
-              },
-            },
-          ],
-          {
-            x: buttonRect.left,
-            y: buttonRect.bottom,
-          }
-        );
-      },
-      // "data-tooltip": "------",
-      // "data-tooltipposition": "left",
-    });
+  // Edit, copy to the other collection, reload and delete; the error button
+  // shows only while the set failed to load.
+  glyphSetActions(glyphSet) {
+    return [
+      this.makeGlyphSetErrorButton(glyphSet),
+      rowAction({
+        src: "/tabler-icons/pencil.svg",
+        tooltip: translate("action-topics.menu.edit"),
+        onClick: (event) => this.editGlyphSet(event, glyphSet),
+      }),
+      rowAction({
+        src: "/tabler-icons/arrow-big-right.svg",
+        tooltip: translate("glyph-organizing.glyph-set.copy-to", this.copyToLabel),
+        onClick: (event) => this.copyGlyphSet(event, glyphSet),
+      }),
+      rowAction({
+        src: "/tabler-icons/refresh.svg",
+        tooltip: translate("glyph-organizing.glyph-set.reload"),
+        onClick: (event) => this.reloadGlyphSet(event, glyphSet),
+      }),
+      rowAction({
+        src: "/tabler-icons/trash.svg",
+        tooltip: translate("action.delete"),
+        onClick: (event) => this.deleteGlyphSet(event, glyphSet),
+      }),
+    ];
   }
 
   makeGlyphSetErrorButton(glyphSet) {
-    const errorButton = html.createDomElement("icon-button", {
-      class: "glyphset-error-button",
+    const errorButton = rowAction({
       src: "/tabler-icons/alert-triangle.svg",
-      onclick: (event) => {
+      reveal: "always",
+      className: "glyphset-error-button",
+      onClick: () => {
         const errorMessage = this.settings.glyphSetErrors[glyphSet.url];
         if (errorMessage) {
           message(`The glyph set “${glyphSet.name}” could not be loaded`, errorMessage);
         }
       },
     });
+    const error = this.settings.glyphSetErrors?.[glyphSet.url];
+    errorButton.classList.toggle("glyphset-error", !!(error && error !== "..."));
+    errorButton.classList.toggle("loading", error === "...");
 
     this.glyphSetErrorButtons[glyphSet.url] = errorButton;
 

@@ -179,6 +179,8 @@ export class GlyphCellView extends HTMLElement {
 
   getContentElement() {
     this.accordion = new Accordion();
+    // The sections are accordion switches (Figma 413:31167).
+    this.accordion.setAttribute("switch", "");
 
     this.accordion.appendStyle(`
     :host {

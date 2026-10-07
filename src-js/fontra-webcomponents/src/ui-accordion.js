@@ -135,20 +135,17 @@ export class Accordion extends UnlitElement {
     if (node.parentNode !== this) {
       this.appendChild(node);
     }
+    this._slottedNodes.add(node);
     return html.createDomElement("slot", { name });
   }
 
   render() {
     const itemElements = [];
     this._itemElements = new Map();
-    const slotNames = new Set();
+    this._slottedNodes = new Set();
     for (const [index, item] of enumerate(this.items || [])) {
       const id = item.id || `ui-accordion-item-${index}`;
-      const slotName = (part) => {
-        const name = `${index}-${part}`;
-        slotNames.add(name);
-        return name;
-      };
+      const slotName = (part) => `${index}-${part}`;
 
       const headerElement = html.div(
         {
@@ -186,9 +183,10 @@ export class Accordion extends UnlitElement {
       itemElements.push(itemElement);
       this._itemElements.set(item, itemElement);
     }
-    // Parts of items no longer shown go.
+    // Parts of items no longer shown go, including an earlier item's part
+    // under a slot name a new item reuses.
     for (const child of [...this.children]) {
-      if (child.slot && !slotNames.has(child.slot)) {
+      if (child.slot && !this._slottedNodes.has(child)) {
         child.remove();
       }
     }
@@ -211,6 +209,11 @@ export class Accordion extends UnlitElement {
   }
 
   _handleItemHeaderClick(event, item) {
+    // A click on the header's own control (a switch, a reset button) is that
+    // control's, not an open/close.
+    if (item.auxiliaryHeaderElement?.contains?.(event.target)) {
+      return;
+    }
     if (event.altKey) {
       // Toggle all items depending on the open/closed state of the clicked item
       const doClose = item.open;

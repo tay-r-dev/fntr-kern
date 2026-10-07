@@ -1,6 +1,4 @@
-import {
-  getGlyphSetsUIControllers,
-} from "@fontra/core/glyphsets-ui.js";
+import { getGlyphSetsUIControllers } from "@fontra/core/glyphsets-ui.js";
 import * as html from "@fontra/core/html-utils.js";
 import { glyphMapToItemList, isObjectEmpty } from "@fontra/core/utils.ts";
 import "@fontra/web-components/glyph-search-list.js";
@@ -11,19 +9,18 @@ export default class GlyphSearchPanel extends Panel {
   identifier = "glyph-search";
   iconPath = "/images/magnifyingglass.svg";
 
+  // GLYPH SEARCH (Figma 4098:8012): the field, the glyph table and the glyph
+  // sets switches in one card.
   static styles = `
-    .glyph-search-section {
-      height: 100%;
-      display: flex;
-      gap: 0.5em;
-      flex-direction: column;
-      justify-content: space-between;
+    .glyph-search-card {
+      gap: 6px;
     }
   `;
 
   constructor(editorController) {
     super(editorController);
     this.glyphSearch = this.contentElement.querySelector("#glyph-search-list");
+    this.glyphSearch.makeResizable("fontra-glyph-search-list-height");
     this.glyphSearch.addEventListener("selectedGlyphNameChanged", (event) =>
       this.glyphNameChangedCallback(event.detail, false)
     );
@@ -107,24 +104,17 @@ export default class GlyphSearchPanel extends Panel {
       this.accordion.replaceWith(this.setupGlyphSetsAccordion());
     });
 
-    return html.div(
-      {
-        class: "panel",
-      },
-      [
-        html.div(
-          {
-            class: "panel-section panel-section--flex glyph-search-section",
-          },
-          [
-            html.createDomElement("glyph-search-list", {
-              id: "glyph-search-list",
-            }),
-            this.accordion,
-          ]
-        ),
-      ]
-    );
+    return html.div({ class: "panel" }, [
+      html.div({ class: "panel-section--flex card-column" }, [
+        html.div({ class: "card card--headed glyph-search-card" }, [
+          html.div({ class: "card-heading-row" }, [
+            html.div({ class: "card-heading" }, ["glyph search"]),
+          ]),
+          html.createDomElement("glyph-search-list", { id: "glyph-search-list" }),
+          this.accordion,
+        ]),
+      ]),
+    ]);
   }
 
   setupGlyphSetsAccordion() {
@@ -138,7 +128,7 @@ export default class GlyphSearchPanel extends Panel {
 
     const accordion = new Accordion();
     accordion.id = accordionId;
-
+    accordion.setAttribute("switch", "");
 
     const accordionItems = [projectGlyphSets.accordionItem, myGlyphSets.accordionItem];
 

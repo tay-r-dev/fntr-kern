@@ -96,6 +96,26 @@ function didReorder(a, b) {
   return false;
 }
 
+// A checkmark (Figma 379:22544): shared.css's label.checkmark-row holding an
+// input.checkmark, with an optional name. `onchange(checked)` runs on a click.
+export function checkmark(checked, label, onchange, { disabled, tooltip } = {}) {
+  const input = html.input({
+    type: "checkbox",
+    class: "checkmark",
+    checked: !!checked,
+    disabled: !!disabled,
+    onchange: (event) => onchange(event.target.checked),
+  });
+  const row = html.label({ class: "checkmark-row" }, [
+    input,
+    ...(label ? [html.span({}, [label])] : []),
+  ]);
+  if (tooltip) {
+    row.dataset.tooltip = tooltip;
+  }
+  return row;
+}
+
 export function labeledCheckbox(label, controller, key, options) {
   const checkboxID = options?.id || `checkbox-${uniqueID()}-${key}`;
   const inputElement = html.input({ type: "checkbox", id: checkboxID });
