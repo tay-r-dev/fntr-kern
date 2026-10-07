@@ -13,6 +13,7 @@ import {
 } from "@fontra/web-components/table-selection.js";
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
+  deltaBoundsForTab,
   explicitPairExists,
   hiddenFromCacheEntry,
   passesNumericFilters,
@@ -71,6 +72,7 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   selectRange,
   selectRow,
   passesNumericFilters,
+  deltaBoundsForTab,
   pairMatchesGlyphset,
   rowMatchesRelationships,
   rowVisibleForHiddenState,
