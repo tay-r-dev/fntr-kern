@@ -1603,6 +1603,13 @@ export class KerningViewController extends ViewController {
       return;
     }
 
+    potentialEl.textContent = `${potentialCount} pair${potentialCount === 1 ? "" : "s"}`;
+    // The rest count the whole cache and the stored kerning: only when the
+    // data under them changed (renderPairTable's summary key).
+    if (this._summariesChanged === false) {
+      return;
+    }
+
     // Scope: active source, unfiltered by any table control -- the exact
     // same set the Stale glyphs panel above already shows (Task 17); not
     // recomputed a second way.
@@ -2956,21 +2963,25 @@ export class KerningViewController extends ViewController {
     // scene. Writing one member of a class changes the value every other
     // member resolves through, so every visible pair has to reflow, not
     // just the one that was written.
-    this._kerningValuesChangeListener = () =>
-      this.schedulePairTableRefresh({ rebuildScene: true });
+    // Every change, live drag frames included, reflows the scene. The table
+    // only follows a finished edit: rebuilding every row on each frame of a
+    // drag is what made dragging -- and anything near it -- stutter. A local
+    // edit reaches these listeners too, so nothing else needs to watch the
+    // scene for one.
+    this._kerningValuesChangeListener = () => this.scheduleSceneRebuild();
     this.fontController.addChangeListener(
       this._kerningValuesChangeMatchPattern,
       this._kerningValuesChangeListener,
       true,
       true
     );
-    // The scene rebuild is also the completion signal for local tool edits.
-    // This one must NOT ask for another rebuild: a rebuild is what sets
-    // positionedLines, so it would re-enter itself every frame.
-    this._positionedLinesChangeListener = () => this.schedulePairTableRefresh();
-    this.sceneSettingsController.addKeyListener(
-      "positionedLines",
-      this._positionedLinesChangeListener
+    this._kerningValuesFinalListener = () => {
+      this._kerningRevision = (this._kerningRevision || 0) + 1;
+      this.schedulePairTableRefresh();
+    };
+    this.fontController.addChangeListener(
+      this._kerningValuesChangeMatchPattern,
+      this._kerningValuesFinalListener
     );
     // "On view disposal, release the subscription." This app has no
     // internal view-teardown lifecycle to hook (grepped the whole tree:
@@ -3017,6 +3028,16 @@ export class KerningViewController extends ViewController {
       }
     };
     document.querySelector("#kerning-filters-accordion-slot").replaceWith(accordion);
+  }
+
+  // Rebuilds positionedLines against the kerning instance the scene model has
+  // just discarded, once per frame however many changes arrive in it.
+  scheduleSceneRebuild() {
+    if (this._sceneRebuildFrame != null) return;
+    this._sceneRebuildFrame = requestAnimationFrame(() => {
+      this._sceneRebuildFrame = null;
+      this.sceneModel.updateScene();
+    });
   }
 
   schedulePairTableRefresh({ rebuildScene = false } = {}) {
@@ -3189,9 +3210,9 @@ export class KerningViewController extends ViewController {
       this._kerningValuesChangeListener,
       true
     );
-    this.sceneSettingsController.removeKeyListener(
-      "positionedLines",
-      this._positionedLinesChangeListener
+    this.fontController.removeChangeListener(
+      this._kerningValuesChangeMatchPattern,
+      this._kerningValuesFinalListener
     );
     if (this._pairTableRefreshFrame != null) {
       cancelAnimationFrame(this._pairTableRefreshFrame);
@@ -3871,10 +3892,30 @@ export class KerningViewController extends ViewController {
     // already is (this method's own callers -- see this method's top
     // comment), so the status strip's counts never go stale relative to
     // what's on screen.
-    this.renderAutokernStatus();
-    // Task 17, spec F01: same reasoning -- every place that can change
-    // which glyphs are stale already calls renderPairTable.
-    this.renderStaleSection();
+    // The counts over the whole cache follow the data under them, not the
+    // filters or the selection, so they are redrawn only when it changed.
+    const summaryKey = [
+      this.autokernCache,
+      this._kerningRevision,
+      this.autokernCoveredGlyphNames,
+      this.autokernGlyphMetrics,
+      Object.keys(this.fontController.glyphMap || {}).length,
+      this.hiddenClassRuleIds?.size,
+      this.activeSourceIdentifier(),
+      this.autokernParamsController.model.threshold,
+      !!this._staleRerunInFlight,
+    ];
+    const summariesChanged =
+      !this._summaryKey ||
+      summaryKey.some((value, index) => value !== this._summaryKey[index]);
+    this._summaryKey = summaryKey;
+    if (summariesChanged) {
+      this.renderAutokernStatus();
+      // Task 17, spec F01: same reasoning -- every place that can change
+      // which glyphs are stale already calls renderPairTable.
+      this.renderStaleSection();
+    }
+    this._summariesChanged = summariesChanged;
     // Derived from the cache and the class membership, both of which a render
     // is downstream of. Rebuilt once per render rather than invalidated in a
     // dozen places.
