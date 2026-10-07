@@ -108,8 +108,8 @@ export default class SelectionInfoPanel extends Panel {
   getContentElement() {
     this.infoForm = new Form();
     this.letterspacerHost = html.div({ class: "metrics-host", hidden: true });
-    this.spacingCard = html.div({ class: "card", hidden: true });
-    this.kerningCard = html.div({ class: "card", hidden: true });
+    this.spacingCard = html.div({ class: "card card--headed", hidden: true });
+    this.kerningCard = html.div({ class: "card card--headed", hidden: true });
     this.selectionCard = html.div({ class: "card metrics-card--form" }, [
       this.infoForm,
     ]);
@@ -542,7 +542,7 @@ export default class SelectionInfoPanel extends Panel {
     const infoLine = html.div(
       { class: "metrics-info" },
       infoParts.flatMap((part, i) =>
-        i ? [html.span({ class: "metrics-info-dot" }), part] : [part]
+        i ? [html.span({ class: "dot-separator" }), part] : [part]
       )
     );
 
@@ -1871,11 +1871,10 @@ customElements.define("panel-selection-info", SelectionInfoPanel);
 // What the metrics panel has that no other panel does; the cards, headings,
 // captions and field pairs are shared.css's.
 const METRICS_PANEL_STYLES = `
-  /* SPACING and KERNING (Figma 4108:2200, 4108:2941): 12px over the
-     heading, their parts 12px apart. */
-  .card {
+  /* SPACING and KERNING (Figma 4108:2200, 4108:2941): their parts 12px
+     apart. */
+  .card--headed {
     gap: 12px;
-    padding: 12px 8px 8px;
   }
 
   .card[hidden],
@@ -1912,14 +1911,6 @@ const METRICS_PANEL_STYLES = `
     display: flex;
     gap: 4px;
     min-width: 0;
-  }
-
-  .metrics-info-dot {
-    flex: none;
-    width: 3px;
-    height: 3px;
-    border-radius: 50%;
-    background-color: var(--text-base-basic-4);
   }
 
   .metrics-stack {

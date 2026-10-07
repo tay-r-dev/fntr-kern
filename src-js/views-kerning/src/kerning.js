@@ -173,7 +173,6 @@ import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 // panel-designspace-navigation.js's coarse-grid-accordion-item) -- imported
 // unmodified, not reinvented.
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
-import { SELECTION_ROW_GROUP_STYLES } from "@fontra/views-editor/selection-row-group-styles.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import {
   KerningTool,
@@ -937,10 +936,6 @@ export class KerningViewController extends ViewController {
     // Built once here, not attached to the page until the dialog opens --
     // same controller keys, same "change" -> setItem persistence as the
     // bindings loop above.
-    // The tray's segment styles are the editor's (selection-row-group-styles.js).
-    const trayStyles = document.createElement("style");
-    trayStyles.textContent = SELECTION_ROW_GROUP_STYLES;
-    document.head.appendChild(trayStyles);
     const runButton = html.createDomElement("icon-button", {
       id: "kerning-run-button",
       label: "run analysis",
@@ -1207,7 +1202,7 @@ export class KerningViewController extends ViewController {
           html.div({ class: "checkmark-wrap" }, [numbersRow, bandRow]),
         ]),
         html.div({ class: "kerning-skip-group" }, [
-          html.span({ class: "kerning-section-label" }, ["skip all suggestions"]),
+          html.span({ class: "section-label" }, ["skip all suggestions"]),
           skipAllControl,
         ])
       );
@@ -6365,7 +6360,7 @@ export class KerningViewController extends ViewController {
     // Figma 4128:2937: a "calibration" label over one table -- a column per
     // control glyph, then the target band -- and the settled reach under it.
     const label = document.createElement("span");
-    label.className = "kerning-section-label";
+    label.className = "section-label";
     label.textContent = "calibration";
     const group = document.createElement("div");
     group.className = "kerning-calibration-group";
@@ -6375,7 +6370,7 @@ export class KerningViewController extends ViewController {
     const format = (value) =>
       Number.isFinite(value) ? value.toFixed(3) : String(value);
     const table = document.createElement("table");
-    table.className = "kerning-calibration-table";
+    table.className = "static-table";
     const headRow = table.insertRow();
     const valueRow = table.insertRow();
     CONTROL_GLYPH_NAMES.forEach((name, i) => {

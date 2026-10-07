@@ -317,3 +317,471 @@ glyph-cell-view .glyph-count {
   font-weight: normal;
   opacity: 50%;
 }
+
+/* The tool notch (Figma 4129:3788): the panel grey hanging from a canvas
+   card's top edge, ruled at the sides and under with 14px lower corners,
+   4px round its strips at the sides and under. A view places it. */
+.tool-notch {
+  display: flex;
+  flex-direction: row;
+  gap: 4px;
+  padding: 0 4px 4px;
+  background-color: var(--surface-base-basic-1);
+  border: 1px solid var(--line-base-basic-1);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 1px 4px var(--shadow-base-1);
+  pointer-events: auto;
+}
+
+/* Its two ears: where the card's top rule turns down into the notch's side
+   on a 10px round, tangent to the rule at the ear's outer end. */
+.tool-notch::before,
+.tool-notch::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 11px;
+  height: 11px;
+}
+
+.tool-notch::before {
+  left: -11px;
+  background: radial-gradient(
+    circle 10.5px at 0 10.5px,
+    transparent 9.5px,
+    var(--line-base-basic-1) 9.5px,
+    var(--line-base-basic-1) 10.5px,
+    var(--surface-base-basic-1) 10.5px
+  );
+}
+
+.tool-notch::after {
+  right: -11px;
+  background: radial-gradient(
+    circle 10.5px at 100% 10.5px,
+    transparent 9.5px,
+    var(--line-base-basic-1) 9.5px,
+    var(--line-base-basic-1) 10.5px,
+    var(--surface-base-basic-1) 10.5px
+  );
+}
+
+/* A tool strip: a row of tool buttons, flat in the notch. A multi-tool's
+   subtools drop below its button. */
+.tools-item {
+  --tool-hover-light: var(--fontra-theme-marker) #eee;
+  --tool-hover-dark: #333;
+  --tool-hover: var(--tool-hover-light, var(--tool-hover-dark));
+  --tool-active-light: var(--fontra-theme-marker) #ccc;
+  --tool-active-dark: #555;
+  --tool-active: var(--tool-active-light, var(--tool-active-dark));
+  --tool-selected-light: var(--fontra-theme-marker) #666;
+  --tool-selected-dark: #ccc;
+  --tool-selected: var(--tool-selected-light, var(--tool-selected-dark));
+  display: flex;
+  background-color: var(--ui-element-background-color);
+  border-radius: 0.65em;
+  box-shadow: 1px 1px 5px #0006;
+  cursor: pointer;
+  height: min-content;
+  pointer-events: auto;
+}
+
+.tool-notch .tools-item {
+  box-shadow: none;
+}
+
+.tool-button,
+.subtool-button {
+  justify-content: center;
+  align-items: center;
+  user-select: none;
+  background-color: var(--ui-element-background-color);
+  fill: var(--foreground-color);
+  width: 2.2rem;
+  height: 1.9rem;
+  padding: 0.1rem;
+  transition: 0.15s;
+  display: inline-grid;
+  box-sizing: content-box; /* FIXME: use border-box */
+}
+
+.tool-button:first-child,
+.subtool-button:first-child {
+  border-radius: 0.65em 0 0 0.65em;
+}
+
+.tool-button:first-child:has(
+    .subtool-button:nth-child(2)[style*="visibility: visible;"]
+  ) {
+  border-radius: 0.65em 0 0 0;
+}
+
+.tool-button:last-child,
+.subtool-button:last-child {
+  border-radius: 0 0.65em 0.65em 0;
+}
+
+.subtool-button {
+  margin-top: -0.1rem;
+  fill: unset;
+  background-color: unset;
+}
+
+.multi-tool::after {
+  position: absolute;
+  content: "";
+  border-top: 5px solid transparent;
+  border-right: 5px solid var(--foreground-color);
+  margin-right: -5px;
+  margin-left: 1.8rem;
+  margin-top: calc(1.9rem - 6px);
+  pointer-events: none;
+}
+
+.subtool-button:last-child {
+  border-radius: 0 0 0.65em 0.65em;
+}
+
+.subtool-button:not(:first-child) {
+  visibility: hidden;
+  transition-duration: 100ms;
+  background-color: var(--ui-element-background-color);
+  fill: var(--foreground-color);
+  box-shadow: 1px 3px 3px #0006;
+}
+
+.tool-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  position: relative;
+}
+
+.tool-icon:hover {
+  position: relative;
+  transform: scale(1.1, 1.1);
+}
+
+.tool-icon--hidden {
+  display: none;
+}
+
+.subtool-button:hover,
+.tool-button:hover {
+  background-color: var(--tool-hover);
+}
+
+.subtool-button:active,
+.tool-button:active {
+  background-color: var(--tool-active);
+}
+
+.selected .subtool-button:first-child,
+.tool-button.selected {
+  background-color: var(--tool-selected);
+  fill: var(--background-color);
+}
+
+.tool-button.selected .icon-tabler {
+  stroke: var(--background-color);
+}
+
+.multi-tool.selected::after {
+  border-right: 5px solid var(--background-color);
+}
+
+.subtool-button:not(:first-child) .icon-tabler {
+  stroke: var(--foreground-color);
+}
+
+/* The canvas card (Figma 4129:3789): white, ruled, 14px corners, on the
+   panel grey. A view places and sizes it. */
+.canvas-card {
+  overflow: hidden;
+  background-color: #fff;
+  border: 1px solid var(--line-base-basic-1);
+  border-radius: 14px;
+}
+
+/* A card that opens with a heading: 12px over it, 8px under its last part. */
+.card.card--headed {
+  padding-top: 12px;
+}
+
+/* A sub-section's own label (Figma 4128:2911): ui/heading/h5. */
+.section-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
+  white-space: nowrap;
+}
+
+/* The dot between two parts of a line of text. */
+.dot-separator {
+  flex: none;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--text-base-basic-4);
+}
+
+/* Buttons side by side, 4px apart. */
+.button-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* A small static table (Figma 4108:2787, 4128:2937): bordered, 6px corners,
+   24px rows, each but the last ruled under; ui/label/S. */
+.static-table {
+  width: 100%;
+  border: 1px solid var(--line-base-basic-1);
+  border-radius: 6px;
+  border-spacing: 0;
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--text-base-basic-2);
+}
+
+.static-table td,
+.static-table th {
+  height: 24px;
+  padding: 0 8px;
+  text-align: left;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.static-table tr:not(:last-child) > * {
+  border-bottom: 1px solid var(--line-base-basic-1);
+}
+
+/* A row of small labeled icon groups and the segmented icon tray (Flip,
+   Align, Distribute, Bools; Projection, Reset, Rib; the kerning run tray). */
+/* Each label stands above its buttons: the row flows by column, two cells
+   per column, so a label and the buttons after it share one column. */
+.selection-row-group {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: auto auto;
+  justify-content: start;
+  align-items: center;
+  gap: 0.25em 1.5em;
+}
+
+/* Groups spread across the whole row. */
+.selection-row-group.spread {
+  justify-content: space-between;
+  column-gap: 0.5em;
+}
+
+.selection-row-group-label {
+  white-space: nowrap;
+}
+
+.selection-row-group-icons {
+  display: flex;
+  align-items: center;
+  /* The design's button/icon row (Figma 312:2780): 20px tiles, 2px apart. */
+  gap: 2px;
+}
+
+.selection-row-group-icons icon-button {
+  width: 20px;
+  height: 20px;
+}
+
+.selection-row-group-icons input[type="number"] {
+  width: 3.5em;
+}
+
+/* A tray: button/segmented's plate (Figma 2004:29215) holding a group's
+   buttons, an overflow set off by a line, and a segmented control drawn
+   flat on the plate. The plate shows through the 1px gaps as the dividers. */
+.selection-row-group-icons.tray {
+  justify-self: start;
+  gap: 1px;
+  padding: 0;
+  border-radius: var(--bt-sgb-corner);
+  background: #e0e0e0;
+}
+
+.selection-row-group-icons.tray:has(icon-button[disabled]):not(
+    :has(icon-button:not([disabled]))
+  ) {
+  background: var(--bt-sgb-ln-disabled);
+}
+
+/* Each icon-button child drawn as ./segment (Figma 2004:29126). The host
+   is the outer face, with its lines and 2px/1px inset; the button in its
+   shadow root is the inner container, set through its --icon-button-inner-*
+   hooks. The icon is 16px throughout. The container's corners are 3px,
+   4px on the plate's outer edge.
+
+   rest     face grey, line under;              container grey, 3px 4px pad
+   hover    face white, lines above and under;  container grey, 4px pad
+   press    face white, line above and at the   container grey, 2px pad
+            outer side(s), none under;
+   on       face darker grey, lines as press;   container clear, 2px pad
+   disabled face pale, line under;              container pale, 4px pad
+
+   A left segment rounds its left corners and takes the left side line, a
+   right one the right; a middle one is square and takes both. */
+.selection-row-group-icons.tray icon-button {
+  box-sizing: border-box;
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  height: var(--bt-sgb-height);
+  padding: 2px 1px;
+  background: var(--bt-sgb-sr-rest);
+  border: 0 solid var(--bt-sgb-ln-rest);
+  border-bottom-width: 1px;
+  --icon-button-icon-size: 16px;
+  --icon-button-inner-fill: var(--bt-sgc-sr-rest);
+  --icon-button-inner-border: transparent;
+  --icon-button-inner-radius: var(--bt-sgc-corner);
+  --icon-button-inner-padding: 3px 4px;
+  --icon-button-inner-hover-fill: var(--bt-sgc-sr-hover);
+  --icon-button-inner-hover-border: transparent;
+  --icon-button-inner-press-fill: var(--bt-sgc-sr-focus);
+  --icon-button-inner-press-border: transparent;
+  --icon-button-on-background-color: transparent;
+}
+
+.selection-row-group-icons.tray icon-button:first-child {
+  border-radius: var(--bt-sgb-corner) 0 0 var(--bt-sgb-corner);
+  --icon-button-inner-radius: 4px var(--bt-sgc-corner) var(--bt-sgc-corner) 4px;
+}
+
+.selection-row-group-icons.tray icon-button:last-child {
+  border-radius: 0 var(--bt-sgb-corner) var(--bt-sgb-corner) 0;
+  --icon-button-inner-radius: var(--bt-sgc-corner) 4px 4px var(--bt-sgc-corner);
+}
+
+.selection-row-group-icons.tray icon-button:hover {
+  background: var(--bt-sgb-sr-hover);
+  border-color: var(--bt-sgb-ln-hover);
+  border-width: 1px 0;
+  --icon-button-inner-padding: 4px;
+}
+
+.selection-row-group-icons.tray icon-button:active,
+.selection-row-group-icons.tray icon-button[on] {
+  padding-bottom: 0;
+  border-width: 1px 1px 0;
+  --icon-button-inner-padding: 2px;
+}
+
+.selection-row-group-icons.tray icon-button:active {
+  background: var(--bt-sgb-sr-focus);
+  border-color: var(--bt-sgb-ln-focus);
+}
+
+.selection-row-group-icons.tray icon-button[on] {
+  background: var(--bt-sgb-sr-active-hover);
+  border-color: var(--bt-sgb-ln-active-hover);
+  --icon-button-inner-fill: var(--bt-sgc-sr-dropdown);
+}
+
+.selection-row-group-icons.tray icon-button:first-child:is(:active, [on]) {
+  border-right-width: 0;
+}
+
+.selection-row-group-icons.tray icon-button:last-child:is(:active, [on]) {
+  border-left-width: 0;
+}
+
+.selection-row-group-icons.tray icon-button[disabled] {
+  padding: 2px 1px;
+  background: var(--bt-sgb-sr-disabled);
+  border-color: var(--bt-sgb-ln-disabled);
+  border-width: 0 0 1px;
+  --icon-button-inner-fill: var(--bt-sgc-sr-disabled);
+  --icon-button-inner-padding: 4px;
+}
+
+.selection-row-group-icons.tray overflow-button,
+.selection-row-group-icons.tray overflow-popover {
+  box-sizing: border-box;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.15em;
+  border-left: 1px solid #0002;
+}
+
+/* Every tile in a tray is one height: icon buttons, segments and the
+   overflow alike. */
+.selection-row-group-icons.tray segmented-control {
+  --segmented-control-tray-color: transparent;
+  --segmented-control-border-color: transparent;
+  --segmented-control-tray-padding: 0;
+  --segmented-control-button-height: 100%;
+}
+
+/* Latch buttons stand alone, each with its own face (the design's
+   button/latch, Figma 287:15701): three separate toggles in the Rib group,
+   not segments of one plate. */
+.selection-row-group-icons.latches {
+  justify-self: stretch;
+  width: 100%;
+}
+
+.selection-row-group-icons.latches latch-button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+}
+
+/* A labeled group over its tray, and two such groups sharing a row half
+   and half (the Transform and Skeleton panels). */
+.row-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 12px to the next group, with the form's 8px row gap. */
+  padding-bottom: 4px;
+}
+
+/* ui/heading/h5 */
+.row-group > .selection-row-group-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: #8e8e8e;
+}
+
+.row-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.row-pair > .row-group {
+  padding-bottom: 0;
+}
+
+.row-pair .tray {
+  justify-self: stretch;
+}
+
+/* The redesigned panels' plain text takes the design's sizes in the old
+   UI font: label/XS for row labels, values and whole-width rows, label/S
+   for checks. The new components and headings bring Martian Mono. */
+.ui-form-label,
+.ui-form-value,
+.ui-form-full-width {
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  font-family: var(--ui-font-old);
+}
+
+.ui-form-label.checkbox,
+.ui-form-value.checkbox {
+  font: var(--ui-text-label-m);
+  letter-spacing: var(--ui-tracking-label-m);
+  font-family: var(--ui-font-old);
+}

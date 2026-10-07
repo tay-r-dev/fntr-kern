@@ -30,19 +30,6 @@
   --kerning-middle-bottom-height: 140px;
 }
 
-:root {
-  /* editor.css's tool-button colours, for the notch's strip. */
-  --kerning-tool-button-hover-background-color: #eee;
-  --kerning-tool-button-active-background-color: #ccc;
-  --kerning-tool-button-selected-background-color: #666;
-}
-
-:root.dark-theme {
-  --kerning-tool-button-hover-background-color: #333;
-  --kerning-tool-button-active-background-color: #555;
-  --kerning-tool-button-selected-background-color: #ccc;
-}
-
 :root.sidebar-resizing {
   user-select: none;
   -webkit-user-select: none;
@@ -140,117 +127,20 @@
   background-color: var(--surface-base-basic-1);
 }
 
-/* The canvas card (Figma 4129:3789): white, ruled, 14px corners. */
+/* The canvas card (shared.css's .canvas-card). */
 #kerning-middle-top {
   position: relative;
   min-height: 0;
-  overflow: hidden;
-  background-color: #fff;
-  border: 1px solid var(--line-base-basic-1);
-  border-radius: 14px;
 }
 
-/* The notch (Figma 4129:3788): the panel grey hanging from the column's top
-   into the canvas card, ruled at the sides and under with 14px lower
-   corners, 8px over the strip and 4px round it. */
+/* The tool notch (shared.css's .tool-notch), centred on the canvas card's
+   top edge. */
 #kerning-tool-notch {
   position: absolute;
   top: 0;
   left: 50%;
   z-index: 2;
   transform: translateX(-50%);
-  padding: 8px 4px 4px;
-  background-color: var(--surface-base-basic-1);
-  border: 1px solid var(--line-base-basic-1);
-  border-top: none;
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 1px 4px var(--shadow-base-1);
-}
-
-/* Its two ears: where the card's top rule turns down into the notch's side
-   on a 10px round. Each covers the notch's side above the turn. */
-#kerning-tool-notch::before,
-#kerning-tool-notch::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 11px;
-  height: 18px;
-}
-
-#kerning-tool-notch::before {
-  left: -11px;
-  background: radial-gradient(
-    circle 10.5px at 0 18px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
-  );
-}
-
-#kerning-tool-notch::after {
-  right: -11px;
-  background: radial-gradient(
-    circle 10.5px at 100% 18px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
-  );
-}
-
-/* The editor's tool strip (editor.css's .tools-item/.tool-button), flat in
-   the notch: 30px high, 10px corners, the tools and the zoom group parted
-   by a rule. */
-#kerning-tool-strip {
-  display: flex;
-  align-items: center;
-  height: 30px;
-  overflow: hidden;
-  border-radius: 10px;
-  background-color: var(--ui-element-background-color);
-}
-
-#kerning-tool-strip .tool-button {
-  display: inline-grid;
-  justify-content: center;
-  align-items: center;
-  width: 35px;
-  height: 30px;
-  user-select: none;
-  cursor: pointer;
-  fill: var(--foreground-color);
-  transition: 0.15s;
-}
-
-#kerning-tool-strip .tool-button:hover {
-  background-color: var(--kerning-tool-button-hover-background-color);
-}
-
-#kerning-tool-strip .tool-button:active {
-  background-color: var(--kerning-tool-button-active-background-color);
-}
-
-#kerning-tool-strip .tool-button.selected {
-  background-color: var(--kerning-tool-button-selected-background-color);
-  fill: var(--background-color);
-}
-
-#kerning-tool-strip .tool-icon {
-  width: 1.75rem;
-  height: 1.75rem;
-}
-
-#kerning-tool-strip .tool-icon--hidden {
-  display: none;
-}
-
-.kerning-tool-divider {
-  width: 1px;
-  height: 25px;
-  margin: 0 3px;
-  background-color: var(--line-base-basic-1);
 }
 
 /* Phrase / pair / font and the font mode's glyphset (Figma 4134:3975): the
@@ -293,9 +183,6 @@
   position: relative;
   min-height: 0;
   overflow-y: auto;
-  background-color: #fff;
-  border: 1px solid var(--line-base-basic-1);
-  border-radius: 14px;
 }
 
 #autokern-class-panel-slot {
@@ -420,13 +307,6 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-/* A right-column card: 12px over its heading, 8px under its last part. */
-.kerning-panel-card {
-  flex: 0 0 auto;
-  padding: 12px 8px 8px;
-  border-color: var(--line-base-basic-1);
 }
 
 #kerning-autokern-card {
@@ -1105,19 +985,6 @@ data-table[look]
   color: var(--text-base-basic-3);
 }
 
-.kerning-dot-separator {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--text-base-basic-4);
-}
-
-.kerning-button-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
 #kerning-stale-progress {
   margin: 0;
   font: var(--ui-text-label-s);
@@ -1132,13 +999,6 @@ data-table[look]
 #kerning-stale-hint {
   width: 24px;
   height: 20px;
-}
-
-/* A sub-section's own label (Figma 4128:2911, 4128:2938): ui/heading/h5. */
-.kerning-section-label {
-  font: var(--ui-text-heading-h5);
-  letter-spacing: var(--ui-tracking);
-  color: var(--grey-deprecated-4);
 }
 
 /* The stripe opacity and the two checks (Figma 4128:2886). */
@@ -1214,26 +1074,8 @@ data-table[look]
   margin: 0;
 }
 
-.kerning-calibration-table {
-  width: 100%;
-  border: 1px solid var(--line-base-basic-1);
-  border-radius: 6px;
-  border-spacing: 0;
-  color: var(--text-base-basic-2);
-}
-
-.kerning-calibration-table td {
-  height: 24px;
-  padding: 0 8px;
-  box-sizing: border-box;
-}
-
-.kerning-calibration-table td:not(:last-child) {
+#kerning-calibration-body .static-table td:not(:last-child) {
   width: 60px;
-}
-
-.kerning-calibration-table tr:first-child td {
-  border-bottom: 1px solid var(--line-base-basic-1);
 }
 
 .kerning-calibration-group {

@@ -272,8 +272,8 @@
         <div id="kerning-middle-resize-gutter"></div>
         <!-- The notch (Figma 4129:3788): the editor's tool strip, the tools
              then the zoom group, hanging from the canvas card's top edge. -->
-        <div id="kerning-tool-notch">
-          <div id="kerning-tool-strip" class="tools-item">
+        <div id="kerning-tool-notch" class="tool-notch">
+          <div class="tools-item">
             <div
               class="tool-button"
               data-tool="pointer-tool"
@@ -309,7 +309,8 @@
             >
               <inline-svg class="tool-icon" src="/images/hand.svg"></inline-svg>
             </div>
-            <div class="kerning-tool-divider"></div>
+          </div>
+          <div class="tools-item">
             <div
               class="tool-button"
               data-zoom="zoom-out"
@@ -351,7 +352,7 @@
             </div>
           </div>
         </div>
-        <div id="kerning-middle-top">
+        <div id="kerning-middle-top" class="canvas-card">
           <div id="kerning-view-container">
             <!-- id is "edit-canvas", not "kerning-canvas": edit-tools-metrics.js's
                  SidebearingTool/KerningTool (workstream 17) hardcode
@@ -413,7 +414,7 @@
             </div>
           </div>
         </div>
-        <div id="kerning-middle-bottom">
+        <div id="kerning-middle-bottom" class="canvas-card">
           <!-- Class panel, §1.2 bottom row. The static structure below is
                THIS worker's own delimited addition. Task 13, spec F28: the
                font-mode "Add selection to selected class" button is appended
@@ -467,7 +468,7 @@
         <div id="kerning-panel-container">
           <!-- SETUP card (Figma 4123:10276): the source in the heading, then
                the phrase presets, the alignment and the phrase itself. -->
-          <section class="card kerning-panel-card" id="kerning-setup-card">
+          <section class="card card--headed" id="kerning-setup-card">
             <div class="card-heading-row">
               <h2 class="card-heading">setup</h2>
               <!-- The source dropdown (kerning.js's initAutokernStatusSection). -->
@@ -498,7 +499,7 @@
           </section>
 
           <!-- AUTOKERN card (Figma 4123:10281). -->
-          <section class="card kerning-panel-card" id="kerning-autokern-card">
+          <section class="card card--headed" id="kerning-autokern-card">
             <div class="card-heading-row">
               <h2 class="card-heading">autokern</h2>
               <!-- Run analysis with the parameters menu joined to it. -->
@@ -537,10 +538,10 @@
             <div id="kerning-stale-section" class="kerning-accordion-body">
               <div id="kerning-stale-summary">
                 <span>Stale glyphs: <span id="kerning-stale-count"></span></span>
-                <span class="kerning-dot-separator"></span>
+                <span class="dot-separator"></span>
                 <span>New glyphs: <span id="kerning-stale-new-count"></span></span>
               </div>
-              <div class="kerning-button-row">
+              <div class="button-row">
                 <text-button id="kerning-stale-rerun-button" size="S" disabled
                   >re-run analysis</text-button
                 >

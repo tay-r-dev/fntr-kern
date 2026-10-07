@@ -43,7 +43,6 @@ import "@fontra/web-components/overflow-popover.js"; // for the Rib card
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 44
 import { Form } from "@fontra/web-components/ui-form.js";
 import { PresetHeaderControl } from "./preset-header-control.js";
-import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import {
   SKELETON_PANEL_SENDER,
   nudgePanelCapParameterStream,
@@ -558,7 +557,6 @@ export default class SkeletonParametersPanel {
     // Tied ribs, Detach and the lock with its card, as three latch buttons.
     // Built once with its row, for the same reason as the width fields; each
     // update sets the buttons' state from the selection.
-    this.infoForm.appendStyle(SELECTION_ROW_GROUP_STYLES);
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
         "src": src,

@@ -1,13 +1,4 @@
 :root {
-  --editor-tool-button-hover-background-color-light: #eee;
-  --editor-tool-button-hover-background-color-dark: #333;
-
-  --editor-tool-button-active-background-color-light: #ccc;
-  --editor-tool-button-active-background-color-dark: #555;
-
-  --editor-tool-button-selected-background-color-light: #666;
-  --editor-tool-button-selected-background-color-dark: #ccc;
-
   --editor-mini-console-background-color-light: #ddd;
   --editor-mini-console-background-color-dark: #444;
 
@@ -16,15 +7,6 @@
 }
 
 :root {
-  --editor-tool-button-hover-background-color: var(
-    --editor-tool-button-hover-background-color-light
-  );
-  --editor-tool-button-active-background-color: var(
-    --editor-tool-button-active-background-color-light
-  );
-  --editor-tool-button-selected-background-color: var(
-    --editor-tool-button-selected-background-color-light
-  );
   --editor-mini-console-background-color: var(
     --editor-mini-console-background-color-light
   );
@@ -34,15 +16,6 @@
 }
 
 :root.dark-theme {
-  --editor-tool-button-hover-background-color: var(
-    --editor-tool-button-hover-background-color-dark
-  );
-  --editor-tool-button-active-background-color: var(
-    --editor-tool-button-active-background-color-dark
-  );
-  --editor-tool-button-selected-background-color: var(
-    --editor-tool-button-selected-background-color-dark
-  );
   --editor-mini-console-background-color: var(
     --editor-mini-console-background-color-dark
   );
@@ -53,15 +26,6 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --editor-tool-button-hover-background-color: var(
-      --editor-tool-button-hover-background-color-dark
-    );
-    --editor-tool-button-active-background-color: var(
-      --editor-tool-button-active-background-color-dark
-    );
-    --editor-tool-button-selected-background-color: var(
-      --editor-tool-button-selected-background-color-dark
-    );
     --editor-mini-console-background-color: var(
       --editor-mini-console-background-color-dark
     );
@@ -71,15 +35,6 @@
   }
 
   :root.light-theme {
-    --editor-tool-button-hover-background-color: var(
-      --editor-tool-button-hover-background-color-light
-    );
-    --editor-tool-button-active-background-color: var(
-      --editor-tool-button-active-background-color-light
-    );
-    --editor-tool-button-selected-background-color: var(
-      --editor-tool-button-selected-background-color-light
-    );
     --editor-mini-console-background-color: var(
       --editor-mini-console-background-color-light
     );
@@ -165,7 +120,7 @@ body {
   position: absolute;
   display: grid;
   grid-template-columns: 3.5em 1fr 3.5em;
-  inset: 12px 1px; /* the notch's top on the canvas card's rule */
+  inset: 8px 1px; /* the notch's top on the canvas card's rule */
   pointer-events: none;
 }
 
@@ -334,17 +289,13 @@ body {
 }
 
 /* The canvas area: one slot while whole, two with a divider while split. */
-/* The canvas card: ruled, 14px corners, 12px of grey above and below like
-   the sidebar panels' cards. */
+/* The canvas card (shared.css's .canvas-card), 8px of grey above and below
+   like the sidebar panels' cards. */
 #canvas-split {
   position: absolute;
-  inset: 12px 0;
+  inset: 8px 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  overflow: hidden;
-  background-color: #fff;
-  border: 1px solid var(--line-base-basic-1);
-  border-radius: 14px;
 }
 
 #canvas-split.split {
@@ -450,177 +401,14 @@ body {
   display: none;
 }
 
-/* The notch (kerning.css's #kerning-tool-notch): the panel grey hanging
-   from the card's top edge, ruled at the sides and under with 14px lower
-   corners, 4px round the strips at the sides and under. */
+/* The tool notch (shared.css's .tool-notch), from the card's top edge. */
 .tools-overlay {
-  display: flex;
-  flex-direction: row;
-  gap: 4px;
-  padding: 0 4px 4px;
   position: absolute;
   top: 0;
-  background-color: var(--surface-base-basic-1);
-  border: 1px solid var(--line-base-basic-1);
-  border-top: none;
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 1px 4px var(--shadow-base-1);
-  pointer-events: auto;
-}
-
-/* Its two ears: where the card's top rule turns down into the notch's side
-   on a 10px round, tangent to the rule at the ear's outer end. */
-.tools-overlay::before,
-.tools-overlay::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 11px;
-  height: 11px;
-}
-
-.tools-overlay::before {
-  left: -11px;
-  background: radial-gradient(
-    circle 10.5px at 0 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
-  );
-}
-
-.tools-overlay::after {
-  right: -11px;
-  background: radial-gradient(
-    circle 10.5px at 100% 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
-  );
-}
-
-.tools-item {
-  display: flex;
-  background-color: var(--ui-element-background-color);
-  border-radius: 0.65em;
-  box-shadow: 1px 1px 5px #0006;
-  cursor: pointer;
-  height: min-content;
-  pointer-events: auto;
-}
-
-/* Flat in the notch. */
-.tools-overlay .tools-item {
-  box-shadow: none;
-}
-
-.tool-button,
-.subtool-button {
-  justify-content: center;
-  align-items: center;
-  user-select: none;
-  background-color: var(--ui-element-background-color);
-  fill: var(--foreground-color);
-  width: 2.2rem;
-  height: 1.9rem;
-  padding: 0.1rem;
-  transition: 0.15s;
-  display: inline-grid;
-  box-sizing: content-box; /* FIXME: use border-box */
-}
-
-.tool-button:first-child,
-.subtool-button:first-child {
-  border-radius: 0.65em 0 0 0.65em;
-}
-
-.tool-button:first-child:has(
-    .subtool-button:nth-child(2)[style*="visibility: visible;"]
-  ) {
-  border-radius: 0.65em 0 0 0;
-}
-
-.tool-button:last-child,
-.subtool-button:last-child {
-  border-radius: 0 0.65em 0.65em 0;
-}
-
-.subtool-button {
-  margin-top: -0.1rem;
-  fill: unset;
-  background-color: unset;
-}
-
-.multi-tool::after {
-  position: absolute;
-  content: "";
-  border-top: 5px solid transparent;
-  border-right: 5px solid var(--foreground-color);
-  margin-right: -5px;
-  margin-left: 1.8rem;
-  margin-top: calc(1.9rem - 6px);
-  pointer-events: none;
-}
-
-.subtool-button:last-child {
-  border-radius: 0 0 0.65em 0.65em;
-}
-
-.subtool-button:not(:first-child) {
-  visibility: hidden;
-  transition-duration: 100ms;
-  background-color: var(--ui-element-background-color);
-  fill: var(--foreground-color);
-  box-shadow: 1px 3px 3px #0006;
-}
-
-.tool-icon {
-  width: 1.75rem;
-  height: 1.75rem;
-  position: relative;
-}
-
-.tool-icon:hover {
-  position: relative;
-  transform: scale(1.1, 1.1);
-}
-
-.tool-icon--hidden {
-  display: none;
 }
 
 .icon-tabler {
   stroke-width: 1.7px;
-}
-
-.subtool-button:hover,
-.tool-button:hover {
-  background-color: var(--editor-tool-button-hover-background-color);
-}
-
-.subtool-button:active,
-.tool-button:active {
-  background-color: var(--editor-tool-button-active-background-color);
-}
-
-.selected .subtool-button:first-child,
-.tool-button.selected {
-  background-color: var(--editor-tool-button-selected-background-color);
-  fill: var(--background-color);
-}
-
-.tool-button.selected .icon-tabler {
-  stroke: var(--background-color);
-}
-
-.multi-tool.selected::after {
-  border-right: 5px solid var(--background-color);
-}
-
-.subtool-button:not(:first-child) .icon-tabler {
-  stroke: var(--foreground-color);
 }
 
 #mini-console {

@@ -33,7 +33,6 @@ import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39'
 import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
 import { Form } from "@fontra/web-components/ui-form.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
-import { SELECTION_ROW_GROUP_STYLES } from "./selection-row-group-styles.js";
 import {
   applyGeneratedContourRemap,
   computeGeneratedContourRemap,
@@ -150,9 +149,7 @@ export default class TransformationPanel {
   }
 
   /* Operations, Path, Harmonize: a small label over segmented rows, two
-     groups side by side. The tray itself is shared
-     (selection-row-group-styles.js). */
-  ${SELECTION_ROW_GROUP_STYLES}
+     groups side by side. The tray itself is shared.css's. */
 
 `;
 

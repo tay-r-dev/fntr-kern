@@ -550,10 +550,8 @@ function readSnapParameter(path) {
 const DESIGNSPACE_PANEL_COLORS = {
   "ds-card-background-color": ["#ffffff", "#2a2a2a"],
   "ds-heading-color": ["#848484", "#a0a0a0"],
-  "ds-label-color": ["#8e8e8e", "#9a9a9a"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
-  "ds-label-disabled-color": ["#b4b4b4", "#6a6a6a"],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
   "ui-accordion-switch-background-color": ["#fafafa", "#262626"],
   "ui-accordion-switch-border-color": ["#e9e9e9", "#3a3a3a"],
@@ -603,14 +601,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         letter-spacing: var(--ui-tracking);
         text-transform: uppercase;
         color: var(--ds-heading-color);
-      }
-
-      /* ui/heading/h5 */
-      .ds-label {
-        font: var(--ui-text-heading-h5);
-        letter-spacing: var(--ui-tracking);
-        color: var(--ds-label-color);
-        white-space: nowrap;
       }
 
       .ds-label--dark {
@@ -893,7 +883,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               ]),
             ]),
             html.div({ class: "ds-field" }, [
-              html.div({ class: "ds-label" }, ["Custom spacing"]),
+              html.div({ class: "section-label" }, ["Custom spacing"]),
               html.div({ class: "ds-row" }, [
                 segmented("coarse-grid-custom-toggle"),
                 html.div({ id: "coarse-grid-custom-fields", class: "ds-row ds-grow" }, [
@@ -908,11 +898,11 @@ export default class DesignspaceNavigationPanel extends Panel {
           html.div({ class: "ds-subheading" }, ["measurement"]),
           html.div({ class: "ds-row ds-row--measurement" }, [
             html.div({ class: "ds-field" }, [
-              html.div({ class: "ds-label" }, ["Speedpunk"]),
+              html.div({ class: "section-label" }, ["Speedpunk"]),
               segmented("measurements-speedpunk-toggle"),
             ]),
             html.div({ class: "ds-field" }, [
-              html.div({ class: "ds-label" }, ["Point labels"]),
+              html.div({ class: "section-label" }, ["Point labels"]),
               html.div({ class: "ds-row ds-row--labels" }, [
                 latch(
                   "measurements-basic-latch",
@@ -971,7 +961,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (!this._pointLabelsPopover) {
       const column = (title, keys) => {
         const element = html.div({ class: "ds-popover-column" }, [
-          html.div({ class: "ds-label ds-label--dark" }, [title]),
+          html.div({ class: "section-label ds-label--dark" }, [title]),
           ...Object.entries(keys).map(([label, key]) => {
             const box = html.input({ type: "checkbox", class: "checkmark" });
             box.checked = !!applicationSettingsController.model[key];

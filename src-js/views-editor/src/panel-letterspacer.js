@@ -233,7 +233,7 @@ export default class LetterspacerPanel extends Panel {
 
   constructor(editorController) {
     super(editorController);
-    this.card = html.div({ class: "card" });
+    this.card = html.div({ class: "card card--headed" });
     this.contentElement.appendChild(this.card);
     this._appendStyle(LETTERSPACER_CARD_STYLES);
     this.fontController = this.editorController.fontController;
@@ -465,33 +465,26 @@ export default class LetterspacerPanel extends Panel {
   // The static table (Figma 4108:2787): the side checks heading the L and R
   // columns (which sides Apply writes), then Current and Calculated.
   _buildCalculatedTable() {
-    const cell = (content, extraClass = "") =>
-      html.div({ class: `ls-cell ${extraClass}`.trim() }, content);
-    this._currentLCell = cell([""], "ls-value");
-    this._currentRCell = cell([""], "ls-value");
-    this._calculatedLCell = cell([""], "ls-value");
-    this._calculatedRCell = cell([""], "ls-value");
+    const td = (content) => html.createDomElement("td", {}, content);
+    const tr = (cells) => html.createDomElement("tr", {}, cells);
+    this._currentLCell = td([""]);
+    this._currentRCell = td([""]);
+    this._calculatedLCell = td([""]);
+    this._calculatedRCell = td([""]);
     const sideHead = (key, side) =>
-      cell(
-        [
+      td([
+        html.div({ class: "ls-side" }, [
           this._checkmark(!!this.params[key], "", (checked) =>
             this._onApplySideChange(key, checked)
           ),
-          html.span({ class: "ls-side" }, [side]),
-        ],
-        "ls-head"
-      );
+          side,
+        ]),
+      ]);
     this._updateCalculatedValueCells();
-    return html.div({ class: "ls-table" }, [
-      cell([""]),
-      sideHead("applyLSB", "L"),
-      sideHead("applyRSB", "R"),
-      cell(["Current"]),
-      this._currentLCell,
-      this._currentRCell,
-      cell(["Calculated"]),
-      this._calculatedLCell,
-      this._calculatedRCell,
+    return html.createDomElement("table", { class: "static-table ls-table" }, [
+      tr([td([""]), sideHead("applyLSB", "L"), sideHead("applyRSB", "R")]),
+      tr([td(["Current"]), this._currentLCell, this._currentRCell]),
+      tr([td(["Calculated"]), this._calculatedLCell, this._calculatedRCell]),
     ]);
   }
 
@@ -504,7 +497,7 @@ export default class LetterspacerPanel extends Panel {
         onclick,
       });
     return html.div({ class: "ls-actions" }, [
-      html.div({ class: "ls-actions-group" }, [
+      html.div({ class: "button-row" }, [
         button("calculate", () => this.calculateSpacing()),
         button("apply", () => this.applySpacing()),
       ]),
@@ -2048,11 +2041,9 @@ const LETTERSPACER_CARD_STYLES = `
     height: auto;
   }
 
-  /* The LETTERSPACER card (Figma 4108:2095): 12px over the heading, its
-     parts 10px apart. */
+  /* The LETTERSPACER card (Figma 4108:2095): its parts 10px apart. */
   .card {
     gap: 10px;
-    padding: 12px 8px 8px;
   }
 
   .metrics-stack {
@@ -2079,53 +2070,30 @@ const LETTERSPACER_CARD_STYLES = `
     padding-bottom: 4px;
   }
 
+  /* Three even columns; the row names in the lighter grey. */
   .ls-table {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border: 1px solid var(--line-base-basic-1);
-    border-radius: 6px;
+    table-layout: fixed;
   }
 
-  /* ui/label/S; every row but the last ruled under. */
-  .ls-cell {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 24px;
-    padding: 0 8px;
-    box-sizing: border-box;
-    overflow: hidden;
-    white-space: nowrap;
-    font: var(--ui-text-label-s);
-    letter-spacing: var(--ui-tracking);
-    font-feature-settings: "case" 1;
+  .ls-table td:first-child {
     color: var(--text-base-basic-3);
   }
 
-  .ls-cell:nth-child(-n + 6) {
-    border-bottom: 1px solid var(--line-base-basic-1);
-  }
-
-  .ls-value {
-    color: var(--text-base-basic-2);
-  }
-
-  /* ui/heading/h4 */
+  /* The side checks heading L and R: ui/heading/h4. */
   .ls-side {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     font: var(--ui-text-heading-h4);
     letter-spacing: var(--ui-tracking);
     text-transform: uppercase;
+    color: var(--text-base-basic-3);
   }
 
   .ls-actions {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 4px;
-  }
-
-  .ls-actions-group {
-    display: flex;
     gap: 4px;
   }
 
