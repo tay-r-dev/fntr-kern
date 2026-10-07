@@ -801,7 +801,8 @@ export class KerningViewController extends ViewController {
     });
     document.querySelector("#kerning-preset-add-slot").replaceWith(presetAddButton);
     const presetFileInput = document.querySelector("#kerning-preset-file-input");
-    presetAddButton.addEventListener("click", () => presetFileInput.click());
+    // icon-button stops its own click, so only `onclick` reaches it.
+    presetAddButton.onclick = () => presetFileInput.click();
     presetFileInput.addEventListener("change", async () => {
       const file = presetFileInput.files[0];
       presetFileInput.value = null;
@@ -1396,12 +1397,13 @@ export class KerningViewController extends ViewController {
     this.renderCalibration();
 
     const runButton = document.querySelector("#kerning-run-button");
-    runButton.addEventListener("click", () =>
+    // An icon-button segment: it stops its own click, so only `onclick`
+    // reaches it.
+    runButton.onclick = () =>
       this.runAutokern().catch((error) => {
         console.error(error);
         message("Autokern run failed", error.message || String(error));
-      })
-    );
+      });
 
     // Fire-and-forget: this.autokernCache is already a valid (empty) Map
     // synchronously above, so nothing else in this constructor waits on the
@@ -5216,7 +5218,8 @@ export class KerningViewController extends ViewController {
         "data-tooltip": tooltip,
         "data-tooltipposition": "bottom",
       });
-      button.addEventListener("click", () => this.createNewClassViaDialog(side));
+      // icon-button stops its own click, so only `onclick` reaches it.
+      button.onclick = () => this.createNewClassViaDialog(side);
       document.querySelector("#autokern-class-new-controls").appendChild(button);
     }
     // icon/s/question (Figma 4134:4825): which side "left" and "right" name.
