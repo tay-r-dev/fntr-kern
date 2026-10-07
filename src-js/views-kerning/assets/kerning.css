@@ -533,31 +533,6 @@
   width: 100%;
 }
 
-/* A field's label over it: ui/label/XS. */
-.kerning-field-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.kerning-field-label {
-  font: var(--ui-text-label-xs);
-  letter-spacing: var(--ui-tracking);
-  color: var(--text-base-basic-3);
-}
-
-/* Two fields side by side, 4px apart. */
-.kerning-field-pair {
-  display: flex;
-  gap: 4px;
-}
-
-.kerning-field-pair > * {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
 #kerning-parameters-section {
   display: flex;
   flex-direction: column;
@@ -583,104 +558,6 @@
    card; the switch-mode accordion pads each body 8px. */
 #kerning-autokern-card > ui-accordion {
   margin: 0 -8px;
-}
-
-/* A body sits 10px under its switch, 12px in from the card's edge and 4px
-   over the next switch's 10px gap: the 8px the accordion gives, plus this. */
-.kerning-accordion-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 2px 4px 6px;
-}
-
-/* The last body ends 4px over the card's own 8px. */
-#kerning-analytics-section {
-  padding-bottom: 0;
-  margin-bottom: -4px;
-}
-
-#kerning-stale-section {
-  gap: 8px;
-}
-
-#kerning-stale-summary {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-  color: var(--text-base-basic-3);
-}
-
-.kerning-dot-separator {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--text-base-basic-4);
-}
-
-.kerning-button-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-#kerning-stale-progress {
-  margin: 0;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-  color: var(--text-base-basic-3);
-}
-
-#kerning-stale-progress:empty {
-  display: none;
-}
-
-#kerning-stale-hint {
-  width: 24px;
-  height: 20px;
-}
-
-/* A sub-section's own label (Figma 4128:2911, 4128:2938): ui/heading/h5. */
-.kerning-section-label {
-  font: var(--ui-text-heading-h5);
-  letter-spacing: var(--ui-tracking);
-  color: var(--grey-deprecated-4);
-}
-
-/* The stripe opacity and the two checks (Figma 4128:2886). */
-.kerning-visual-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Skip all suggestions (Figma 4128:2910): label over the switch, 40px. */
-.kerning-skip-group {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  height: 40px;
-  padding-bottom: 1px;
-  box-sizing: border-box;
-}
-
-.kerning-checkmark-wrap {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 12px;
-}
-
-#kerning-suggestion-preview-skip-all {
-  width: 100%;
-}
-
-/* Ticket 10: the dialog content built by openAutokernParamsDialog. */
-#kerning-parameters-dialog-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35em;
 }
 
 /* Workstream 11 (spec §7.3): the pair table controls. (#kerning-pairtable-
@@ -717,35 +594,6 @@
   border-bottom: 1px solid var(--grey-deprecated-7);
 }
 
-/* Figma 4121:8980: 4px under the switch and 12px in from the card's edge
-   (the accordion gives 8px), the toggle, the checks and the dropdowns 12px
-   apart. */
-#kerning-pairtable-filter-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 4px 4px 4px;
-}
-
-/* The checks, 12px apart (Figma 4121:8982). */
-#kerning-pairtable-switches {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-
-/* The four dropdowns share the row, 4px apart (Figma 4121:8986). */
-#kerning-pairtable-filters {
-  display: flex;
-  gap: 4px;
-}
-
-#kerning-pairtable-filters > * {
-  flex: 1 1 0;
-  min-width: 0;
-}
-
 /* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
    bold weight is its only visual distinction, not a separate structure. */
 .kerning-pairtable-summary-row {
@@ -769,88 +617,6 @@
   text-transform: uppercase;
   color: var(--kerning-heading-color);
   opacity: 0.4;
-}
-
-/* Task 8, spec F19: Default / Potential exceptions tabs, replacing the old
-   four bucket sections (F11). Ticket 12: drawn as one pill, the active half
-   filled, rather than the plain underline this used when the tabs sat above
-   the table. */
-/* The tabs are the heading's segmented control now (kerning.html). */
-
-/* checkmark (Figma 421:14733), the editor's designspace checkmark: a 14px
-   light box, the lime check when on, ui/label/S beside it. */
-/* checkmark (Figma 2004:29411): a 12px box, 3px corners, ruled on top and
-   at the sides, and its ui/label/S label 4px after it. The select/basic
-   tokens give each state: off pale, darker on hover; on mid grey with a
-   white check, lime on hover; the label darkens on hover. */
-.kerning-checkmark-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-  color: var(--sl-bsb-lb-rest);
-  white-space: nowrap;
-}
-
-.kerning-checkmark-row:hover {
-  color: var(--sl-bsb-lb-hover);
-}
-
-.kerning-checkmark {
-  appearance: none;
-  position: relative;
-  box-sizing: border-box;
-  flex: none;
-  margin: 0;
-  width: 12px;
-  height: 12px;
-  border: 1px solid var(--sl-bsb-ln-rest);
-  border-bottom: none;
-  border-radius: 3px;
-  background-color: var(--sl-bsb-sr-rest);
-  cursor: pointer;
-}
-
-.kerning-checkmark-row:hover .kerning-checkmark {
-  border-color: var(--sl-bsb-ln-hover);
-  background-color: var(--sl-bsb-sr-hover);
-}
-
-.kerning-checkmark:checked {
-  border-color: var(--sl-bsb-ln-active);
-  background-color: var(--sl-bsb-sr-active);
-}
-
-.kerning-checkmark-row:hover .kerning-checkmark:checked {
-  border-color: var(--sl-bsb-ln-active-hover);
-  background-color: var(--sl-bsb-sr-active-hover);
-}
-
-.kerning-checkmark:checked::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-color: #fff;
-  mask: url("../../fontra-core/assets/tabler-icons/check.svg") center / 10px no-repeat;
-  filter: drop-shadow(0 1px 1px var(--sl-bsb-sh-active-rest));
-}
-
-.kerning-checkmark-row:hover .kerning-checkmark:checked::before {
-  filter: drop-shadow(0 1px 1px var(--sl-bsb-sh-active-hover));
-}
-
-.kerning-checkmark:disabled,
-.kerning-checkmark-row:hover .kerning-checkmark:disabled {
-  border-color: var(--sl-bsb-ln-disabled);
-  background-color: var(--sl-bsb-sr-disabled);
-  cursor: default;
-}
-
-.kerning-checkmark-row:has(.kerning-checkmark:disabled) {
-  color: var(--sl-bsb-lb-disabled);
-  cursor: default;
 }
 
 #kerning-derive-proposals {
@@ -902,50 +668,6 @@
 
 .kerning-pairtable-sortable.kerning-pairtable-sort-active {
   font-weight: bold;
-}
-
-/* Calibration (Figma 4128:2937): its label, one bordered table -- 24px rows,
-   the glyph row ruled under -- and the settled reach under it. */
-#kerning-calibration-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-  color: var(--text-base-basic-3);
-}
-
-#kerning-calibration-body p {
-  margin: 0;
-}
-
-.kerning-calibration-table {
-  width: 100%;
-  border: 1px solid var(--line-base-basic-1);
-  border-radius: 6px;
-  border-spacing: 0;
-  color: var(--text-base-basic-2);
-}
-
-.kerning-calibration-table td {
-  height: 24px;
-  padding: 0 8px;
-  box-sizing: border-box;
-}
-
-.kerning-calibration-table td:not(:last-child) {
-  width: 60px;
-}
-
-.kerning-calibration-table tr:first-child td {
-  border-bottom: 1px solid var(--line-base-basic-1);
-}
-
-.kerning-calibration-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-bottom: 1px;
 }
 
 /* Task 10, spec F12: the pair-exception lock/Remove-exception control in the
@@ -1235,39 +957,6 @@ kerning-handle.negative {
 .kerning-pairtable-input-error {
   color: var(--negative-metrics-handle-color, #c00);
   font-size: 0.9em;
-}
-
-/* Analytics (Figma 4128:3085): a name and its count per row, two even
-   columns, 7px apart. */
-#kerning-analytics-list {
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  font: var(--ui-text-label-s);
-  letter-spacing: var(--ui-tracking);
-}
-
-.kerning-analytics-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.kerning-analytics-row dt,
-.kerning-analytics-row dd {
-  flex: 1 1 0;
-  min-width: 0;
-  margin: 0;
-}
-
-.kerning-analytics-row dt {
-  color: var(--text-base-basic-3);
-}
-
-.kerning-analytics-row dd {
-  color: var(--text-base-basic-2);
-  white-space: nowrap;
 }
 
 .kerning-pairtable-load-controls {

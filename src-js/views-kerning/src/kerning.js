@@ -174,6 +174,7 @@ import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 // unmodified, not reinvented.
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import { SELECTION_ROW_GROUP_STYLES } from "@fontra/views-editor/selection-row-group-styles.js";
+import { KERNING_SHADOW_STYLES } from "./kerning-shadow-styles.js";
 import { HandTool } from "@fontra/views-editor/edit-tools-hand.js";
 import {
   KerningTool,
@@ -935,7 +936,7 @@ export class KerningViewController extends ViewController {
     // bindings loop above.
     // The tray's segment styles are the editor's (selection-row-group-styles.js).
     const trayStyles = document.createElement("style");
-    trayStyles.textContent = SELECTION_ROW_GROUP_STYLES;
+    trayStyles.textContent = SELECTION_ROW_GROUP_STYLES + KERNING_SHADOW_STYLES;
     document.head.appendChild(trayStyles);
     const runButton = html.createDomElement("icon-button", {
       id: "kerning-run-button",
@@ -948,6 +949,8 @@ export class KerningViewController extends ViewController {
       "data-tooltipposition": "bottom",
     });
     parametersButton.dropdown = this._buildAutokernParamsDialogFields();
+    // The card renders in the button's shadow root.
+    parametersButton.appendStyle(KERNING_SHADOW_STYLES);
     document.querySelector("#kerning-run-row").append(runButton, parametersButton);
 
     // Task 5, spec F18: inclusive bounds, and no maximum by default. The field
@@ -1277,6 +1280,8 @@ export class KerningViewController extends ViewController {
         // Losing the remembered state is not worth an error.
       }
     };
+    // The bodies render in the accordion's shadow root.
+    accordion.appendStyle(KERNING_SHADOW_STYLES);
     this._autokernAccordion = accordion;
     document.querySelector("#kerning-autokern-accordion-slot").replaceWith(accordion);
   }
@@ -3008,6 +3013,8 @@ export class KerningViewController extends ViewController {
     const accordion = new Accordion();
     accordion.setAttribute("switch", "");
     accordion.id = "kerning-filters-accordion";
+    // The body renders in the accordion's shadow root.
+    accordion.appendStyle(KERNING_SHADOW_STYLES);
     accordion.items = [item];
     accordion.onItemOpenClose = (_, open) => {
       try {
