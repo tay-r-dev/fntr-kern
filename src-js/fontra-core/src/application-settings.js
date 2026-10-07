@@ -13,6 +13,17 @@ export const applicationSettingsController = new ObservableController({
   coarseGridBase: 5,
   coarseGridIncrement: 5,
   coarseGridDefaultSpacing: 10,
+  // fork: the secondary grid, every Nth grid crossing, shown with custom spacing (app-level, per D9)
+  coarseGridSecondaryMultiplier: 0,
+  // fork: the grids' look, tuned in the Debug panel: black at these opacities,
+  // dot diameters in screen pixels, zoomed out and with the unit grid showing
+  gridFineOpacity: 0.06,
+  gridMainOpacity: 0.11,
+  gridSecondaryOpacity: 0.2,
+  gridMainDotSize: 3,
+  gridMainDotSizeZoomed: 4,
+  gridSecondaryDotSize: 4,
+  gridSecondaryDotSizeZoomed: 6,
   // fork: speedpunk panel settings (app-level, per D9 — not written to project files)
   speedPunkPeakHeightUpm: 24,
   speedPunkReferenceTurnDegrees: 90,

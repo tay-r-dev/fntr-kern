@@ -58,3 +58,16 @@ export function snapCoarseGridSpacing(value, values) {
 }
 
 export const COARSE_GRID_DEFAULT_VALUES = buildCoarseGridValues({ custom: false });
+
+// The secondary grid marks every Nth crossing of the grid: its spacing is the
+// grid's times the multiplier (2, 5 or 10). Null while the multiplier is off
+// (0).
+export const SECONDARY_GRID_MULTIPLIERS = [2, 5, 10];
+
+export function secondaryCoarseGridSpacing(settings, primarySpacing) {
+  const multiplier = Number(settings?.coarseGridSecondaryMultiplier);
+  if (!SECONDARY_GRID_MULTIPLIERS.includes(multiplier)) {
+    return null;
+  }
+  return primarySpacing * multiplier;
+}

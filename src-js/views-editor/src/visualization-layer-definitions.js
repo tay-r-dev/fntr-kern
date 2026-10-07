@@ -1,4 +1,5 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
+import { secondaryCoarseGridSpacing } from "@fontra/core/coarse-grid-presets.js";
 import {
   LABEL_COLORS,
   LABEL_COLORS_DARK_MODE,
@@ -96,6 +97,13 @@ export function glyphSelector(selectionMode) {
   };
 }
 
+// The unit grid shows from this magnification on; the coarse grid's dots grow
+// a size there too.
+const UPM_GRID_MIN_MAGNIFICATION = 4;
+
+// The unit grid: one physical pixel wide, fading in over the first zoom steps
+// after it appears, so it never jumps out. Lines stay at their true positions,
+// so points sit exactly on the crossings.
 registerVisualizationLayerDefinition({
   identifier: "fontra.upm.grid",
   name: "sidebar.user-settings.glyph.upmgrid",
@@ -104,26 +112,42 @@ registerVisualizationLayerDefinition({
   defaultOn: true,
   zIndex: 0,
   dontTranslate: true,
-  screenParameters: { strokeWidth: 2 },
-  colors: { strokeColor: "#F5F5F5" }, // --line-base-basic-0
-  colorsDarkMode: { strokeColor: "#3C3C3C" },
+  screenParameters: { strokeWidth: 1 },
+  // Black (white in dark mode) at the Debug panel's opacity.
+  colors: { strokeColor: "#000000" },
+  colorsDarkMode: { strokeColor: "#FFFFFF" },
   draw: ({ context, positionedGlyph, parameters, model, controller }) => {
-    if (controller.magnification < 4) {
+    const magnification = controller.magnification;
+    if (magnification < UPM_GRID_MIN_MAGNIFICATION) {
       return;
     }
+    // From 30% at the zoom where it appears to full strength at three times
+    // that zoom.
+    const fade = Math.min(
+      1,
+      0.3 +
+        (0.7 * (magnification - UPM_GRID_MIN_MAGNIFICATION)) /
+          (2 * UPM_GRID_MIN_MAGNIFICATION)
+    );
+    context.globalAlpha *= fade * applicationSettingsController.model.gridFineOpacity;
     context.strokeStyle = parameters.strokeColor;
-    context.lineWidth = parameters.strokeWidth;
+    context.lineWidth = parameters.strokeWidth / (window.devicePixelRatio || 1);
     let { xMin, yMin, xMax, yMax } = controller.getViewBox();
     xMin -= positionedGlyph.x;
     xMax -= positionedGlyph.x;
     yMin -= positionedGlyph.y;
     yMax -= positionedGlyph.y;
+    // Every line in one path and one stroke.
+    context.beginPath();
     for (let x = Math.floor(xMin); x < Math.ceil(xMax); x++) {
-      strokeLine(context, x, yMin, x, yMax);
+      context.moveTo(x, yMin);
+      context.lineTo(x, yMax);
     }
     for (let y = Math.floor(yMin); y < Math.ceil(yMax); y++) {
-      strokeLine(context, xMin, y, xMax, y);
+      context.moveTo(xMin, y);
+      context.lineTo(xMax, y);
     }
+    context.stroke();
   },
 });
 
@@ -2351,6 +2375,9 @@ function getTextVerticalCenter(context, text) {
   return (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2;
 }
 
+// The coarse grid as dots at its crossings, the secondary grid's at every Nth
+// one. Their sizes and opacities are the Debug panel's grid settings, a size
+// for zoomed out and one for once the unit grid shows.
 registerVisualizationLayerDefinition({
   identifier: "fontra.coarse.grid",
   name: "Coarse Grid",
@@ -2358,45 +2385,60 @@ registerVisualizationLayerDefinition({
   zIndex: 1,
   selectionFunc: glyphSelector("editing"),
   screenParameters: {
-    strokeWidth: 0.25,
-    strokeColor: "#00000020",
-    coarseStrokeWidth: 0.5,
-    coarseStrokeColor: "#00000040",
+    pixel: 1,
   },
+  colors: { dotColor: "#000000" },
+  colorsDarkMode: { dotColor: "#FFFFFF" },
   draw: ({ context: ctx, positionedGlyph, parameters: params, model, controller }) => {
-    const { strokeWidth, strokeColor, coarseStrokeWidth, coarseStrokeColor } = params;
-    const coarseSpacing = model.sceneSettings.coarseGridSpacing;
     let { xMin, yMin, xMax, yMax } = controller.getViewBox();
-
     // convert view-box to glyph-local coordinates
     xMin -= positionedGlyph.x;
     xMax -= positionedGlyph.x;
     yMin -= positionedGlyph.y;
     yMax -= positionedGlyph.y;
 
-    ctx.lineWidth = coarseStrokeWidth;
-    ctx.strokeStyle = coarseStrokeColor;
-
-    // Every line in one path and one stroke. A stroke per line was hundreds of
-    // separate rasterisations a frame, zoomed out, and redrawn on every drag.
-    ctx.beginPath();
-    for (
-      let x = Math.floor(xMin / coarseSpacing) * coarseSpacing;
-      x <= Math.ceil(xMax / coarseSpacing) * coarseSpacing;
-      x += coarseSpacing
-    ) {
-      ctx.moveTo(x, yMin);
-      ctx.lineTo(x, yMax);
+    const primarySpacing = model.sceneSettings.coarseGridSpacing;
+    const secondarySpacing = secondaryCoarseGridSpacing(
+      applicationSettingsController.model,
+      primarySpacing
+    );
+    const look = applicationSettingsController.model;
+    const zoomedIn = controller.magnification >= UPM_GRID_MIN_MAGNIFICATION;
+    const baseAlpha = ctx.globalAlpha;
+    ctx.fillStyle = params.dotColor;
+    // The larger secondary dots go over the grid's own.
+    for (const [spacing, size, opacity] of [
+      [
+        primarySpacing,
+        (zoomedIn ? look.gridMainDotSizeZoomed : look.gridMainDotSize) * params.pixel,
+        look.gridMainOpacity,
+      ],
+      [
+        secondarySpacing,
+        (zoomedIn ? look.gridSecondaryDotSizeZoomed : look.gridSecondaryDotSize) *
+          params.pixel,
+        look.gridSecondaryOpacity,
+      ],
+    ]) {
+      // Dots with less than their own width between them would read as a fill.
+      if (!(spacing > 0) || spacing < size * 2) {
+        continue;
+      }
+      ctx.globalAlpha = baseAlpha * opacity;
+      const radius = size / 2;
+      // Every dot in one path and one fill: a fill per dot was hundreds of
+      // separate rasterisations a frame, zoomed out.
+      ctx.beginPath();
+      const xStart = Math.floor(xMin / spacing) * spacing;
+      const yStart = Math.floor(yMin / spacing) * spacing;
+      for (let x = xStart; x <= xMax; x += spacing) {
+        for (let y = yStart; y <= yMax; y += spacing) {
+          ctx.moveTo(x + radius, y);
+          ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        }
+      }
+      ctx.fill();
     }
-    for (
-      let y = Math.floor(yMin / coarseSpacing) * coarseSpacing;
-      y <= Math.ceil(yMax / coarseSpacing) * coarseSpacing;
-      y += coarseSpacing
-    ) {
-      ctx.moveTo(xMin, y);
-      ctx.lineTo(xMax, y);
-    }
-    ctx.stroke();
   },
 });
 

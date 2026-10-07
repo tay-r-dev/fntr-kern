@@ -1,16 +1,7 @@
 import { registerAction } from "@fontra/core/actions.js";
 import Panel from "./panel.js";
 
-import {
-  createDomElement,
-  div,
-  form,
-  input,
-  label,
-  option,
-  select,
-  span,
-} from "@fontra/core/html-utils.js";
+import { createDomElement, div, form, input, span } from "@fontra/core/html-utils.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
 import {
@@ -20,8 +11,11 @@ import {
   withTimeout,
 } from "@fontra/core/utils.ts";
 import { dialog, message } from "@fontra/web-components/modal-dialog.js";
-import "@fontra/web-components/range-slider.js";
+import "@fontra/web-components/input-field-large.js";
+import "@fontra/web-components/multi-select-dropdown.js";
+import "@fontra/web-components/text-button.js";
 import { UIList } from "@fontra/web-components/ui-list.js";
+import "@fontra/web-components/ui-text-input.js";
 
 import { Font } from "lib-font";
 
@@ -188,48 +182,22 @@ export default class ReferenceFontPanel extends Panel {
   iconPath = "/images/reference.svg";
 
   static styles = `
-    .reference-font-section {
-      display: grid;
-      gap: 1em;
-      align-content: start;
+    .reference-font-card {
+      flex: 1 1 auto;
+      min-height: 0;
     }
 
     .reference-font-list {
       gap: 0;
     }
 
-    /* Cannot put the font-list into a nested container, otherwise the grid auto-splitting won't work.
-    So we drag the margin up a bit for now to create a grouping. */
-    .reference-font-list + add-remove-buttons {
-      margin-top: -0.5em;
-    }
-
-    .title {
-      font-weight: bold;
-    }
-
-    input[type="text"] {
-      border-radius: 5px;
-      min-width: 4em;
-      outline: none;
-      border: none;
-      background-color: var(--text-input-background-color);
-      color: var(--text-input-foreground-color);
-      padding: 0.4em;
-      font-family: fontra-ui-regular;
-      font-feature-settings: "tnum" 1;
-    }
-
     .current-character {
       overflow: auto;
     }
 
-    .current-character-font-size {
-      width: 100%;
-    }
-
     .reference-font-preview {
       display: grid;
+      gap: 8px;
       overflow: auto;
     }
   `;
@@ -373,17 +341,18 @@ export default class ReferenceFontPanel extends Panel {
       },
       []
     );
-    const rangeSlider = createDomElement("range-slider", {
-      type: "range",
-      value: this.model.fontSize,
-      minValue: 10,
-      defaultValue: DEFAULT_FONT_SIZE,
-      maxValue: 300,
-      step: 0.1,
-      onChangeCallback: (event) => {
-        currentCharacter.style.fontSize = `${event.value}px`;
-        this.model.fontSize = event.value;
-      },
+    // field/slider (Figma 379:22590).
+    const rangeSlider = createDomElement("input-field-large", {
+      label: translate("sidebar.reference-font.font-size"),
+    });
+    rangeSlider.type = "slider";
+    rangeSlider.minValue = 10;
+    rangeSlider.maxValue = 300;
+    rangeSlider.defaultValue = DEFAULT_FONT_SIZE;
+    rangeSlider.value = this.model.fontSize;
+    rangeSlider.addEventListener("change", (event) => {
+      currentCharacter.style.fontSize = `${event.detail.value}px`;
+      this.model.fontSize = event.detail.value;
     });
 
     for (const font of this.model.fontList) {
@@ -583,19 +552,14 @@ export default class ReferenceFontPanel extends Panel {
   }
 
   setSupportedLanguages(languages, currentLanguage = "") {
-    this.languageCodeInput.innerHTML = "";
-    this.languageCodeInput.appendChild(option({ value: "" }, ["None"]));
-    for (const [name, code] of languages) {
-      this.languageCodeInput.appendChild(
-        option(
-          {
-            value: code,
-            selected: currentLanguage === code,
-          },
-          [`${name} (${code})`]
-        )
-      );
-    }
+    this.languageCodeInput.items = [
+      { value: "", label: "None", checked: !currentLanguage },
+      ...languages.map(([name, code]) => ({
+        value: code,
+        label: `${name} (${code})`,
+        checked: currentLanguage === code,
+      })),
+    ];
   }
 
   getContentElement() {
@@ -630,6 +594,8 @@ export default class ReferenceFontPanel extends Panel {
 
     this.filesUIList.minHeight = "6em";
     this.filesUIList.classList.add("reference-font-list");
+    // table, look "select" (Figma 2004:29827).
+    this.filesUIList.setAttribute("look", "select");
 
     this.filesUIList.onFilesDrop = (files) => this._filesHandler(files);
 
@@ -646,16 +612,15 @@ export default class ReferenceFontPanel extends Panel {
       async () => await this._deleteAllItemsHandler()
     );
 
-    this.languageCodeInput = select(
-      {
-        id: "language-code",
-        style: "width: 100%;",
-        onchange: (event) => {
-          this.model.languageCode = event.target.value;
-        },
-      },
-      []
-    );
+    // select/dropdown (Figma 2004:29427), its label above.
+    this.languageCodeInput = createDomElement("multi-select-dropdown", {
+      label: translate("sidebar.reference-font.language"),
+      labelAbove: true,
+      singleChoice: true,
+    });
+    this.languageCodeInput.addEventListener("change", (event) => {
+      this.model.languageCode = event.detail.checked || "";
+    });
 
     const fileInput = input(
       {
@@ -669,14 +634,24 @@ export default class ReferenceFontPanel extends Panel {
       await this._filesHandler(fileInput.files);
       fileInput.value = null;
     });
-    const addRemoveButtons = createDomElement("add-remove-buttons");
+    // button/text, size S (Figma 414:31310).
+    const removeButton = createDomElement("text-button", {
+      label: "remove",
+      size: "S",
+      onclick: async () => await this._deleteSelectedItemHandler(),
+    });
+    const addRemoveButtons = div({ class: "button-row" }, [
+      createDomElement("text-button", {
+        label: "add",
+        size: "S",
+        onclick: () => fileInput.click(),
+      }),
+      removeButton,
+    ]);
     const disableRemoveButton = () => {
       const index = this.filesUIList.getSelectedItemIndex();
-      addRemoveButtons.disableRemoveButton = isNaN(index) || index < 0;
+      removeButton.disabled = isNaN(index) || index < 0;
     };
-    addRemoveButtons.addButtonCallback = () => fileInput.click();
-    addRemoveButtons.removeButtonCallback = async () =>
-      await this._deleteSelectedItemHandler();
 
     this.filesUIList.addEventListener("listSelectionChanged", disableRemoveButton);
     this.filesUIList.addEventListener("itemsSet", disableRemoveButton);
@@ -685,54 +660,36 @@ export default class ReferenceFontPanel extends Panel {
       this.filesUIList.setSelectedItemIndex(this.model.selectedFontIndex, true);
     }
 
-    return div(
-      {
-        class: "panel",
-      },
-      [
-        div(
-          {
-            class:
-              "panel-section panel-section--flex panel-section--noscroll reference-font-section",
-          },
-          [
-            div({ class: "title" }, [translate("sidebar.reference-font")]),
-            div({}, [translate("sidebar.reference-font.info")]),
-            this.filesUIList,
-            addRemoveButtons,
-            form({ enctype: "multipart/form-data", hidden: true }, [fileInput]),
-            div(
-              {
-                style: `
-                display: grid;
-                grid-template-columns: max-content auto;
-                align-items: center;
-                gap: 0.666em;
-                `,
-              },
-              [
-                label(
-                  { for: "char-override" },
-                  translate("sidebar.reference-font.custom-character")
-                ),
-                input({
-                  type: "text",
-                  id: "char-override",
-                  value: this.model.charOverride,
-                  oninput: (event) => (this.model.charOverride = event.target.value),
-                }),
-                label(
-                  { for: "language-code" },
-                  translate("sidebar.reference-font.language")
-                ),
-                this.languageCodeInput,
-              ]
-            ),
-            div({ class: "reference-font-preview" }, []),
-          ]
-        ),
-      ]
+    const charOverride = createDomElement("ui-text-input", {
+      id: "char-override",
+      value: this.model.charOverride,
+    });
+    charOverride.addEventListener(
+      "input",
+      () => (this.model.charOverride = charOverride.value)
     );
+
+    return div({ class: "panel" }, [
+      div({ class: "panel-section--flex card-column" }, [
+        div({ class: "card card--headed reference-font-card" }, [
+          div({ class: "card-heading-row" }, [
+            div({ class: "card-heading" }, [translate("sidebar.reference-font")]),
+          ]),
+          div({ class: "field-label" }, [translate("sidebar.reference-font.info")]),
+          this.filesUIList,
+          addRemoveButtons,
+          form({ enctype: "multipart/form-data", hidden: true }, [fileInput]),
+          div({ class: "field-group" }, [
+            span({ class: "field-label" }, [
+              translate("sidebar.reference-font.custom-character"),
+            ]),
+            charOverride,
+          ]),
+          this.languageCodeInput,
+          div({ class: "reference-font-preview" }, []),
+        ]),
+      ]),
+    ]);
   }
 }
 

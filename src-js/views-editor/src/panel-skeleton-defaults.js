@@ -87,65 +87,39 @@ const CAP_DISPLAY_CONVERTERS = {
 const TERMINAL_PRESET_KINDS = ["square", "round", "drop", "serif"];
 
 const SKELETON_SETTINGS_STYLES = `
-  .skeleton-settings-section {
+  .presets-card,
+  .preset-tab {
+    gap: 12px;
+  }
+
+  .preset-tab {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
-    margin-bottom: 0.75rem;
   }
 
-  .skeleton-settings-heading {
-    font-weight: bold;
+  .preset-tab[hidden] {
+    display: none;
   }
 
-  .skeleton-settings-heading-row {
+  .preset-section {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.35rem;
+    flex-direction: column;
+    gap: 4px;
   }
 
-  .skeleton-settings-filters {
+  .preset-heading-row {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 0.35rem;
+    gap: 4px;
   }
 
-  .skeleton-presets-table th {
-    font-weight: normal;
-    opacity: 0.7;
+  .preset-heading-row > .button-row {
+    gap: 4px;
   }
 
-  .skeleton-presets-table .preset-width {
-    width: 4.5em;
-  }
-
-  /* Apply reads as a word in the row, not as a boxed button. */
-  .preset-apply {
-    border: none;
-    background: none;
-    padding: 0;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-    opacity: 0.6;
-  }
-
-  .preset-apply:hover:not(:disabled) {
-    opacity: 1;
-    text-decoration: underline;
-  }
-
-  .preset-apply:disabled {
-    cursor: default;
-    opacity: 0.25;
-  }
-
-  .preset-origin {
-    font-size: 0.85em;
-    opacity: 0.55;
+  /* Current sits 8px before the dropdowns. */
+  .preset-heading-row > .button-row > .button-row {
+    padding-right: 8px;
   }
 `;
 
@@ -241,115 +215,162 @@ export default class SkeletonSettingsPanel extends Panel {
       );
       this._refreshContourWidthField();
     });
-    // Ticket 68: the width presets table, built once and refilled on update.
+    // PRESETS (Figma 4109:3396): the default pen width, then the width and
+    // terminal presets, each a heading with its filters over a table and its
+    // two buttons. The Grid tab (Figma 4129:3638) has no backend yet; it is
+    // shown and disabled.
     this._appendStyle(SKELETON_SETTINGS_STYLES);
-    this.widthPresetTable = html.createDomElement("data-table");
-    this.widthPresetTable.tableClassName = "skeleton-presets-table";
-    // table/data (Figma 417:8097).
-    this.widthPresetTable.look = "data";
-    this.widthPresetTable.columns = [
-      { label: translate("sidebar.skeleton-settings.column.name") },
-      { label: "" },
-      { label: translate("sidebar.skeleton-settings.column.width"), align: "right" },
-      { label: translate("sidebar.skeleton-settings.column.side") },
-      { label: "" },
-    ];
+    const presetTable = (columns, storageKey) => {
+      const table = html.createDomElement("data-table");
+      // table, look "select" (Figma 4109:3669).
+      table.look = "select";
+      table.columns = columns;
+      table.resizable = true;
+      table.minHeight = 48;
+      table.style.setProperty("--data-table-height", "110px");
+      table.heightStorageKey = storageKey;
+      return table;
+    };
+    const presetSection = (title, filters, table, buttons) =>
+      html.div({ class: "preset-section" }, [
+        html.div({ class: "preset-heading-row" }, [
+          html.div({ class: "card-subheading" }, [title]),
+          filters,
+        ]),
+        table,
+        html.div({ class: "button-row" }, buttons),
+      ]);
+
+    // Ticket 68: the width presets table, built once and refilled on update.
+    this.widthPresetTable = presetTable(
+      [
+        { label: translate("sidebar.skeleton-settings.column.name") },
+        { label: translate("sidebar.skeleton-settings.column.width") },
+        { label: translate("sidebar.skeleton-settings.column.side") },
+        { label: "" },
+      ],
+      "fontra-skeleton-width-presets-height"
+    );
     // Ticket 69: the table's filters. Every master and case shows until one is
     // picked.
     this._widthPresetFilter = { master: null, case: null };
     this.widthPresetFilters = this._makePresetFilterBar(this._widthPresetFilter, () =>
       this._renderWidthPresetRows()
     );
-    this.widthPresetsSection = html.div({ class: "skeleton-settings-section" }, [
-      html.div({ class: "skeleton-settings-heading-row" }, [
-        html.div({ class: "skeleton-settings-heading" }, [
-          translate("sidebar.skeleton-settings.width-presets"),
-        ]),
-        this.widthPresetFilters.element,
-      ]),
+    // Ticket 70: New preset adds a row in the filtered master and case;
+    // Preset from selection stores the selection's total and projection.
+    this.widthPresetFromSelectionButton = textKey("create from selection", () => {
+      const captured = this._captureSelectionWidthPreset();
+      if (captured) {
+        this._addWidthPreset(captured);
+      }
+    });
+    this.widthPresetsSection = presetSection(
+      "width",
+      this.widthPresetFilters.element,
       this.widthPresetTable,
-      // Ticket 70: New preset adds a row in the filtered master and case;
-      // Preset from selection stores the selection's total and projection.
-      html.div({ class: "skeleton-settings-filters" }, [
-        textKey(translate("sidebar.skeleton-settings.new-preset"), () =>
-          this._addWidthPreset(null)
-        ),
-        (this.widthPresetFromSelectionButton = textKey(
-          translate("sidebar.skeleton-settings.preset-from-selection"),
-          () => {
-            const captured = this._captureSelectionWidthPreset();
-            if (captured) {
-              this._addWidthPreset(captured);
-            }
-          }
-        )),
-      ]),
-    ]);
+      [
+        textKey("new preset", () => this._addWidthPreset(null)),
+        this.widthPresetFromSelectionButton,
+      ]
+    );
     // Ticket 71: the terminal presets table, every kind with fields, every
     // master, built once and refilled on update.
-    this.terminalPresetTable = html.createDomElement("data-table");
-    this.terminalPresetTable.tableClassName = "skeleton-presets-table";
-    this.terminalPresetTable.look = "data";
-    this.terminalPresetTable.columns = [
-      { label: translate("sidebar.skeleton-settings.column.type") },
-      { label: translate("sidebar.skeleton-settings.column.name") },
-      { label: "" },
-      { label: "" },
-    ];
+    this.terminalPresetTable = presetTable(
+      [
+        { label: translate("sidebar.skeleton-settings.column.type") },
+        { label: translate("sidebar.skeleton-settings.column.name") },
+        { label: "" },
+      ],
+      "fontra-skeleton-terminal-presets-height"
+    );
     this._terminalPresetFilter = { master: null, case: null, type: null };
     this.terminalPresetFilters = this._makePresetFilterBar(
       this._terminalPresetFilter,
-      () => this._renderTerminalPresetRows(),
-      { withType: true }
+      () => this._renderTerminalPresetRows()
     );
-    this.terminalPresetsSection = html.div({ class: "skeleton-settings-section" }, [
-      html.div({ class: "skeleton-settings-heading-row" }, [
-        html.div({ class: "skeleton-settings-heading" }, [
-          translate("sidebar.skeleton-settings.terminal-presets"),
-        ]),
-        this.terminalPresetFilters.element,
-      ]),
+    // Ticket 73: New preset adds a row of the filtered kind, master and case;
+    // Preset from selection stores the selected terminal's kind and shape.
+    this.terminalPresetFromSelectionButton = textKey("create from selection", () => {
+      const captured = this._captureSelectionTerminalPreset();
+      if (captured) {
+        this._addTerminalPreset(captured);
+      }
+    });
+    this.terminalPresetsSection = presetSection(
+      "terminal",
+      this.terminalPresetFilters.element,
       this.terminalPresetTable,
-      // Ticket 73: New preset adds a row of the filtered kind, master and case;
-      // Preset from selection stores the selected terminal's kind and shape.
-      html.div({ class: "skeleton-settings-filters" }, [
-        textKey(translate("sidebar.skeleton-settings.new-preset"), () =>
-          this._addTerminalPreset(null)
-        ),
-        (this.terminalPresetFromSelectionButton = textKey(
-          translate("sidebar.skeleton-settings.preset-from-selection"),
-          () => {
-            const captured = this._captureSelectionTerminalPreset();
-            if (captured) {
-              this._addTerminalPreset(captured);
-            }
-          }
-        )),
-      ]),
+      [
+        textKey("new preset", () => this._addTerminalPreset(null)),
+        this.terminalPresetFromSelectionButton,
+      ]
+    );
+
+    // Grid presets (Figma 4129:3638): no backend yet.
+    const gridTable = presetTable(
+      [{ label: "name" }, { label: "primary" }, { label: "secondary" }, { label: "" }],
+      "fontra-grid-presets-height"
+    );
+    const disabledKey = (label) => {
+      const button = textKey(label, () => {});
+      button.disabled = true;
+      return button;
+    };
+    const gridSection = presetSection("grid", html.div(), gridTable, [
+      disabledKey("new preset"),
+      disabledKey("create from selection"),
     ]);
+    gridSection.hidden = true;
+
+    // The default pen width of the selected contours (Figma 4113:11621).
+    this.contourWidthField.label = "";
+    this.contourWidthField.type = "number";
+    const skeletonTab = html.div({ class: "preset-tab" }, [
+      html.div({ class: "field-group" }, [
+        html.span({ class: "field-label" }, ["default skeleton pen width"]),
+        this.contourWidthField,
+      ]),
+      this.widthPresetsSection,
+      this.terminalPresetsSection,
+    ]);
+    const tabs = html.createDomElement("segmented-control", {
+      options: [
+        { value: "skeleton", label: "Skeleton" },
+        { value: "grid", label: "Grid" },
+      ],
+      value: "skeleton",
+    });
+    tabs.setAttribute("small", "");
+    tabs.addEventListener("change", (event) => {
+      skeletonTab.hidden = event.detail.value !== "skeleton";
+      gridSection.hidden = event.detail.value !== "grid";
+    });
+
     this.contentElement.appendChild(
-      html.div(
-        { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [
-          html.div(
-            {
-              style:
-                "display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.75rem;",
-            },
-            [
-              this.dropDeadPointsToggle,
-              this.dropDeadPointsWarning,
-              this.simplifyEasingToggle,
-              this.simplifyEasingWarning,
-              this.contourWidthField,
-              this.handTurnAngleOnlyToggle,
-            ]
-          ),
-          this.widthPresetsSection,
-          this.terminalPresetsSection,
+      html.div({ class: "panel-section--flex card-column" }, [
+        html.div({ class: "card card--headed presets-card" }, [
+          html.div({ class: "card-heading-row" }, [
+            html.div({ class: "card-heading" }, ["presets"]),
+            tabs,
+          ]),
+          skeletonTab,
+          gridSection,
+        ]),
+        // The generator's settings and the default caps; not in the presets
+        // design, so they keep their own card.
+        html.div({ class: "card card--headed" }, [
+          html.div({ class: "card-heading-row" }, [
+            html.div({ class: "card-heading" }, ["settings"]),
+          ]),
+          this.dropDeadPointsToggle,
+          this.dropDeadPointsWarning,
+          this.simplifyEasingToggle,
+          this.simplifyEasingWarning,
+          this.handTurnAngleOnlyToggle,
           this.infoForm,
-        ]
-      )
+        ]),
+      ])
     );
     this.fontController = this.editorController.fontController;
     this.sceneController = this.editorController.sceneController;
@@ -668,6 +689,9 @@ export default class SkeletonSettingsPanel extends Panel {
     const dropdown = (field) => {
       const element = html.createDomElement("multi-select-dropdown");
       element.singleChoice = true;
+      // Figma 4109:3960: 92px wide, 20px high.
+      element.style.setProperty("--multi-select-dropdown-width", "92px");
+      element.style.setProperty("--multi-select-dropdown-height", "20px");
       element.addEventListener("change", (event) => {
         const [value] = [].concat(event.detail.checked);
         state[field] = value == null || value === ALL ? null : value;
@@ -679,25 +703,30 @@ export default class SkeletonSettingsPanel extends Panel {
     const glyphCase = dropdown("case");
     // Ticket 72: the terminal table adds a Type dropdown.
     const type = withType ? dropdown("type") : null;
-    const isFiltered = () => !!(state.master || state.case || state.type);
-    const current = textKey(
-      translate("sidebar.skeleton-settings.filter.current"),
-      () => {
-        if (isFiltered()) {
-          state.master = null;
-          state.case = null;
-          if (withType) {
-            state.type = null;
-          }
-        } else {
-          state.master = this._getEffectiveSource().sourceId ?? null;
-          state.case = getSkeletonGlyphCase(
-            this.sceneController.sceneSettings?.selectedGlyphName
-          );
-        }
-        onChange();
+    // Current (Figma 4109:3917): a toggle, on while the filters are the edited
+    // glyph's master and case. Picking a filter by hand turns it off.
+    const currentFilter = () => ({
+      master: this._getEffectiveSource().sourceId ?? null,
+      case: getSkeletonGlyphCase(this.sceneController.sceneSettings?.selectedGlyphName),
+    });
+    const currentToggle = html.createDomElement("labeled-toggle");
+    currentToggle.addEventListener("change", () => {
+      const target = currentToggle.checked
+        ? currentFilter()
+        : { master: null, case: null };
+      state.master = target.master;
+      state.case = target.case;
+      if (withType) {
+        state.type = null;
       }
-    );
+      onChange();
+    });
+    const current = html.div({ class: "button-row" }, [
+      html.span({ class: "field-label" }, [
+        translate("sidebar.skeleton-settings.filter.current"),
+      ]),
+      currentToggle,
+    ]);
     // "All" leaves the dropdown reading as its field name (Master, Case, Type).
     const option = (value, label, picked) => ({
       value,
@@ -719,11 +748,9 @@ export default class SkeletonSettingsPanel extends Panel {
           );
         }
       }
-      current.label = translate(
-        isFiltered()
-          ? "sidebar.skeleton-settings.filter.reset"
-          : "sidebar.skeleton-settings.filter.current"
-      );
+      const target = currentFilter();
+      currentToggle.checked =
+        state.master === target.master && state.case === target.case && !state.type;
       const sources = Object.entries(this.fontController.sources || {});
       master.items = [
         option(ALL, translate("sidebar.skeleton-settings.filter.all"), !state.master),
@@ -765,7 +792,7 @@ export default class SkeletonSettingsPanel extends Panel {
       }
     };
     return {
-      element: html.div({ class: "skeleton-settings-filters" }, [
+      element: html.div({ class: "button-row" }, [
         current,
         ...(type ? [type] : []),
         master,
@@ -783,6 +810,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.widthPresetFilters.refresh();
     this._refreshFromSelectionButtons();
     const readOnly = !!this.fontController.readOnly;
+    const captured = this._captureSelectionWidthPreset();
     const items = [];
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
@@ -806,59 +834,77 @@ export default class SkeletonSettingsPanel extends Panel {
     this.widthPresetTable.setRows(
       items,
       ({ rowId, sourceId, source, preset, index }) =>
-        tableRow(rowId, [
-          tableCell([
-            editableCell({
-              value: preset.name || "",
-              disabled: readOnly,
-              onCommit: (name) => this._editWidthPreset(sourceId, index, { name }),
-            }),
-            this._presetOrigin(source, sourceId, preset),
-          ]),
-          tableCell(
-            this._presetApplyButton(readOnly, () => this._applyWidthPreset(preset))
-          ),
-          tableCell(
-            editableCell({
-              type: "number",
-              value: Number(preset.width) || 0,
-              disabled: readOnly,
-              className: "preset-width",
-              onCommit: (width) => this._editWidthPreset(sourceId, index, { width }),
-            }),
-            { align: "right" }
-          ),
-          tableCell(
-            selectCell({
-              value: preset.side,
-              disabled: readOnly,
-              options: ["both", "left", "right"].map((side) => ({
-                value: side,
-                label: translate(`sidebar.skeleton-settings.side.${side}`),
-              })),
-              onChange: (side) => this._editWidthPreset(sourceId, index, { side }),
-            })
-          ),
-          actionsCell([
-            this._presetDeleteAction(rowId, readOnly, () =>
-              this._deleteWidthPreset(sourceId, index, rowId)
+        tableRow(
+          rowId,
+          [
+            tableCell([
+              editableCell({
+                value: preset.name || "",
+                disabled: readOnly,
+                onCommit: (name) => this._editWidthPreset(sourceId, index, { name }),
+              }),
+            ]),
+            tableCell(
+              editableCell({
+                type: "number",
+                value: Number(preset.width) || 0,
+                disabled: readOnly,
+                className: "preset-width",
+                onCommit: (width) => this._editWidthPreset(sourceId, index, { width }),
+              }),
+              { align: "right" }
             ),
-          ]),
-        ]),
+            tableCell(
+              selectCell({
+                value: preset.side,
+                disabled: readOnly,
+                options: ["both", "left", "right"].map((side) => ({
+                  value: side,
+                  label: translate(`sidebar.skeleton-settings.side.${side}`),
+                })),
+                onChange: (side) => this._editWidthPreset(sourceId, index, { side }),
+              })
+            ),
+            actionsCell([
+              this._presetApplyAction(readOnly, () => this._applyWidthPreset(preset)),
+              this._presetUpdateAction(readOnly || !captured, () =>
+                this._editWidthPreset(sourceId, index, {
+                  width: captured.width,
+                  side: captured.side,
+                })
+              ),
+              this._presetDeleteAction(rowId, readOnly, () =>
+                this._deleteWidthPreset(sourceId, index, rowId)
+              ),
+            ]),
+          ],
+          { title: this._presetOrigin(source, sourceId, preset) }
+        ),
       { rowId: (item) => item.rowId }
     );
   }
 
   // Apply writes the row's preset to the selected skeleton points, as picking
   // it in the Selection tab does. With nothing selected it does nothing.
-  _presetApplyButton(readOnly, onClick) {
-    const button = textKey(translate("sidebar.skeleton-settings.apply"), (event) => {
-      event.stopPropagation();
-      onClick();
+  _presetApplyAction(readOnly, onClick) {
+    return rowAction({
+      src: "/tabler-icons/check.svg",
+      tooltip: translate("sidebar.skeleton-settings.apply"),
+      tooltipPosition: "left",
+      disabled: readOnly,
+      onClick,
     });
-    button.classList.add("preset-apply");
-    button.disabled = readOnly;
-    return button;
+  }
+
+  // Update rewrites the row's values from the selection, keeping its name.
+  _presetUpdateAction(disabled, onClick) {
+    return rowAction({
+      src: "/tabler-icons/refresh.svg",
+      tooltip: translate("sidebar.skeleton-settings.update-from-selection"),
+      tooltipPosition: "left",
+      disabled,
+      onClick,
+    });
   }
 
   async _applyWidthPreset(preset) {
@@ -908,13 +954,11 @@ export default class SkeletonSettingsPanel extends Panel {
     );
   }
 
-  // The source and case under a preset's name.
+  // The source and case a row belongs to, as its tooltip.
   _presetOrigin(source, sourceId, preset) {
-    return html.div({ class: "preset-origin" }, [
-      `${source.name || sourceId} · ${translate(
-        `sidebar.skeleton-settings.case.${preset.case}`
-      )}`,
-    ]);
+    return `${source.name || sourceId} · ${translate(
+      `sidebar.skeleton-settings.case.${preset.case}`
+    )}`;
   }
 
   // The trash takes two presses; the armed trash stays visible as a cross.
@@ -1292,6 +1336,7 @@ export default class SkeletonSettingsPanel extends Panel {
   _renderTerminalPresetRows() {
     this.terminalPresetFilters.refresh();
     const readOnly = !!this.fontController.readOnly;
+    const captured = this._captureSelectionTerminalPreset();
     const items = [];
     for (const [sourceId, source] of Object.entries(
       this.fontController.sources || {}
@@ -1314,36 +1359,40 @@ export default class SkeletonSettingsPanel extends Panel {
     this.terminalPresetTable.setRows(
       items,
       ({ rowId, sourceId, source, type, preset, index }) =>
-        tableRow(rowId, [
-          tableCell(translate(`sidebar.skeleton-parameters.cap-style.${type}`)),
-          tableCell([
-            editableCell({
-              value: preset.name || "",
-              disabled: readOnly,
-              onCommit: (name) =>
-                this._editTerminalPreset(sourceId, type, index, { name }),
-            }),
-            this._presetOrigin(source, sourceId, preset),
-          ]),
-          tableCell(
-            this._presetApplyButton(readOnly, () =>
-              this._applyTerminalPreset(type, preset)
-            )
-          ),
-          actionsCell([
-            // Ticket 74: the pencil opens the preset's fields in a dialog.
-            rowAction({
-              src: "/tabler-icons/pencil.svg",
-              tooltip: translate("sidebar.skeleton-settings.edit"),
-              tooltipPosition: "left",
-              disabled: readOnly,
-              onClick: () => this._editTerminalPresetDialog(sourceId, type, index),
-            }),
-            this._presetDeleteAction(rowId, readOnly, () =>
-              this._deleteTerminalPreset(sourceId, type, index, rowId)
-            ),
-          ]),
-        ]),
+        tableRow(
+          rowId,
+          [
+            tableCell(translate(`sidebar.skeleton-parameters.cap-style.${type}`)),
+            tableCell([
+              editableCell({
+                value: preset.name || "",
+                disabled: readOnly,
+                onCommit: (name) =>
+                  this._editTerminalPreset(sourceId, type, index, { name }),
+              }),
+            ]),
+            actionsCell([
+              this._presetApplyAction(readOnly, () =>
+                this._applyTerminalPreset(type, preset)
+              ),
+              // Ticket 74: the pencil opens the preset's fields in a dialog.
+              rowAction({
+                src: "/tabler-icons/pencil.svg",
+                tooltip: translate("sidebar.skeleton-settings.edit"),
+                tooltipPosition: "left",
+                disabled: readOnly,
+                onClick: () => this._editTerminalPresetDialog(sourceId, type, index),
+              }),
+              this._presetUpdateAction(readOnly || captured?.type !== type, () =>
+                this._editTerminalPreset(sourceId, type, index, captured.shape)
+              ),
+              this._presetDeleteAction(rowId, readOnly, () =>
+                this._deleteTerminalPreset(sourceId, type, index, rowId)
+              ),
+            ]),
+          ],
+          { title: this._presetOrigin(source, sourceId, preset) }
+        ),
       { rowId: (item) => item.rowId }
     );
   }

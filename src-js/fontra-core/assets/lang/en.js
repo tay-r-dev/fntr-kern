@@ -626,6 +626,7 @@ export const strings = {
   "sidebar.reference-font.file-name": "file name",
   "sidebar.reference-font.info":
     "Drop one or more .ttf, .otf, .woff or .woff2 files in the field below",
+  "sidebar.reference-font.font-size": "Size",
   "sidebar.reference-font.language": "Language",
   "sidebar.reference-font.warning.could-not-store":
     "Could not store some reference fonts",
@@ -941,6 +942,7 @@ export const strings = {
   "sidebar.skeleton-parameters.width-preset.update-confirm": "Press again",
   "sidebar.skeleton-settings": "Skeleton settings",
   "sidebar.skeleton-settings.apply": "Apply",
+  "sidebar.skeleton-settings.update-from-selection": "Update from selection",
   "sidebar.skeleton-settings.case.lowercase": "Lowercase",
   "sidebar.skeleton-settings.case.uppercase": "Uppercase",
   "sidebar.skeleton-settings.column.name": "Name",

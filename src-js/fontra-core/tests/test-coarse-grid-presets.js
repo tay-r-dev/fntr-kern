@@ -4,6 +4,7 @@ import {
   buildCoarseGridValues,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
+  secondaryCoarseGridSpacing,
   snapCoarseGridSpacing,
 } from "@fontra/core/coarse-grid-presets.js";
 import { expect } from "chai";
@@ -61,5 +62,17 @@ describe("coarse-grid-presets", () => {
     expect(snapCoarseGridSpacing(12, [])).equals(COARSE_GRID_DEFAULT_SPACING);
     expect(snapCoarseGridSpacing(NaN, [5, 10, 15])).equals(10);
     expect(snapCoarseGridSpacing(NaN, [5])).equals(5);
+  });
+
+  it("the secondary spacing is the grid's times the multiplier", () => {
+    const settings = { coarseGridCustom: true, coarseGridSecondaryMultiplier: 5 };
+    expect(secondaryCoarseGridSpacing(settings, 20)).to.equal(100);
+    expect(
+      secondaryCoarseGridSpacing({ ...settings, coarseGridSecondaryMultiplier: 0 }, 20)
+    ).to.equal(null);
+    // Custom spacing does not matter.
+    expect(
+      secondaryCoarseGridSpacing({ ...settings, coarseGridCustom: false }, 20)
+    ).to.equal(100);
   });
 });

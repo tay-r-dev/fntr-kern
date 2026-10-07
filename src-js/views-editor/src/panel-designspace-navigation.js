@@ -5,6 +5,7 @@ import {
   buildCoarseGridValues,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
+  SECONDARY_GRID_MULTIPLIERS,
   snapCoarseGridSpacing,
 } from "@fontra/core/coarse-grid-presets.js";
 import { findNearestLocationIndex } from "@fontra/core/discrete-variation-model.js";
@@ -882,6 +883,21 @@ export default class DesignspaceNavigationPanel extends Panel {
                 scrubField("coarse-grid-spacing-input", "Spacing", true),
               ]),
             ]),
+            // Figma 4110:10611: the secondary grid.
+            html.div({ id: "secondary-grid-field", class: "ds-field" }, [
+              html.div({ class: "section-label" }, ["Secondary grid"]),
+              html.createDomElement("segmented-control", {
+                id: "secondary-grid-multiplier",
+                options: [
+                  { value: "0", label: "off" },
+                  ...SECONDARY_GRID_MULTIPLIERS.map((multiplier) => ({
+                    value: String(multiplier),
+                    label: String(multiplier),
+                  })),
+                ],
+                value: "0",
+              }),
+            ]),
             html.div({ class: "ds-field" }, [
               html.div({ class: "section-label" }, ["Custom spacing"]),
               html.div({ class: "ds-row" }, [
@@ -1150,6 +1166,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     // heading sits between two Accordion elements instead.
     this.visualAccordion = new Accordion();
     this.visualAccordion.items = restoreAccordionOpenState([
+      this._buildGridLookAccordionItem(),
       {
         // Ticket 29: one column per kind of curve, and no switch for the whole
         // section. The toggle is that kind's curvature gizmo; the checks under
@@ -1521,6 +1538,67 @@ export default class DesignspaceNavigationPanel extends Panel {
     return this.visualAccordion.querySelector("#speedpunk-opacity-input");
   }
 
+  // The grids' look: each grid's black opacity and each dot size, zoomed out
+  // and with the unit grid showing. App settings the grid layers read as they
+  // draw.
+  _buildGridLookAccordionItem() {
+    const model = applicationSettingsController.model;
+    const field = (key, label, { min, max, step = 1 }) => {
+      const element = html.createDomElement("input-field-large", {
+        label,
+        minValue: min,
+        maxValue: max,
+        step,
+        integer: step >= 1,
+      });
+      element.type = "slider";
+      element.value = model[key];
+      element.addEventListener("change", (event) => {
+        model[key] = event.detail.value;
+        this.editorController.canvasController.requestUpdate();
+      });
+      return element;
+    };
+    const opacity = { min: 0, max: 1, step: 0.01 };
+    const size = { min: 1, max: 12 };
+    return {
+      id: "grid-look-accordion-item",
+      label: "Grid look",
+      open: false,
+      content: html.div(
+        {
+          style: `
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5em;
+          `,
+        },
+        [
+          field("gridFineOpacity", "Fine opacity", opacity),
+          html.div(),
+          field("gridMainOpacity", "Main opacity", opacity),
+          field("gridSecondaryOpacity", "Secondary opacity", opacity),
+          field("gridMainDotSize", "Main dot", size),
+          field("gridSecondaryDotSize", "Secondary dot", size),
+          field("gridMainDotSizeZoomed", "Main dot, zoomed", size),
+          field("gridSecondaryDotSizeZoomed", "Secondary dot, zoomed", size),
+        ]
+      ),
+    };
+  }
+
+  // The secondary grid's multiplier, stored with the grid's other settings;
+  // the grid layer reads it when it draws.
+  _setupSecondaryGridControls() {
+    const model = applicationSettingsController.model;
+    const control = this.displayCard.querySelector("#secondary-grid-multiplier");
+    control.value = String(model.coarseGridSecondaryMultiplier || 0);
+    control.addEventListener("change", (event) => {
+      model.coarseGridSecondaryMultiplier = Number(event.detail.value);
+      this.editorController.canvasController.requestUpdate();
+    });
+  }
+
   _readCoarseGridSettingsFromApp() {
     const model = applicationSettingsController.model;
     const custom = !!model.coarseGridCustom;
@@ -1623,6 +1701,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         };
         this._syncCoarseGridControls();
         this._persistCoarseGridSettings();
+        this.editorController.canvasController.requestUpdate();
       });
     }
 
@@ -1655,6 +1734,8 @@ export default class DesignspaceNavigationPanel extends Panel {
     if (this.coarseGridIncrementInput) {
       this.coarseGridIncrementInput.addEventListener("change", onPresetInput);
     }
+
+    this._setupSecondaryGridControls();
 
     this.sceneSettingsController.addKeyListener("coarseGridSpacing", (event) => {
       if (this._isApplyingCoarseGridSettings || event.senderInfo?.senderID === this) {
