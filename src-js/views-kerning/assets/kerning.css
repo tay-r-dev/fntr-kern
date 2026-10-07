@@ -28,20 +28,19 @@
      is the flexible one, `minmax(200px, 1fr)` below, so it keeps whatever
      space dragging the bottom row's height doesn't claim. */
   --kerning-middle-bottom-height: 140px;
-  /* Task 13, spec F08: the preview toolbar's own row (Phrase/Pair/Font chip
-     selector + Font-mode Glyphset selector) is grid-template-rows' middle
-     `auto` track below, not this property -- it's non-resizable and its
-     content (a small flex row, wrapping if the column gets narrow, spec
-     F28's "use responsive layout rather than clipping" logic applied here
-     too) should be free to grow if it ever wraps to two lines, rather than
-     clipping or overflowing a hardcoded height. This property exists only
-     so #kerning-middle-resize-gutter (below) can position itself relative
-     to the toolbar's ACTUAL rendered height -- kerning.js's
-     initMiddleRowSplitter measures the live element and keeps this synced
-     on load and on window resize, the same "measure once, write a custom
-     property, let CSS calc() consume it" convention
-     --kerning-middle-bottom-height itself already uses for the drag. */
-  --kerning-preview-toolbar-height: 2.4em;
+}
+
+:root {
+  /* editor.css's tool-button colours, for the notch's strip. */
+  --kerning-tool-button-hover-background-color: #eee;
+  --kerning-tool-button-active-background-color: #ccc;
+  --kerning-tool-button-selected-background-color: #666;
+}
+
+:root.dark-theme {
+  --kerning-tool-button-hover-background-color: #333;
+  --kerning-tool-button-active-background-color: #555;
+  --kerning-tool-button-selected-background-color: #ccc;
 }
 
 :root.sidebar-resizing {
@@ -183,79 +182,167 @@
    can never be violated by a drag (see the clamp in initMiddleRowSplitter). */
 .kerning-middle {
   display: grid;
-  grid-template-rows: minmax(200px, 1fr) auto var(--kerning-middle-bottom-height);
+  grid-template-rows: minmax(200px, 1fr) var(--kerning-middle-bottom-height);
+  gap: 8px;
+  padding: 8px 0;
+  box-sizing: border-box;
+  background-color: var(--surface-base-basic-1);
 }
 
+/* The canvas card (Figma 4129:3789): white, ruled, 14px corners. */
 #kerning-middle-top {
   position: relative;
   min-height: 0;
   overflow: hidden;
+  background-color: #fff;
+  border: 1px solid var(--line-base-basic-1);
+  border-radius: 14px;
 }
 
-/* Task 13, spec F08: "Place Phrase / Pair / Font controls in their own
-   section with an opaque background, outside the drawable preview area."
-   Its own grid row (see .kerning-middle above), not an overlay on the
-   canvas -- opaque background so it visually reads as chrome, the same way
-   #kerning-middle-bottom's own border-top already separates it from the
-   scene above it. */
-.kerning-preview-toolbar {
+/* The notch (Figma 4129:3788): the panel grey hanging from the column's top
+   into the canvas card, ruled at the sides and under with 14px lower
+   corners, 8px over the strip and 4px round it. */
+#kerning-tool-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  padding: 8px 4px 4px;
+  background-color: var(--surface-base-basic-1);
+  border: 1px solid var(--line-base-basic-1);
+  border-top: none;
+  border-radius: 0 0 14px 14px;
+  box-shadow: 0 1px 4px var(--shadow-base-1);
+}
+
+/* Its two ears: where the card's top rule turns down into the notch's side
+   on a 10px round. Each covers the notch's side above the turn. */
+#kerning-tool-notch::before,
+#kerning-tool-notch::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 11px;
+  height: 18px;
+}
+
+#kerning-tool-notch::before {
+  left: -11px;
+  background: radial-gradient(
+    circle 10.5px at 0 18px,
+    transparent 9.5px,
+    var(--line-base-basic-1) 9.5px,
+    var(--line-base-basic-1) 10.5px,
+    var(--surface-base-basic-1) 10.5px
+  );
+}
+
+#kerning-tool-notch::after {
+  right: -11px;
+  background: radial-gradient(
+    circle 10.5px at 100% 18px,
+    transparent 9.5px,
+    var(--line-base-basic-1) 9.5px,
+    var(--line-base-basic-1) 10.5px,
+    var(--surface-base-basic-1) 10.5px
+  );
+}
+
+/* The editor's tool strip (editor.css's .tools-item/.tool-button), flat in
+   the notch: 30px high, 10px corners, the tools and the zoom group parted
+   by a rule. */
+#kerning-tool-strip {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5em;
-  padding: 0.3em 0.5em;
-  box-sizing: border-box;
-  /* --background-color is core.css's own always-defined theme token (both
-     light/dark, root.css:64) -- unlike the --editor-background-color-*
-     variants used elsewhere in this file (kerning-view-only tokens that
-     rely entirely on their literal rgba fallback, since nothing in this
-     tree ever sets them), this one is real and theme-aware, giving this
-     row genuine opacity in both themes rather than a guessed gray. */
-  background-color: var(--background-color);
-  border-top: 1px solid var(--horizontal-rule-color, #ccc);
-  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+  height: 30px;
+  overflow: hidden;
+  border-radius: 10px;
+  background-color: var(--ui-element-background-color);
 }
 
-#kerning-chip-selector {
+#kerning-tool-strip .tool-button {
+  display: inline-grid;
+  justify-content: center;
+  align-items: center;
+  width: 35px;
+  height: 30px;
+  user-select: none;
+  cursor: pointer;
+  fill: var(--foreground-color);
+  transition: 0.15s;
+}
+
+#kerning-tool-strip .tool-button:hover {
+  background-color: var(--kerning-tool-button-hover-background-color);
+}
+
+#kerning-tool-strip .tool-button:active {
+  background-color: var(--kerning-tool-button-active-background-color);
+}
+
+#kerning-tool-strip .tool-button.selected {
+  background-color: var(--kerning-tool-button-selected-background-color);
+  fill: var(--background-color);
+}
+
+#kerning-tool-strip .tool-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+#kerning-tool-strip .tool-icon--hidden {
+  display: none;
+}
+
+.kerning-tool-divider {
+  width: 1px;
+  height: 25px;
+  margin: 0 3px;
+  background-color: var(--line-base-basic-1);
+}
+
+/* Phrase / pair / font and the font mode's glyphset (Figma 4134:3975): the
+   canvas card's bottom-right corner, 12px in, 4px apart, at the design's
+   20px control height. */
+.kerning-preview-toolbar {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
   display: flex;
-  gap: 0.25em;
+  align-items: center;
+  gap: 4px;
+  padding: 12px;
+  --segmented-control-height: 20px;
+  --segmented-control-radius: 5px;
+  --segmented-control-tray-padding: 2px;
+  --multi-select-dropdown-height: 20px;
 }
 
-/* Task 2 (part6): the row divider itself. A direct child of .kerning-middle
-   (position:relative via .kerning-column), NOT nested inside
-   #kerning-middle-top -- that was tried first and live-tested broken:
-   #kerning-middle-top's own `overflow: hidden` clipped the gutter, since its
-   -2px straddle of the row boundary put half of it outside
-   #kerning-middle-top's own box (see kerning.html's own comment on this same
-   element for the exact live symptom). Positioned directly off
-   .kerning-middle's own box instead, anchored from the bottom by the same
-   custom property that sizes the bottom row
-   (--kerning-middle-bottom-height), minus half its own height, so it always
-   sits exactly astride the row boundary regardless of what that height
-   currently is. */
+#kerning-font-preview-glyphset-select {
+  width: 110px;
+}
+
+/* The row divider: straddles the 8px between the two cards. */
 #kerning-middle-resize-gutter {
   position: absolute;
   left: 0;
   right: 0;
-  /* Task 13, spec F08: the preview toolbar row (.kerning-preview-toolbar)
-     now sits between the scene and the class panel, so the boundary this
-     gutter straddles moved down by that row's own (possibly wrapped, hence
-     variable) height too -- not just --kerning-middle-bottom-height any
-     more. --kerning-preview-toolbar-height is kept in sync with the real
-     element by initMiddleRowSplitter in kerning.js. */
-  bottom: calc(
-    var(--kerning-middle-bottom-height) + var(--kerning-preview-toolbar-height) - 2px
-  );
+  bottom: calc(var(--kerning-middle-bottom-height) + 10px);
   height: 4px;
   cursor: row-resize;
   z-index: 3;
 }
 
+/* The class card (Figma 4134:3971). */
 #kerning-middle-bottom {
   position: relative;
   min-height: 0;
   overflow-y: auto;
-  border-top: 1px solid var(--horizontal-rule-color, #ccc);
+  background-color: #fff;
+  border: 1px solid var(--line-base-basic-1);
+  border-radius: 14px;
 }
 
 #autokern-class-panel-slot {
@@ -263,115 +350,53 @@
   box-sizing: border-box;
 }
 
-/* ---- Class panel (design doc §1.2) ---- */
+/* The class card (Figma 4134:3973): the classes section on the left, the
+   selected class's glyphs beside it. */
 #autokern-class-panel {
   height: 100%;
   box-sizing: border-box;
-  padding: 0.5em 1em;
+  display: flex;
+}
+
+/* Figma 4134:4834: 400px, ruled on the right, 16px in, 8px between parts. */
+#autokern-class-create {
+  flex: 0 0 400px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 0.5em;
-}
-
-#autokern-class-new-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5em;
-}
-
-/* Backlog item 12: the "?" affordance next to the Left/Right New-class
-   buttons -- tooltip.css's [data-tooltip] already handles the hover
-   popup itself, this only makes the "?" read as a small clickable-looking
-   badge rather than plain text. */
-.autokern-help-tooltip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.1em;
-  height: 1.1em;
-  border-radius: 50%;
-  border: 1px solid var(--horizontal-rule-color, #ccc);
-  font-size: 0.8em;
-  cursor: help;
-  opacity: 0.8;
-}
-
-/* Class list beside its contents, not stacked above them -- the list is a
-   nav column, the strip beside it is what's selected in that column. */
-#autokern-class-panel-body {
-  display: flex;
-  flex-direction: row;
-  gap: 0.75em;
-  flex: 1;
-  min-height: 0;
-}
-
-#autokern-class-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15em;
-  flex: 0 0 40%;
+  gap: 8px;
+  padding: 16px;
+  border-right: 1px solid var(--line-base-basic-1);
   overflow-y: auto;
 }
 
-.autokern-class-list-row {
+#autokern-class-new-row {
   display: flex;
   align-items: center;
-  gap: 0.5em;
-  padding: 0.15em 0.3em;
-  cursor: pointer;
-  border-radius: 0.2em;
+  gap: 8px;
 }
 
-.autokern-class-list-row:hover {
-  background-color: var(--editor-background-color-dimmed, rgba(128, 128, 128, 0.15));
+/* "add class" and its hint, 4px apart (Figma 4134:4824). */
+#autokern-class-new-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.autokern-class-list-row-selected {
-  background-color: var(--editor-background-color-selected, rgba(128, 128, 128, 0.3));
+#autokern-class-help {
+  width: 10px;
+  height: 10px;
+  color: var(--text-base-basic-3);
+  cursor: help;
 }
 
-.autokern-class-badge {
-  font-size: 0.75em;
-  font-weight: bold;
-  opacity: 0.7;
-  min-width: 2em;
+/* The tray at this frame's 20px button height. */
+#autokern-class-new-controls {
+  --bt-sgb-height: 20px;
 }
 
-.autokern-class-color-swatch {
-  width: 1em;
-  height: 1em;
-  padding: 0;
-  border: 1px solid var(--horizontal-rule-color, #ccc);
-  border-radius: 0.2em;
-  cursor: pointer;
-}
-
-.autokern-class-name {
-  font-weight: bold;
-}
-
-.autokern-class-members {
-  opacity: 0.8;
-  font-size: 0.9em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Part 5 fix 1: the per-row delete-class control, same small-square sizing
-   convention as .autokern-class-color-swatch above (icon-button.js itself
-   scales its icon to 100% of its host's box). */
-.autokern-class-delete-button {
-  width: 1em;
-  height: 1em;
-  flex: 0 0 auto;
-  opacity: 0.7;
-}
-
-.autokern-class-delete-button:hover {
-  opacity: 1;
+#kerning-derive-proposals:empty {
+  display: none;
 }
 
 /* Backlog #9: eye icon, preview pane's own upper-right corner (icon-button
@@ -400,8 +425,7 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  border-left: 1px solid var(--horizontal-rule-color, #ccc);
-  padding-left: 0.75em;
+  padding: 16px;
 }
 
 /* The "Show class" dialog's target-glyph field/preview (kerning.js's
@@ -1090,13 +1114,6 @@ tr[data-kind="pair-exception"] > td:first-child {
    from outside the shadow DOM under their own pair of custom-property
    names -- two mechanisms stating one fact, either of which could have been
    changed without the other. Removed; nothing replaces it here. */
-
-/* Task 13, spec F28: the font-mode "Add selection to selected class" button
-   now lives inside #autokern-class-new-controls (kerning.html), the same
-   flex-wrap row as Left/Right/Both/Derive -- it no longer gets its own
-   bordered block (that block was the confirmed cause of the middle-bottom
-   pane needing a vertical scrollbar; see initFontModeAddToClassActions in
-   kerning.js). No rule needed here any more. */
 
 /* Backlog item 6: this view reuses views-editor's SidebearingTool/KerningTool
    (edit-tools-metrics.js) unmodified, but kerning.html never linked

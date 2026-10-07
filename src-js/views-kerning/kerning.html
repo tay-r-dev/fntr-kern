@@ -270,6 +270,87 @@
              two row children do), so a gutter positioned directly against
              ITS box is never clipped. -->
         <div id="kerning-middle-resize-gutter"></div>
+        <!-- The notch (Figma 4129:3788): the editor's tool strip, the tools
+             then the zoom group, hanging from the canvas card's top edge. -->
+        <div id="kerning-tool-notch">
+          <div id="kerning-tool-strip" class="tools-item">
+            <div
+              class="tool-button"
+              data-tool="pointer-tool"
+              data-tooltip="Pointer"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/pointer.svg"></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-tool="sidebearing-tool"
+              data-tooltip="Sidebearing"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg
+                class="tool-icon"
+                src="/images/sidebearingtool.svg"
+              ></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-tool="kerning-tool"
+              data-tooltip="Kerning"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/kerningtool.svg"></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-tool="hand-tool"
+              data-tooltip="Hand"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/hand.svg"></inline-svg>
+            </div>
+            <div class="kerning-tool-divider"></div>
+            <div
+              class="tool-button"
+              data-zoom="zoom-out"
+              data-tooltip="Zoom out"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/minus.svg"></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-zoom="zoom-in"
+              data-tooltip="Zoom in"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/plus.svg"></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-zoom="zoom-fit"
+              data-tooltip="Zoom to fit"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg class="tool-icon" src="/images/bullseye.svg"></inline-svg>
+            </div>
+            <div
+              class="tool-button"
+              data-zoom="toggle-fullscreen"
+              data-tooltip="Toggle fullscreen"
+              data-tooltipposition="bottom"
+            >
+              <inline-svg
+                class="tool-icon tool-icon--fullscreen-enter"
+                src="/tabler-icons/maximize.svg"
+              ></inline-svg>
+              <inline-svg
+                class="tool-icon tool-icon--fullscreen-exit tool-icon--hidden"
+                src="/tabler-icons/minimize.svg"
+              ></inline-svg>
+            </div>
+          </div>
+        </div>
         <div id="kerning-middle-top">
           <div id="kerning-view-container">
             <!-- id is "edit-canvas", not "kerning-canvas": edit-tools-metrics.js's
@@ -312,17 +393,6 @@
                 ×
               </button>
             </span>
-            <div
-              id="kerning-tool-switcher"
-              style="position: absolute; top: 0; left: 0; z-index: 1"
-            >
-              <button data-tool="pointer-tool" title="Pointer">Pointer</button>
-              <button data-tool="sidebearing-tool" title="Sidebearing">
-                Sidebearing
-              </button>
-              <button data-tool="kerning-tool" title="Kerning">Kerning</button>
-              <button data-tool="hand-tool" title="Hand">Hand</button>
-            </div>
             <!-- Design doc §2: font mode's glyph grid, reusing
                  font-overview.js's own grid/selection machinery (GlyphCellView
                  + GlyphOrganizer, rail R-A) -- see initFontModeSection in
@@ -334,44 +404,14 @@
               id="kerning-font-grid-container"
               class="kerning-font-grid-hidden"
             ></div>
+            <!-- Phrase / pair / font and the font mode's glyphset (Figma
+                 4134:3975): the canvas card's bottom-right corner, built in
+                 kerning.js (initChipSection, initFontModeSection). -->
+            <div class="kerning-preview-toolbar">
+              <div id="kerning-chip-selector"></div>
+              <div id="kerning-font-preview-glyphset-slot"></div>
+            </div>
           </div>
-        </div>
-        <!-- Task 13, spec F08: "Place Phrase / Pair / Font controls in their
-             own section with an opaque background, outside the drawable
-             preview area." This used to be #kerning-chip-selector,
-             position:absolute INSIDE #kerning-view-container (the canvas's
-             own box) -- an overlay that could sit on top of drawn glyphs.
-             It is now its own grid row, a sibling of #kerning-middle-top and
-             #kerning-middle-bottom (see .kerning-preview-toolbar in
-             kerning.css for the row-height wiring), with a real opaque
-             background instead of floating transparently over the canvas.
-             The Font-mode Glyphset selector (same finding) lives in this
-             same row -- populated and wired in kerning.js's
-             initFontModeSection, disabled outside Font mode. This is a
-             SEPARATE control/state from #kerning-pairtable-filter-glyphset
-             (the table's own Glyphset filter, F14) -- distinct ids,
-             distinct controllers, neither one's kerning.js code touches the
-             other's state. -->
-        <div class="kerning-preview-toolbar">
-          <div id="kerning-chip-selector">
-            <button data-chip="phrase" type="button" title="Phrase">Phrase</button>
-            <button data-chip="pair" type="button" title="Pair" disabled>Pair</button>
-            <!-- Design doc §2: a third chip value, "font" -- a
-                 font-overview-style multi-select glyph grid, swapped in for
-                 the canvas by kerning.js's setChipMode (see
-                 initFontModeSection/showFontModeGrid). Unlike "pair", this
-                 one starts enabled -- font mode needs no prior selection to
-                 be useful. -->
-            <button data-chip="font" type="button" title="Font">Font</button>
-          </div>
-          <label for="kerning-font-preview-glyphset-select">Glyphset</label>
-          <select
-            id="kerning-font-preview-glyphset-select"
-            title="Font mode glyphset"
-            disabled
-          >
-            <option value="" selected>All</option>
-          </select>
         </div>
         <div id="kerning-middle-bottom">
           <!-- Class panel, §1.2 bottom row. The static structure below is
@@ -385,65 +425,31 @@
                by the fixed-height grid row above). -->
           <div id="autokern-class-panel-slot">
             <div id="autokern-class-panel">
-              <!-- §1.2 "New class" control: 1st / 2nd / both, each opening a
-                   name+members dialog (kerning.js's createNewClassViaDialog). -->
-              <div id="autokern-class-new-controls">
-                <span>New class:</span>
-                <button
-                  id="autokern-class-new-side1"
-                  type="button"
-                  title="Kerning side 1 (left member of a pair)"
-                >
-                  Left
-                </button>
-                <button
-                  id="autokern-class-new-side2"
-                  type="button"
-                  title="Kerning side 2 (right member of a pair)"
-                >
-                  Right
-                </button>
-                <!-- Backlog item 12: "Left"/"Right" name which side of a kern
-                     PAIR a class's members sit on (side1 = left glyph of the
-                     pair, side2 = right glyph), not e.g. reading direction --
-                     a "?" affordance states that convention explicitly,
-                     reusing tooltip.css's data-tooltip attribute convention
-                     (see the per-row class-list badge's own title attribute,
-                     kerning.js's buildClassListRowElement, for the same
-                     wording via the browser's native tooltip instead). -->
-                <span
-                  class="autokern-help-tooltip"
-                  data-tooltip="Left = this class's members appear as the LEFT glyph of a kerning pair. Right = the RIGHT glyph."
-                  data-tooltipposition="bottom"
-                  >?</span
-                >
-                <button id="autokern-class-new-both" type="button">Both</button>
-                <!-- §1.2 "Derive" control, relocated here from the pair-table
-                     section (design doc §0: no tolerance field anymore --
-                     composite inheritance needs none, and kern-row
-                     clustering, the only tactic that used one, is removed).
-                     Same element id as before kerning.js's existing
-                     deriveClasses() wiring (initPairTableSection) still
-                     finds it by that id -- only its DOM location moved. -->
-                <button id="kerning-derive-button" type="button">Derive classes</button>
-              </div>
-              <!-- Same id/rendering as before (renderDeriveProposals) --
-                   only relocated. -->
-              <div id="kerning-derive-proposals"></div>
-
-              <!-- Class list and its selected class's contents sit side by
-                   side, not stacked -- the list is a nav column, the strip
-                   is what it's navigating to, same as e.g. a mail app's
-                   folder-list-beside-message-list convention. -->
-              <div id="autokern-class-panel-body">
-                <!-- §1.2 "Class list": one flat list, every class from both
-                     groupsSide1 and groupsSide2 (kerning.js's renderClassList). -->
+              <!-- CLASSES (Figma 4134:4834): the heading with "add class ?"
+                   and the left / right / both tray, then the class table.
+                   The tray, the table and the hint are built in kerning.js's
+                   initClassPanelSection. -->
+              <section id="autokern-class-create">
+                <div class="kerning-card-heading-row">
+                  <h2 class="kerning-card-heading">classes</h2>
+                  <div id="autokern-class-new-row">
+                    <span id="autokern-class-new-label">
+                      <span class="kerning-field-label">add class</span>
+                      <div id="autokern-class-help-slot"></div>
+                    </span>
+                    <div
+                      id="autokern-class-new-controls"
+                      class="selection-row-group-icons tray"
+                    ></div>
+                  </div>
+                </div>
                 <div id="autokern-class-list"></div>
-
-                <!-- §1.2 "Glyph-swatch strip": the selected class's members,
-                     as glyph-cell tiles (kerning.js's renderClassSwatchStrip). -->
-                <div id="autokern-class-swatch-strip"></div>
-              </div>
+                <!-- A fill's proposals, when any are left to confirm
+                     (renderDeriveProposals). -->
+                <div id="kerning-derive-proposals"></div>
+              </section>
+              <!-- The selected class's glyphs (renderClassSwatchStrip). -->
+              <div id="autokern-class-swatch-strip"></div>
             </div>
           </div>
         </div>

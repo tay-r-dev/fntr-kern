@@ -62,7 +62,9 @@ export class SegmentedControl extends UnlitElement {
       flex: 1 1 auto;
       align-items: center;
       box-sizing: border-box;
-      height: 24px;
+      /* select/segmented's tray at 24px; a view whose design sets the
+         sl-sgb numbers smaller (20px, 5px corners) sets these. */
+      height: var(--segmented-control-height, 24px);
       padding: var(--segmented-control-tray-padding, 3px);
       gap: 0;
       background: var(--segmented-control-tray-color);
@@ -70,7 +72,7 @@ export class SegmentedControl extends UnlitElement {
          rule on top at rest, on top and at the sides on hover, all round when
          disabled. */
       box-shadow: inset 0 1px 0 var(--segmented-control-border-color);
-      border-radius: 6px;
+      border-radius: var(--segmented-control-radius, 6px);
     }
 
     button {

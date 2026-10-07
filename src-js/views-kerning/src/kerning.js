@@ -131,6 +131,11 @@ import * as html from "@fontra/core/html-utils.js";
 import { UndoStack, reverseUndoRecord } from "@fontra/core/font-controller.js";
 import { translate } from "@fontra/core/localization.js";
 import { glyphMapToItemList, round } from "@fontra/core/utils.ts";
+import {
+  rectAddMargin,
+  rectCenter,
+  rectScaleAroundCenter,
+} from "@fontra/core/rectangle.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
 import { getOPFS } from "@fontra/core/opfs.js";
 import { SceneView } from "@fontra/core/scene-view.js";
@@ -142,7 +147,15 @@ import { SceneView } from "@fontra/core/scene-view.js";
 import { difference, union } from "@fontra/core/set-ops.js";
 import { themeController } from "@fontra/core/theme-settings.js";
 import { ViewController } from "@fontra/core/view-controller.js";
-import { DataTable, editableCell } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
+import {
+  DataTable,
+  actionsCell,
+  editableCell,
+  rowAction,
+  statusSwatch,
+  tableCell,
+  tableRow,
+} from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/compact-scrub-field.js";
@@ -2915,9 +2928,6 @@ export class KerningViewController extends ViewController {
     // individually accepted -- see deriveClasses/renderDeriveProposals/
     // acceptDeriveProposal below.
     this.autokernDeriveProposals = [];
-    document
-      .querySelector("#kerning-derive-button")
-      .addEventListener("click", () => this.deriveClasses());
 
     // Task 8, spec F19: Default / Potential exceptions tabs. Wired once
     // here, like every other control in this method; renderPairTable reads
@@ -4879,6 +4889,27 @@ export class KerningViewController extends ViewController {
   // re-renders; accepting one is a separate, explicit action
   // (acceptDeriveProposal).
   async deriveClasses() {
+    this.autokernDeriveProposals = await this.computeDeriveProposals();
+    this.renderDeriveProposals();
+  }
+
+  // A class row's fill action: every composite whose base glyph is in this
+  // class joins it, through acceptDeriveProposal (one undo step).
+  async fillClass(side, name) {
+    const proposal = (await this.computeDeriveProposals()).find(
+      (candidate) => candidate.editSide === side && candidate.className === name
+    );
+    if (!proposal) {
+      await message(
+        `Nothing to fill "${name}" with`,
+        "No composite glyph without a class of its own is built on one of its glyphs."
+      );
+      return;
+    }
+    await this.acceptDeriveProposal(proposal, name);
+  }
+
+  async computeDeriveProposals() {
     const compositeBases = await this.buildCompositeBases();
 
     const proposals = [];
@@ -4919,8 +4950,7 @@ export class KerningViewController extends ViewController {
       }
     }
 
-    this.autokernDeriveProposals = proposals;
-    this.renderDeriveProposals();
+    return proposals;
   }
 
   renderDeriveProposals() {
@@ -5166,15 +5196,52 @@ export class KerningViewController extends ViewController {
     this.swatchSelection = new Set();
     this._swatchAnchorGlyphName = null;
 
-    document
-      .querySelector("#autokern-class-new-side1")
-      .addEventListener("click", () => this.createNewClassViaDialog("side1"));
-    document
-      .querySelector("#autokern-class-new-side2")
-      .addEventListener("click", () => this.createNewClassViaDialog("side2"));
-    document
-      .querySelector("#autokern-class-new-both")
-      .addEventListener("click", () => this.createNewClassViaDialog("both"));
+    // button/segmented (Figma 4134:4075): left / right / both, the editor's
+    // tray of text segments, each opening the new-class dialog.
+    for (const [side, label, tooltip] of [
+      ["side1", "left", "Kerning side 1 (left member of a pair)"],
+      ["side2", "right", "Kerning side 2 (right member of a pair)"],
+      ["both", "both", "Both sides"],
+    ]) {
+      const button = html.createDomElement("icon-button", {
+        "id": `autokern-class-new-${side}`,
+        label,
+        "data-tooltip": tooltip,
+        "data-tooltipposition": "bottom",
+      });
+      button.addEventListener("click", () => this.createNewClassViaDialog(side));
+      document.querySelector("#autokern-class-new-controls").appendChild(button);
+    }
+    // icon/s/question (Figma 4134:4825): which side "left" and "right" name.
+    const help = html.createDomElement("inline-svg", {
+      "id": "autokern-class-help",
+      "src": "/images/question.svg",
+      "data-tooltip":
+        "Left = this class's members appear as the LEFT glyph of a kerning pair. Right = the RIGHT glyph.",
+      "data-tooltipposition": "bottom",
+    });
+    document.querySelector("#autokern-class-help-slot").replaceWith(help);
+
+    // The class table (Figma 4134:4709): side, the class's colour, its
+    // glyphs, and the row's actions on hover.
+    this._classTable = html.createDomElement("data-table");
+    this._classTable.look = "select";
+    this._classTable.columns = [
+      { label: "side", width: 34, noShrink: true },
+      { label: "label", width: 47, noShrink: true },
+      { label: "glyphs" },
+      { label: "", minWidth: 64 },
+    ];
+    this._classTable.onRowClick = (id) => {
+      const entry = this._classTableEntries?.get(id);
+      if (entry) {
+        this.selectClass(entry.side, entry.name);
+      }
+    };
+    this._classTable.resizable = true;
+    this._classTable.minHeight = 72;
+    this._classTable.heightStorageKey = "fontra-kerning-class-table-height";
+    document.querySelector("#autokern-class-list").appendChild(this._classTable);
 
     // Design doc §1.2's glyph-swatch strip reuses the SAME tile/rendering
     // component views-editor's own glyph search / glyphsets panels use
@@ -5394,122 +5461,79 @@ export class KerningViewController extends ViewController {
   }
 
   renderClassList() {
-    const container = document.querySelector("#autokern-class-list");
-    if (!container || !this.kerningController) {
-      // Defensive only: initClassPanelSection runs after initPairTableSection
-      // (start()'s own ordering, see its comment) so this.kerningController
-      // always exists by the time this is first called, but acceptDerive-
-      // Proposal/addGlyphsToClass also call this, and nothing enforces they
-      // can never run before initClassPanelSection in some future reordering.
+    if (!this._classTable || !this.kerningController) {
+      // initClassPanelSection runs after initPairTableSection, but
+      // acceptDeriveProposal/addGlyphsToClass call this too.
       return;
     }
-    container.textContent = "";
-    for (const entry of this.getAllClassPanelEntries()) {
-      container.appendChild(this.buildClassListRowElement(entry));
-    }
+    const entries = this.getAllClassPanelEntries();
+    const idFor = (entry) => `${entry.side}:${entry.name}`;
+    this._classTableEntries = new Map(entries.map((entry) => [idFor(entry), entry]));
+    this._classTable.setRows(entries, (entry) => this.buildClassListRowElement(entry), {
+      rowId: idFor,
+    });
+    this._classTable.setSelectedRows(
+      this.selectedClass
+        ? [`${this.selectedClass.side}:${this.selectedClass.name}`]
+        : []
+    );
   }
 
   buildClassListRowElement(entry) {
-    const row = document.createElement("div");
-    row.className = "autokern-class-list-row";
-    if (
-      this.selectedClass?.side === entry.side &&
-      this.selectedClass?.name === entry.name
-    ) {
-      row.classList.add("autokern-class-list-row-selected");
-    }
+    const id = `${entry.side}:${entry.name}`;
 
-    // Design doc §1.2: "each row tagged with a small 1st/2nd badge (same
-    // icon convention as the New class buttons)". Part 5 fix: the visible
-    // text is "Left"/"Right" (plain, immediately understood), the more
-    // precise "side 1"/"side 2" meaning stays one hover away via `title` --
-    // the underlying `entry.side` value ("side1"/"side2") is unchanged.
-    const badge = document.createElement("span");
-    badge.className = "autokern-class-badge";
-    badge.textContent = entry.side === "side1" ? "Left" : "Right";
-    badge.title =
-      entry.side === "side1"
-        ? "Kerning side 1 (left member of a pair)"
-        : "Kerning side 2 (right member of a pair)";
-    row.appendChild(badge);
-
-    // Design doc §3: "the color shows as the swatch background behind a
-    // class's row in the class list... and nowhere else." A button (not a
-    // bare colored div) so it can double as the color-picker affordance
-    // (§3's own text does not specify the exact widget; a native
-    // <input type="color"> triggered by clicking the swatch is the simplest
-    // reading, per this workstream's "keep it simple" instruction).
-    const colorButton = document.createElement("button");
-    colorButton.type = "button";
-    colorButton.className = "autokern-class-color-swatch";
-    colorButton.title = "Class color";
+    // The class's colour is its label (the table's status swatch); a click
+    // opens the colour picker.
     const currentColor = this.getClassColor(entry.side, entry.name);
-    colorButton.style.backgroundColor = currentColor || "transparent";
-
+    const swatch = statusSwatch(currentColor || "transparent", { title: entry.name });
     const colorInput = document.createElement("input");
     colorInput.type = "color";
     colorInput.value = currentColor || "#cccccc";
-    colorInput.style.display = "none";
+    colorInput.hidden = true;
     colorInput.addEventListener("input", () => {
-      colorButton.style.backgroundColor = colorInput.value;
+      swatch.style.backgroundColor = colorInput.value;
     });
     colorInput.addEventListener("change", async (event) => {
       event.stopPropagation();
       await this.setClassColor(entry.side, entry.name, colorInput.value);
     });
-    colorButton.addEventListener("click", (event) => {
+    swatch.addEventListener("click", (event) => {
       event.stopPropagation();
       colorInput.click();
     });
-    row.appendChild(colorButton);
-    row.appendChild(colorInput);
 
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "autokern-class-name";
-    nameSpan.textContent = entry.name;
-    row.appendChild(nameSpan);
+    const actions = actionsCell([
+      rowAction({
+        src: "/tabler-icons/link-plus.svg",
+        tooltip: `Add the font view's selection to "${entry.name}"`,
+        reveal: "hover",
+        onClick: () => this.addFontModeSelectionToClass(entry),
+      }),
+      rowAction({
+        src: "/tabler-icons/layers-union.svg",
+        tooltip: `Fill "${entry.name}" with the composites built on its glyphs`,
+        reveal: "hover",
+        onClick: () => this.fillClass(entry.side, entry.name),
+      }),
+      rowAction({
+        src: "/tabler-icons/trash.svg",
+        tooltip: `Delete class "${entry.name}"`,
+        tooltipPosition: "left",
+        reveal: "hover",
+        onClick: () => this.confirmAndDeleteClass(entry.side, entry.name),
+      }),
+    ]);
 
-    // Design doc §5.2 (referenced by §1.2): "Long membership lists truncate
-    // with a count, as the fold view already does" -- the SAME
-    // truncateGlyphList this file's fold/derive-proposal rendering already
-    // uses (below), not a second truncation convention.
-    const membersSpan = document.createElement("span");
-    membersSpan.className = "autokern-class-members";
-    membersSpan.textContent = truncateGlyphList(entry.members);
-    row.appendChild(membersSpan);
-
-    // Part 5 fix 1: "No way to delete a class." Same trash-icon convention
-    // panel-axes.js's own delete-axis control uses (icon-button.js,
-    // tabler-icons/trash.svg) -- no new delete-affordance widget invented.
-    // icon-button.js's own click handling calls event.stopImmediatePropagation()
-    // from its INTERNAL button, which stops the click from ever bubbling up
-    // to this row's own "click" listener (selectClass) -- so the row is never
-    // accidentally selected by a delete click, and no separate stopPropagation
-    // guard is needed the way the color swatch above needs one (that swatch's
-    // own click listener is on a plain <button>, not an <icon-button>, so it
-    // bubbles unless stopped explicitly).
-    const deleteButton = document.createElement("icon-button");
-    deleteButton.className = "autokern-class-delete-button";
-    // `src` is IconButton's own reactive property (html-utils.js's
-    // UnlitElement._setupProperties defines it via Object.defineProperty,
-    // entirely separate from the HTML attribute of the same name -- there is
-    // no observedAttributes/attributeChangedCallback on IconButton to sync
-    // the two). Setting the ATTRIBUTE here (as this line used to) left the
-    // PROPERTY undefined, so render()'s `this.src` read undefined and handed
-    // inline-svg.js an unset src -- the "svgElement.removeAttribute is not a
-    // function" crash reported live. panel-axes.js's own delete-axis control
-    // gets this right via `html.createDomElement("icon-button", {src: ...})`,
-    // which assigns the PROPERTY (`element[key] = value`); assigning the
-    // property directly here matches that, once diagnosed.
-    deleteButton.src = "/tabler-icons/trash.svg";
-    deleteButton.setAttribute("data-tooltip", `Delete class "${entry.name}"`);
-    deleteButton.setAttribute("data-tooltipposition", "left");
-    deleteButton.onclick = () => this.confirmAndDeleteClass(entry.side, entry.name);
-    row.appendChild(deleteButton);
-
-    row.addEventListener("click", () => this.selectClass(entry.side, entry.name));
-
-    return row;
+    return tableRow(
+      id,
+      [
+        tableCell(entry.side === "side1" ? "left" : "right"),
+        tableCell([swatch, colorInput]),
+        tableCell(truncateGlyphList(entry.members)),
+        actions,
+      ],
+      { title: entry.name }
+    );
   }
 
   // ---- Delete class (Part 5 fix 1) ----
@@ -6944,9 +6968,7 @@ export class KerningViewController extends ViewController {
     this.selectedToolIdentifier = toolIdentifier;
     this.sceneController.setSelectedTool(this.tools[toolIdentifier]);
     for (const button of document.querySelectorAll("[data-tool]")) {
-      // Inline style rather than a CSS rule, to keep this workstream's touch
-      // confined to kerning.js/kerning.html/edit-tools-select.js.
-      button.style.fontWeight = button.dataset.tool === toolIdentifier ? "bold" : "";
+      button.classList.toggle("selected", button.dataset.tool === toolIdentifier);
     }
   }
 
@@ -7046,42 +7068,15 @@ export class KerningViewController extends ViewController {
     const MIN_TOP_HEIGHT = 200; // ditto, for the scene row
     const gutter = document.querySelector("#kerning-middle-resize-gutter");
     const middleColumn = document.querySelector(".kerning-middle");
-    // Task 13, spec F08: the preview toolbar row (.kerning-preview-toolbar)
-    // is a third `auto`-height grid row added between the scene and the
-    // class panel (kerning.css: `grid-template-rows: minmax(200px, 1fr)
-    // auto var(--kerning-middle-bottom-height)`) -- it claims real height
-    // from `totalHeight` below just like the bottom row already does, so it
-    // must be subtracted here too or dragging the class panel taller could
-    // silently squeeze the scene row below its own MIN_TOP_HEIGHT. Always
-    // measured live (never assumed fixed): the toolbar's own row wraps to
-    // two lines at a narrow enough column width (F28's "use responsive
-    // layout" applied to this row too, kerning.css's flex-wrap on
-    // .kerning-preview-toolbar), so its height genuinely varies.
-    const toolbar = document.querySelector(".kerning-preview-toolbar");
-
-    // --kerning-preview-toolbar-height (kerning.css) only exists so
-    // #kerning-middle-resize-gutter's own CSS `bottom: calc(...)` can
-    // position itself without duplicating this measurement in two places --
-    // kept in sync here (mirrors --kerning-middle-bottom-height's own
-    // "measure/drag once, write the custom property, let calc() read it"
-    // convention) rather than read fresh by the gutter's positioning, since
-    // that positioning is pure CSS, not JS.
-    const syncToolbarHeightProperty = () => {
-      const height = toolbar?.getBoundingClientRect().height || 0;
-      document.documentElement.style.setProperty(
-        "--kerning-preview-toolbar-height",
-        `${height}px`
-      );
-    };
-    syncToolbarHeightProperty();
-    window.addEventListener("resize", syncToolbarHeightProperty);
+    // The canvas card sits 8px down (the notch above it), the two cards are
+    // 8px apart and the column keeps 8px under the class card.
+    const CHROME_HEIGHT = 24;
 
     const clampBottomHeight = (height) => {
       const totalHeight = middleColumn.getBoundingClientRect().height;
-      const toolbarHeight = toolbar?.getBoundingClientRect().height || 0;
       const maxBottomHeight = Math.max(
         MIN_BOTTOM_HEIGHT,
-        totalHeight - MIN_TOP_HEIGHT - toolbarHeight
+        totalHeight - MIN_TOP_HEIGHT - CHROME_HEIGHT
       );
       return Math.min(Math.max(height, MIN_BOTTOM_HEIGHT), maxBottomHeight);
     };
@@ -7186,6 +7181,67 @@ export class KerningViewController extends ViewController {
     for (const button of document.querySelectorAll("[data-tool]")) {
       button.addEventListener("click", () => this.setSelectedTool(button.dataset.tool));
     }
+    // The notch's zoom group, the editor's zoom-tools.
+    const zoomActions = {
+      "zoom-out": () => this.zoomBy(Math.sqrt(2)),
+      "zoom-in": () => this.zoomBy(1 / Math.sqrt(2)),
+      "zoom-fit": () => this.zoomFit(),
+      "toggle-fullscreen": () =>
+        document.fullscreenElement
+          ? document.exitFullscreen()
+          : document.documentElement.requestFullscreen(),
+    };
+    for (const button of document.querySelectorAll("[data-zoom]")) {
+      button.addEventListener("click", () => {
+        zoomActions[button.dataset.zoom]();
+        this.canvasController.canvas.focus();
+      });
+    }
+    const fullscreenButton = document.querySelector("[data-zoom='toggle-fullscreen']");
+    const updateFullscreenButton = () => {
+      if (!document.fullscreenEnabled) {
+        fullscreenButton.style.display = "none";
+        return;
+      }
+      const on = !!document.fullscreenElement;
+      fullscreenButton
+        .querySelector(".tool-icon--fullscreen-enter")
+        .classList.toggle("tool-icon--hidden", on);
+      fullscreenButton
+        .querySelector(".tool-icon--fullscreen-exit")
+        .classList.toggle("tool-icon--hidden", !on);
+    };
+    updateFullscreenButton();
+    document.addEventListener("fullscreenchange", updateFullscreenButton);
+  }
+
+  // The editor's zoom (editor.js's _zoom/zoomFit), around the selection or
+  // the view's centre, within the canvas's magnification limits.
+  zoomBy(factor) {
+    let viewBox = this.sceneSettings.viewBox;
+    const center = rectCenter(
+      this.sceneController.getSelectionBounds(false) || viewBox
+    );
+    viewBox = rectScaleAroundCenter(viewBox, factor, center);
+    const adjustFactor =
+      this.canvasController.getProposedViewBoxClampAdjustment(viewBox);
+    if (adjustFactor !== 1) {
+      if (Math.abs(adjustFactor * factor - 1) < 0.00000001) {
+        return;
+      }
+      viewBox = rectScaleAroundCenter(viewBox, adjustFactor, center);
+    }
+    this.sceneSettings.viewBox = viewBox;
+    this.sceneController.autoViewBox = false;
+  }
+
+  zoomFit() {
+    const bounds = this.sceneController.getSelectionBounds();
+    if (!bounds) {
+      return;
+    }
+    this.sceneSettings.viewBox = rectAddMargin(bounds, 0.1);
+    this.sceneController.autoViewBox = false;
   }
 
   // WORKSTREAM 16, spec §6: "A chip selector sits in the bottom left corner,
@@ -7216,12 +7272,14 @@ export class KerningViewController extends ViewController {
     this._selectedPairLeft = null;
     this._selectedPairRight = null;
 
-    const chipButtons = {};
-    for (const button of document.querySelectorAll("[data-chip]")) {
-      chipButtons[button.dataset.chip] = button;
-      button.addEventListener("click", () => this.setChipMode(button.dataset.chip));
-    }
-    this._chipButtons = chipButtons;
+    const chips = html.createDomElement("segmented-control", {
+      id: "kerning-chip-control",
+      options: ["phrase", "pair", "font"].map((value) => ({ value, label: value })),
+      value: this._chipMode,
+    });
+    chips.addEventListener("change", (event) => this.setChipMode(event.detail.value));
+    document.querySelector("#kerning-chip-selector").appendChild(chips);
+    this._chipControl = chips;
     this.updateChipButtons();
 
     // Spec §6: "It has a hotkey." Tab is not used by any other action
@@ -7256,8 +7314,8 @@ export class KerningViewController extends ViewController {
   }
 
   updateChipButtons() {
-    for (const [mode, button] of Object.entries(this._chipButtons || {})) {
-      button.style.fontWeight = mode === this._chipMode ? "bold" : "";
+    if (this._chipControl && this._chipControl.value !== this._chipMode) {
+      this._chipControl.value = this._chipMode;
     }
   }
 
@@ -7518,28 +7576,38 @@ export class KerningViewController extends ViewController {
     // no-glyphset-loaded-yet default, not a real membership set.
     this._fontPreviewGlyphsetMembers = null;
 
-    const fontPreviewGlyphsetSelect = document.querySelector(
-      "#kerning-font-preview-glyphset-select"
-    );
     const previewGlyphsetSettings = this.fontPreviewGlyphsetSettingsController.model;
+    const fontPreviewGlyphsetItems = [
+      { value: "", label: "All", checked: true, showsLabel: true },
+    ];
     for (const info of Object.values({
       ...previewGlyphsetSettings.projectGlyphSets,
       ...previewGlyphsetSettings.myGlyphSets,
     })) {
-      // THIS_FONTS_GLYPHSET ("") is already what the static "All" option
-      // (kerning.html) means for this selector -- not offered twice.
+      // THIS_FONTS_GLYPHSET ("") is already what "All" means here.
       if (info.url === THIS_FONTS_GLYPHSET) {
         continue;
       }
-      const option = document.createElement("option");
-      option.value = info.url;
-      option.textContent = info.name;
-      fontPreviewGlyphsetSelect.appendChild(option);
+      fontPreviewGlyphsetItems.push({
+        value: info.url,
+        label: info.name,
+        checked: false,
+      });
     }
+    const fontPreviewGlyphsetSelect = html.createDomElement("multi-select-dropdown", {
+      id: "kerning-font-preview-glyphset-select",
+      label: "glyphset",
+      singleChoice: true,
+      items: fontPreviewGlyphsetItems,
+    });
+    fontPreviewGlyphsetSelect.disabled = this._chipMode !== "font";
+    document
+      .querySelector("#kerning-font-preview-glyphset-slot")
+      .replaceWith(fontPreviewGlyphsetSelect);
     this._fontPreviewGlyphsetSelect = fontPreviewGlyphsetSelect;
 
-    fontPreviewGlyphsetSelect.addEventListener("change", async () => {
-      const glyphsetId = fontPreviewGlyphsetSelect.value || null;
+    fontPreviewGlyphsetSelect.addEventListener("change", async (event) => {
+      const glyphsetId = event.detail.checked[0] || null;
       if (!glyphsetId) {
         this._fontPreviewGlyphsetMembers = null;
       } else {
@@ -7640,19 +7708,7 @@ export class KerningViewController extends ViewController {
   // (kerning.css) -- removes that extra block entirely instead of shrinking
   // or clipping it, which is what F28's "use responsive layout rather than
   // clipping controls" actually asks for.
-  initFontModeAddToClassActions() {
-    const row = document.querySelector("#autokern-class-new-controls");
-
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.id = "kerning-font-mode-add-to-class";
-    addButton.textContent = "Add selection to selected class";
-    addButton.disabled = true;
-    addButton.addEventListener("click", () => this.addFontModeSelectionToClass());
-    row?.appendChild(addButton);
-
-    this._fontModeAddToClassButton = addButton;
-  }
+  initFontModeAddToClassActions() {}
 
   updateFontModeAddToClassButton() {
     const button = this._fontModeAddToClassButton;
@@ -8045,10 +8101,6 @@ export class KerningViewController extends ViewController {
       .join("\n");
     this._selectedPairLeft = pairs[0][0];
     this._selectedPairRight = pairs[0][1];
-    const pairButton = this._chipButtons?.pair;
-    if (pairButton) {
-      pairButton.disabled = false;
-    }
     if (this._chipMode === "pair") {
       this.sceneSettingsController.setItem("text", this._selectedPairText);
     }
