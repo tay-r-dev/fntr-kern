@@ -12,7 +12,12 @@ import {
   getCodePointFromGlyphName,
   getGlyphInfoFromGlyphName,
 } from "@fontra/core/glyph-data.js";
-import { pairsForRerun } from "@fontra/core/autokern-cache.js";
+import {
+  candidatePairs,
+  pairEnvelopesCanTouch,
+  pairKey,
+  pairsForRerun,
+} from "@fontra/core/autokern-cache.js";
 
 // A row's identity must include its source (a pair can have different
 // stored values per source) and the exact left/right names as addressed
@@ -487,4 +492,45 @@ export function deltaBoundsForTab(tab, minDelta, maxDelta) {
     return { minDelta: 0, maxDelta: null };
   }
   return { minDelta, maxDelta };
+}
+
+// The font's own pair list, for the table before (and beside) a run: every
+// ordered pair whose outlines could touch, by the same envelope prefilter a
+// run applies before measuring (autokern-worker.js), at the starting reach
+// `bias`. A glyph with no envelope is left out.
+export function fontPairs(glyphNames, envelopes, bias) {
+  const named = glyphNames.filter((name) => envelopes[name]);
+  return candidatePairs(named, [], (left, right) =>
+    pairEnvelopesCanTouch(envelopes[left], envelopes[right], bias, 2 * bias)
+  );
+}
+
+// What the table lists: every cache entry, then an unmeasured entry -- no
+// proposal yet -- for each font pair the cache does not hold.
+export function* tableEntries(cache, pairs) {
+  yield* cache.values();
+  for (const { left, right } of pairs || []) {
+    if (!cache.has(pairKey(left, right))) {
+      yield { left, right, value: null, unmeasured: true };
+    }
+  }
+}
+
+// A zero written to the font is a stored entry, so a zero is only written
+// where it means something: where removing the entry would let a non-zero
+// class value show through. Every other zero removes the entry instead.
+// `inheritedValue(selector)` is what the pair resolves to without its own
+// entry.
+export function splitZeroWrites(selectors, values, inheritedValue) {
+  const writes = { selectors: [], values: [] };
+  const deletes = [];
+  selectors.forEach((selector, i) => {
+    if (values[i] === 0 && !inheritedValue(selector)) {
+      deletes.push(selector);
+    } else {
+      writes.selectors.push(selector);
+      writes.values.push(values[i]);
+    }
+  });
+  return { writes, deletes };
 }

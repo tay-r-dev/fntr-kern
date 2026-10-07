@@ -225,6 +225,9 @@ import {
   pairMatchesGlyphset,
   passesNumericFilters,
   deltaBoundsForTab,
+  fontPairs,
+  splitZeroWrites,
+  tableEntries,
   rowId,
   rowMatchesRelationships,
   rowVisibleForHiddenState,
@@ -2165,13 +2168,7 @@ export class KerningViewController extends ViewController {
       // reviveRaster).
       rasters[glyphName] = { ...raster, data: Array.from(raster.data) };
 
-      const scale = renderSize / unitsPerEm;
-      const bounds = glyphInstance.controlBounds;
-      envelopes[glyphName] = {
-        xMin: bounds ? scale * bounds.xMin : 0,
-        xMax: bounds ? scale * bounds.xMax : 0,
-        advance: scale * glyphInstance.xAdvance,
-      };
+      envelopes[glyphName] = glyphEnvelope(glyphInstance, renderSize, unitsPerEm);
       glyphMetrics[glyphName] = glyphMetricsRecord(glyphInstance);
     }
 
@@ -3413,16 +3410,21 @@ export class KerningViewController extends ViewController {
     // the tolerance. Without this a member showed a residual delta for ever
     // after its class was applied, and offered to write a pair exception the
     // designer never asked for.
-    const isCandidate = this.isOverrideCandidate(entry.left, entry.right, entry.value);
+    // An unmeasured pair (the font's own pair list, before a run reaches it)
+    // has no proposal: no delta, nothing to apply, never a candidate.
+    const measured = Number.isFinite(entry.value);
+    const isCandidate =
+      measured && this.isOverrideCandidate(entry.left, entry.right, entry.value);
     const answeredByClass = this.pairAnsweredByClass(entry.left, entry.right);
-    const suggestion =
-      this.effectiveSuggestion(entry.left, entry.right, entry) ?? entry.value;
+    const suggestion = measured
+      ? (this.effectiveSuggestion(entry.left, entry.right, entry) ?? entry.value)
+      : null;
     return {
       left: entry.left,
       right: entry.right,
       suggestion,
       current,
-      delta: suggestion - current,
+      delta: suggestion == null ? NaN : suggestion - current,
       // The class rule answers for this pair, so its own measurement is not
       // shown as a proposal. Kept on the row for anything that wants to say
       // so (and for the run, which never reads this shape).
@@ -4043,7 +4045,7 @@ export class KerningViewController extends ViewController {
         left,
         right,
         current: group.current,
-        delta: median - group.current,
+        delta: median == null ? NaN : median - group.current,
         isCandidate: false,
         sortId: rowId(sourceIdentifier, left, right),
         // Task 11, ledger §8.5: this row's OWN hidden state only -- never
@@ -4075,7 +4077,7 @@ export class KerningViewController extends ViewController {
     // (Task 8 does not change WHEN they appear, only how they render --
     // see this method's own commit message for that scoping decision).
     {
-      for (const entry of this.autokernCache.values()) {
+      for (const entry of tableEntries(this.autokernCache, this._fontPairs)) {
         if (this.isLeftClassed(entry.left) || this.isRightClassed(entry.right)) {
           continue; // handled by the class-summary groups above
         }
@@ -4301,16 +4303,46 @@ export class KerningViewController extends ViewController {
     }
   }
 
+  // The table's pairs before (and beside) a run: every pair whose outlines
+  // could touch, by the run's own prefilter, from the glyphs' bounds at the
+  // starting reach. Rebuilt when the glyph set or an outline changes.
+  async updateFontPairs() {
+    const revision = (this._fontPairsRevision = (this._fontPairsRevision || 0) + 1);
+    const renderSize = this.autokernRenderSize;
+    const unitsPerEm = this.fontController.unitsPerEm;
+    const glyphNames = Object.keys(this.fontController.glyphMap || {});
+    const envelopes = {};
+    for (const glyphName of glyphNames) {
+      const glyphInstance = await this.fontController.getGlyphInstance(glyphName, {});
+      if (revision !== this._fontPairsRevision) {
+        return; // a newer rebuild has started
+      }
+      if (glyphInstance) {
+        envelopes[glyphName] = glyphEnvelope(glyphInstance, renderSize, unitsPerEm);
+      }
+    }
+    this._fontPairs = fontPairs(
+      glyphNames,
+      envelopes,
+      this.autokernParamsController.model.reach
+    );
+    this.renderPairTable();
+  }
+
   initComposedGlyphTracking() {
     this._composedGlyphNames = new Set();
     let scheduled = null;
     const schedule = () => {
       clearTimeout(scheduled);
-      scheduled = setTimeout(() => this.updateComposedGlyphNames(), 300);
+      scheduled = setTimeout(() => {
+        this.updateComposedGlyphNames();
+        this.updateFontPairs();
+      }, 300);
     };
     this.fontController.addChangeListener({ glyphs: null }, schedule, false);
     this.fontController.addChangeListener({ glyphMap: null }, schedule, false);
     this.updateComposedGlyphNames();
+    this.updateFontPairs();
   }
 
   updateNonUnicodeNote() {
@@ -4336,7 +4368,7 @@ export class KerningViewController extends ViewController {
   // Aggregate statistics use full membership; filters only control display.
   buildClassClassGroups(glyphName, filters, threshold, groupThreshold) {
     const groups = new Map();
-    for (const entry of this.autokernCache.values()) {
+    for (const entry of tableEntries(this.autokernCache, this._fontPairs)) {
       const leftClassName = this.kerningController.leftPairGroupMapping[entry.left];
       const rightClassName = this.kerningController.rightPairGroupMapping[entry.right];
       if (!leftClassName && !rightClassName) continue;
@@ -4357,7 +4389,6 @@ export class KerningViewController extends ViewController {
     const results = [];
     for (const group of groups.values()) {
       const stats = this.computeFoldGroupStats(group, groupThreshold);
-      if (stats.median == null) continue;
       group.rows = stats.entries
         .map((entry) => this.pairRowData(entry, true))
         .filter((row) => this.pairRowVisible(row, filters, threshold, glyphName));
@@ -4449,14 +4480,17 @@ export class KerningViewController extends ViewController {
     // applying it changed the value the divergences were taken from, a
     // different set of members then counted, and the median moved -- so the
     // class row kept showing a leftover delta after every apply.
-    const centre = medianOfValues(entries.map((entry) => entry.value));
-    const samples = entries.map((entry) => ({
+    // Only measured members have a number to count; an unmeasured one (the
+    // font's own pair list, before a run reaches it) is listed, not counted.
+    const measuredEntries = entries.filter((entry) => Number.isFinite(entry.value));
+    const centre = medianOfValues(measuredEntries.map((entry) => entry.value));
+    const samples = measuredEntries.map((entry) => ({
       value: entry.value,
       divergence: entry.value - centre,
     }));
-    const rawMedian = entries.length
+    const rawMedian = measuredEntries.length
       ? medianDroppingOutliers(samples, groupThreshold)
-      : medianOfValues(group.rows.map((row) => row.suggestion));
+      : NaN;
     // (medianOf is defined below in the class-panel block -- it was called
     // here and never declared, so this fallback branch threw instead of
     // falling back. Unreachable through the UI today, per the note below,
@@ -4470,7 +4504,7 @@ export class KerningViewController extends ViewController {
     // Task 17 (ledger §11.4/§11.5 gap 1): included/excluded contributor
     // count, so F21's "disclose contributing-pair count and excluded-result
     // count" is fully met, not only the total shown before this task.
-    const { includedCount, excludedCount } = entries.length
+    const { includedCount, excludedCount } = measuredEntries.length
       ? countMedianContributors(samples, groupThreshold)
       : { includedCount: 0, excludedCount: 0 };
     // Task 17 (F23's own open question, ledger §10.4: "a real open decision
@@ -4479,7 +4513,7 @@ export class KerningViewController extends ViewController {
     // aggregateStale's own comment (results-model.js) for the full
     // reasoning and the flag to the designer.
     const stale = aggregateStale(entries);
-    const spread = classSpread(rightMembers, entries, "right");
+    const spread = classSpread(rightMembers, measuredEntries, "right");
 
     return {
       leftMembers,
@@ -4734,7 +4768,11 @@ export class KerningViewController extends ViewController {
     // second entry (Figma 421:14585), not a column of its own.
     const deltaText = document.createElement("span");
     deltaText.className = "data-table-additional kerning-pairtable-delta";
-    deltaText.append("(", buildValueSpan(median - group.current, stats.stale), ")");
+    deltaText.append(
+      "(",
+      buildValueSpan(median == null ? null : median - group.current, stats.stale),
+      ")"
+    );
     proposedCell.appendChild(deltaText);
     proposedCell.appendChild(this.buildPreviewExclusionToggle({ left, right }));
     tr.appendChild(proposedCell);
@@ -4762,7 +4800,13 @@ export class KerningViewController extends ViewController {
     // Task 17, spec F23: the aggregate's own median is unreliable when any
     // contributor is stale (aggregateStale) -- disable its one write action
     // the same way a stale pair row's tick is excluded from Apply selected.
-    if (stats.stale) {
+    if (median == null) {
+      applyButton.disabled = true;
+      applyButton.setAttribute(
+        "data-tooltip",
+        "No suggestion yet -- run the analysis first."
+      );
+    } else if (stats.stale) {
       applyButton.disabled = true;
       applyButton.setAttribute(
         "data-tooltip",
@@ -6760,12 +6804,17 @@ export class KerningViewController extends ViewController {
         keys.push(pairKey(left, right));
         continue;
       }
-      const entry = this.autokernCache.get(pairKey(left, right));
-      if (!entry) {
-        continue;
+      const entry = this.autokernCache.get(pairKey(left, right)) ?? {
+        left,
+        right,
+        value: null,
+      };
+      const value = Math.round(valueFn(entry, left, right));
+      if (!Number.isFinite(value)) {
+        continue; // nothing to write: the run has not proposed one yet
       }
       pairSelectors.push({ leftName: left, rightName: right, sourceIdentifier });
-      values.push(Math.round(valueFn(entry, left, right)));
+      values.push(value);
       keys.push(pairKey(left, right));
     }
     if (!pairSelectors.length) {
@@ -6786,18 +6835,39 @@ export class KerningViewController extends ViewController {
       }
     }
 
-    const editContext = this.kerningController.getEditContext(pairSelectors);
-    const changes = await editContext.edit(values, "kerning view: pair table write");
-
-    if (changes?.hasChange) {
-      this.autokernUndoStack.pushUndoRecord({
-        change: changes.change,
-        rollbackChange: changes.rollbackChange,
-        info: {
-          label: "kerning view: pair table write",
-          kind: "pairValues",
-        },
-      });
+    // A zero is only stored where removing the entry would let a non-zero
+    // class value show through; every other zero removes the entry.
+    const { writes, deletes } = splitZeroWrites(pairSelectors, values, (selector) =>
+      this.inheritedPairValue(selector.leftName, selector.rightName)
+    );
+    const recordChanges = (changes) => {
+      if (changes?.hasChange) {
+        this.autokernUndoStack.pushUndoRecord({
+          change: changes.change,
+          rollbackChange: changes.rollbackChange,
+          info: {
+            label: "kerning view: pair table write",
+            kind: "pairValues",
+          },
+        });
+      }
+    };
+    if (writes.selectors.length) {
+      recordChanges(
+        await this.kerningController
+          .getEditContext(writes.selectors)
+          .edit(writes.values, "kerning view: pair table write")
+      );
+    }
+    const storedDeletes = deletes.filter((selector) =>
+      explicitPairExists(this.kerningController, selector.leftName, selector.rightName)
+    );
+    if (storedDeletes.length) {
+      recordChanges(
+        await this.kerningController
+          .getEditContext(storedDeletes)
+          .delete("kerning view: pair table write")
+      );
     }
 
     if (markApplied) {
@@ -6818,6 +6888,21 @@ export class KerningViewController extends ViewController {
     }
 
     this.renderPairTable();
+  }
+
+  // What a pair resolves to without an entry of its own: its class rule's
+  // value, or nothing. A class address has nothing beneath it.
+  inheritedPairValue(left, right, source = this.autokernSource) {
+    if (left.startsWith("@") || right.startsWith("@")) {
+      return 0;
+    }
+    const [classLeft, classRight] = this.classAddressForPair(left, right);
+    if (classLeft === left && classRight === right) {
+      return 0;
+    }
+    return (
+      this.kerningController.getPairValueForSource(classLeft, classRight, source) ?? 0
+    );
   }
 
   // Backlog item 8 part 4: the confirmation dialogue for a batch that would
@@ -8615,6 +8700,18 @@ const STALE_EXPLANATION = "Suggestion out of date — re-run required";
 // measured against has changed -- is drawn in red rather than replaced by a
 // mark: the value still says roughly where the pair sits, and a bare "!" said
 // nothing at all. The explanation stays on hover and on keyboard focus.
+// A glyph's horizontal extent and advance at the run's render size, the
+// shape the run's touch prefilter reads (pairEnvelopesCanTouch).
+function glyphEnvelope(glyphInstance, renderSize, unitsPerEm) {
+  const scale = renderSize / unitsPerEm;
+  const bounds = glyphInstance.controlBounds;
+  return {
+    xMin: bounds ? scale * bounds.xMin : 0,
+    xMax: bounds ? scale * bounds.xMax : 0,
+    advance: scale * glyphInstance.xAdvance,
+  };
+}
+
 function buildValueSpan(value, unreliable) {
   const span = document.createElement("span");
   const text =

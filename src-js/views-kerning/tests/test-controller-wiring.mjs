@@ -14,6 +14,8 @@ import {
 import { layoutPairPreview, normalizePairsPerRow } from "../src/pair-preview-layout.js";
 import {
   deltaBoundsForTab,
+  splitZeroWrites,
+  tableEntries,
   explicitPairExists,
   hiddenFromCacheEntry,
   passesNumericFilters,
@@ -73,6 +75,8 @@ const Controller = vm.runInNewContext(`${classSource}\nKerningViewController;`, 
   selectRow,
   passesNumericFilters,
   deltaBoundsForTab,
+  splitZeroWrites,
+  tableEntries,
   pairMatchesGlyphset,
   rowMatchesRelationships,
   rowVisibleForHiddenState,
@@ -978,4 +982,32 @@ test("the canvas and the table propose the same number for a class member", () =
   stored = 22;
   view._classProposals = null;
   assert.equal(view._previewPairValue.get(reposition()), 0);
+});
+
+test("an unmeasured pair shows its stored value and no proposal", () => {
+  const view = Object.create(Controller.prototype);
+  Object.assign(view, {
+    _autokernSourceIdentifier: "s1",
+    autokernParamsController: { model: { groupThreshold: 10 } },
+    autokernCache: new Map(),
+    kerningController: {
+      kernData: { groupsSide1: {}, groupsSide2: {} },
+      getGlyphPairValueForSource: () => -30,
+      getPairValues: () => [-30],
+      leftPairGroupMapping: {},
+      rightPairGroupMapping: {},
+    },
+    isLeftClassed: () => false,
+    isRightClassed: () => false,
+    wouldShadowClassCell: () => true,
+  });
+  const row = view.pairRowData(
+    { left: "T", right: "o", value: null, unmeasured: true },
+    false
+  );
+  assert.equal(row.current, -30);
+  assert.equal(row.suggestion, null);
+  assert.equal(Number.isFinite(row.delta), false);
+  assert.equal(row.isCandidate, false);
+  assert.equal(view.buildApplyProposalButton(row).disabled, true);
 });
