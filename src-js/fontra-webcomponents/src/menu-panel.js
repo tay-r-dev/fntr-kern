@@ -235,6 +235,13 @@ export class MenuPanel extends SimpleElement {
       let itemElement;
       if (item === MenuItemDivider || item.title === "-") {
         itemElement = html.hr({ class: "menu-item-divider" });
+      } else if (item.element) {
+        // A control row: the caller's element, shown as is. Its presses and
+        // keys are its own -- a press would otherwise close the menu, and a
+        // key would search it.
+        itemElement = item.element;
+        itemElement.onmousedown = (event) => event.stopPropagation();
+        itemElement.onkeydown = (event) => event.stopPropagation();
       } else {
         const classNames = ["context-menu-item"];
         if ((!hasSubMenu || item.getItems().length > 0) && item.enabled()) {

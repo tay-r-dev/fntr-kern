@@ -98,7 +98,7 @@ import { PenTool } from "./edit-tools-pen.js";
 import { PointerTools } from "./edit-tools-pointer.js";
 import { PowerRulerTool } from "./edit-tools-power-ruler.js";
 import { ShapeTool } from "./edit-tools-shape.js";
-import { SkeletonPenTools } from "./edit-tools-skeleton.js";
+import { SkeletonPenTool } from "./edit-tools-skeleton.js";
 import { deleteMarkers } from "./marker-editing.js";
 import {
   SceneController,
@@ -138,7 +138,9 @@ import { subVectors } from "@fontra/core/vector.js";
 import { ViewController } from "@fontra/core/view-controller.js";
 import CharactersGlyphsPanel from "./panel-characters-glyphs.js";
 import DebugPanel from "./panel-debug.js";
-import DesignspaceNavigationPanel from "./panel-designspace-navigation.js";
+import DesignspaceNavigationPanel, {
+  makeGizmoHandlesControl,
+} from "./panel-designspace-navigation.js";
 import GlyphNotePanel from "./panel-glyph-note.js";
 import GlyphSearchPanel from "./panel-glyph-search.js";
 import MarkersPanel from "./panel-markers.js";
@@ -1211,7 +1213,7 @@ export class EditorController extends ViewController {
     const editToolClasses = [
       PointerTools,
       PenTool,
-      SkeletonPenTools,
+      SkeletonPenTool,
       KnifeTool,
       ShapeTool,
       MetricsTool,
@@ -1387,6 +1389,12 @@ export class EditorController extends ViewController {
     this.addSidebarPanel(new GlyphNotePanel(this), "right");
     this.addSidebarPanel(new RelatedGlyphsPanel(this), "right");
     this.addSidebarPanel(new CharactersGlyphsPanel(this), "right");
+
+    // The canvas card's top-left corner (Figma 4173:4283): gizmo / handles,
+    // the same switch as the Debug panel's Skeleton header.
+    document
+      .querySelector("#canvas-corner-top-left")
+      .appendChild(makeGizmoHandlesControl(this.visualizationLayersSettings));
 
     // Upon reload, the "animating" class may still be set (why?), so remove it
     for (const sidebarContainer of document.querySelectorAll(".sidebar-container")) {

@@ -3006,34 +3006,17 @@ export default class SkeletonParametersPanel {
       if (!["butt", "square", "round", "drop", "serif"].includes(value)) {
         return;
       }
-      const location =
-        this.sceneController.sceneSettings.fontLocationSourceMapped ||
-        this.sceneController.sceneSettings.fontLocationSource ||
-        {};
-      const K = SKELETON_SOURCE_DEFAULT_KEYS;
+      // A terminal given a kind starts with every field of it at its
+      // slider's low end.
       const presetValues = {
-        capRadiusRatio: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.CAP_RADIUS_RATIO
-        ),
-        capTension: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.CAP_TENSION
-        ),
-        capAngle: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.CAP_ANGLE
-        ),
-        capDistance: resolveEffectiveSourceSkeletonDefault(
-          this.fontController,
-          location,
-          K.CAP_DISTANCE
-        ),
-        capBallRatio: DEFAULT_CAP_BALL_RATIO,
-        capBallShape: DEFAULT_CAP_BALL_SHAPE,
+        capRadiusRatio: capRadiusRatioFromIndex(0),
+        capTension: 0,
+        capAngle: 0,
+        capDistance: 0,
+        capBallRatio: CAP_BALL_MIN / 100,
+        capBallShape: 0,
+        capBallEasing: 0,
+        capBallEaseCurvature: 0,
       };
       await setPanelCapStyle(
         this.sceneController,

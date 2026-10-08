@@ -49,7 +49,6 @@ import {
   resetSkeletonEditableRibHandles,
   resetSkeletonRibSlide,
   setSkeletonCapParameters,
-  setSkeletonContourDefaultWidth,
   setSkeletonContourReversed,
   setSkeletonContourSingleSided,
   getSkeletonCornerDistances,
@@ -723,36 +722,6 @@ export function setInsertionWidthLinked(insertion, linked) {
   }
 }
 
-export async function setPanelContourValuesStream(
-  sceneController,
-  contourAddresses,
-  valueStream,
-  applyToContour,
-  undoLabel
-) {
-  if (!contourAddresses.length) {
-    return null;
-  }
-  return streamOntoSkeleton(
-    sceneController,
-    valueStream,
-    (working, reference, value) => {
-      for (const address of contourAddresses) {
-        const contour = resolveContourAcrossLayers(
-          reference,
-          working,
-          address.contourId
-        );
-        if (!contour) {
-          continue;
-        }
-        applyToContour(contour, value);
-      }
-    },
-    undoLabel
-  );
-}
-
 export async function setPanelPointDistributionStream(
   sceneController,
   pointAddresses,
@@ -856,41 +825,6 @@ function moveOnePointWidth(point, contour, side, next) {
 }
 
 const added = (amount) => (current) => current + Number(amount);
-const scaled = (amount) => (current) => Math.round(current * Number(amount));
-
-export async function nudgePanelContourDefaultWidthStream(
-  sceneController,
-  contourAddresses,
-  valueStream,
-  undoLabel
-) {
-  return setPanelContourValuesStream(
-    sceneController,
-    contourAddresses,
-    valueStream,
-    (contour, change) =>
-      setSkeletonContourDefaultWidth(contour, added(change)(contour.defaultWidth ?? 0)),
-    undoLabel
-  );
-}
-
-export async function scalePanelContourDefaultWidth(
-  sceneController,
-  contourAddresses,
-  factor,
-  undoLabel
-) {
-  return editSelectedSkeletonContours(
-    sceneController,
-    contourAddresses,
-    (contour) =>
-      setSkeletonContourDefaultWidth(
-        contour,
-        scaled(factor)(contour.defaultWidth ?? 0)
-      ),
-    undoLabel
-  );
-}
 
 export async function nudgePanelCapParameterStream(
   sceneController,
@@ -1264,22 +1198,6 @@ export async function togglePanelContourReversed(
   );
 }
 
-export async function setPanelContourDefaultWidth(
-  sceneController,
-  contourAddresses,
-  value,
-  undoLabel
-) {
-  return editSelectedSkeletonContours(
-    sceneController,
-    contourAddresses,
-    (contour) => {
-      setSkeletonContourDefaultWidth(contour, value);
-    },
-    undoLabel
-  );
-}
-
 // ---- Cap and corner operations ----------------------------------------------
 
 export async function setPanelCapParameters(
@@ -1330,8 +1248,8 @@ export async function setPanelCapStyle(
         return;
       }
       setSkeletonCapParameters(point, { capStyle });
-      // Master cap presets ("Default caps") seed the style's parameters when
-      // the point doesn't carry explicit values yet (donor "Base" profile)
+      // The kind's fields start where the caller says, but only on a point
+      // that doesn't carry them yet
       const seeded = {};
       for (const field of presetFields) {
         if (!Number.isFinite(point[field]) && Number.isFinite(presetValues?.[field])) {

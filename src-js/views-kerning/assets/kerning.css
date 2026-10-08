@@ -146,15 +146,10 @@
 /* Phrase / pair / font and the font mode's glyphset (Figma 4134:3975): the
    canvas card's bottom-right corner, 12px in, 4px apart, at the design's
    20px control height. */
+/* The preview controls' corner (shared.css's .canvas-corner) at the design's
+   20px height. */
 .kerning-preview-toolbar {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  z-index: 1;
-  display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 12px;
   --segmented-control-height: 20px;
   --segmented-control-radius: 5px;
   --segmented-control-tray-padding: 2px;

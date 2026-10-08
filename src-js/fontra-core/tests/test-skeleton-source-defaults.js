@@ -47,7 +47,7 @@ describe("skeleton-source-defaults", () => {
 
   it("returns the fallback for a truly absent source", () => {
     expect(
-      getSourceSkeletonDefaultsValue(null, SKELETON_SOURCE_DEFAULT_KEYS.CAP_ANGLE, 42)
+      getSourceSkeletonDefaultsValue(null, SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING, 42)
     ).to.equal(42);
   });
 
@@ -92,10 +92,8 @@ describe("skeleton-source-defaults", () => {
     expect(normalized.capProfiles.square).to.deep.equal([{ name: "a", angle: 10 }]);
   });
 
-  it("normalization creates capDefaults/capProfiles containers and an empty width preset list", () => {
+  it("normalization creates capProfiles containers and an empty width preset list", () => {
     const normalized = normalizeSkeletonSourceDefaults(undefined);
-    expect(normalized.capDefaults.square).to.deep.equal({});
-    expect(normalized.capDefaults.round).to.deep.equal({});
     expect(normalized.capProfiles.square).to.deep.equal([]);
     expect(normalized.capProfiles.round).to.deep.equal([]);
     expect(normalized.widthPresets).to.deep.equal([]);

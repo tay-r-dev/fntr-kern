@@ -361,10 +361,6 @@ export function getSkeletonPointAddress(skeletonData, contourId, pointId) {
 
 export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
   WIDTH_PRESETS: "widthPresets",
-  CAP_RADIUS_RATIO: "capRadiusRatio",
-  CAP_TENSION: "capTension",
-  CAP_ANGLE: "capAngle",
-  CAP_DISTANCE: "capDistance",
   CUSTOM_CAP_SQUARE: "customCapSquare",
   CUSTOM_CAP_ROUNDED: "customCapRounded",
   CUSTOM_CAP_DROP: "customCapDrop",
@@ -376,10 +372,6 @@ export const SKELETON_SOURCE_DEFAULT_KEYS = Object.freeze({
 
 export const SKELETON_SOURCE_DEFAULT_FALLBACKS = Object.freeze({
   [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS]: [],
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_RADIUS_RATIO]: 1 / 8,
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_TENSION]: 0.55,
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_ANGLE]: 0,
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE]: 0,
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED]: [],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP]: [],
@@ -457,13 +449,6 @@ function legacyWidthPresetsFromRawDefaults(raw) {
 
 const SKELETON_SOURCE_DEFAULT_KEY_PATHS = new Map([
   [SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS, ["widthPresets"]],
-  [
-    SKELETON_SOURCE_DEFAULT_KEYS.CAP_RADIUS_RATIO,
-    ["capDefaults", "round", "radiusRatio"],
-  ],
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_TENSION, ["capDefaults", "round", "tension"]],
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_ANGLE, ["capDefaults", "square", "angle"]],
-  [SKELETON_SOURCE_DEFAULT_KEYS.CAP_DISTANCE, ["capDefaults", "square", "distance"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_SQUARE, ["capProfiles", "square"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED, ["capProfiles", "round"]],
   [SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP, ["capProfiles", "drop"]],
@@ -508,9 +493,9 @@ export function normalizeSkeletonSourceDefaults(rawDefaults) {
   delete defaults.widthProfiles;
   // Default is an ordinary entry of every master's own serif list.
   defaults.serifProfiles = withDefaultSerifPresets(defaults.serifProfiles);
-  const capDefaults = ensureSkeletonDefaultsObject(defaults, "capDefaults");
-  ensureSkeletonDefaultsObject(capDefaults, "square");
-  ensureSkeletonDefaultsObject(capDefaults, "round");
+  // A terminal given a kind starts from zero, not from master-wide default
+  // caps; a source saved with them drops them on read.
+  delete defaults.capDefaults;
   const capProfiles = ensureSkeletonDefaultsObject(defaults, "capProfiles");
   ensureSkeletonDefaultsArray(capProfiles, "square");
   ensureSkeletonDefaultsArray(capProfiles, "round");

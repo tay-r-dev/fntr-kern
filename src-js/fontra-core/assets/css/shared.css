@@ -611,6 +611,78 @@ glyph-cell-view .glyph-count {
   );
 }
 
+/* A canvas corner (Figma 4173:4283, 4134:3975): controls floating in one
+   corner of a canvas card, 12px in, 4px apart. Mark it .top-left, .top-right
+   or .bottom-right; it sits in a positioned box over the card. */
+.canvas-corner {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px;
+  pointer-events: auto;
+}
+
+.canvas-corner[hidden] {
+  display: none;
+}
+
+.canvas-corner.top-left {
+  top: 0;
+  left: 0;
+}
+
+.canvas-corner.top-right {
+  top: 0;
+  right: 0;
+}
+
+.canvas-corner.bottom-right {
+  right: 0;
+  bottom: 0;
+}
+
+/* The small value box (Figma "smol", 4102:1602): a 16px input in
+   ui/table/entry, bare at rest, grey on hover and while typing. */
+.entry-field {
+  box-sizing: border-box;
+  width: 36px;
+  height: 16px;
+  padding: 3px 4px;
+  border: none;
+  border-radius: 4px;
+  outline: none;
+  background: transparent;
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--text-base-basic-3);
+  text-align: center;
+}
+
+.entry-field:hover,
+.entry-field:focus {
+  background-color: var(--surface-base-basic-2);
+  color: var(--text-base-basic-2);
+}
+
+/* A menu's control row (menu-panel.js's element items) heading a dropdown's
+   list: the settings card's ruled heading, its control after the name, the
+   name a pick of its own. */
+.settings-card-heading.menu-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px -4px 3px;
+  padding: 10px 16px 10px 8px;
+  cursor: pointer;
+}
+
+.settings-card-heading.menu-heading.checked {
+  color: var(--text-base-basic-2);
+}
+
 /* The canvas card (Figma 4129:3789): white, ruled, 14px corners, on the
    panel grey. A view places and sizes it. */
 .canvas-card {

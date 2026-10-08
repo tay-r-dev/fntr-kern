@@ -551,6 +551,36 @@ const DESIGNSPACE_PANEL_COLORS = {
   "ui-accordion-switch-hover-text-color": ["#565656", "#c0c0c0"],
 };
 
+// How the generated outline is edited: through its gizmos or its handles. The
+// gizmo layer's own switch is the single source of truth, so every copy of
+// this control and the View menu cannot drift apart. Each writes only a real
+// change, and the control's value set from here fires no change of its own,
+// so the two cannot feed each other.
+export function makeGizmoHandlesControl(settings) {
+  const key = "fontra.skeleton.generated-tunni";
+  const valueOf = (on) => (on === true ? "gizmo" : "handles");
+  const control = html.createDomElement("segmented-control", {
+    options: ["gizmo", "handles"].map((value) => ({
+      value,
+      label: translate(`sidebar.skeleton-parameters.mode.${value}`),
+    })),
+    value: valueOf(settings.model[key]),
+  });
+  control.addEventListener("change", (event) => {
+    const on = event.detail.value === "gizmo";
+    if ((settings.model[key] === true) !== on) {
+      settings.model[key] = on;
+    }
+  });
+  settings.addKeyListener(key, (event) => {
+    const value = valueOf(event.newValue);
+    if (control.value !== value) {
+      control.value = value;
+    }
+  });
+  return control;
+}
+
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
   iconPath = "/images/sliders.svg";
@@ -702,27 +732,12 @@ export default class DesignspaceNavigationPanel extends Panel {
   // listener keeps the toggle from also opening or closing the accordion --
   // the same job makeAccordionHeaderButton's icon-button does for the
   // existing header icons via stopImmediatePropagation in its own render.
-  // How the generated outline is edited: through its gizmos or its handles.
-  // The gizmo layer's own switch is the single source of truth, so this and
-  // the View menu cannot drift apart.
   _makeGizmoHandlesControl() {
-    const key = "fontra.skeleton.generated-tunni";
-    const settings = this.editorController.visualizationLayersSettings;
-    const control = html.createDomElement("segmented-control", {
-      options: ["gizmo", "handles"].map((value) => ({
-        value,
-        label: translate(`sidebar.skeleton-parameters.mode.${value}`),
-      })),
-      value: settings.model[key] === true ? "gizmo" : "handles",
-    });
+    const control = makeGizmoHandlesControl(
+      this.editorController.visualizationLayersSettings
+    );
     control.setAttribute("small", "");
     control.addEventListener("click", (event) => event.stopPropagation());
-    control.addEventListener("change", (event) => {
-      settings.model[key] = event.detail.value === "gizmo";
-    });
-    settings.addKeyListener(key, (event) => {
-      control.value = event.newValue === true ? "gizmo" : "handles";
-    });
     return control;
   }
 

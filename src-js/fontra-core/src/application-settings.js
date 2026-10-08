@@ -49,6 +49,13 @@ export const applicationSettingsController = new ObservableController({
   // turned handles are refit and their lengths change too (app-level, per D9;
   // each drag writes the choice into the handle it turns).
   skeletonHandTurnKeepsLength: false,
+  // fork: the skeleton pen's own settings, in the canvas corner while it is out
+  // (app-level, per D9): the side a new contour draws on ("center", "left" or
+  // "right"), and its width -- "custom" for the custom width, else a width
+  // preset's name.
+  skeletonPenSide: "left",
+  skeletonPenWidthChoice: "custom",
+  skeletonPenCustomWidth: 60,
   // fork: a straight running exactly across the axis being scaled stands still
   // by default, because travel along it is travel the scale never asked for.
   // On, both of its tension points travel, each to what its own curve asks.

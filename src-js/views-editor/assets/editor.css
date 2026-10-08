@@ -320,10 +320,14 @@ body {
   display: none;
 }
 
-/* The tool notch (shared.css's .tool-notch), from the card's top edge. */
+/* The tool notch (shared.css's .tool-notch), from the card's top edge (the
+   top bar, then the card's 8px), centred on the window: opening, closing or
+   resizing a sidebar leaves it where it is. */
 .tools-overlay {
-  position: absolute;
-  top: 0;
+  position: fixed;
+  top: calc(var(--top-bar-height) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .icon-tabler {

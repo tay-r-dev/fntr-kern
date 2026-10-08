@@ -2,10 +2,13 @@ import {
   eventMatchesActionBaseKey,
   eventMatchesActionShortCut,
 } from "@fontra/core/actions.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { ChangeCollector } from "@fontra/core/changes.js";
+import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import {
   DEFAULT_SKELETON_WIDTH,
+  SKELETON_SOURCE_DEFAULT_KEYS,
   appendSkeletonContour,
   appendSkeletonInsertion,
   appendSkeletonPoint,
@@ -14,8 +17,10 @@ import {
   getSkeletonGlyphCase,
   makeSkeletonPoint,
   measureGeneratedHalfWidths,
-  resolveEffectiveSkeletonBaseWidth,
+  resolveEffectiveSourceSkeletonDefault,
 } from "@fontra/core/skeleton-model.js";
+import "@fontra/web-components/multi-select-dropdown.js";
+import "@fontra/web-components/segmented-control.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
@@ -32,13 +37,6 @@ import {
 } from "./skeleton-editing.js";
 import { SnappingSession } from "./snapping-interactions.js";
 
-// The dropdown, laid out like the ordinary pen's: one button that opens onto the
-// two pens. They differ in one thing, which is the state a contour they start is
-// born in.
-export class SkeletonPenTools {
-  identifier = "skeleton-pen-tool";
-  subTools = [SkeletonPenTool, SkeletonPenToolSingleSided];
-}
 
 // W turns on insertion-point placement for as long as it is held, the way Z
 // and D do on the pointer tool. Alt is already the handle insert on this same
@@ -53,7 +51,7 @@ const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
 
 export class SkeletonPenTool extends BaseTool {
   iconPath = "/images/skeleton-pen.svg";
-  identifier = "skeleton-pen-tool-standard";
+  identifier = "skeleton-pen-tool";
 
   constructor(...args) {
     super(...args);
@@ -102,11 +100,17 @@ export class SkeletonPenTool extends BaseTool {
     this.canvasController.requestUpdate();
   }
 
-  // Which side a new contour puts its width on, or null for both. Everything
-  // else about the two pens is identical, so this is the whole of the subclass
-  // below.
-  get newContourSingleSided() {
-    return null;
+  // The pen's settings in the canvas corner, shown while the pen is out.
+  get penSettings() {
+    if (!this._penSettings) {
+      this._penSettings = new SkeletonPenSettings(this);
+    }
+    return this._penSettings;
+  }
+
+  activate() {
+    super.activate();
+    this.penSettings.show(true);
   }
 
   // The edit layer's skeleton data. Selection ids are canonical here (WS-9
@@ -125,24 +129,6 @@ export class SkeletonPenTool extends BaseTool {
     const layerGlyph =
       editLayerName && positionedGlyph.varGlyph?.glyph?.layers?.[editLayerName]?.glyph;
     return getSkeletonData(layerGlyph || positionedGlyph.glyph);
-  }
-
-  // Master (source) default width for the edited glyph's case; falls back to
-  // the model constant when no source defaults are stored.
-  _getMasterDefaultWidth() {
-    const glyphName = this.sceneSettings?.selectedGlyphName;
-    const location =
-      this.sceneSettings?.fontLocationSourceMapped ||
-      this.sceneSettings?.fontLocationSource ||
-      {};
-    const value = resolveEffectiveSkeletonBaseWidth(
-      this.editor.fontController,
-      location,
-      getSkeletonGlyphCase(glyphName)
-    );
-    return Number.isFinite(Number(value)) && Number(value) > 0
-      ? Number(value)
-      : DEFAULT_SKELETON_WIDTH;
   }
 
   // Positioned-glyph-relative point from a mouse event, in glyph coordinates.
@@ -586,17 +572,17 @@ export class SkeletonPenTool extends BaseTool {
           }
           return [makeSkeletonPointKey(endpoint.contour.id, point.id)];
         }
-        // New contours seed their default width from the master (source)
-        // defaults for the glyph's case, not the hardcoded model fallback.
+        // A new contour takes the pen's width and side, from its settings in
+        // the canvas corner.
         //
-        // The first point takes it too. A point always carries its own width, so
-        // the contour's number is never read for geometry — set on the contour
-        // alone it would be a label the stroke did not obey.
-        const defaultWidth = this._getMasterDefaultWidth();
+        // The first point takes the width too. A point always carries its own
+        // width, so the contour's number is never read for geometry — set on
+        // the contour alone it would be a label the stroke did not obey.
+        const defaultWidth = this.penSettings.width();
         const contour = appendSkeletonContour(working, {
           closed: false,
           defaultWidth,
-          singleSided: this.newContourSingleSided,
+          singleSided: this.penSettings.singleSided(),
           points: [],
         });
         const point = appendSkeletonPoint(working, contour.id, {
@@ -1177,6 +1163,7 @@ export class SkeletonPenTool extends BaseTool {
 
   deactivate() {
     super.deactivate();
+    this.penSettings.show(false);
     // A mode is only on while its key is down, and a tool that is put away
     // never sees that key come up.
     this._endInsertionPointMode();
@@ -1208,17 +1195,151 @@ export class SkeletonPenTool extends BaseTool {
   }
 }
 
-// Draws exactly what the pen above draws. The one difference is that a contour
-// it starts puts all of its width on one side, so the line drawn is the edge of
-// the letter rather than its middle. Left, which is the side the generator falls
-// back to everywhere else, and the panel flips it afterwards like any other
-// contour.
-export class SkeletonPenToolSingleSided extends SkeletonPenTool {
-  iconPath = "/images/skeleton-pen-single-sided.svg";
-  identifier = "skeleton-pen-tool-single-sided";
+// The skeleton pen's settings (Figma 4173:4284), in the canvas card's top-right
+// corner while the pen is out: the side a new contour draws on (centre, left,
+// right) and its width -- the custom width, or a width preset of the edited
+// master for the glyph's case. Every pick is an app setting, so it is
+// remembered. A control and its setting cannot feed each other: a setting is
+// written only on a real change, and a control's value set from here fires no
+// change of its own.
+const PEN_SIDES = [
+  { value: "center", label: "C" },
+  { value: "left", label: "L" },
+  { value: "right", label: "R" },
+];
+const CUSTOM_WIDTH = "custom";
 
-  get newContourSingleSided() {
-    return "left";
+class SkeletonPenSettings {
+  constructor(tool) {
+    this.tool = tool;
+    this.element = document.querySelector("#skeleton-pen-settings");
+    const model = applicationSettingsController.model;
+
+    this.sideControl = html.createDomElement("segmented-control", {
+      options: PEN_SIDES,
+      value: model.skeletonPenSide,
+    });
+    this.sideControl.addEventListener("change", (event) =>
+      writeSetting("skeletonPenSide", event.detail.value)
+    );
+
+    // The menu's heading row: the custom width, a pick of its own, with its
+    // value typed in place.
+    this.customField = html.input({ class: "entry-field", type: "text" });
+    this.customField.addEventListener("change", () => {
+      const width = Number(this.customField.value);
+      if (Number.isFinite(width) && width > 0) {
+        writeSetting("skeletonPenCustomWidth", Math.round(width));
+        writeSetting("skeletonPenWidthChoice", CUSTOM_WIDTH);
+      }
+      this.refresh();
+    });
+    this.customHeading = html.div({ class: "settings-card-heading menu-heading" }, [
+      html.span({}, ["custom width"]),
+      this.customField,
+    ]);
+    this.customHeading.addEventListener("click", (event) => {
+      if (event.target !== this.customField) {
+        writeSetting("skeletonPenWidthChoice", CUSTOM_WIDTH);
+        this.widthDropdown.closeMenu();
+      }
+    });
+
+    this.widthDropdown = html.createDomElement("multi-select-dropdown", {
+      singleChoice: true,
+    });
+    this.widthDropdown.header = this.customHeading;
+    this.widthDropdown.style.setProperty("--multi-select-dropdown-width", "88px");
+    // The presets are the edited master's for the glyph's case, which can
+    // change while the menu is shut, so it reads them as it opens.
+    this.widthDropdown.addEventListener("mousedown", () => this.refresh(), true);
+    this.widthDropdown.addEventListener("change", (event) => {
+      if (event.detail.checked) {
+        writeSetting("skeletonPenWidthChoice", event.detail.checked);
+      }
+    });
+
+    this.element.append(this.sideControl, this.widthDropdown);
+    applicationSettingsController.addKeyListener(
+      ["skeletonPenSide", "skeletonPenWidthChoice", "skeletonPenCustomWidth"],
+      () => this.refresh()
+    );
+    tool.sceneSettingsController.addKeyListener(
+      ["selectedGlyphName", "fontLocationSourceMapped"],
+      () => this.refresh()
+    );
+  }
+
+  show(on) {
+    this.element.hidden = !on;
+    if (on) {
+      this.refresh();
+    }
+  }
+
+  // The edited master's width presets for the glyph's case.
+  presets() {
+    const sceneSettings = this.tool.sceneSettings;
+    const list = resolveEffectiveSourceSkeletonDefault(
+      this.tool.editor.fontController,
+      sceneSettings?.fontLocationSourceMapped || sceneSettings?.fontLocationSource,
+      SKELETON_SOURCE_DEFAULT_KEYS.WIDTH_PRESETS
+    );
+    const glyphCase = getSkeletonGlyphCase(sceneSettings?.selectedGlyphName);
+    return (Array.isArray(list) ? list : []).filter(
+      (preset) => preset.case === glyphCase && preset.name
+    );
+  }
+
+  // The picked preset, if this master and case have it; otherwise the custom
+  // width. The pick itself is kept, for a glyph or master that has it.
+  _pickedPreset() {
+    const choice = applicationSettingsController.model.skeletonPenWidthChoice;
+    return choice === CUSTOM_WIDTH
+      ? null
+      : (this.presets().find((preset) => preset.name === choice) ?? null);
+  }
+
+  width() {
+    const preset = this._pickedPreset();
+    const width = Number(
+      preset ? preset.width : applicationSettingsController.model.skeletonPenCustomWidth
+    );
+    return Number.isFinite(width) && width > 0 ? width : DEFAULT_SKELETON_WIDTH;
+  }
+
+  // Which side a new contour puts its width on, or null for both.
+  singleSided() {
+    const side = applicationSettingsController.model.skeletonPenSide;
+    return side === "left" || side === "right" ? side : null;
+  }
+
+  refresh() {
+    const model = applicationSettingsController.model;
+    if (this.sideControl.value !== model.skeletonPenSide) {
+      this.sideControl.value = model.skeletonPenSide;
+    }
+    const custom = String(model.skeletonPenCustomWidth);
+    if (
+      document.activeElement !== this.customField &&
+      this.customField.value !== custom
+    ) {
+      this.customField.value = custom;
+    }
+    const picked = this._pickedPreset();
+    this.customHeading.classList.toggle("checked", !picked);
+    this.widthDropdown.label = `custom ${custom}`;
+    this.widthDropdown.items = this.presets().map((preset) => ({
+      value: preset.name,
+      label: `${preset.name} ${preset.width}`,
+      checked: preset === picked,
+    }));
+  }
+}
+
+function writeSetting(key, value) {
+  if (applicationSettingsController.model[key] !== value) {
+    applicationSettingsController.model[key] = value;
   }
 }
 

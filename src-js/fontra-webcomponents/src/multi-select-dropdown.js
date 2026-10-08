@@ -22,6 +22,9 @@ import { themeColorCSS } from "./theme-support.js";
 // list after each pick so a designer can flip several checks in a row --
 // singleChoice closes on pick instead, matching a plain <select>.
 //
+// `header` is an element shown above the list as its control row (a name and
+// a field, say); the caller wires it, and closeMenu() shuts the list.
+//
 // An item may carry `group`: the items of one group are one choice among
 // themselves, inside an otherwise multi-select list. `{divider: true}` draws a
 // line. "change" also carries the picked item in event.detail.item.
@@ -503,6 +506,14 @@ export class MultiSelectDropdown extends UnlitElement {
     return this._picks().length > 1;
   }
 
+  get header() {
+    return this._header;
+  }
+
+  set header(value) {
+    this._header = value || null;
+  }
+
   get note() {
     return this._note;
   }
@@ -616,6 +627,9 @@ export class MultiSelectDropdown extends UnlitElement {
       menuItems.push(MenuItemDivider);
       menuItems.push({ title: this._note, enabled: () => false });
     }
+    if (this._header) {
+      menuItems.unshift({ element: this._header });
+    }
     this._button.classList.add("open");
     this._menu = showMenu(
       menuItems,
@@ -641,6 +655,13 @@ export class MultiSelectDropdown extends UnlitElement {
       this._menu.appendStyle(singleChoiceListStyles);
     }
     this._menu.style.minWidth = `${rect.width}px`;
+  }
+
+  closeMenu() {
+    if (this._menu) {
+      this._menu.dismiss();
+      this._menu = null;
+    }
   }
 
   pickItem(item) {

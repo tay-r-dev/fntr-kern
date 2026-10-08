@@ -52,6 +52,15 @@
         <div id="mini-console"></div>
 
         <div class="main-overlay-container cleanable-overlay">
+          <!-- The canvas card's corners (shared.css's .canvas-corner): the
+               gizmo / handles switch, and the skeleton pen's own settings
+               while the pen is out (edit-tools-skeleton.js). -->
+          <div id="canvas-corner-top-left" class="canvas-corner top-left"></div>
+          <div
+            id="skeleton-pen-settings"
+            class="canvas-corner top-right"
+            hidden
+          ></div>
           <div class="tool-overlay-container">
             <div class="tools-overlay tool-notch">
               <div id="edit-tools" class="tools-item">

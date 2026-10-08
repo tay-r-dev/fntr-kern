@@ -2,7 +2,6 @@ import { applicationSettingsController } from "@fontra/core/application-settings
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
-import { isScrubCancelled } from "@fontra/core/number-scrub.js";
 import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import {
   DEFAULT_SERIF_PRESET,
@@ -34,7 +33,6 @@ import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
 import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 74
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
 import { dialog, dialogSetup } from "@fontra/web-components/modal-dialog.js";
-import { Form } from "@fontra/web-components/ui-form.js";
 import {
   CAP_ANGLE_MAX,
   CAP_ANGLE_MIN,
@@ -49,13 +47,10 @@ import {
   TERMINAL_FIELD_FALLBACKS,
   capRadiusIndexFromRatio,
   capRadiusRatioFromIndex,
-  changesFrom,
 } from "./panel-skeleton-parameters.js";
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import {
-  nudgePanelContourDefaultWidthStream,
-  setPanelContourDefaultWidth,
   setPanelContourSingleSided,
   setPanelPointWidthPreset,
   setPanelTerminalPreset,
@@ -67,20 +62,6 @@ import {
   collectWidthEditPoints,
   summarizeSkeletonContourSelection,
 } from "./skeleton-panel-model.js";
-
-// Cap default values are stored in model units (radius ratio, tension 0–1)
-// but edited with the same sliders as the skeleton parameters panel (radius
-// as 1-based log-scale position, tension in percent).
-const CAP_DISPLAY_CONVERTERS = {
-  capRadiusRatio: {
-    toDisplay: (value) => capRadiusIndexFromRatio(Number(value)) + 1,
-    fromDisplay: (value) => capRadiusRatioFromIndex(Number(value) - 1),
-  },
-  capTension: {
-    toDisplay: (value) => Math.round(Number(value) * 100),
-    fromDisplay: (value) => Number(value) / 100,
-  },
-};
 
 // The terminal kinds with fields, in the order the Terminal section's kind
 // picker shows them. Flat has no fields and so no presets.
@@ -125,8 +106,8 @@ const SKELETON_SETTINGS_STYLES = `
 
 // Ticket 67 (UI-REFACTOR.md §6.1, §6.2): the Skeleton settings tab, in the
 // right sidebar. It holds the generator setting Delete collapsing points and
-// the master-wide source defaults: the width presets, the serif presets and
-// the default caps. The defaults used to be hosted in the Metrics panel.
+// the master-wide source defaults: the width and terminal presets. The
+// defaults used to be hosted in the Metrics panel.
 // button/text, size S (Figma 414:31310).
 function textKey(label, onClick) {
   return html.createDomElement("text-button", { label, size: "S", onclick: onClick });
@@ -139,7 +120,6 @@ export default class SkeletonSettingsPanel extends Panel {
   constructor(editorController) {
     super(editorController);
     this._customDeleteConfirm = null;
-    this.infoForm = new Form();
     // Delete collapsing points is a labeled toggle standing alone
     // (UI-NOMENCLATURE.md §14.1), with its warning under it while it is on.
     this.dropDeadPointsToggle = html.createDomElement("labeled-toggle", {
@@ -177,46 +157,7 @@ export default class SkeletonSettingsPanel extends Panel {
     this.simplifyEasingWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
-    // Ticket 78: the default width of the selected contours, under Delete
-    // collapsing points. It is per contour, so it reads and writes the contours
-    // the selection touches, and greys with none.
-    this.contourWidthField = html.createDomElement("input-field-large", {
-      label: translate("sidebar.skeleton-parameters.contour-default-width"),
-      integer: true,
-    });
-    this._contourWidthScrubbing = false;
-    this.contourWidthField.addEventListener("scrubstart", async (event) => {
-      const { valueStream, startValue } = event.detail;
-      const contours = this._selectedContours();
-      this._contourWidthScrubbing = true;
-      try {
-        // A drag moves every contour by the change, so a mixed set stays mixed.
-        await nudgePanelContourDefaultWidthStream(
-          this.sceneController,
-          contours,
-          changesFrom(valueStream, startValue),
-          translate("sidebar.skeleton-parameters.undo.set-contour-width")
-        );
-      } finally {
-        this._contourWidthScrubbing = false;
-        this._refreshContourWidthField();
-      }
-    });
-    this.contourWidthField.addEventListener("change", async (event) => {
-      // A drag reports every frame as a change too; the stream above owns those.
-      if (this._contourWidthScrubbing || event.detail.cancelled) {
-        return;
-      }
-      await setPanelContourDefaultWidth(
-        this.sceneController,
-        this._selectedContours(),
-        event.detail.value,
-        translate("sidebar.skeleton-parameters.undo.set-contour-width")
-      );
-      this._refreshContourWidthField();
-    });
-    // PRESETS (Figma 4109:3396): the default pen width, then the width and
-    // terminal presets, each a heading with its filters over a table and its
+    // PRESETS (Figma 4109:3396): the width and terminal presets, each a heading with its filters over a table and its
     // two buttons. The Grid tab (Figma 4129:3638) has no backend yet; it is
     // shown and disabled.
     this._appendStyle(SKELETON_SETTINGS_STYLES);
@@ -323,14 +264,9 @@ export default class SkeletonSettingsPanel extends Panel {
     ]);
     gridSection.hidden = true;
 
-    // The default pen width of the selected contours (Figma 4113:11621).
-    this.contourWidthField.label = "";
-    this.contourWidthField.type = "number";
+    // The pen's width is the skeleton pen's own setting, in the canvas
+    // corner while the pen is out (edit-tools-skeleton.js).
     const skeletonTab = html.div({ class: "preset-tab" }, [
-      html.div({ class: "field-group" }, [
-        html.span({ class: "field-label" }, ["default skeleton pen width"]),
-        this.contourWidthField,
-      ]),
       this.widthPresetsSection,
       this.terminalPresetsSection,
     ]);
@@ -357,8 +293,8 @@ export default class SkeletonSettingsPanel extends Panel {
           skeletonTab,
           gridSection,
         ]),
-        // The generator's settings and the default caps; not in the presets
-        // design, so they keep their own card.
+        // The generator's settings; not in the presets design, so they keep
+        // their own card.
         html.div({ class: "card card--headed" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["settings"]),
@@ -368,7 +304,6 @@ export default class SkeletonSettingsPanel extends Panel {
           this.simplifyEasingToggle,
           this.simplifyEasingWarning,
           this.handTurnAngleOnlyToggle,
-          this.infoForm,
         ]),
       ])
     );
@@ -383,31 +318,9 @@ export default class SkeletonSettingsPanel extends Panel {
     );
     // A selection change only decides whether there is anything to capture,
     // so it refreshes that button and leaves the tables alone.
-    this.sceneSettingsController.addKeyListener("selection", () => {
-      this._refreshFromSelectionButtons();
-      this._refreshContourWidthField();
-    });
-    this.sceneController.addCurrentGlyphChangeListener(() =>
-      this._refreshContourWidthField()
+    this.sceneSettingsController.addKeyListener("selection", () =>
+      this._refreshFromSelectionButtons()
     );
-  }
-
-  _selectedContours() {
-    return this._currentSkeletonPanelSelection()?.contours || [];
-  }
-
-  // A field under the hand is left alone: it already shows what it is sending.
-  _refreshContourWidthField() {
-    if (this._contourWidthScrubbing) {
-      return;
-    }
-    const contours = this._selectedContours();
-    const summary = summarizeSkeletonContourSelection(contours).defaultWidth;
-    this.contourWidthField.disabled =
-      !contours.length || !!this.fontController.readOnly;
-    this.contourWidthField.minValue = summary.mixed ? undefined : 0;
-    this.contourWidthField.value =
-      summary.mixed || summary.value == null ? null : summary.value;
   }
 
   getContentElement() {
@@ -1397,17 +1310,6 @@ export default class SkeletonSettingsPanel extends Panel {
     );
   }
 
-  // ---- Form ----------------------------------------------------------------
-
-  _pushNumber(formContents, key, labelKey) {
-    formContents.push({
-      type: "edit-number",
-      key: `default:${key}`,
-      label: translate(`sidebar.skeleton-parameters.${labelKey}`),
-      value: this._sourceDefault(key),
-    });
-  }
-
   // Shift every rib of every skeleton glyph of `glyphCase` in the edited
   // master by `delta`, preserving each rib's offset relative to the master
   // width (mw+offset semantics) and its left/right distribution.
@@ -1479,7 +1381,7 @@ export default class SkeletonSettingsPanel extends Panel {
   }
 
   async update() {
-    if (!this.infoForm.contentElement.offsetParent) {
+    if (!this.contentElement.offsetParent) {
       return;
     }
     await this.fontController.ensureInitialized;
@@ -1495,81 +1397,8 @@ export default class SkeletonSettingsPanel extends Panel {
     this.simplifyEasingToggle.disabled = !!this.fontController.readOnly;
     this.simplifyEasingWarning.hidden = !simplifyEasing;
 
-    this._refreshContourWidthField();
     this._renderWidthPresetRows();
     this._renderTerminalPresetRows();
-
-    const formContents = [
-      {
-        type: "header",
-        label: translate("sidebar.skeleton-parameters.default-caps"),
-      },
-    ];
-    formContents.push({
-      type: "edit-number-slider",
-      key: `default:${K.CAP_RADIUS_RATIO}`,
-      label: translate("sidebar.skeleton-parameters.cap-radius"),
-      value: CAP_DISPLAY_CONVERTERS.capRadiusRatio.toDisplay(
-        this._sourceDefault(K.CAP_RADIUS_RATIO)
-      ),
-      minValue: 1,
-      defaultValue: CAP_DISPLAY_CONVERTERS.capRadiusRatio.toDisplay(
-        SKELETON_SOURCE_DEFAULT_FALLBACKS[K.CAP_RADIUS_RATIO]
-      ),
-      maxValue: CAP_RADIUS_POSITIONS,
-      step: 1,
-    });
-    formContents.push({
-      type: "edit-number-slider",
-      key: `default:${K.CAP_TENSION}`,
-      label: translate("sidebar.skeleton-parameters.cap-tension"),
-      value: CAP_DISPLAY_CONVERTERS.capTension.toDisplay(
-        this._sourceDefault(K.CAP_TENSION)
-      ),
-      minValue: 0,
-      defaultValue: CAP_DISPLAY_CONVERTERS.capTension.toDisplay(
-        SKELETON_SOURCE_DEFAULT_FALLBACKS[K.CAP_TENSION]
-      ),
-      maxValue: 100,
-      step: 5,
-    });
-    formContents.push({
-      type: "edit-number-slider",
-      key: `default:${K.CAP_ANGLE}`,
-      label: translate("sidebar.skeleton-parameters.cap-angle"),
-      value: this._sourceDefault(K.CAP_ANGLE),
-      minValue: CAP_ANGLE_MIN,
-      defaultValue: SKELETON_SOURCE_DEFAULT_FALLBACKS[K.CAP_ANGLE],
-      maxValue: CAP_ANGLE_MAX,
-      step: 1,
-    });
-    this._pushNumber(formContents, K.CAP_DISTANCE, "cap-distance");
-
-    this.infoForm.setFieldDescriptions(formContents);
-    this.infoForm.onFieldChange = async (fieldItem, value, valueStream) => {
-      const [group, name] = String(fieldItem.key).split(":");
-      if (group !== "default") {
-        return;
-      }
-      let finalValue = value;
-      if (valueStream) {
-        for await (const streamedValue of valueStream) {
-          // An abandoned drag has nothing to commit.
-          if (isScrubCancelled(streamedValue)) {
-            return;
-          }
-          finalValue = streamedValue;
-        }
-      }
-      const oldValue = this._sourceDefault(name);
-      const storedValue =
-        CAP_DISPLAY_CONVERTERS[name]?.fromDisplay(finalValue) ?? finalValue;
-      await this._persistSourceDefaults(
-        { [name]: storedValue },
-        translate("sidebar.skeleton-parameters.undo.set-defaults")
-      );
-      await this.update();
-    };
   }
 }
 
