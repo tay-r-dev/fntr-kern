@@ -153,6 +153,44 @@ export function htmlToElements(html) {
   return template.content.childNodes;
 }
 
+// A table head's dividers: one per boundary between two neighbouring head
+// cells, shown by marking the cell on its left with `shownClass`. A hovered
+// cell shows the boundaries on both its sides; while a drag handle is
+// hovered or dragged, only that handle's boundary shows. Tracked from the
+// pointer, not from :hover, so leaving a cell always clears it. `cells()`
+// lists the head cells in order; a boundary's handle, found by
+// `handleSelector`, sits in the cell on its left and carries `draggingClass`
+// while dragged. Returns a function that redraws, for a drag that ends.
+export function trackHeadDividers(
+  head,
+  { cells, handleSelector, draggingClass = "dragging", shownClass = "divider-shown" }
+) {
+  let target = null;
+  const show = () => {
+    const list = cells();
+    const handle =
+      head.querySelector(`${handleSelector}.${draggingClass}`) ??
+      target?.closest?.(handleSelector);
+    const at = handle ? list.findIndex((cell) => cell.contains(handle)) : -1;
+    const hovered = handle ? -1 : list.findIndex((cell) => cell.contains(target));
+    list.forEach((cell, i) => {
+      const shown = handle
+        ? i === at
+        : hovered >= 0 && (i === hovered || i === hovered - 1);
+      cell.classList.toggle(shownClass, shown && i < list.length - 1);
+    });
+  };
+  head.addEventListener("pointermove", (event) => {
+    target = event.target;
+    show();
+  });
+  head.addEventListener("pointerleave", () => {
+    target = null;
+    show();
+  });
+  return show;
+}
+
 export function addStyleSheet(cssText, element = null) {
   if (!element) {
     element = document.head;

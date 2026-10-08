@@ -281,6 +281,19 @@ theme marker until the design has a dark mode.
   color: var(--text-base-basic-3);
 }
 
+/* A plain line of text in a card, such as an empty list's caption:
+   ui/label/S. */
+.card-note {
+  font: var(--ui-text-label-s);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  color: var(--text-base-basic-3);
+}
+
+.card-note[hidden] {
+  display: none;
+}
+
 /* CheckboxGroup (glyphsets-ui.js): the font overview's group-by checks. */
 .checkbox-group {
   width: 100%;

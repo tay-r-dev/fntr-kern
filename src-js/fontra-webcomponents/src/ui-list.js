@@ -18,7 +18,7 @@ const colors = {
   "table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
   "table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
   "table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
-  "table-look-divider-color": ["var(--line-base-basic-2)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-divider-color": ["var(--line-base-basic-1)", "rgba(255, 255, 255, 0.1)"],
   "table-look-drag-divider-color": [
     "var(--line-base-basic-3)",
     "rgba(255, 255, 255, 0.2)",
@@ -260,19 +260,23 @@ export class UIList extends UnlitElement {
       color: var(--table-look-heading-color);
     }
 
-    /* A hovered head cell shows a divider at each edge: 16px, centred, in
-       line 3 where that edge can be dragged and line 2 where it cannot. */
-    :host([look]) .text-cell-header:hover {
-      --divider-left: var(--table-look-divider-color);
-      --divider-right: var(--table-look-divider-color);
-      background-image:
-        linear-gradient(var(--divider-left), var(--divider-left)),
-        linear-gradient(var(--divider-right), var(--divider-right));
-      background-size: 1px 16px;
-      background-position:
-        left center,
-        right center;
-      background-repeat: no-repeat;
+    /* The head's dividers (html-utils.js's trackHeadDividers): one per
+       boundary between two head cells, drawn by the cell on its left, its
+       full height -- line 3 where that edge can be dragged, line 1 where it
+       cannot. */
+    :host([look]) .header-cell-container.divider-shown::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 0;
+      width: 1px;
+      background: var(--table-look-divider-color);
+      pointer-events: none;
+    }
+
+    :host([look]) .header-cell-container.divider-shown:has(> .header-resize-handle)::after {
+      background: var(--table-look-drag-divider-color);
     }
 
     /* Header and rows are different sizes of type, so every width and gap
@@ -285,14 +289,6 @@ export class UIList extends UnlitElement {
 
     :host([look]) .header-cell.resizable {
       border-right: none;
-    }
-
-    :host([look]) .text-cell-header.drag-left:hover {
-      --divider-left: var(--table-look-drag-divider-color);
-    }
-
-    :host([look]) .text-cell-header.drag-right:hover {
-      --divider-right: var(--table-look-drag-divider-color);
     }
 
     /* Each cell is exactly its column's width, padding included, so an
@@ -729,17 +725,11 @@ export class UIList extends UnlitElement {
     this._fitTextObserver?.disconnect();
     this._fitTextObserver = null;
 
-    // A column with a minWidth is dragged by its right edge, so its head's
-    // right edge and the next head's left edge are draggable.
-    let previousResizable = false;
     for (const colDesc of this.columnDescriptions) {
       const cell = html.div({ class: "text-cell-header header-cell " + colDesc.key });
       if (colDesc.align) {
         cell.classList.add(colDesc.align);
       }
-      cell.classList.toggle("drag-left", previousResizable);
-      cell.classList.toggle("drag-right", !!colDesc.minWidth);
-      previousResizable = !!colDesc.minWidth;
       // A `fitText` column is as wide as that text in the rows' type, or as
       // its title if that is wider -- "0000" for a number column. The head
       // sizes itself to both, and the rows take its width.
@@ -778,6 +768,10 @@ export class UIList extends UnlitElement {
 
       header.appendChild(cellContainer);
     }
+    this._showHeadDividers = html.trackHeadDividers(header, {
+      cells: () => [...header.children],
+      handleSelector: ".header-resize-handle",
+    });
     this.headerContainer = html.div({ class: "header-container" }, [header]);
     this.headerContainer.addEventListener(
       "scroll",
@@ -818,6 +812,7 @@ export class UIList extends UnlitElement {
       document.addEventListener("mousemove", mouseMoveHandler);
       document.addEventListener("mouseup", mouseUpHandler);
       document.body.style.cursor = "col-resize";
+      resizeHandle.classList.add("dragging");
     });
 
     const setColumnWidthFromEvent = (event, store = false) => {
@@ -834,6 +829,8 @@ export class UIList extends UnlitElement {
 
     const mouseUpHandler = (event) => {
       document.body.style.cursor = null;
+      resizeHandle.classList.remove("dragging");
+      this._showHeadDividers?.();
       document.removeEventListener("mousemove", mouseMoveHandler);
       document.removeEventListener("mouseup", mouseUpHandler);
       setColumnWidthFromEvent(event, true);

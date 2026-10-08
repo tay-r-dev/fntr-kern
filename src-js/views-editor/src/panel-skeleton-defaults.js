@@ -218,7 +218,7 @@ export default class SkeletonSettingsPanel extends Panel {
               translate(`sidebar.skeleton-settings.side.${side}`)
             )
           ),
-          fitField: true,
+          fitField: "select",
         },
         ACTIONS_COLUMN,
       ],
@@ -291,7 +291,7 @@ export default class SkeletonSettingsPanel extends Panel {
         {
           label: "secondary",
           fitText: longest(["off", ...SECONDARY_GRID_MULTIPLIERS.map(String)]),
-          fitField: true,
+          fitField: "select",
         },
         ACTIONS_COLUMN,
       ],

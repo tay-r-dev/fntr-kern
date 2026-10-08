@@ -7,6 +7,7 @@ import { round, throttleCalls } from "@fontra/core/utils.ts";
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
 import {
   actionsCell,
+  additionalText,
   editableCell,
   rowAction,
   selectCell,
@@ -39,66 +40,47 @@ import Panel from "./panel.js";
 // How long a section trash stays armed, in milliseconds.
 const ERASE_ARMED_MILLISECONDS = 4000;
 
+// The Measurements card (Figma 4118:11629): a section per marker kind, each a
+// heading with its eye and trash over a table, and the groups table.
 const MARKERS_PANEL_STYLES = `
+  .markers-card {
+    gap: 12px;
+  }
+
   .markers-section {
     display: flex;
     flex-direction: column;
-    gap: 0.3rem;
-    margin-bottom: 0.75rem;
+    gap: 6px;
   }
 
   .markers-section[hidden] {
     display: none;
   }
 
-  .markers-heading-row {
+  .markers-heading-actions {
     display: flex;
-    align-items: center;
-    gap: 0.35rem;
+    gap: 2px;
   }
 
-  .markers-heading {
-    font-weight: bold;
-    flex: 1 1 auto;
-  }
-
-  .markers-heading-row icon-button {
-    width: 1.1em;
-    height: 1.1em;
-  }
-
-  .markers-table th {
-    font-weight: normal;
-    opacity: 0.7;
-  }
-
-  .markers-goal-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.25em;
-  }
-
-  .markers-goal {
-    width: 3.5em;
-  }
-
-  .markers-delta {
-    opacity: 0.6;
-    white-space: nowrap;
-  }
-
-  .markers-group-select {
-    max-width: 6em;
+  .markers-heading-actions icon-button {
+    width: 16px;
+    height: 16px;
   }
 
   .markers-broken {
     color: var(--fontra-red-color, #c00);
   }
-
-  .markers-empty {
-    opacity: 0.6;
-  }
 `;
+
+// The columns, by the shared table rule: a column of numbers fits four
+// digits or its head; one of names or several values is dragged to fit; the
+// actions take what is left.
+const ID_COLUMN = { width: 96, minWidth: 32 };
+const VALUE_COLUMN = { width: 120, minWidth: 48 };
+const NUMBER_COLUMN = { fitText: "0000", align: "right" };
+const GOAL_COLUMN = { fitText: "0000", fitField: true };
+const GROUP_COLUMN = { width: 56, minWidth: 40 };
+const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";
@@ -116,46 +98,58 @@ export default class MarkersPanel extends Panel {
     this._eraseTimer = null;
     this._hideEraseTooltip = null;
 
-    this.noGlyphNote = html.div({ class: "markers-empty" }, [
+    const column = (key, extra) => ({
+      label: translate(`sidebar.markers.column.${key}`),
+      ...extra,
+    });
+    const measuredColumns = [
+      column("id", ID_COLUMN),
+      column("value", VALUE_COLUMN),
+      column("goal", GOAL_COLUMN),
+      column("group", GROUP_COLUMN),
+      ACTIONS_COLUMN,
+    ];
+    this.noGlyphNote = html.div({ class: "card-note" }, [
       translate("sidebar.markers.no-glyph"),
     ]);
-    this.rays = this._buildMarkerSection("rays", "sidebar.markers.rays");
+    this.rays = this._buildMarkerSection(
+      "rays",
+      "sidebar.markers.rays",
+      measuredColumns
+    );
     this.dimensions = this._buildMarkerSection(
       "dimensions",
-      "sidebar.markers.dimensions"
+      "sidebar.markers.dimensions",
+      measuredColumns
     );
     this.rulers = this._buildMarkerSection("rulers", "sidebar.markers.rulers", [
-      { label: translate("sidebar.markers.column.id") },
-      { label: translate("sidebar.markers.column.spans"), align: "right" },
-      { label: translate("sidebar.markers.column.angle"), align: "right" },
-      { label: translate("sidebar.markers.column.group") },
-      { label: translate("sidebar.markers.column.action") },
+      column("id", ID_COLUMN),
+      column("value", VALUE_COLUMN),
+      column("angle", NUMBER_COLUMN),
+      column("goal", GOAL_COLUMN),
+      column("group", GROUP_COLUMN),
+      ACTIONS_COLUMN,
     ]);
     this.curvatures = this._buildMarkerSection(
       "curvatures",
       "sidebar.markers.curvatures",
-      [
-        { label: translate("sidebar.markers.column.id") },
-        { label: translate("sidebar.markers.column.nodes") },
-        { label: translate("sidebar.markers.column.radius"), align: "right" },
-        { label: translate("sidebar.markers.column.curvature"), align: "right" },
-        { label: translate("sidebar.markers.column.group") },
-        { label: translate("sidebar.markers.column.action") },
-      ]
+      measuredColumns
     );
     this.groups = this._buildGroupSection();
     this.contentElement.appendChild(
-      html.div(
-        { class: "panel-section panel-section--flex panel-section--scrollable" },
-        [
+      html.div({ class: "card-column panel-section--flex" }, [
+        html.div({ class: "card card--headed markers-card" }, [
+          html.div({ class: "card-heading" }, [
+            translate("sidebar.markers.measurements"),
+          ]),
           this.noGlyphNote,
           this.rays.element,
           this.dimensions.element,
           this.rulers.element,
           this.curvatures.element,
           this.groups.element,
-        ]
-      )
+        ]),
+      ])
     );
 
     this.updateBound = this.update.bind(this);
@@ -187,8 +181,22 @@ export default class MarkersPanel extends Panel {
     }
   }
 
+  // A table of the card: look "select", its height dragged by the grip and its
+  // name and value columns by their edges, both kept per section.
+  _buildTable(kind, columns) {
+    const table = html.createDomElement("data-table");
+    table.look = "select";
+    table.columns = columns;
+    table.columnWidthsStorageKey = `fontra-markers-${kind}-column-widths`;
+    table.resizable = true;
+    table.minHeight = 48;
+    table.style.setProperty("--data-table-height", "72px");
+    table.heightStorageKey = `fontra-markers-${kind}-height`;
+    return table;
+  }
+
   // A section: heading with its eye and trash, a note when empty, and the table.
-  _buildMarkerSection(kind, labelKey, columns = undefined) {
+  _buildMarkerSection(kind, labelKey, columns) {
     const eye = html.createDomElement("icon-button", {
       "src": "/tabler-icons/eye.svg",
       "data-tooltipposition": "left",
@@ -200,28 +208,12 @@ export default class MarkersPanel extends Panel {
       "data-tooltipposition": "left",
     });
     trash.onclick = (event) => this.pressEraseSection(kind, event.currentTarget);
-    const table = html.createDomElement("data-table");
-    table.tableClassName = "markers-table";
-    // table/data (Figma 417:8097).
-    table.look = "data";
-    table.columns = columns || [
-      { label: translate("sidebar.markers.column.id") },
-      { label: translate("sidebar.markers.column.nodes") },
-      { label: translate("sidebar.markers.column.value"), align: "right" },
-      { label: translate("sidebar.markers.column.angle"), align: "right" },
-      { label: translate("sidebar.markers.column.goal") },
-      { label: translate("sidebar.markers.column.group") },
-      { label: translate("sidebar.markers.column.action") },
-    ];
-    // No scroll box and no grip: the table, and so the panel, sizes to its rows.
-    const empty = html.div({ class: "markers-empty" }, [
-      translate("sidebar.markers.none"),
-    ]);
+    const table = this._buildTable(kind, columns);
+    const empty = html.div({ class: "card-note" }, [translate("sidebar.markers.none")]);
     const element = html.div({ class: "markers-section" }, [
-      html.div({ class: "markers-heading-row" }, [
-        html.div({ class: "markers-heading" }, [translate(labelKey)]),
-        eye,
-        trash,
+      html.div({ class: "card-heading-row" }, [
+        html.div({ class: "card-subheading" }, [translate(labelKey)]),
+        html.div({ class: "markers-heading-actions" }, [eye, trash]),
       ]),
       empty,
       table,
@@ -230,24 +222,29 @@ export default class MarkersPanel extends Panel {
   }
 
   _buildGroupSection() {
-    const table = html.createDomElement("data-table");
-    table.tableClassName = "markers-table";
-    table.look = "data";
-    table.columns = [
-      { label: translate("sidebar.markers.column.name") },
-      { label: translate("sidebar.markers.column.count"), align: "right" },
-      { label: "" },
-    ];
-    const empty = html.div({ class: "markers-empty" }, [
+    const table = this._buildTable("groups", [
+      {
+        label: translate("sidebar.markers.column.name"),
+        width: 120,
+        minWidth: 40,
+      },
+      {
+        label: translate("sidebar.markers.column.type"),
+        fitText: longest(MARKER_KINDS.map((kind) => kindName(kind))),
+      },
+      { label: translate("sidebar.markers.column.count"), width: 64, minWidth: 32 },
+      ACTIONS_COLUMN,
+    ]);
+    const empty = html.div({ class: "card-note" }, [
       translate("sidebar.markers.no-groups"),
     ]);
     const element = html.div({ class: "markers-section" }, [
-      html.div({ class: "markers-heading-row" }, [
-        html.div({ class: "markers-heading" }, [translate("sidebar.markers.groups")]),
+      html.div({ class: "card-heading-row" }, [
+        html.div({ class: "card-subheading" }, [translate("sidebar.markers.groups")]),
       ]),
       empty,
       table,
-      html.div({}, [
+      html.div({ class: "button-row" }, [
         // button/text, size S (Figma 414:31310).
         html.createDomElement("text-button", {
           label: translate("sidebar.markers.new-group"),
@@ -355,7 +352,8 @@ export default class MarkersPanel extends Panel {
     });
   }
 
-  // ID, Nodes, Value, Angle, Goal with the delta after it, Group, and the eye and trash.
+  // ID with its nodes after it, the value with its delta and angle after it, Goal,
+  // Group, and the eye and trash.
   _markerRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
     const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
     const hasTarget = marker.target !== undefined && marker.target !== null;
@@ -368,36 +366,40 @@ export default class MarkersPanel extends Panel {
     // The angle the marker measures in. A ray that measures nothing still has one.
     const angle =
       geometry.stale || geometry.angle === null || geometry.angle === undefined
-        ? "—"
+        ? null
         : `${round(geometry.angle, 1)}°`;
     const delta =
       !geometry.stale && geometry.distance !== null && hasTarget
         ? round(geometry.distance - marker.target, 1)
         : null;
-
     return tableRow(marker.id, [
-      tableCell(labels.get(marker.id)),
-      tableCell(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
-      tableCell(value, { align: "right" }),
-      tableCell(angle, { align: "right" }),
-      tableCell(
-        html.div({ class: "markers-goal-cell" }, [
-          editableCell({
-            type: "number",
-            value: hasTarget ? marker.target : "",
-            allowEmpty: true,
-            className: "markers-goal",
-            title: translate("sidebar.markers.target"),
-            onCommit: (target) =>
-              setMarkerTarget(this.sceneController, marker.id, target ?? undefined),
-          }),
-          delta === null
-            ? null
-            : html.span({ class: "markers-delta" }, [signed(delta)]),
-        ])
-      ),
+      this._idCell(marker, labels, positionedGlyph),
+      tableCell([value, afterValue(delta, angle)]),
+      this._goalCell(marker),
       ...this._groupAndActionCells(marker, groupOptions),
     ]);
+  }
+
+  // The marker's name, and the points it holds on to after it.
+  _idCell(marker, labels, positionedGlyph) {
+    return tableCell([
+      labels.get(marker.id),
+      additionalText(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
+    ]);
+  }
+
+  _goalCell(marker) {
+    const hasTarget = marker.target !== undefined && marker.target !== null;
+    return tableCell(
+      editableCell({
+        type: "number",
+        value: hasTarget ? marker.target : "",
+        allowEmpty: true,
+        title: translate("sidebar.markers.target"),
+        onCommit: (target) =>
+          setMarkerTarget(this.sceneController, marker.id, target ?? undefined),
+      })
+    );
   }
 
   // Groups carry visibility and a name, nothing else. Deleting one leaves its markers
@@ -412,6 +414,7 @@ export default class MarkersPanel extends Panel {
       (group) => {
         const members = markers.filter((marker) => marker.groupId === group.id);
         const hiddenCount = members.filter((marker) => marker.hidden).length;
+        const kinds = new Set(members.map((marker) => markerKind(marker)));
         const visible = group.visible !== false;
         // The eye is an on-state icon button: lit while the group shows.
         const eye = rowAction({
@@ -431,12 +434,20 @@ export default class MarkersPanel extends Panel {
               onCommit: (name) => this.renameGroup(group.id, name),
             })
           ),
+          // The kind of marker it holds, or mixed.
           tableCell(
-            hiddenCount
-              ? `${members.length} · ${hiddenCount} hidden`
-              : `${members.length}`,
-            { align: "right" }
+            kinds.size === 0
+              ? "—"
+              : kinds.size === 1
+                ? kindName([...kinds][0])
+                : translate("sidebar.markers.kind.mixed")
           ),
+          tableCell([
+            String(members.length),
+            hiddenCount
+              ? additionalText(`${hiddenCount} ${translate("sidebar.markers.hidden")}`)
+              : null,
+          ]),
           actionsCell([
             eye,
             rowAction({
@@ -456,9 +467,9 @@ export default class MarkersPanel extends Panel {
     return this[kind];
   }
 
-  // ID, the spans the ruler crosses in order along its line, its angle, Group, and the
-  // eye and trash. The spans are read with the side-bearing lines the canvas draws, so
-  // the table and the canvas give the same numbers.
+  // ID, the spans the ruler crosses in order along its line, its angle, Goal,
+  // Group, and the eye and trash. The spans are read with the side-bearing lines
+  // the canvas draws, so the table and the canvas give the same numbers.
   _rulerRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
     const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData, {
       extraLines: rulerExtraLines(this.editorController, positionedGlyph.glyph),
@@ -468,28 +479,33 @@ export default class MarkersPanel extends Panel {
       .map((span) => String(round(span.distance, 1)));
     return tableRow(marker.id, [
       tableCell(labels.get(marker.id)),
-      tableCell(spans.length ? spans.join(" · ") : "—", { align: "right" }),
+      tableCell(spans.length ? spans.join(" • ") : "—"),
       tableCell(`${round(geometry.angle, 1)}°`, { align: "right" }),
+      this._goalCell(marker),
       ...this._groupAndActionCells(marker, groupOptions),
     ]);
   }
 
-  // ID, Nodes, Radius, Curvature, Group, and the eye and trash. A straight reads an
-  // endless radius and no curvature.
+  // ID with its nodes, the curvature with its delta and the radius after it,
+  // Goal, Group, and the eye and trash. A straight reads an endless radius and
+  // no curvature.
   _curvatureRow(marker, { positionedGlyph, skeletonData, groupOptions, labels }) {
     const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
-    const broken = html.span({ class: "markers-broken" }, [
-      translate("sidebar.markers.broken"),
-    ]);
+    const hasTarget = marker.target !== undefined && marker.target !== null;
+    const value = geometry.stale
+      ? html.span({ class: "markers-broken" }, [translate("sidebar.markers.broken")])
+      : formatCurvature(geometry.curvature);
+    const delta =
+      !geometry.stale && hasTarget
+        ? Number(((geometry.curvature || 0) - marker.target).toPrecision(4))
+        : null;
     return tableRow(marker.id, [
-      tableCell(labels.get(marker.id)),
-      tableCell(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
-      tableCell(geometry.stale ? broken : formatRadius(geometry.radius), {
-        align: "right",
-      }),
-      tableCell(geometry.stale ? "—" : formatCurvature(geometry.curvature), {
-        align: "right",
-      }),
+      this._idCell(marker, labels, positionedGlyph),
+      tableCell([
+        value,
+        afterValue(delta, geometry.stale ? null : formatRadius(geometry.radius)),
+      ]),
+      this._goalCell(marker),
       ...this._groupAndActionCells(marker, groupOptions),
     ]);
   }
@@ -500,7 +516,6 @@ export default class MarkersPanel extends Panel {
         selectCell({
           value: marker.groupId || "",
           options: groupOptions,
-          className: "markers-group-select",
           onChange: (groupId) => this.assignGroup(marker.id, groupId || undefined),
         })
       ),
@@ -690,6 +705,25 @@ function pointNameOfSegment(path, end) {
 
 function signed(value) {
   return `${value >= 0 ? "+" : ""}${value}`;
+}
+
+// What follows a value in its cell, lighter: the delta to the goal in
+// brackets, then the angle or radius.
+function afterValue(delta, extra) {
+  const parts = [delta === null ? null : `(${signed(delta)})`, extra].filter(
+    (part) => part != null
+  );
+  return parts.length ? additionalText(parts.join(" ")) : null;
+}
+
+const MARKER_KINDS = ["ray", "dimension", "ruler", "curvature"];
+
+function kindName(kind) {
+  return translate(`sidebar.markers.kind.${kind}`);
+}
+
+function longest(texts) {
+  return texts.reduce((a, b) => (b.length > a.length ? b : a), "");
 }
 
 customElements.define("panel-markers", MarkersPanel);

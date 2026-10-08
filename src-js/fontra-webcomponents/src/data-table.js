@@ -51,7 +51,7 @@ const lookColors = {
   "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
   "data-table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
   "data-table-look-divider-color": [
-    "var(--line-base-basic-2)",
+    "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.1)",
   ],
   "data-table-look-drag-divider-color": [
@@ -118,9 +118,30 @@ const lookColors = {
     "var(--bt-sgt-ln-select-focus)",
     "#5a6e1a",
   ],
-  "data-table-look-field-hover-color": ["var(--in-bsr-rest)", "#3a3a3a"],
-  "data-table-look-field-selection-hover-color": ["var(--in-csr-focus)", "#2c2c2c"],
-  "data-table-look-focus-border-color": ["var(--in-sln-focus)", "#8fae4a"],
+  "data-table-look-field-hover-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "data-table-look-field-hover-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "data-table-look-field-focus-text-color": ["var(--text-base-basic-1)", "#ffffff"],
+  "data-table-look-focus-border-color": ["var(--line-base-basic-1)", "#4a4a4a"],
+  "data-table-look-field-selection-color": [
+    "var(--text-color-lime-basic-3)",
+    "#a9c915",
+  ],
+  "data-table-look-field-selection-hover-color": [
+    "var(--surface-base-basic-0)",
+    "#2c2c2c",
+  ],
+  "data-table-look-field-selection-hover-text-color": [
+    "var(--text-color-lime-basic-2)",
+    "#c4dc6a",
+  ],
+  "data-table-look-field-selection-focus-text-color": [
+    "var(--text-color-lime-basic-1)",
+    "#e2f38f",
+  ],
+  "data-table-look-selection-focus-border-color": [
+    "var(--line-color-lime-basic-1)",
+    "#5a6e1a",
+  ],
 };
 
 const DATA_TABLE_STYLES = `
@@ -198,6 +219,29 @@ const DATA_TABLE_STYLES = `
   .data-table-input::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
+  }
+
+  /* A select cell's field and its down arrow, in the field's colour. */
+  .data-table-select-field {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+  }
+
+  .data-table-select-field > .data-table-select {
+    color: inherit;
+  }
+
+  .data-table-select-field::after {
+    content: "";
+    position: absolute;
+    right: 4px;
+    width: 6px;
+    height: 6px;
+    background: currentColor;
+    mask: url("/images/arrow-down-s.svg") center / 4.2px 2.45px no-repeat;
+    pointer-events: none;
   }
 
   .data-table .data-table-select:not(:disabled) {
@@ -415,38 +459,27 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-heading-color);
   }
 
-  /* A hovered head cell shows a divider at each edge: 16px, centred, in
-     line 3 where that edge can be dragged and line 2 where it cannot. */
-  data-table[look] .data-table thead th:hover {
-    --data-table-divider-left: var(--data-table-look-divider-color);
-    --data-table-divider-right: var(--data-table-look-divider-color);
-    background-image:
-      linear-gradient(var(--data-table-divider-left), var(--data-table-divider-left)),
-      linear-gradient(var(--data-table-divider-right), var(--data-table-divider-right));
-    background-size: 1px 16px;
-    background-position:
-      left center,
-      right center;
+  /* The head's dividers (html-utils.js's trackHeadDividers): one per
+     boundary between two head cells, drawn by the cell on its left, its full
+     height -- line 3 where that edge can be dragged, line 1 where it
+     cannot. The grips draw no line of their own. */
+  data-table[look] .data-table thead th {
+    --data-table-divider: var(--data-table-look-divider-color);
+  }
+
+  data-table[look] .data-table thead th.data-table-drag-right {
+    --data-table-divider: var(--data-table-look-drag-divider-color);
+  }
+
+  data-table[look] .data-table thead th.data-table-divider-shown {
+    background-image: linear-gradient(var(--data-table-divider), var(--data-table-divider));
+    background-size: 1px 100%;
+    background-position: right center;
     background-repeat: no-repeat;
   }
 
-  data-table[look] .data-table thead th.data-table-drag-left:hover {
-    --data-table-divider-left: var(--data-table-look-drag-divider-color);
-  }
-
-  data-table[look] .data-table thead th.data-table-drag-right:hover {
-    --data-table-divider-right: var(--data-table-look-drag-divider-color);
-  }
-
-  /* The column grip's hairline is the draggable divider, held while
-     dragging. */
   data-table[look] .data-table-column-grip::after {
-    background: var(--data-table-look-drag-divider-color);
-  }
-
-  data-table[look] .data-table-column-grip:hover::after,
-  data-table[look] .data-table-column-grip.dragging::after {
-    opacity: 1;
+    display: none;
   }
 
   /* The sort is told by its arrow; the head keeps one colour. */
@@ -661,21 +694,59 @@ const DATA_TABLE_STYLES = `
     pointer-events: auto;
   }
 
-  /* The editable entry: an 18px box, 6px in and 12px out; drawn grey on
-     the row's hover, white on a selected row's hover, lime-edged while
-     typing. */
+  /* The editable entry is the smol field (Figma 4102:1607): 16px, 4px in,
+     bare at rest; grey with darker text on the row's hover; ruled and
+     darkest while typing. On a selected row it is lime text, white on
+     hover, lime-ruled while typing. A dropdown field carries its 6px arrow
+     2px after the text. */
   data-table[look] .data-table .data-table-input,
   data-table[look] .data-table .data-table-select {
-    height: 18px;
-    padding: 3px 12px 3px 6px;
+    height: 16px;
+    padding: 2px 3px;
     border: 1px solid transparent;
-    border-radius: 3px;
+    border-radius: 4px;
+  }
+
+  data-table[look] .data-table .data-table-select {
+    padding-right: 11px;
+  }
+
+  data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
+  data-table[look] .data-table tr:hover .data-table-select-field:has(:not(:disabled)) {
+    color: var(--data-table-look-field-hover-text-color);
   }
 
   data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
   data-table[look] .data-table tr:hover .data-table-select:not(:disabled) {
     border-color: transparent;
     background-color: var(--data-table-look-field-hover-color);
+  }
+
+  data-table[look] .data-table .data-table-input:focus,
+  data-table[look] .data-table .data-table-select:focus {
+    border-color: var(--data-table-look-focus-border-color);
+    background-color: var(--data-table-look-field-hover-color);
+  }
+
+  data-table[look] .data-table .data-table-input:focus,
+  data-table[look] .data-table .data-table-select-field:focus-within {
+    color: var(--data-table-look-field-focus-text-color);
+  }
+
+  data-table[look] .data-table .data-table-row-selected .data-table-input,
+  data-table[look] .data-table .data-table-row-selected .data-table-select-field {
+    color: var(--data-table-look-field-selection-color);
+  }
+
+  data-table[look]
+    .data-table
+    .data-table-row-selected:hover
+    .data-table-input:not(:disabled),
+  data-table[look]
+    .data-table
+    .data-table-row-selected:hover
+    .data-table-select-field:has(:not(:disabled)) {
+    color: var(--data-table-look-field-selection-hover-text-color);
   }
 
   data-table[look]
@@ -689,10 +760,18 @@ const DATA_TABLE_STYLES = `
     background-color: var(--data-table-look-field-selection-hover-color);
   }
 
-  data-table[look] .data-table .data-table-input:focus,
-  data-table[look] .data-table .data-table-select:focus {
-    border-color: var(--data-table-look-focus-border-color);
+  data-table[look] .data-table .data-table-row-selected .data-table-input:focus,
+  data-table[look] .data-table .data-table-row-selected .data-table-select:focus {
+    border-color: var(--data-table-look-selection-focus-border-color);
     background-color: var(--data-table-look-field-selection-hover-color);
+  }
+
+  data-table[look] .data-table .data-table-row-selected .data-table-input:focus,
+  data-table[look]
+    .data-table
+    .data-table-row-selected
+    .data-table-select-field:focus-within {
+    color: var(--data-table-look-field-selection-focus-text-color);
   }
 
   ${Array.from(
@@ -848,7 +927,11 @@ export function selectCell({ value, options, disabled = false, className, onChan
     select.appendChild(element);
   }
   select.addEventListener("change", () => onChange?.(select.value));
-  return select;
+  // Wrapped, so the field can draw its down arrow.
+  const field = document.createElement("span");
+  field.className = "data-table-select-field";
+  field.appendChild(select);
+  return field;
 }
 
 // A row's icon action. `reveal` is "hover" (hidden until the row is hovered),
@@ -977,7 +1060,7 @@ export class DataTable extends HTMLElement {
   // fitText, fitField }. A `fitText` column is as wide as that text in the
   // rows' type, or as its head if that is wider -- "0000" for a number
   // column, or a list for fields side by side. `fitField` measures it
-  // inside an editable cell's box. Such a column cannot be dragged or
+  // inside an editable cell's box, "select" inside a dropdown field's. Such a column cannot be dragged or
   // shrunk. `sortKey` is opaque to this component -- it is whatever the
   // caller passed back through `onSort`.
   // `key` names a hideable column in the column menu and `setColumnVisible`.
@@ -1171,22 +1254,14 @@ export class DataTable extends HTMLElement {
       th.style.width = width ? `${width}px` : "";
       used += width || 0;
     });
-    // Each head cell knows which of its edges can be dragged: its right one
-    // when it has a grip, its left one when the column before it does.
-    visible.forEach(({ column }, i) => {
-      const hasGrip = (entry) =>
-        !!entry?.column._headerElement.querySelector(
-          ":scope > .data-table-column-grip"
-        );
+    // A head cell whose right edge has a grip draws that boundary as
+    // draggable.
+    for (const { column } of visible) {
       column._headerElement.classList.toggle(
         "data-table-drag-right",
-        hasGrip(visible[i])
+        !!column._headerElement.querySelector(":scope > .data-table-column-grip")
       );
-      column._headerElement.classList.toggle(
-        "data-table-drag-left",
-        hasGrip(visible[i - 1])
-      );
-    });
+    }
     const lastWidth = Math.max(lastMin, box - used);
     if (last) {
       last.column._headerElement.style.width =
@@ -1239,7 +1314,11 @@ export class DataTable extends HTMLElement {
     const text = measure(
       cell,
       [].concat(column.fitText).map(String),
-      column.fitField ? "data-table-input" : ""
+      column.fitField === "select"
+        ? "data-table-select"
+        : column.fitField
+          ? "data-table-input"
+          : ""
     );
     row.remove();
     return Math.ceil(Math.max(head, text));
@@ -1325,6 +1404,7 @@ export class DataTable extends HTMLElement {
         grip.removeEventListener("lostpointercapture", onEnd);
         grip.classList.remove("dragging");
         document.documentElement.classList.remove("data-table-column-resizing");
+        this._showHeadDividers?.();
         this._storeColumnWidths();
       };
       grip.addEventListener("pointermove", onMove);
@@ -1549,6 +1629,11 @@ export class DataTable extends HTMLElement {
     }
     const thead = html.createDomElement("thead", {}, [headRow]);
     thead.addEventListener("contextmenu", (event) => this._showColumnMenu(event));
+    this._showHeadDividers = html.trackHeadDividers(thead, {
+      cells: () => this._visibleColumns().map(({ column }) => column._headerElement),
+      handleSelector: ".data-table-column-grip",
+      shownClass: "data-table-divider-shown",
+    });
 
     const tbody = html.createDomElement("tbody", { id: this._tbodyId || "" });
     tbody.addEventListener("click", (event) => {
