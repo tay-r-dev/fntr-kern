@@ -508,7 +508,7 @@ export default class LetterspacerPanel extends Panel {
       })),
     });
     glyphsetDropdown.addEventListener("change", (event) => {
-      this.bulkGlyphsetId = event.detail.checked || "";
+      this.bulkGlyphsetId = event.detail.checked[0] || "";
     });
 
     this._bulkStatusElement = html.div({ class: "field-label" }, [this.bulkStatus]);

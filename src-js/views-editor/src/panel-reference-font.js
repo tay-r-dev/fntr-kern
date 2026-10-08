@@ -619,7 +619,7 @@ export default class ReferenceFontPanel extends Panel {
       singleChoice: true,
     });
     this.languageCodeInput.addEventListener("change", (event) => {
-      this.model.languageCode = event.detail.checked || "";
+      this.model.languageCode = event.detail.checked[0] || "";
     });
 
     const fileInput = input(

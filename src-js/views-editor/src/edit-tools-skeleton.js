@@ -1253,9 +1253,11 @@ class SkeletonPenSettings {
     // The presets are the edited master's for the glyph's case, which can
     // change while the menu is shut, so it reads them as it opens.
     this.widthDropdown.addEventListener("mousedown", () => this.refresh(), true);
+    // "change" reports the checked values as a list; the pick is its item.
     this.widthDropdown.addEventListener("change", (event) => {
-      if (event.detail.checked) {
-        writeSetting("skeletonPenWidthChoice", event.detail.checked);
+      const name = event.detail.item?.value;
+      if (name) {
+        writeSetting("skeletonPenWidthChoice", name);
       }
     });
 
@@ -1332,7 +1334,7 @@ class SkeletonPenSettings {
     this.widthDropdown.items = this.presets().map((preset) => ({
       value: preset.name,
       label: `${preset.name} ${preset.width}`,
-      checked: preset === picked,
+      checked: preset.name === picked?.name,
     }));
   }
 }

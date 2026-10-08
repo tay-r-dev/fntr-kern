@@ -16,8 +16,9 @@ import { themeColorCSS } from "./theme-support.js";
 // component in this tree uses (labeled-toggle.js's own note on why).
 //
 // `items` is [{value, label, checked}, ...]. Checking an item mutates it in
-// place and fires "change" with the checked values (or the one checked
-// value, in singleChoice mode) in event.detail.checked. The caller owns
+// place and fires "change" with the checked values in event.detail.checked
+// -- a list, in singleChoice mode too, where the pick is event.detail.item.
+// The caller owns
 // persistence; this component only tracks what's checked and reopens the
 // list after each pick so a designer can flip several checks in a row --
 // singleChoice closes on pick instead, matching a plain <select>.

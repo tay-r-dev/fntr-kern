@@ -387,7 +387,7 @@ export default class TextEntryPanel extends Panel {
     };
     sync();
     element.addEventListener("change", (event) => {
-      this.textSettings[key] = event.detail.checked || null;
+      this.textSettings[key] = event.detail.checked[0] || null;
     });
     this.textSettingsController.addKeyListener(key, sync);
     return { element, sync };
