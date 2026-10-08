@@ -54,21 +54,44 @@ body {
 .editor-container {
   display: grid;
   position: relative;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto 1fr auto auto;
   grid-template-rows: auto 1fr;
   height: 100%;
   width: 100%;
 }
 
 .top-bar-container {
-  grid-column: 1 / 4;
+  grid-column: 1 / 6;
   grid-row: 1;
 }
 
+.tab-pane,
 .sidebar-container,
 .main-container {
   grid-row-start: 2;
   grid-row-end: 3;
+}
+
+/* The tab panes (shared.css's .tab-pane) at the window edges, each beside
+   its sidebar. */
+.tab-pane {
+  background-color: var(--surface-base-basic-1);
+}
+
+.tab-pane.left {
+  grid-column: 1;
+}
+
+.sidebar-container.left {
+  grid-column: 2;
+}
+
+.sidebar-container.right {
+  grid-column: 4;
+}
+
+.tab-pane.right {
+  grid-column: 5;
 }
 
 .sidebar-container {
@@ -80,7 +103,6 @@ body {
 }
 
 :root {
-  --sidebar-tab-width: 3em;
   --sidebar-content-width-left: 20em;
   --sidebar-content-width-right: 22em;
   --resize-cursor: col-resize;
@@ -106,7 +128,7 @@ body {
 
 .main-container {
   position: relative;
-  grid-column: 2;
+  grid-column: 3;
   background-color: var(--surface-base-basic-1);
 }
 
@@ -119,105 +141,8 @@ body {
 .main-overlay-container {
   position: absolute;
   display: grid;
-  grid-template-columns: 3.5em 1fr 3.5em;
   inset: 8px 1px; /* the notch's top on the canvas card's rule */
   pointer-events: none;
-}
-
-.tab-overlay-container {
-  display: grid;
-  gap: 1em;
-  padding-top: 1em;
-  align-content: start;
-}
-
-.tab-overlay-container.left {
-  justify-content: start;
-  justify-items: start;
-}
-
-.tab-overlay-container.right {
-  justify-content: end;
-  justify-items: end;
-}
-
-.sidebar-shadow-box {
-  z-index: 10;
-  position: absolute;
-  display: none;
-
-  top: 0;
-  width: 50px; /* arbitrary > blur radius */
-  height: 100%;
-}
-
-.sidebar-shadow-box.visible {
-  display: inherit;
-}
-
-.tab-overlay-container.left > .sidebar-shadow-box {
-  left: -50px;
-}
-
-.tab-overlay-container.right > .sidebar-shadow-box {
-  right: -50px;
-}
-
-.sidebar-tab {
-  display: flex;
-  align-items: center;
-  z-index: 1; /* below the shadow box but above the tools*/
-  width: var(--sidebar-tab-width);
-  height: 2.8em;
-  background-color: var(--ui-element-background-color);
-  box-shadow: 0px 3px 8px #0006;
-  cursor: pointer;
-  pointer-events: auto;
-  user-select: none;
-  animation-duration: 120ms;
-  animation-direction: alternate;
-  animation-timing-function: ease-out;
-  animation-iteration-count: 2;
-}
-
-.sidebar-tab.selected {
-  z-index: 20; /* elevate it above the shadow box */
-}
-
-@keyframes tab-slide-out-animation {
-  100% {
-    width: calc(var(--sidebar-tab-width) + 0.2em);
-  }
-}
-
-@keyframes tab-slide-in-animation {
-  100% {
-    width: calc(var(--sidebar-tab-width) - 0.2em);
-  }
-}
-
-.sidebar-tab:hover {
-  animation-name: tab-slide-out-animation;
-}
-
-.sidebar-tab.selected:hover {
-  animation-name: tab-slide-in-animation;
-}
-
-.tab-overlay-container.left > .sidebar-tab {
-  border-radius: 0 0.8em 0.8em 0;
-  padding-right: 0.25em;
-  justify-content: flex-end;
-}
-
-.tab-overlay-container.right > .sidebar-tab {
-  border-radius: 0.8em 0 0 0.8em;
-  padding-left: 0.25em;
-  justify-content: flex-start;
-}
-
-.tab-overlay-container.right > .sidebar-tab .icon-tabler {
-  stroke-width: 1.5px;
 }
 
 .sidebar-content {
@@ -267,12 +192,6 @@ body {
 
 .sidebar-container.right .sidebar-resize-gutter {
   left: -2px;
-}
-
-.sidebar-tab > inline-svg {
-  display: block;
-  width: 2.2em;
-  height: 2.2em;
 }
 
 .glyphs-navigation {

@@ -9,6 +9,10 @@ import { themeColorCSS } from "./theme-support.js";
 // white 7x10 key in a grey 9x12 well, filleted into the track like the slot
 // it replaces.
 //
+// slider/slot (Figma 2004:29735): the track is filled from its start to the
+// thumb, and the slots the fill passes, the ring and the well take its
+// colour -- grey at rest, lime on hover and while focused.
+//
 // Dragging within SNAP_DISTANCE of a stop lands on it. "input" fires while
 // dragging and "change" on release, both with {value} in event.detail.
 // Arrow keys step by a hundredth of the range (a tenth with Shift); Home and
@@ -19,19 +23,23 @@ import { themeColorCSS } from "./theme-support.js";
 // track; a caller puts its number field (input/string) beside it.
 const colors = {
   "slot-slider-track-color": ["#e9e9e9", "#4a4a4a"],
+  "slot-slider-fill-color": ["var(--surface-base-basic-4)", "#6a6a6a"],
+  "slot-slider-active-fill-color": ["var(--surface-color-lime-basic-4)", "#a9c915"],
   "slot-slider-thumb-color": ["#fff", "#d0d0d0"],
   "slot-slider-thumb-shadow-color": ["rgba(0, 0, 0, 0.4)", "rgba(0, 0, 0, 0.6)"],
 };
 
 const SNAP_DISTANCE = 4;
-// Half the widest thumb: the thumb's centre never leaves the track.
-const INSET = 6.5;
+// Half the widest thumb, the 15px well: on an end stop it stays inside the
+// slider, which would otherwise poke out and scroll its container sideways.
+const INSET = 7.5;
 
 export class SlotSlider extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
 
     :host {
+      --fill: var(--slot-slider-fill-color);
       display: block;
       position: relative;
       height: 18px;
@@ -41,12 +49,18 @@ export class SlotSlider extends UnlitElement {
       outline: none;
     }
 
+    :host(:hover:not([disabled])),
+    :host(:focus) {
+      --fill: var(--slot-slider-active-fill-color);
+    }
+
     :host([disabled]) {
       cursor: default;
       opacity: 0.5;
     }
 
-    .track {
+    .track,
+    .fill {
       position: absolute;
       left: 0;
       right: 0;
@@ -56,15 +70,26 @@ export class SlotSlider extends UnlitElement {
       background-color: var(--slot-slider-track-color);
     }
 
+    /* From the track's start to the thumb's centre. */
+    .fill {
+      right: auto;
+      background-color: var(--fill);
+    }
+
     /* The slot and the well stand on the stop's x; their 9px widths centre
-       on it. */
+       on it. Slot and fillet are masks, so they take any colour. */
     .slot {
       position: absolute;
       top: 3px;
       width: 11px;
       height: 12px;
       margin-left: -5.5px;
-      background: url("/images/slider-slot.svg") center / 11px 12px no-repeat;
+      background-color: var(--slot-slider-track-color);
+      mask: url("/images/slider-slot.svg") center / 11px 12px no-repeat;
+    }
+
+    .slot.passed {
+      background-color: var(--fill);
     }
 
     .thumb {
@@ -77,11 +102,11 @@ export class SlotSlider extends UnlitElement {
       transform: translateY(-50%);
       border-radius: 50%;
       background-color: var(--slot-slider-thumb-color);
-      /* The 13px grey ring under the 11px dot, and the dot's own soft
-         shadow. */
+      /* The 13px ring under the 11px dot, in the fill's colour, and the
+         dot's own soft shadow. */
       box-shadow:
         0 0 2px var(--slot-slider-thumb-shadow-color),
-        0 0 0 1px var(--slot-slider-track-color);
+        0 0 0 1px var(--fill);
     }
 
     .well {
@@ -100,14 +125,15 @@ export class SlotSlider extends UnlitElement {
       width: 11px;
       height: 14px;
       border-radius: 3px;
-      background-color: var(--slot-slider-track-color);
+      background-color: var(--fill);
     }
 
     .fillet {
       position: absolute;
       width: 2px;
       height: 2px;
-      background: url("/images/slider-fillet.svg") center / 2px 2px no-repeat;
+      background-color: var(--fill);
+      mask: url("/images/slider-fillet.svg") center / 2px 2px no-repeat;
     }
 
     .fillet.top-left {
@@ -240,6 +266,7 @@ export class SlotSlider extends UnlitElement {
       slot.dataset.stop = stop;
       return slot;
     });
+    this._fill = html.div({ class: "fill" });
     this._thumb = html.div({ class: "thumb" });
     this._well = html.div({ class: "well" }, [
       html.div({ class: "fillet top-left" }),
@@ -250,6 +277,7 @@ export class SlotSlider extends UnlitElement {
     ]);
     const elements = [
       html.div({ class: "track" }),
+      this._fill,
       ...this._slots,
       this._well,
       this._thumb,
@@ -282,11 +310,15 @@ export class SlotSlider extends UnlitElement {
     const left = this._leftFor(this._value);
     this._thumb.style.left = left;
     this._well.style.left = left;
+    this._fill.style.width = left;
     const stop = this._stopAt(this._value);
     this.toggleAttribute("in-slot", stop !== undefined);
-    // The well takes the place of the slot it stands in.
+    // The well takes the place of the slot it stands in; the fill colours
+    // the slots it passes.
     for (const slot of this._slots) {
-      slot.style.visibility = Number(slot.dataset.stop) === stop ? "hidden" : "";
+      const slotStop = Number(slot.dataset.stop);
+      slot.style.visibility = slotStop === stop ? "hidden" : "";
+      slot.classList.toggle("passed", slotStop < this._value);
     }
   }
 

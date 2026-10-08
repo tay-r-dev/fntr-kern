@@ -24,12 +24,17 @@ export default class CharactersGlyphsPanel extends Panel {
   identifier = "characters-glyphs";
   iconPath = "/tabler-icons/columns.svg";
 
+  // One card filling the column: the three lists as an accordion switch,
+  // each scrolling inside it.
   static styles = `
-    .main-section {
-      box-sizing: border-box;
-      height: 100%;
-      overflow: hidden;
-      padding: 1em;
+    .chars-card {
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+
+    .chars-card > ui-accordion {
+      flex: 1 1 auto;
+      min-height: 0;
     }
   `;
 
@@ -106,6 +111,7 @@ export default class CharactersGlyphsPanel extends Panel {
       },
     ];
     this.characterList = new UIList();
+    this.characterList.setAttribute("look", "select");
     this.characterList.columnDescriptions = characterListColumnDescriptions;
     this.characterList.showHeader = true;
     this.characterList.minHeight = "5em";
@@ -204,6 +210,7 @@ export default class CharactersGlyphsPanel extends Panel {
       },
     ];
     this.glyphList = new UIList();
+    this.glyphList.setAttribute("look", "select");
     this.glyphList.columnDescriptions = glyphListColumnDescriptions;
     this.glyphList.showHeader = true;
     this.glyphList.minHeight = "5em";
@@ -220,6 +227,7 @@ export default class CharactersGlyphsPanel extends Panel {
     );
 
     this.shapingDebuggerList = new UIList();
+    this.shapingDebuggerList.setAttribute("look", "select");
     this.shapingDebuggerList.minHeight = "5em";
     this.shapingDebuggerList.settingsStorageKey = "chars-glyphs-shaping-debugger-list";
     this.shapingDebuggerList.addEventListener("listSelectionChanged", (event) =>
@@ -358,8 +366,15 @@ export default class CharactersGlyphsPanel extends Panel {
     this.accordion.onItemOpenClose = (item, open) =>
       this._accordionItemOpenClose(item, open);
 
+    this.accordion.setAttribute("switch", "");
+
     return html.div({ class: "panel" }, [
-      html.div({ class: "main-section" }, [this.accordion]),
+      html.div({ class: "card-column panel-section--flex" }, [
+        html.div({ class: "card chars-card" }, [
+          html.div({ class: "card-heading" }, ["characters & glyphs"]),
+          this.accordion,
+        ]),
+      ]),
     ]);
   }
 

@@ -15,7 +15,6 @@ import {
   SIDE_METRIC_PROPERTY,
 } from "@fontra/core/metrics-keys.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
-import { rectFromPoints, rectSize, unionRect } from "@fontra/core/rectangle.ts";
 import { rerouteViewPath } from "@fontra/core/fontra-menus.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { compute, nameCapture } from "@fontra/core/simple-compute.js";
@@ -25,7 +24,6 @@ import {
   enumerate,
   getCharFromCodePoint,
   makeUPlusStringFromCodePoint,
-  modulo,
   parseSelection,
   range,
   rgbaToHex,
@@ -103,7 +101,7 @@ export default class SelectionInfoPanel extends Panel {
   }
 
   // Figma 4108:2089: the SPACING, LETTERSPACER and KERNING cards on the grey
-  // panel. What a selection adds (dimensions, components, a background image)
+  // panel. What a selection adds (components, a background image)
   // stays in the form, on a card of its own below them.
   getContentElement() {
     this.infoForm = new Form();
@@ -157,8 +155,7 @@ export default class SelectionInfoPanel extends Panel {
         senderInfo?.fieldKeyPath?.[2] !== "name") ||
         senderInfo?.fieldKeyPath?.[0] === "backgroundImage")
     ) {
-      // Don't rebuild, just update the Dimensions field
-      await this.updateDimensions();
+      // The panel's own edit: nothing to rebuild.
       return;
     }
     if (!this.cardsElement.offsetParent) {
@@ -247,14 +244,7 @@ export default class SelectionInfoPanel extends Panel {
       this._buildKerningCard(glyphName, kerningController);
     }
 
-    const { pointIndices, componentIndices, backgroundImageIndices } =
-      this._getSelection();
-
-    if (glyphController) {
-      formContents.push(
-        ...this._setupDimensionsInfo(glyphController, pointIndices, componentIndices)
-      );
-    }
+    const { componentIndices, backgroundImageIndices } = this._getSelection();
 
     for (const index of backgroundImageIndices) {
       assert(index === 0, "only a single bg image is supported");
@@ -905,39 +895,6 @@ export default class SelectionInfoPanel extends Panel {
     });
   }
 
-  _setupDimensionsInfo(glyphController, pointIndices, componentIndices) {
-    const dimensionsString = this._getDimensionsString(
-      glyphController,
-      pointIndices,
-      componentIndices
-    );
-    const formContents = [];
-    if (dimensionsString) {
-      formContents.push({ type: "divider" });
-      formContents.push({
-        key: "dimensions",
-        type: "text",
-        label: translate("sidebar.selection-info.dimensions"),
-        value: dimensionsString,
-      });
-    }
-    return formContents;
-  }
-
-  async updateDimensions() {
-    const glyphController =
-      await this.sceneController.sceneModel.getSelectedStaticGlyphController();
-    const { pointIndices, componentIndices } = this._getSelection();
-    const dimensionsString = this._getDimensionsString(
-      glyphController,
-      pointIndices,
-      componentIndices
-    );
-    if (this.infoForm.hasKey("dimensions")) {
-      this.infoForm.setValue("dimensions", dimensionsString);
-    }
-  }
-
   _getSelection() {
     const { point, component, componentOrigin, componentTCenter, backgroundImage } =
       parseSelection(this.sceneController.selection);
@@ -954,82 +911,6 @@ export default class SelectionInfoPanel extends Panel {
       componentIndices,
       backgroundImageIndices: backgroundImage || [],
     };
-  }
-
-  _getDimensionsString(glyphController, pointIndices, componentIndices) {
-    if (pointIndices.length === 1 && componentIndices.length === 0) {
-      const handleDeltaString = this._getHandleDeltaString(
-        glyphController,
-        pointIndices
-      );
-      if (handleDeltaString) {
-        return handleDeltaString;
-      }
-    }
-
-    const selectionRects = [];
-    if (pointIndices.length) {
-      const instance = glyphController.instance;
-      const selRect = rectFromPoints(
-        pointIndices.map((i) => instance.path.getPoint(i)).filter((point) => !!point)
-      );
-      if (selRect) {
-        selectionRects.push(selRect);
-      }
-    }
-    for (const componentIndex of componentIndices) {
-      const component = glyphController.components[componentIndex];
-      if (!component || !component.controlBounds) {
-        continue;
-      }
-      selectionRects.push(component.bounds);
-    }
-    if (!selectionRects.length && glyphController?.controlBounds) {
-      selectionRects.push(glyphController.bounds);
-    }
-    if (selectionRects.length) {
-      const selectionBounds = unionRect(...selectionRects);
-      let { width, height } = rectSize(selectionBounds);
-      width = round(width, 1);
-      height = round(height, 1);
-      return `↔ ${width} ↕ ${height}`;
-    }
-  }
-
-  _getHandleDeltaString(glyphController, pointIndices) {
-    if (pointIndices?.length !== 1) {
-      return null;
-    }
-    const path = glyphController.path;
-    const point = path.getPoint(pointIndices[0]);
-    if (!point) {
-      return null;
-    }
-    const { x, y, type } = point;
-    if (!type) {
-      return null;
-    }
-    const [contourIndex, pointIndex] = path.getContourAndPointIndex(pointIndices[0]);
-    const numPoints = path.getNumPointsOfContour(contourIndex);
-    const { isClosed } = path.contourInfo[contourIndex];
-
-    const wrap = isClosed ? modulo : (i, n) => (i >= 0 && i < n ? i : null);
-
-    const neighborIndices = [
-      wrap(pointIndex - 1, numPoints),
-      wrap(pointIndex + 1, numPoints),
-    ].filter((i) => i !== null);
-
-    const neighborPoints = neighborIndices
-      .map((i) => path.getContourPoint(contourIndex, i))
-      .filter((point) => !point.type);
-
-    if (neighborPoints.length === 1) {
-      const { x: baseX, y: baseY } = neighborPoints[0];
-      const dx = x - baseX;
-      const dy = y - baseY;
-      return `↔ ${dx} ↕ ${dy}`;
-    }
   }
 
   async _setupSelectionInfoHandlers(glyphName) {

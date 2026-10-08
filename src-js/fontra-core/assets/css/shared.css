@@ -518,6 +518,99 @@ glyph-cell-view .glyph-count {
   stroke: var(--foreground-color);
 }
 
+/* The tab pane (Figma 4167:3435): a column of icon tabs at a window edge,
+   each switching what the sidebar beside it shows. Mark it .left or .right
+   for its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs
+   are 24px and touch, 4px in from the edge. Resting on the tabs -- not the
+   pane's empty length -- for 2s opens them to 32px, 4px apart and shadowed,
+   8px in, and the pane widens from 28px to 40px, moving its neighbour aside.
+   Leaving closes them at once. Clicks and hover colours never wait. */
+.tab-pane {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0 4px;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* How open the tabs are, 0 to 1. Every open measure derives from it, so
+   only the opening waits: a selection made meanwhile shows at once. */
+@property --tab-open {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+/* The tabs' column, edge padding included: the hover area runs the pane's
+   width and the tabs' length, gaps included. */
+.tab-pane-tabs {
+  --tab-open: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(4px * var(--tab-open));
+  padding-left: calc(4px + 4px * var(--tab-open));
+  pointer-events: auto;
+  transition: --tab-open 150ms;
+}
+
+.tab-pane.right > .tab-pane-tabs {
+  padding-left: 0;
+  padding-right: calc(4px + 4px * var(--tab-open));
+}
+
+.tab-pane-tabs:hover {
+  --tab-open: 1;
+  transition-delay: 2s;
+}
+
+/* ./tab (Figma 4167:3375): an icon in currentColor. At rest the selected tab
+   is the darker grey on a ruled grey plate, the others pale and bare, and a
+   hovered tab darkens its icon. Open, the selected plate turns white and its
+   icon darker still. */
+.tab-pane-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(24px + 8px * var(--tab-open));
+  height: calc(24px + 8px * var(--tab-open));
+  padding: 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-base-basic-4);
+  filter: drop-shadow(
+    0 4px 2px
+      color-mix(in srgb, var(--shadow-base-1) calc(100% * var(--tab-open)), transparent)
+  );
+  cursor: pointer;
+}
+
+.tab-pane-tab > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tab-pane-tab:hover {
+  color: var(--text-base-basic-3);
+}
+
+.tab-pane-tab.selected {
+  padding: calc(2px + 2px * var(--tab-open)) 4px;
+  background-color: color-mix(
+    in srgb,
+    var(--surface-base-basic-0) calc(100% * var(--tab-open)),
+    var(--surface-base-basic-2)
+  );
+  border-color: var(--line-base-basic-1);
+  color: color-mix(
+    in srgb,
+    var(--text-base-basic-2) calc(100% * var(--tab-open)),
+    var(--text-base-basic-3)
+  );
+}
+
 /* The canvas card (Figma 4129:3789): white, ruled, 14px corners, on the
    panel grey. A view places and sizes it. */
 .canvas-card {

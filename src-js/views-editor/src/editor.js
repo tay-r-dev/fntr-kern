@@ -1441,7 +1441,7 @@ export class EditorController extends ViewController {
     sidebar.addPanel(panelElement);
 
     const tabElement = document.querySelector(
-      `.sidebar-tab[data-sidebar-name="${panelElement.identifier}"]`
+      `.tab-pane-tab[data-sidebar-name="${panelElement.identifier}"]`
     );
 
     tabElement.addEventListener("click", () => {

@@ -7109,8 +7109,7 @@ export class KerningViewController extends ViewController {
   // `this.identifier` generically -- see that file's own comment.)
   //
   // What is deliberately NOT reused from Sidebar: its tab-toggle machinery
-  // (addPanel, toggle, the tab-overlay-container/sidebar-tab/sidebar-shadow-
-  // box DOM it expects) -- this view's columns are always visible, not
+  // (addPanel, toggle, the tab-pane/tab-pane-tab DOM it expects) -- this view's columns are always visible, not
   // collapsible tabs, so only attach() (which itself only wires up the
   // resize gutter and restores a stored width) is called; addPanel/toggle
   // are simply never invoked. kerning.css supplies its own always-visible
@@ -7153,8 +7152,8 @@ export class KerningViewController extends ViewController {
   //     constraint Sidebar has no parameter for today, and widening it to
   //     accept per-instance min/max risks every existing editor sidebar call
   //     site silently inheriting a new, unexercised code path.
-  //   - Sidebar.attach/toggle/addPanel assume the sidebar-tab/sidebar-shadow-
-  //     box/"visible" show-hide machinery (a collapsible panel with tabs) --
+  //   - Sidebar.attach/toggle/addPanel assume the tab-pane-tab/"visible"
+  //     show-hide machinery (a collapsible panel with tabs) --
   //     none of which the middle row split has or wants; attach() itself
   //     calls initResizeGutter() as a side effect of a method whose whole
   //     other job is show/hide-tab wiring this splitter doesn't need, so

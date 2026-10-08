@@ -1,41 +1,12 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
+import "@fontra/web-components/ui-text-input.js";
 import Panel from "./panel.js";
 
 export default class GlyphNotePanel extends Panel {
   identifier = "glyph-note";
   iconPath = "/tabler-icons/notes.svg";
-
-  static styles = `
-    #glyph-note-textarea {
-      background-color: var(--text-input-background-color);
-      color: var(--text-input-foreground-color);
-      border-radius: 0.25em;
-      border: 0.5px solid lightgray;
-      outline: none;
-      padding: 0.2em 0.5em;
-      font-family: fontra-ui-regular, sans-serif;
-      font-size: 1.1rem;
-      resize: none;
-      overflow-x: auto;
-      text-wrap: wrap;
-      box-sizing: content-box; /* FIXME: use border-box */
-    }
-
-    #glyph-note-textarea:disabled {
-      opacity: 40%;
-    }
-
-    .glyph-note-section {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .glyph-note-header {
-      margin-bottom: 0.5em;
-    }
-  `;
 
   constructor(editorController) {
     super(editorController);
@@ -54,29 +25,23 @@ export default class GlyphNotePanel extends Panel {
     });
   }
 
+  // A card: the heading with the glyph's name beside it, over the note in
+  // the several-line input/text.
   getContentElement() {
-    return html.div(
-      {
-        class: "panel",
-      },
-      [
-        html.div(
-          {
-            class: "panel-section panel-section--flex glyph-note-section",
-          },
-          [
-            html.div({ class: "glyph-note-header", id: "glyph-note-header" }, [
-              translate("sidebar.glyph-note"),
-            ]),
-            html.createDomElement("textarea", {
-              rows: 1,
-              wrap: "off",
-              id: "glyph-note-textarea",
-            }),
-          ]
-        ),
-      ]
-    );
+    return html.div({ class: "panel" }, [
+      html.div({ class: "card-column panel-section--flex" }, [
+        html.div({ class: "card" }, [
+          html.div({ class: "card-heading-row" }, [
+            html.div({ class: "card-heading" }, [translate("sidebar.glyph-note")]),
+            html.div({ class: "section-label", id: "glyph-note-header" }),
+          ]),
+          html.createDomElement("ui-text-input", {
+            id: "glyph-note-textarea",
+            multiline: true,
+          }),
+        ]),
+      ]),
+    ]);
   }
 
   setupGlyphNoteElement() {
@@ -94,10 +59,6 @@ export default class GlyphNotePanel extends Panel {
         this.glyphNoteElement.value
       );
     });
-
-    this.glyphNoteElement.addEventListener("input", async () => {
-      this.fixGlyphNoteHeight();
-    });
   }
 
   async update() {
@@ -109,21 +70,12 @@ export default class GlyphNotePanel extends Panel {
 
     this._selectedGlyphName = varGlyph?.name;
 
-    this.glyphNoteHeaderElement.innerHTML = varGlyph
-      ? `<b>${translate("sidebar.glyph-note.glyph-note-for-glyph", varGlyph.name)}</b>`
-      : `<b>${translate("sidebar.glyph-note")}</b> ${translate(
-          "sidebar.glyph-note.no-glyph-selected"
-        )}`;
+    this.glyphNoteHeaderElement.textContent = varGlyph
+      ? varGlyph.name
+      : translate("sidebar.glyph-note.no-glyph-selected");
     const glyphNote = varGlyph?.customData["fontra.glyph.note"] ?? "";
     this.glyphNoteElement.value = glyphNote;
     this.glyphNoteElement.disabled = !varGlyph;
-    this.fixGlyphNoteHeight();
-  }
-
-  fixGlyphNoteHeight() {
-    // This adapts the text entry height to its content
-    this.glyphNoteElement.style.height = "auto";
-    this.glyphNoteElement.style.height = this.glyphNoteElement.scrollHeight + 14 + "px";
   }
 
   async toggle(on, focus) {

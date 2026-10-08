@@ -75,6 +75,7 @@ import { showMenu } from "@fontra/web-components/menu-panel.js";
 import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import "@fontra/web-components/range-slider.js";
 import "@fontra/web-components/segmented-control.js"; // for the Skeleton heading's Gizmo/Handles
+import "@fontra/web-components/text-button.js"; // the debug sections' resets
 import "@fontra/web-components/ui-text-input.js"; // the Phrase card's input/text
 import {
   Accordion,
@@ -187,43 +188,50 @@ const LABEL_DEBUG_CONTROLS = [
   },
 ];
 
-// A debug accordion's body: one slider and readout per control, and a reset. The
-// Tunni and the label sections both build theirs here and wire it with
+// A debug accordion's body: one slider per control, in a column, and a reset.
+// The Tunni and the label sections both build theirs here and wire it with
 // setupTuningControls, so the two cannot drift.
 function tuningControlsContent(prefix, controls) {
   return html.div({}, [
-    html.div(
-      {
-        style: `
-          display: grid;
-          grid-template-columns: auto 1fr auto;
-          gap: 0.35em 0.5em;
-          align-items: center;
-        `,
-      },
-      controls.flatMap((control) => [
-        html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [
-          control.label,
-        ]),
-        html.input({
-          id: `${prefix}-${control.key}`,
-          type: "range",
-          min: control.min,
-          max: control.max,
-          step: control.step,
-        }),
-        html.span(
-          {
-            id: `${prefix}-${control.key}-value`,
-            style: "font-family: monospace; font-size: 0.85em; min-width: 4em;",
-          },
-          [""]
-        ),
-      ])
+    ...controls.map((control) =>
+      debugSlider(`${prefix}-${control.key}`, control.label, control)
     ),
-    html.div({ style: "padding-top: 0.6em;" }, [
-      html.button({ id: `${prefix}-reset` }, ["Reset to defaults"]),
-    ]),
+    debugResetButton(`${prefix}-reset`),
+  ]);
+}
+
+// The scrub field with its fill: where the value sits in its range.
+function sliderField(properties) {
+  const field = html.createDomElement("input-field-large", properties);
+  field.type = "slider";
+  return field;
+}
+
+// A debug slider, its unit after the value.
+function debugSlider(id, label, { min, max, step, unit = "" }) {
+  const field = sliderField({
+    id,
+    label,
+    minValue: min,
+    maxValue: max,
+    step,
+    integer: step >= 1,
+  });
+  field.note = unit;
+  return field;
+}
+
+// A debug switch: the checkmark and its name.
+function debugCheckmark(id, label) {
+  return html.label({ class: "checkmark-row" }, [
+    html.input({ id, type: "checkbox", class: "checkmark" }),
+    label,
+  ]);
+}
+
+function debugResetButton(id) {
+  return html.div({ class: "button-row" }, [
+    html.createDomElement("text-button", { id, label: "reset to defaults", size: "S" }),
   ]);
 }
 
@@ -297,32 +305,15 @@ const LIST_HEADER_ANIMATION_STYLE = `
 }
 `;
 
-// One row per control: label, input, readout. Every input carries the id the
+// One row per control, a checkmark or a slider. Every input carries the id the
 // snapping debug setup looks it up by.
 function snappingDebugRows(controls) {
-  return controls.flatMap((control) => [
-    html.label({ style: "white-space: nowrap; font-size: 0.9em;" }, [control.label]),
-    control.type === "toggle"
-      ? html.input({
-          id: `snapping-debug-${control.path.replace(".", "-")}`,
-          type: "checkbox",
-          style: "justify-self: start;",
-        })
-      : html.input({
-          id: `snapping-debug-${control.path.replace(".", "-")}`,
-          type: "range",
-          min: control.min,
-          max: control.max,
-          step: control.step,
-        }),
-    html.span(
-      {
-        id: `snapping-debug-${control.path.replace(".", "-")}-value`,
-        style: "font-family: monospace; font-size: 0.85em; min-width: 3.5em;",
-      },
-      [""]
-    ),
-  ]);
+  return controls.map((control) => {
+    const id = `snapping-debug-${control.path.replace(".", "-")}`;
+    return control.type === "toggle"
+      ? debugCheckmark(id, control.label)
+      : debugSlider(id, control.label, control);
+  });
 }
 
 // Snapping under each modifier, one switch each (snapping.js, dragSnapPolicy).
@@ -1181,7 +1172,7 @@ export default class DesignspaceNavigationPanel extends Panel {
             style: `
               display: grid;
               grid-template-columns: repeat(3, auto);
-              gap: 0.35em 1em;
+              gap: 10px 12px;
               justify-content: start;
               align-items: center;
             `,
@@ -1195,10 +1186,10 @@ export default class DesignspaceNavigationPanel extends Panel {
             ),
             ...["on-curve", "label"].flatMap((row) =>
               Object.keys(TUNNI_KINDS).map((kind) =>
-                html.label({ style: "white-space: nowrap;" }, [
-                  html.input({ id: `tunni-${kind}-${row}`, type: "checkbox" }),
-                  translate(`sidebar.designspace-navigation.tunni.${row}`),
-                ])
+                debugCheckmark(
+                  `tunni-${kind}-${row}`,
+                  translate(`sidebar.designspace-navigation.tunni.${row}`)
+                )
               )
             ),
             html.createDomElement("labeled-toggle", {
@@ -1221,11 +1212,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         content: html.div(
           {
             id: "skeleton-visual-content",
-            style: `
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 0.5em;
-            `,
           },
           [
             html.createDomElement("labeled-toggle", {
@@ -1233,14 +1219,12 @@ export default class DesignspaceNavigationPanel extends Panel {
               label: translate(
                 "sidebar.designspace-navigation.skeleton.show-generated"
               ),
-              style: "grid-column: 1 / -1;",
             }),
             html.createDomElement("labeled-toggle", {
               id: "skeleton-speedpunk-toggle",
               label: translate("sidebar.designspace-navigation.skeleton.speedpunk"),
-              style: "grid-column: 1 / -1;",
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "skeleton-width-input",
               defaultValue: 1.5,
               label: translate("sidebar.designspace-navigation.skeleton.width"),
@@ -1249,7 +1233,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.5,
               integer: false,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "skeleton-width-ungenerated-input",
               defaultValue: 3,
               label: translate(
@@ -1260,7 +1244,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.5,
               integer: false,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "skeleton-ribs-opacity-input",
               defaultValue: 100,
               label: translate("sidebar.designspace-navigation.skeleton.ribs"),
@@ -1279,16 +1263,9 @@ export default class DesignspaceNavigationPanel extends Panel {
         content: html.div(
           {
             id: "speedpunk-content",
-            style: `
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 0.5em;
-            `,
           },
           [
-            // Ticket 26, spec §2.5: two per row -- Peak height/Tight colour at
-            // turn, Full height at turn/Sharpness, Full colour at turn/Opacity.
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-peak-height-input",
               defaultValue: SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM,
               label: translate("sidebar.designspace-navigation.speedpunk.peak-height"),
@@ -1296,7 +1273,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
               integer: true,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-color-tight-turn-input",
               defaultValue: SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1306,7 +1283,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-reference-turn-input",
               defaultValue: SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1316,7 +1293,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-sharpness-input",
               defaultValue: SPEEDPUNK_SHARPNESS_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
@@ -1325,7 +1302,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               step: 0.1,
               integer: false,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-color-flat-turn-input",
               defaultValue: SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES,
               label: translate(
@@ -1335,7 +1312,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
               integer: true,
             }),
-            html.createDomElement("input-field-large", {
+            sliderField({
               id: "speedpunk-opacity-input",
               defaultValue: SPEEDPUNK_OPACITY_DEFAULT,
               label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
@@ -1359,7 +1336,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         label: "Snapping and smart guides",
         open: false,
         content: html.div(
-          { style: "display: grid; gap: 0.5em;" },
+          {},
           [
             SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "offCurveSources"),
             SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "snapDuringFixedRib"),
@@ -1393,37 +1370,15 @@ export default class DesignspaceNavigationPanel extends Panel {
         id: "modifier-snapping-debug-accordion-item",
         label: "Modifier snapping (debug)",
         open: false,
-        content: html.div(
-          {
-            style: `
-              display: grid;
-              grid-template-columns: auto 1fr auto;
-              gap: 0.35em 0.5em;
-              align-items: center;
-            `,
-          },
-          snappingDebugRows(MOD_SNAP_CONTROLS)
-        ),
+        content: html.div({}, snappingDebugRows(MOD_SNAP_CONTROLS)),
       },
       {
         id: "snapping-debug-accordion-item",
         label: "Snapping (debug)",
         open: false,
         content: html.div({}, [
-          html.div(
-            {
-              style: `
-                display: grid;
-                grid-template-columns: auto 1fr auto;
-                gap: 0.35em 0.5em;
-                align-items: center;
-              `,
-            },
-            snappingDebugRows(SNAPPING_TUNING_CONTROLS)
-          ),
-          html.div({ style: "padding-top: 0.6em;" }, [
-            html.button({ id: "snapping-debug-reset" }, ["Reset to defaults"]),
-          ]),
+          ...snappingDebugRows(SNAPPING_TUNING_CONTROLS),
+          debugResetButton("snapping-debug-reset"),
           // Below the sliders, and at a fixed height. The readout changes line
           // count from frame to frame, and above them that reflow moved every
           // slider under the cursor.
@@ -1431,15 +1386,15 @@ export default class DesignspaceNavigationPanel extends Panel {
             {
               id: "snapping-debug-readout",
               style: `
-                font-family: monospace;
-                font-size: 0.8em;
+                flex: none;
+                font: var(--ui-text-label-xs);
+                letter-spacing: var(--ui-tracking);
+                color: var(--text-base-basic-3);
                 white-space: pre;
-                overflow: auto;
-                margin-top: 0.8em;
-                padding-top: 0.6em;
-                border-top: 1px solid rgba(128, 128, 128, 0.35);
+                overflow: hidden;
+                padding-top: 8px;
+                border-top: 1px solid var(--line-base-basic-1);
                 height: 15em;
-                opacity: 0.8;
               `,
             },
             ["no snap"]
@@ -1544,14 +1499,13 @@ export default class DesignspaceNavigationPanel extends Panel {
   _buildGridLookAccordionItem() {
     const model = applicationSettingsController.model;
     const field = (key, label, { min, max, step = 1 }) => {
-      const element = html.createDomElement("input-field-large", {
+      const element = sliderField({
         label,
         minValue: min,
         maxValue: max,
         step,
         integer: step >= 1,
       });
-      element.type = "slider";
       element.value = model[key];
       element.addEventListener("change", (event) => {
         model[key] = event.detail.value;
@@ -1565,25 +1519,15 @@ export default class DesignspaceNavigationPanel extends Panel {
       id: "grid-look-accordion-item",
       label: "Grid look",
       open: false,
-      content: html.div(
-        {
-          style: `
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.5em;
-          `,
-        },
-        [
-          field("gridFineOpacity", "Fine opacity", opacity),
-          html.div(),
-          field("gridMainOpacity", "Main opacity", opacity),
-          field("gridSecondaryOpacity", "Secondary opacity", opacity),
-          field("gridMainDotSize", "Main dot", size),
-          field("gridSecondaryDotSize", "Secondary dot", size),
-          field("gridMainDotSizeZoomed", "Main dot, zoomed", size),
-          field("gridSecondaryDotSizeZoomed", "Secondary dot, zoomed", size),
-        ]
-      ),
+      content: html.div({}, [
+        field("gridFineOpacity", "Fine opacity", opacity),
+        field("gridMainOpacity", "Main opacity", opacity),
+        field("gridSecondaryOpacity", "Secondary opacity", opacity),
+        field("gridMainDotSize", "Main dot", size),
+        field("gridSecondaryDotSize", "Secondary dot", size),
+        field("gridMainDotSizeZoomed", "Main dot, zoomed", size),
+        field("gridSecondaryDotSizeZoomed", "Secondary dot, zoomed", size),
+      ]),
     };
   }
 
@@ -2010,16 +1954,9 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
     const sync = () => {
       for (const control of controls) {
-        const input = this.visualAccordion.querySelector(`#${prefix}-${control.key}`);
-        const readout = this.visualAccordion.querySelector(
-          `#${prefix}-${control.key}-value`
-        );
-        const value = tuning[control.key];
-        if (input) {
-          input.value = String(value);
-        }
-        if (readout) {
-          readout.textContent = `${value} ${control.unit}`;
+        const field = this.visualAccordion.querySelector(`#${prefix}-${control.key}`);
+        if (field) {
+          field.value = tuning[control.key];
         }
       }
     };
@@ -2030,8 +1967,8 @@ export default class DesignspaceNavigationPanel extends Panel {
     for (const control of controls) {
       this.visualAccordion
         .querySelector(`#${prefix}-${control.key}`)
-        ?.addEventListener("input", (event) => {
-          tuning[control.key] = Number(event.target.value);
+        ?.addEventListener("change", (event) => {
+          tuning[control.key] = Number(event.detail.value);
           sync();
           persist();
         });
@@ -2065,13 +2002,18 @@ export default class DesignspaceNavigationPanel extends Panel {
     const syncOne = (control) => {
       const id = control.path.replace(".", "-");
       const input = this.visualAccordion.querySelector(`#snapping-debug-${id}`);
-      const readout = this.visualAccordion.querySelector(`#snapping-debug-${id}-value`);
       const value = readSnapParameter(control.path);
       if (input) {
         if (control.type === "toggle") {
           input.checked = !!value;
         } else {
-          input.value = String(value);
+          input.value = value;
+          // A per-kind reach is a multiple of the master reach, so the pixels
+          // it comes to are shown beside it. Otherwise the number means nothing
+          // on its own.
+          if (control.path.startsWith("reaches.")) {
+            input.note = `${Math.round(value * SNAP_PARAMETERS.reachPixels)}px`;
+          }
         }
       }
       // Ticket 27: the Snapping and smart guides accordion's own copy of
@@ -2083,18 +2025,6 @@ export default class DesignspaceNavigationPanel extends Panel {
       if (guidesToggle) {
         guidesToggle.checked = !!value;
       }
-      if (readout) {
-        if (control.type === "toggle") {
-          readout.textContent = value ? "on" : "off";
-          return;
-        }
-        // A per-kind reach is a multiple of the master reach, so the pixels it
-        // comes to are shown beside it. Otherwise the number means nothing on
-        // its own.
-        readout.textContent = control.path.startsWith("reaches.")
-          ? `${value} (${Math.round(value * SNAP_PARAMETERS.reachPixels)}px)`
-          : String(value);
-      }
     };
 
     for (const control of SNAPPING_DEBUG_CONTROLS) {
@@ -2104,11 +2034,16 @@ export default class DesignspaceNavigationPanel extends Panel {
       if (!input) {
         continue;
       }
-      // "input", not "change": a scrub must answer while the thumb is moving.
-      input.addEventListener("input", () => {
+      // A slider's "change" comes on every move of a drag, so the canvas
+      // answers while it scrubs.
+      input.addEventListener("change", (event) => {
         setSnapParameter(
           control.path,
-          control.type === "toggle" ? (input.checked ? 1 : 0) : Number(input.value)
+          control.type === "toggle"
+            ? input.checked
+              ? 1
+              : 0
+            : Number(event.detail.value)
         );
         // Every row, not just this one: moving the master reach changes the pixel
         // figure shown beside every per-kind reach.

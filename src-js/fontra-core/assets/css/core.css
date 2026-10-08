@@ -467,7 +467,11 @@
 /* color-tokens collection: the shared colours some components bind directly
    (accordion switch, toggle track, chip shadow). Figma path with dashes. */
 :root {
+  --surface-base-basic-0: #ffffff;
   --surface-base-basic-1: #fafafa;
+  --surface-base-basic-2: #f5f5f5;
+  --surface-base-basic-4: #c9c9c9;
+  --surface-color-lime-basic-4: #c4e61a;
   --line-base-basic-0: #f5f5f5;
   --line-base-basic-1: #ededed;
   --text-base-basic-1: #1e1e1e;

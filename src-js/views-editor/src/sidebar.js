@@ -33,14 +33,14 @@ export class Sidebar {
 
     sidebarContainer.append(panelContent);
 
-    const tabOverlayContainer = this.container.querySelector(
-      `.tab-overlay-container.${this.identifier}`
+    const tabs = this.container.querySelector(
+      `.tab-pane.${this.identifier} > .tab-pane-tabs`
     );
 
-    tabOverlayContainer.appendChild(
+    tabs.appendChild(
       html.div(
         {
-          "class": "sidebar-tab",
+          "class": "tab-pane-tab",
           "data-sidebarName": panelElement.identifier,
           "data-tooltip": translate("sidebar." + panelElement.identifier),
           "data-tooltipposition": this.identifier === "right" ? "left" : "right",
@@ -55,7 +55,7 @@ export class Sidebar {
     let toggledTab;
     for (const panelIdentifier of this.panelIdentifiers) {
       const tabElement = document.querySelector(
-        `.sidebar-tab[data-sidebar-name="${panelIdentifier}"]`
+        `.tab-pane-tab[data-sidebar-name="${panelIdentifier}"]`
       );
       const contentElement = document.querySelector(
         `.sidebar-content[data-sidebar-name="${panelIdentifier}"]`
@@ -65,21 +65,14 @@ export class Sidebar {
         const isSelected = tabElement.classList.contains("selected");
         tabElement.classList.toggle("selected", !isSelected);
         container.classList.toggle("visible", !isSelected);
-        const shadowBox = document.querySelector(
-          `.tab-overlay-container.${this.identifier} > .sidebar-shadow-box`
-        );
         if (isSelected) {
           container.addEventListener(
             "transitionend",
-            () => {
-              contentElement.classList.remove("selected");
-              shadowBox.classList.remove("visible");
-            },
+            () => contentElement.classList.remove("selected"),
             { once: true }
           );
         } else {
           contentElement.classList.add("selected");
-          shadowBox.classList.add("visible");
         }
       } else {
         tabElement.classList.remove("selected");
@@ -95,11 +88,7 @@ export class Sidebar {
 
     if (localStorage.getItem(`fontra-selected-sidebar-${this.identifier}`)) {
       const container = document.querySelector(`.sidebar-container.${this.identifier}`);
-      const shadowBox = document.querySelector(
-        `.tab-overlay-container.${this.identifier} > .sidebar-shadow-box`
-      );
       container.classList.add("visible");
-      shadowBox.classList.add("visible");
     }
   }
 
