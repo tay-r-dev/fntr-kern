@@ -249,250 +249,452 @@
   --bt-sgb-height: 24px;
   --bt-sgb-corner: 6px;
   --bt-sgb-padding: 3px;
-  --bt-sgb-sr-rest: #f5f5f5;
-  --bt-sgb-sr-hover: #ffffff;
-  --bt-sgb-sr-focus: #ffffff;
-  --bt-sgb-sr-active-rest: #ededed;
-  --bt-sgb-sr-active-hover: #ededed;
-  --bt-sgb-sr-disabled: #fafafa;
-  --bt-sgb-ln-rest: #dadada;
-  --bt-sgb-ln-hover: #dadada;
-  --bt-sgb-ln-focus: #dadada;
-  --bt-sgb-ln-active-rest: #dadada;
-  --bt-sgb-ln-active-hover: #dadada;
-  --bt-sgb-ln-disabled: #ededed;
+  --bt-sgb-sr-rest: var(--surface-base-basic-2);
+  --bt-sgb-sr-hover: var(--surface-base-basic-0);
+  --bt-sgb-sr-focus: var(--surface-base-basic-0);
+  --bt-sgb-sr-active-rest: var(--surface-base-basic-3);
+  --bt-sgb-sr-active-hover: var(--surface-base-basic-3);
+  --bt-sgb-sr-disabled: var(--surface-base-basic-1);
+  --bt-sgb-ln-rest: var(--line-base-basic-2);
+  --bt-sgb-ln-hover: var(--line-base-basic-2);
+  --bt-sgb-ln-focus: var(--line-base-basic-2);
+  --bt-sgb-ln-active-rest: var(--line-base-basic-2);
+  --bt-sgb-ln-active-hover: var(--line-base-basic-2);
+  --bt-sgb-ln-disabled: var(--line-base-basic-1);
   /* button/basic/content */
   --bt-sgc-corner: 3px;
-  --bt-sgc-sr-rest: #f5f5f5;
-  --bt-sgc-sr-hover: #f5f5f5;
-  --bt-sgc-sr-focus: #f5f5f5;
-  --bt-sgc-sr-dropdown: #f5f5f500;
-  --bt-sgc-sr-active-rest: #f5f5f500;
-  --bt-sgc-sr-disabled: #fafafa;
-  --bt-sgc-ic-rest: #8d8d8d;
-  --bt-sgc-ic-hover: #515151;
-  --bt-sgc-ic-focus: #a9c915;
-  --bt-sgc-ic-active: #8d8d8d;
-  --bt-sgc-ic-active-hover: #71900a;
-  --bt-sgc-ic-disabled: #c9c9c9;
-  --bt-sgc-tx-rest: #8d8d8d;
-  --bt-sgc-tx-hover: #515151;
-  --bt-sgc-tx-focus: #a9c915;
-  --bt-sgc-tx-disabled: #c9c9c9;
+  --bt-sgc-sr-rest: var(--surface-base-basic-2);
+  --bt-sgc-sr-hover: var(--surface-base-basic-2);
+  --bt-sgc-sr-focus: var(--surface-base-basic-2);
+  --bt-sgc-sr-dropdown: color-mix(in srgb, var(--surface-base-basic-2) 0%, transparent);
+  --bt-sgc-sr-active-rest: color-mix(
+    in srgb,
+    var(--surface-base-basic-2) 0%,
+    transparent
+  );
+  --bt-sgc-sr-disabled: var(--surface-base-basic-1);
+  --bt-sgc-ic-rest: var(--icon-base-basic-3);
+  --bt-sgc-ic-hover: var(--icon-base-basic-2);
+  --bt-sgc-ic-focus: var(--icon-color-lime-basic-5);
+  --bt-sgc-ic-active: var(--icon-base-basic-3);
+  --bt-sgc-ic-active-hover: var(--icon-color-lime-basic-3);
+  --bt-sgc-ic-disabled: var(--icon-base-basic-5);
+  --bt-sgc-tx-rest: var(--text-base-basic-3);
+  --bt-sgc-tx-hover: var(--text-base-basic-2);
+  --bt-sgc-tx-focus: var(--text-color-lime-basic-5);
+  --bt-sgc-tx-disabled: var(--text-base-basic-5);
   /* button/overrides/icon */
-  --bt-sgi-ic-active: #515151;
-  --bt-sgi-sr-hover: #f5f5f5;
-  --bt-sgi-ln-hover: #dadada;
-  --bt-sgi-sr-focus: #fafafa;
-  --bt-sgi-ln-focus: #ededed;
+  --bt-sgi-ic-active: var(--icon-base-basic-2);
+  --bt-sgi-sr-hover: var(--surface-base-basic-2);
+  --bt-sgi-ln-hover: color-mix(in srgb, var(--line-base-basic-2) 0%, transparent);
+  --bt-sgi-sr-focus: var(--surface-base-basic-1);
+  --bt-sgi-ln-focus: var(--line-base-basic-1);
   /* button/overrides/table */
-  --bt-sgt-sr-hover: #ffffff;
-  --bt-sgt-ln-hover: #ededed;
-  --bt-sgt-ln-select-hover: #d0eb49;
-  --bt-sgt-sr-select-focus: #e2f38f;
-  --bt-sgt-ln-select-focus: #d0eb49;
-  --bt-sgt-ic-select-rest: #71900a80;
-  --bt-sgt-ic-select-hover: #71900a;
-  --bt-sgt-ic-select-active: #567305;
-  --bt-sgt-ic-select-focus: #8eac10;
-  --bt-sgt-ic-select-disabled: #71900a40;
-  --bt-sgt-ic-rest: #b8b8b8;
+  --bt-sgt-sr-hover: var(--surface-base-basic-0);
+  --bt-sgt-ln-hover: color-mix(in srgb, var(--line-base-basic-1) 0%, transparent);
+  --bt-sgt-ln-select-hover: color-mix(
+    in srgb,
+    var(--line-color-lime-basic-2) 40%,
+    transparent
+  );
+  --bt-sgt-sr-select-focus: var(--surface-color-lime-basic-2);
+  --bt-sgt-ln-select-focus: var(--line-color-lime-basic-2);
+  --bt-sgt-ic-select-rest: color-mix(
+    in srgb,
+    var(--icon-color-lime-basic-3) 50%,
+    transparent
+  );
+  --bt-sgt-ic-select-hover: var(--text-color-lime-basic-3);
+  --bt-sgt-ic-select-active: var(--icon-color-lime-basic-2);
+  --bt-sgt-ic-select-focus: var(--icon-color-lime-basic-4);
+  --bt-sgt-ic-select-disabled: color-mix(
+    in srgb,
+    var(--icon-color-lime-basic-3) 25%,
+    transparent
+  );
+  --bt-sgt-ic-rest: var(--icon-base-basic-4);
   /* button/overrides/text */
-  --bt-sgx-sr-focus: #f5f5f5;
+  --bt-sgx-sr-focus: var(--surface-base-basic-2);
 
   /* select/segmented/base */
   --sl-sgb-height: 24px;
   --sl-sgb-radius: 6px;
   --sl-sgb-padding: 3px;
-  --sl-sgb-sr-rest: #f5f5f5;
-  --sl-sgb-sr-disabled: #f5f5f5;
-  --sl-sgb-ln-rest: #dadada;
-  --sl-sgb-ln-hover: #b7d817;
-  --sl-sgb-ln-disabled: #ededed;
-  --sl-sgb-sr-hover: #d0eb49;
+  --sl-sgb-sr-rest: var(--surface-base-basic-2);
+  --sl-sgb-sr-disabled: var(--surface-base-basic-2);
+  --sl-sgb-ln-rest: var(--line-base-basic-2);
+  --sl-sgb-ln-hover: var(--line-color-lime-basic-3);
+  --sl-sgb-ln-disabled: var(--line-base-basic-1);
+  --sl-sgb-sr-hover: var(--surface-color-lime-basic-3);
   /* select/segmented/chip */
   --sl-sgc-radius: 3px;
-  --sl-sgc-sr-rest: #ffffff00;
-  --sl-sgc-sr-hover: #9cbb12;
-  --sl-sgc-sr-active: #ffffff;
-  --sl-sgc-sr-active-hover: #ffffff;
-  --sl-sgcs-disabled: #ffffff00;
-  --sl-sgc-lb-rest: #8d8d8d;
-  --sl-sgc-lb-hover: #ffffff;
-  --sl-sgc-lb-hover-container: #71900a;
-  --sl-sgc-lb-active-rest: #515151;
-  --sl-sgc-lb-active-hover: #515151;
-  --sl-sgc-lb-disabled: #c9c9c9;
-  --sl-sgc-sh-active-rest: #9cbb12;
-  --sl-sgc-sh-active-hover: #ededed;
+  --sl-sgc-sr-rest: color-mix(in srgb, var(--surface-base-basic-0) 0%, transparent);
+  --sl-sgc-sr-hover: var(--surface-color-lime-inverted-1);
+  --sl-sgc-sr-active: var(--surface-base-basic-0);
+  --sl-sgc-sr-active-hover: var(--surface-base-basic-0);
+  --sl-sgcs-disabled: color-mix(in srgb, var(--surface-base-basic-0) 0%, transparent);
+  --sl-sgc-lb-rest: var(--text-base-basic-3);
+  --sl-sgc-lb-hover: var(--text-base-inverted-1);
+  --sl-sgc-lb-hover-container: var(--text-color-lime-basic-3);
+  --sl-sgc-lb-active-rest: var(--text-base-basic-2);
+  --sl-sgc-lb-active-hover: var(--text-base-basic-2);
+  --sl-sgc-lb-disabled: var(--text-base-basic-5);
+  --sl-sgc-sh-active-rest: var(--shadow-color-lime-2);
+  --sl-sgc-sh-active-hover: var(--shadow-base-1);
   /* select/basic (toggle, checkmark) */
-  --sl-bsb-sr-rest: #f5f5f5;
-  --sl-bsb-sr-hover: #c9c9c9;
-  --sl-bsb-sr-active: #a7a7a7;
-  --sl-bsb-sr-active-hover: #d0eb49;
-  --sl-bsb-sr-disabled: #f5f5f5;
-  --sl-bsb-ln-rest: #dadada;
-  --sl-bsb-ln-hover: #b8b8b8;
-  --sl-bsb-ln-active: #8d8d8d;
-  --sl-bsb-ln-active-hover: #b7d817;
-  --sl-bsb-ln-disabled: #ededed;
-  --sl-bsb-lb-rest: #8d8d8d;
-  --sl-bsb-lb-hover: #515151;
-  --sl-bsb-lb-active-rest: #8d8d8d;
-  --sl-bsb-lb-active-hover: #515151;
-  --sl-bsb-lb-disabled: #b8b8b8;
-  --sl-bsb-sh-rest: #b8b8b8;
-  --sl-bsb-sh-hover: #b8b8b8;
-  --sl-bsb-sh-active-rest: #8d8d8d;
-  --sl-bsb-sh-active-hover: #a9c915;
-  --sl-bsb-sh-disabled: #ededed;
+  --sl-bsb-sr-rest: var(--surface-base-basic-2);
+  --sl-bsb-sr-hover: var(--surface-base-basic-4);
+  --sl-bsb-sr-active: var(--surface-base-basic-5);
+  --sl-bsb-sr-active-hover: var(--surface-color-lime-basic-3);
+  --sl-bsb-sr-disabled: var(--surface-base-basic-2);
+  --sl-bsb-ln-rest: var(--line-base-basic-2);
+  --sl-bsb-ln-hover: var(--line-base-basic-4);
+  --sl-bsb-ln-active: var(--line-base-basic-5);
+  --sl-bsb-ln-active-hover: var(--line-color-lime-basic-3);
+  --sl-bsb-ln-disabled: var(--line-base-basic-1);
+  --sl-bsb-lb-rest: var(--text-base-basic-3);
+  --sl-bsb-lb-hover: var(--text-base-basic-2);
+  --sl-bsb-lb-active-rest: var(--text-base-basic-3);
+  --sl-bsb-lb-active-hover: var(--text-base-basic-2);
+  --sl-bsb-lb-disabled: var(--text-base-basic-4);
+  --sl-bsb-sh-rest: var(--shadow-base-2);
+  --sl-bsb-sh-hover: var(--shadow-base-2);
+  --sl-bsb-sh-active-rest: var(--shadow-base-3);
+  --sl-bsb-sh-active-hover: var(--shadow-color-lime-1);
+  --sl-bsb-sh-disabled: var(--shadow-base-1);
   /* select/dropdown/field */
   --sl-drf-nm-height: 24px;
   --sl-drf-nm-corner: 6px;
-  --sl-drf-sr-rest: #ffffff;
-  --sl-drf-sr-hover: #f5f5f5;
-  --sl-drf-sr-focus: #ffffff;
-  --sl-drf-sr-disabled: #fafafa;
-  --sl-drf-ln-rest: #dadada;
-  --sl-drf-ln-hover: #c9c9c9;
-  --sl-drf-ln-disabled: #ededed;
-  --sl-drf-lb-empty-rest: #8d8d8d;
-  --sl-drf-lb-empty-hover: #515151;
-  --sl-drf-lb-empty-focus: #515151;
-  --sl-drf-lb-filled-rest: #8d8d8d;
-  --sl-drf-lb-filled-hover: #515151;
-  --sl-drf-lb-disabled: #c9c9c9;
-  --sl-drf-ic-rest: #8d8d8d;
-  --sl-drf-ic-hover: #515151;
-  --sl-drf-ic-focus: #515151;
-  --sl-drf-ic-disabled: #c9c9c9;
-  --sl-drf-ln-focus: #c9c9c9;
+  --sl-drf-sr-rest: var(--surface-base-basic-0);
+  --sl-drf-sr-hover: var(--surface-base-basic-2);
+  --sl-drf-sr-focus: var(--surface-base-basic-0);
+  --sl-drf-sr-disabled: var(--surface-base-basic-1);
+  --sl-drf-ln-rest: var(--line-base-basic-2);
+  --sl-drf-ln-hover: var(--line-base-basic-3);
+  --sl-drf-ln-disabled: var(--line-base-basic-1);
+  --sl-drf-lb-empty-rest: var(--text-base-basic-3);
+  --sl-drf-lb-empty-hover: var(--text-base-basic-2);
+  --sl-drf-lb-empty-focus: var(--text-base-basic-2);
+  --sl-drf-lb-filled-rest: var(--text-base-basic-3);
+  --sl-drf-lb-filled-hover: var(--text-base-basic-2);
+  --sl-drf-lb-disabled: var(--text-base-basic-5);
+  --sl-drf-ic-rest: var(--icon-base-basic-3);
+  --sl-drf-ic-hover: var(--icon-base-basic-2);
+  --sl-drf-ic-focus: var(--icon-base-basic-2);
+  --sl-drf-ic-disabled: var(--icon-base-basic-5);
+  --sl-drf-ln-focus: var(--line-base-basic-3);
   /* select/dropdown/menu-item */
   --sl-drm-corner: 3px;
-  --sl-drm-sr-single-rest: #ffffff;
-  --sl-drm-sr-single-hover: #f5f5f5;
-  --sl-drm-sr-single-active: #d0eb49;
-  --sl-drm-lb-single-rest: #8d8d8d;
-  --sl-drm-lb-single-hover: #515151;
-  --sl-drm-lb-single-active: #567305;
-  --sl-drm-sr-multi-rest: #ffffff;
-  --sl-drm-sr-multi-hover: #f5f5f5;
-  --sl-drm-sr-multi-active: #f4fad5;
-  --sl-drm-sr-multi-active-hover: #d0eb49;
-  --sl-drm-lb-multi-rest: #8d8d8d;
-  --sl-drm-lb-multi-hover: #303030;
-  --sl-drm-lb-multi-active: #71900a;
-  --sl-drm-lb-multi-active-hover: #567305;
-  --sl-drm-ic-multi-active: #8eac10;
-  --sl-drm-ic-multi-active-hover: #71900a;
-  --sl-drm-ic-multi-rest: #8d8d8d;
-  --sl-drm-ic-multi-hover: #515151;
+  --sl-drm-sr-single-rest: var(--surface-base-basic-0);
+  --sl-drm-sr-single-hover: var(--surface-base-basic-2);
+  --sl-drm-sr-single-active: var(--surface-color-lime-basic-3);
+  --sl-drm-lb-single-rest: var(--text-base-basic-3);
+  --sl-drm-lb-single-hover: var(--text-base-basic-2);
+  --sl-drm-lb-single-active: var(--text-color-lime-basic-2);
+  --sl-drm-sr-multi-rest: var(--surface-base-basic-0);
+  --sl-drm-sr-multi-hover: var(--surface-base-basic-2);
+  --sl-drm-sr-multi-active: var(--surface-color-lime-basic-1);
+  --sl-drm-sr-multi-active-hover: var(--surface-color-lime-basic-3);
+  --sl-drm-lb-multi-rest: var(--text-base-basic-3);
+  --sl-drm-lb-multi-hover: var(--grey-deprecated-2);
+  --sl-drm-lb-multi-active: var(--text-color-lime-basic-3);
+  --sl-drm-lb-multi-active-hover: var(--text-color-lime-basic-2);
+  --sl-drm-ic-multi-active: var(--text-color-lime-basic-4);
+  --sl-drm-ic-multi-active-hover: var(--text-color-lime-basic-3);
+  --sl-drm-ic-multi-rest: var(--icon-base-basic-3);
+  --sl-drm-ic-multi-hover: var(--text-base-basic-2);
 
   /* input/base */
   --in-bsn-height: 24px;
   --in-bsn-corner: 6px;
   --in-bsn-pad: 3px;
-  --in-bsr-rest: #f5f5f5;
-  --in-bsr-focus: #fafafa;
-  --in-bsr-disabled: #f5f5f5;
-  --in-bln-rest: #dadada;
-  --in-bln-focus: #ededed;
-  --in-bln-disabled: #ededed;
-  --in-bsr-hover: #f5f5f5;
-  --in-bln-hover: #dadada;
+  --in-bsr-rest: var(--surface-base-basic-2);
+  --in-bsr-focus: var(--surface-base-basic-1);
+  --in-bsr-disabled: var(--surface-base-basic-2);
+  --in-bln-rest: var(--line-base-basic-2);
+  --in-bln-focus: var(--line-base-basic-1);
+  --in-bln-disabled: var(--line-base-basic-1);
+  --in-bsr-hover: var(--surface-base-basic-2);
+  --in-bln-hover: var(--line-base-basic-2);
   /* input/content */
   --in-cnn-corner: 3px;
-  --in-csr-rest: #f5f5f5;
-  --in-csr-hover: #f5f5f5;
-  --in-csr-focus: #ffffff;
-  --in-csr-disabled: #f5f5f5;
-  --in-sln-rest: #dadada00;
-  --in-sln-hover: #dadada;
-  --in-sln-focus: #d0eb49;
-  --in-sln-disabled: #ededed00;
-  --in-lbl-rest: #8d8d8d;
-  --in-lbl-hover: #515151;
-  --in-lbl-focus: #515151;
-  --in-lbl-disabled: #b8b8b8;
-  --in-vl-rest: #515151;
-  --in-vl-hover: #515151;
-  --in-vl-focus: #1e1e1e;
-  --in-vl-disabled: #b8b8b8;
-  --in-ic-rest: #b8b8b8;
-  --in-ic-hover: #b8b8b8;
-  --in-ic-focus: #8d8d8d;
-  --in-ic-disabled: #c9c9c9;
+  --in-csr-rest: var(--surface-base-basic-2);
+  --in-csr-hover: var(--surface-base-basic-2);
+  --in-csr-focus: var(--surface-base-basic-0);
+  --in-csr-disabled: var(--surface-base-basic-2);
+  --in-sln-rest: color-mix(in srgb, var(--line-base-basic-2) 0%, transparent);
+  --in-sln-hover: var(--line-base-basic-2);
+  --in-sln-focus: var(--line-color-lime-basic-2);
+  --in-sln-disabled: color-mix(in srgb, var(--line-base-basic-1) 0%, transparent);
+  --in-lbl-rest: var(--text-base-basic-3);
+  --in-lbl-hover: var(--text-base-basic-2);
+  --in-lbl-focus: var(--text-base-basic-2);
+  --in-lbl-disabled: var(--text-base-basic-4);
+  --in-vl-rest: var(--text-base-basic-2);
+  --in-vl-hover: var(--text-base-basic-2);
+  --in-vl-focus: var(--text-base-basic-1);
+  --in-vl-disabled: var(--text-base-basic-4);
+  --in-ic-rest: var(--icon-base-basic-4);
+  --in-ic-hover: var(--icon-base-basic-4);
+  --in-ic-focus: var(--icon-base-basic-3);
+  --in-ic-disabled: var(--icon-base-basic-5);
   /* input/content/text: h = hint (placeholder), f = filled */
-  --in-txth-rest: #b8b8b8;
-  --in-txth-hover: #b8b8b8;
-  --in-txth-focus: #1e1e1e;
-  --in-txth-disabled: #b8b8b8;
-  --in-txtf-rest: #515151;
-  --in-txtf-hover: #515151;
-  --in-txtf-focus: #1e1e1e;
-  --in-txtf-disabled: #8d8d8d;
+  --in-txth-rest: var(--text-base-basic-4);
+  --in-txth-hover: var(--text-base-basic-4);
+  --in-txth-focus: var(--text-base-basic-1);
+  --in-txth-disabled: var(--text-base-basic-4);
+  --in-txtf-rest: var(--text-base-basic-2);
+  --in-txtf-hover: var(--text-base-basic-2);
+  --in-txtf-focus: var(--text-base-basic-1);
+  --in-txtf-disabled: var(--text-base-basic-3);
 
   /* table: one look for every table (the old table/data and table/select
      merged). The row's states are rest, hover, selection (active),
      selection hover and disabled. */
-  --tbl-ln-rest: #ededed;
+  --tbl-ln-rest: var(--line-base-basic-1);
   --tbl-height: 24px;
-  --tbl-cs-sr-rest: #ffffff;
-  --tbl-cs-sr-hover: #ffffff;
-  --tbl-cs-sr-selection: #f4fad5;
-  --tbl-cs-sr-disabled: #ffffff;
-  --tbl-ln-hover: #ededed;
-  --tbl-ln-selection: #9cbb1266;
-  --tbl-ln-disabled: #ededed;
-  --tbl-lb-prim-rest: #8d8d8d;
-  --tbl-lb-prim-hover: #515151;
-  --tbl-lb-prim-rest-selection: #567305bf;
-  --tbl-lb-prim-hover-selection: #3b5600e6;
-  --tbl-lb-prim-disabled: #b8b8b8;
-  --tbl-lb-sec-rest: #b8b8b8;
-  --tbl-lb-sec-hover: #8d8d8d;
-  --tbl-lb-sec-rest-selection: #56730566;
-  --tbl-lb-sec-hover-selection: #3b560099;
-  --tbl-lb-sec-disabled: #b8b8b8;
+  --tbl-cs-sr-rest: var(--surface-base-basic-0);
+  --tbl-cs-sr-hover: var(--surface-base-basic-0);
+  --tbl-cs-sr-selection: var(--surface-color-lime-basic-1);
+  --tbl-cs-sr-disabled: var(--surface-base-basic-0);
+  --tbl-ln-hover: var(--line-base-basic-1);
+  --tbl-ln-selection: color-mix(
+    in srgb,
+    var(--line-color-lime-basic-4) 40%,
+    transparent
+  );
+  --tbl-ln-disabled: var(--line-base-basic-1);
+  --tbl-lb-prim-rest: var(--text-base-basic-3);
+  --tbl-lb-prim-hover: var(--text-base-basic-2);
+  --tbl-lb-prim-rest-selection: color-mix(
+    in srgb,
+    var(--text-color-lime-basic-2) 75%,
+    transparent
+  );
+  --tbl-lb-prim-hover-selection: color-mix(
+    in srgb,
+    var(--text-color-lime-basic-1) 90%,
+    transparent
+  );
+  --tbl-lb-prim-disabled: var(--text-base-basic-4);
+  --tbl-lb-sec-rest: var(--text-base-basic-4);
+  --tbl-lb-sec-hover: var(--text-base-basic-3);
+  --tbl-lb-sec-rest-selection: color-mix(
+    in srgb,
+    var(--text-color-lime-basic-2) 40%,
+    transparent
+  );
+  --tbl-lb-sec-hover-selection: color-mix(
+    in srgb,
+    var(--text-color-lime-basic-1) 60%,
+    transparent
+  );
+  --tbl-lb-sec-disabled: var(--text-base-basic-4);
 
   /* indication/badge */
-  --ind-bdg-sr-active: #d0eb49;
-  --ind-bdg-ln-inside: #9cbb12;
-  --ind-bdg-ln-outside: #ffffff;
-  --ind-bdg-sr-alert: #d0eb49;
-  --ind-bdg-sr-crtitical: #d0eb49;
+  --ind-bdg-sr-active: var(--surface-color-lime-basic-3);
+  --ind-bdg-ln-inside: var(--line-color-lime-basic-4);
+  --ind-bdg-ln-outside: var(--line-color-lime-inverted-1);
+  --ind-bdg-sr-alert: var(--surface-color-lime-basic-3);
+  --ind-bdg-sr-crtitical: var(--surface-color-lime-basic-3);
   --ind-bgg-size: 6px;
+
+  /* In Figma, not drawn by any component here yet. */
+  --tbl-bt-sgt-ic-select-rest: color-mix(
+    in srgb,
+    var(--icon-color-lime-basic-3) 80%,
+    transparent
+  ); /* table/icon/bt-sgt-ic-select-rest */
+  --tbl-bt-sgt-ic-select-focus: var(
+    --icon-color-lime-basic-4
+  ); /* table/icon/bt-sgt-ic-select-focus */
+  --tbl-bt-sgt-ic-select-disabled: color-mix(
+    in srgb,
+    var(--icon-color-lime-basic-3) 40%,
+    transparent
+  ); /* table/icon/bt-sgt-ic-select-disabled */
+  --tbl-bt-sgt-ic-select-active: var(
+    --icon-color-lime-basic-2
+  ); /* table/icon/bt-sgt-ic-select-active */
 }
 
-/* color-tokens collection: the shared colours some components bind directly
-   (accordion switch, toggle track, chip shadow). Figma path with dashes. */
+/* color-tokens collection, every variable (typeCAD | design system), as
+   aliases of the palette below. Figma path with dashes. */
 :root {
+  --text-base-basic-1: var(--grey-02);
+  --text-base-basic-2: var(--grey-05);
+  --text-base-basic-3: var(--grey-08);
+  --text-base-basic-4: var(--grey-10);
+  --text-base-basic-5: var(--grey-11);
+  --text-base-inverted-1: #ffffff;
+  --text-color-lime-basic-1: var(--lime-00);
+  --text-color-lime-basic-2: var(--lime-02);
+  --text-color-lime-basic-3: var(--lime-04);
+  --text-base-inverted-2: #ffffffbf;
+  --text-color-lime-basic-4: var(--lime-06);
+  --text-base-inverted-3: #ffffff80;
+  --text-color-lime-basic-5: var(--lime-08);
+  --text-color-lime-inverted-1: var(--lime-15);
+  --text-color-lime-inverted-2: color-mix(in srgb, var(--lime-15) 75%, transparent);
+  --text-color-lime-inverted-3: color-mix(in srgb, var(--lime-15) 50%, transparent);
+  --icon-base-basic-1: var(--grey-02);
+  --icon-base-basic-2: var(--grey-05);
+  --icon-base-basic-3: var(--grey-08);
+  --icon-base-basic-4: var(--grey-10);
+  --icon-base-basic-5: var(--grey-11);
+  --icon-base-inverted-1: #ffffff;
+  --icon-base-inverted-2: #ffffffbf;
+  --icon-base-inverted-3: #ffffff80;
+  --icon-color-lime-basic-1: var(--lime-00);
+  --icon-color-lime-basic-2: var(--lime-02);
+  --icon-color-lime-basic-3: var(--lime-04);
+  --icon-color-lime-basic-4: var(--lime-06);
+  --icon-color-lime-basic-5: var(--lime-08);
+  --icon-color-lime-inverted-1: var(--lime-15);
+  --icon-color-lime-inverted-2: color-mix(in srgb, var(--lime-15) 75%, transparent);
+  --icon-color-lime-inverted-3: color-mix(in srgb, var(--lime-15) 50%, transparent);
+  --line-base-basic-0: var(--grey-14);
+  --line-base-basic-1: var(--grey-13);
+  --line-base-basic-2: var(--grey-12);
+  --line-base-basic-3: var(--grey-11);
+  --line-base-basic-4: var(--grey-10);
+  --line-base-basic-5: var(--grey-08);
+  --line-base-inverted-1: #ffffff;
+  --line-base-inverted-2: #ffffff80;
+  --line-base-inverted-3: #ffffff40;
+  --line-color-lime-basic-1: var(--lime-13);
+  --line-color-lime-inverted-1: #ffffff;
+  --line-color-lime-inverted-2: #ffffff80;
+  --line-color-lime-inverted-3: #ffffff40;
+  --line-color-lime-basic-2: var(--lime-11);
+  --line-color-lime-basic-3: var(--lime-09);
+  --line-color-lime-basic-4: var(--lime-07);
+  --line-color-lime-basic-5: var(--lime-05);
   --surface-base-basic-0: #ffffff;
-  --surface-base-basic-1: #fafafa;
-  --surface-base-basic-2: #f5f5f5;
-  --surface-base-basic-4: #c9c9c9;
-  --surface-color-lime-basic-4: #c4e61a;
-  --line-base-basic-0: #f5f5f5;
-  --line-base-basic-1: #ededed;
-  --text-base-basic-1: #1e1e1e;
-  --text-base-basic-2: #515151;
-  --text-base-basic-3: #8d8d8d;
-  --text-base-basic-4: #b8b8b8;
-  --text-base-basic-5: #c9c9c9;
-  --shadow-base-1: #ededed;
-  --shadow-base-2: #b8b8b8;
+  --surface-color-lime-basic-1: var(--lime-15);
+  --surface-color-lime-basic-2: var(--lime-13);
+  --surface-color-lime-basic-3: var(--lime-11);
+  --surface-color-lime-basic-4: var(--lime-10);
+  --surface-color-lime-basic-5: var(--lime-08);
+  --surface-color-lime-inverted-1: var(--lime-07);
+  --surface-color-lime-inverted-2: var(--lime-04);
+  --surface-color-lime-inverted-3: var(--lime-00);
+  --surface-base-basic-1: var(--grey-15);
+  --surface-base-basic-2: var(--grey-14);
+  --surface-base-basic-3: var(--grey-13);
+  --surface-base-basic-4: var(--grey-11);
+  --surface-base-basic-5: var(--grey-09);
+  --surface-base-inverted-1: var(--grey-07);
+  --surface-base-inverted-2: var(--grey-05);
+  --surface-base-inverted-3: var(--grey-04);
+  --input-surface-base: var(--grey-14);
+  --input-surface-focus: var(--grey-15);
+  --input-line-outer-base: var(--grey-12);
+  --input-line-outer-hover: #ffffff;
+  --input-line-inner-hover: var(--grey-12);
+  --input-line-inner-focus: var(--lime-10);
+  --shadow-base-1: var(--grey-13);
+  --shadow-base-2: var(--grey-10);
+  --shadow-base-3: var(--grey-08);
+  --shadow-color-lime-1: var(--lime-08);
+  --shadow-color-lime-2: var(--lime-07);
+  --shadow-color-lime-3: var(--lime-06);
 }
 
-/* Primitives the components bind directly in Figma, rather than through a
-   component token (the "gradients" collection). Named as in Figma. */
+/* The palette (the "gradients" collection), every variable. Named as in
+   Figma. lime-alpha-dark-20 is ours, not Figma's. */
 :root {
+  --grey-deprecated-0: #000000;
+  --lime-deprecated-0: #3b5600;
+  --lime-deprecated-1: #71900a;
+  --lime-deprecated-2: #8eac10;
+  --lime-deprecated-3: #a9c915;
+  --lime-deprecated-4: #c4e61a;
+  --lime-deprecated-7: #d5ed57;
+  --grey-deprecated-1: #151515;
+  --grey-deprecated-2: #303030;
   --grey-deprecated-3: #565656;
   --grey-deprecated-4: #8e8e8e;
   --grey-deprecated-5: #b4b4b4;
+  --grey-deprecated-6: #d9d9d9;
   --grey-deprecated-7: #e9e9e9;
-  --lime-deprecated-0: #3b5600;
-  --lime-deprecated-7: #d5ed57;
+  --grey-deprecated-8: #f7f7f7;
+  --grey-00: #080808;
+  --grey-01: #0d0d0d;
+  --grey-02: #1e1e1e;
+  --grey-03: #2f2f2f;
+  --grey-04: #404040;
+  --grey-05: #515151;
+  --grey-06: #626262;
+  --grey-07: #737373;
+  --grey-08: #8d8d8d;
+  --grey-09: #a7a7a7;
+  --grey-10: #b8b8b8;
+  --grey-11: #c9c9c9;
+  --grey-12: #dadada;
+  --grey-13: #ededed;
+  --grey-14: #f5f5f5;
+  --grey-15: #fafafa;
+  --lime-00: #3b5600;
+  --lime-01: #496403;
+  --lime-02: #567305;
+  --lime-03: #648108;
+  --lime-04: #71900a;
+  --lime-05: #7f9e0d;
+  --lime-06: #8eac10;
+  --lime-07: #9cbb12;
+  --lime-08: #a9c915;
+  --lime-09: #b7d817;
+  --lime-10: #c4e61a;
+  --lime-11: #d0eb49;
+  --lime-12: #d9ef6c;
+  --lime-13: #e2f38f;
+  --lime-14: #ebf7b2;
+  --lime-15: #f4fad5;
   --lime-alpha-dark-20: #3b560033;
+}
+
+/* typography collection: the font per mode (martian, tiktok), the weights
+   and the widths. */
+:root {
+  --font-family-martian: "Martian Mono";
+  --font-family-tiktok: "TikTok Sans";
+  --weight-thin: 220;
+  --weight-light: 320;
+  --weight-normal: 450;
+  --weight-bold: 600;
+  --width-narrow: 75;
+  --width-normal: 85;
+  --width-wide: 92;
+}
+
+/* number-tokens collection: each token per size mode (L, M, S, XS). The
+   component tokens above use the size their component is drawn at. */
+:root {
+  --height-l: 24px;
+  --height-m: 20px;
+  --height-s: 16px;
+  --height-xs: 12px;
+  --corner-outer-l: 6px;
+  --corner-outer-m: 5px;
+  --corner-outer-s: 4px;
+  --corner-outer-xs: 3px;
+  --corner-inner-l: 3px;
+  --corner-inner-m: 3px;
+  --corner-inner-s: 2px;
+  --corner-inner-xs: 2px;
+  --padding-l: 3px;
+  --padding-m: 2px;
+  --padding-s: 2px;
+  --padding-xs: 2px;
+  --gap-element-l: 12px;
+  --gap-element-m: 6px;
+  --gap-element-s: 6px;
+  --gap-element-xs: 6px;
+  --badge-l: 6px;
+  --badge-m: 4px;
+  --badge-s: 4px;
+  --badge-xs: 4px;
 }
 
 :root.dark-theme {

@@ -76,12 +76,15 @@ export default class CharactersGlyphsPanel extends Panel {
       {
         key: "character",
         title: " ",
-        width: "1.8em",
+        // One character.
+        fitText: "W",
       },
       {
         key: "codePoint",
         title: translate("sidebar.selection-info.unicode"),
-        width: "5em",
+        // A code point, or the glyph's name where it has none: dragged to fit.
+        width: 56,
+        minWidth: 32,
         get: (item) =>
           item.codePoint
             ? makeUPlusStringFromCodePoint(item.codePoint)
@@ -100,7 +103,8 @@ export default class CharactersGlyphsPanel extends Panel {
       {
         key: "script",
         title: translate("sidebar.text-entry.script"),
-        width: "4em",
+        width: 48,
+        minWidth: 32,
         get: (item) =>
           item.codePoint ? getGlyphInfoFromCodePoint(item.codePoint)?.script : "",
       },

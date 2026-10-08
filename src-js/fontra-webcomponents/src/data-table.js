@@ -50,7 +50,14 @@ const lookColors = {
   "data-table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
   "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
   "data-table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
-  "data-table-look-divider-color": ["var(--tbl-ln-hover)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-divider-color": [
+    "var(--line-base-basic-2)",
+    "rgba(255, 255, 255, 0.1)",
+  ],
+  "data-table-look-drag-divider-color": [
+    "var(--line-base-basic-3)",
+    "rgba(255, 255, 255, 0.2)",
+  ],
   "data-table-look-heading-color": ["var(--grey-deprecated-5)", "#8e8e8e"],
   "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
@@ -408,11 +415,14 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-heading-color);
   }
 
-  /* A hovered head cell shows a divider at each edge: 16px, centred. */
+  /* A hovered head cell shows a divider at each edge: 16px, centred, in
+     line 3 where that edge can be dragged and line 2 where it cannot. */
   data-table[look] .data-table thead th:hover {
+    --data-table-divider-left: var(--data-table-look-divider-color);
+    --data-table-divider-right: var(--data-table-look-divider-color);
     background-image:
-      linear-gradient(var(--data-table-look-divider-color), var(--data-table-look-divider-color)),
-      linear-gradient(var(--data-table-look-divider-color), var(--data-table-look-divider-color));
+      linear-gradient(var(--data-table-divider-left), var(--data-table-divider-left)),
+      linear-gradient(var(--data-table-divider-right), var(--data-table-divider-right));
     background-size: 1px 16px;
     background-position:
       left center,
@@ -420,9 +430,18 @@ const DATA_TABLE_STYLES = `
     background-repeat: no-repeat;
   }
 
-  /* The column grip's hairline is that divider, held while dragging. */
+  data-table[look] .data-table thead th.data-table-drag-left:hover {
+    --data-table-divider-left: var(--data-table-look-drag-divider-color);
+  }
+
+  data-table[look] .data-table thead th.data-table-drag-right:hover {
+    --data-table-divider-right: var(--data-table-look-drag-divider-color);
+  }
+
+  /* The column grip's hairline is the draggable divider, held while
+     dragging. */
   data-table[look] .data-table-column-grip::after {
-    background: var(--data-table-look-divider-color);
+    background: var(--data-table-look-drag-divider-color);
   }
 
   data-table[look] .data-table-column-grip:hover::after,
@@ -1151,6 +1170,22 @@ export class DataTable extends HTMLElement {
       const width = shown[i] || null;
       th.style.width = width ? `${width}px` : "";
       used += width || 0;
+    });
+    // Each head cell knows which of its edges can be dragged: its right one
+    // when it has a grip, its left one when the column before it does.
+    visible.forEach(({ column }, i) => {
+      const hasGrip = (entry) =>
+        !!entry?.column._headerElement.querySelector(
+          ":scope > .data-table-column-grip"
+        );
+      column._headerElement.classList.toggle(
+        "data-table-drag-right",
+        hasGrip(visible[i])
+      );
+      column._headerElement.classList.toggle(
+        "data-table-drag-left",
+        hasGrip(visible[i - 1])
+      );
     });
     const lastWidth = Math.max(lastMin, box - used);
     if (last) {
