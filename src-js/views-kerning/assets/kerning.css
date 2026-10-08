@@ -102,7 +102,8 @@
 
 /* The design's colours (Figma 421:14557), light and dark. */
 :root {
-  --kerning-panel-background-color-light: var(--fontra-theme-marker) #f5f5f5;
+  --kerning-panel-background-color-light: var(--fontra-theme-marker)
+    var(--surface-base-basic-2);
   --kerning-panel-background-color-dark: #1e1e1e;
   --kerning-panel-background-color: var(
     --kerning-panel-background-color-light,
@@ -134,10 +135,10 @@
 }
 
 /* The tool notch (shared.css's .tool-notch), centred on the canvas card's
-   top edge. */
+   top edge: under the column's 8px padding. */
 #kerning-tool-notch {
   position: absolute;
-  top: 0;
+  top: 8px;
   left: 50%;
   z-index: 2;
   transform: translateX(-50%);

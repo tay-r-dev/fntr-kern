@@ -115,6 +115,18 @@ export class Accordion extends UnlitElement {
     transform: none;
   }
 
+  /* Last in its card, with its last shown item closed, the switch's header
+     bar runs into the card's 8px under it and takes the card's lower
+     corners (14px less its 1px rule), so no white strip is left below it. */
+  :host([switch]:last-child)
+    .ui-accordion-item-closed:not(:has(~ .ui-accordion-item:not([hidden])))
+    .ui-accordion-item-header {
+    margin-bottom: -8px;
+    padding-bottom: 12px;
+    border-bottom: none;
+    border-radius: 0 0 13px 13px;
+  }
+
 
   `;
 

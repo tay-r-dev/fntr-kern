@@ -107,7 +107,7 @@ export default class CharactersGlyphsPanel extends Panel {
       {
         key: "index",
         title: translate("sidebar.characters-glyphs.index"),
-        width: "3em",
+        fitText: "0000",
       },
     ];
     this.characterList = new UIList();
@@ -180,7 +180,8 @@ export default class CharactersGlyphsPanel extends Panel {
       {
         key: "advance",
         title: translate("sidebar.characters-glyphs.advance"),
-        width: "5em",
+        // Four digits, and room for a kern after them.
+        fitText: "0000 − 000",
         align: "right",
         get: (item) => {
           const kern = item.advance - item.originalAdvance;
@@ -193,19 +194,19 @@ export default class CharactersGlyphsPanel extends Panel {
       {
         key: "dx",
         title: "ΔX",
-        width: "3em",
+        fitText: "0000",
         align: "right",
       },
       {
         key: "dy",
         title: "ΔY",
-        width: "3em",
+        fitText: "0000",
         align: "right",
       },
       {
         key: "cluster",
         title: translate("sidebar.characters-glyphs.cluster"),
-        width: "3em",
+        fitText: "0000",
         align: "right",
       },
     ];

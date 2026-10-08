@@ -15,6 +15,8 @@ export const applicationSettingsController = new ObservableController({
   coarseGridDefaultSpacing: 10,
   // fork: the secondary grid, every Nth grid crossing, shown with custom spacing (app-level, per D9)
   coarseGridSecondaryMultiplier: 0,
+  // fork: the grid presets, each {name, base, increment, secondary} (app-level, per D9)
+  coarseGridPresets: [],
   // fork: the grids' look, tuned in the Debug panel: black at these opacities,
   // dot diameters in screen pixels, zoomed out and with the unit grid showing
   gridFineOpacity: 0.06,

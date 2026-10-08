@@ -1,5 +1,10 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
+import {
+  applyGridPreset,
+  captureGridPreset,
+  SECONDARY_GRID_MULTIPLIERS,
+} from "@fontra/core/coarse-grid-presets.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
@@ -108,6 +113,17 @@ const SKELETON_SETTINGS_STYLES = `
 // right sidebar. It holds the generator setting Delete collapsing points and
 // the master-wide source defaults: the width and terminal presets. The
 // defaults used to be hosted in the Metrics panel.
+// The preset tables' columns: the name dragged to any width, a number as
+// wide as four digits or its head, and the row's actions taking what is left,
+// never less than its three buttons.
+const NAME_COLUMN = { width: 80, minWidth: 40 };
+const NUMBER_COLUMN = { fitText: "0000", fitField: true };
+const ACTIONS_COLUMN = { label: "", minWidth: 64 };
+
+function longest(texts) {
+  return texts.reduce((a, b) => (b.length > a.length ? b : a), "");
+}
+
 // button/text, size S (Figma 414:31310).
 function textKey(label, onClick) {
   return html.createDomElement("text-button", { label, size: "S", onclick: onClick });
@@ -157,15 +173,20 @@ export default class SkeletonSettingsPanel extends Panel {
     this.simplifyEasingWarning = html.div({ style: "opacity: 0.7;" }, [
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
-    // PRESETS (Figma 4109:3396): the width and terminal presets, each a heading with its filters over a table and its
-    // two buttons. The Grid tab (Figma 4129:3638) has no backend yet; it is
-    // shown and disabled.
+    // PRESETS (Figma 4109:3396): the width and terminal presets, each a
+    // heading with its filters over a table and its two buttons; the Grid tab
+    // (Figma 4129:3638) the grid presets.
     this._appendStyle(SKELETON_SETTINGS_STYLES);
-    const presetTable = (columns, storageKey) => {
+    const presetTable = (columns, storageKey, columnWidthsKey = null) => {
       const table = html.createDomElement("data-table");
       // table, look "select" (Figma 4109:3669).
       table.look = "select";
       table.columns = columns;
+      // The name column is dragged wider or narrower; the number columns fit
+      // their numbers; the actions take what is left.
+      if (columnWidthsKey) {
+        table.columnWidthsStorageKey = columnWidthsKey;
+      }
       table.resizable = true;
       table.minHeight = 48;
       table.style.setProperty("--data-table-height", "110px");
@@ -185,12 +206,24 @@ export default class SkeletonSettingsPanel extends Panel {
     // Ticket 68: the width presets table, built once and refilled on update.
     this.widthPresetTable = presetTable(
       [
-        { label: translate("sidebar.skeleton-settings.column.name") },
-        { label: translate("sidebar.skeleton-settings.column.width") },
-        { label: translate("sidebar.skeleton-settings.column.side") },
-        { label: "" },
+        { label: translate("sidebar.skeleton-settings.column.name"), ...NAME_COLUMN },
+        {
+          label: translate("sidebar.skeleton-settings.column.width"),
+          ...NUMBER_COLUMN,
+        },
+        {
+          label: translate("sidebar.skeleton-settings.column.side"),
+          fitText: longest(
+            ["both", "left", "right"].map((side) =>
+              translate(`sidebar.skeleton-settings.side.${side}`)
+            )
+          ),
+          fitField: true,
+        },
+        ACTIONS_COLUMN,
       ],
-      "fontra-skeleton-width-presets-height"
+      "fontra-skeleton-width-presets-height",
+      "fontra-skeleton-width-presets-column-widths"
     );
     // Ticket 69: the table's filters. Every master and case shows until one is
     // picked.
@@ -248,21 +281,33 @@ export default class SkeletonSettingsPanel extends Panel {
       ]
     );
 
-    // Grid presets (Figma 4129:3638): no backend yet.
-    const gridTable = presetTable(
-      [{ label: "name" }, { label: "primary" }, { label: "secondary" }, { label: "" }],
-      "fontra-grid-presets-height"
+    // Grid presets (Figma 4129:3638): the primary grid's base and increment
+    // and the secondary grid, an app setting like the grid itself. The
+    // Display card's grid dropdown picks from the same list.
+    this.gridPresetTable = presetTable(
+      [
+        { label: translate("sidebar.skeleton-settings.column.name"), ...NAME_COLUMN },
+        { label: "primary", fitText: ["0000", "0000"], fitField: true },
+        {
+          label: "secondary",
+          fitText: longest(["off", ...SECONDARY_GRID_MULTIPLIERS.map(String)]),
+          fitField: true,
+        },
+        ACTIONS_COLUMN,
+      ],
+      "fontra-grid-presets-height",
+      "fontra-grid-presets-column-widths"
     );
-    const disabledKey = (label) => {
-      const button = textKey(label, () => {});
-      button.disabled = true;
-      return button;
-    };
-    const gridSection = presetSection("grid", html.div(), gridTable, [
-      disabledKey("new preset"),
-      disabledKey("create from selection"),
+    const gridSection = presetSection("grid", html.div(), this.gridPresetTable, [
+      textKey("new preset", () => this._addGridPreset(null)),
+      textKey("create from current grid", () =>
+        this._addGridPreset(applicationSettingsController.model)
+      ),
     ]);
     gridSection.hidden = true;
+    applicationSettingsController.addKeyListener("coarseGridPresets", () =>
+      this._renderGridPresetRows()
+    );
 
     // The pen's width is the skeleton pen's own setting, in the canvas
     // corner while the pen is out (edit-tools-skeleton.js).
@@ -891,6 +936,106 @@ export default class SkeletonSettingsPanel extends Panel {
     });
   }
 
+  // ---- Grid presets table ---------------------------------------------------
+  // The grid presets, an app setting: every font shows the same list. A row
+  // applies its grid, takes the current grid over its own, or is deleted.
+
+  _gridPresets() {
+    return [...(applicationSettingsController.model.coarseGridPresets || [])];
+  }
+
+  _writeGridPresets(next) {
+    this._customDeleteConfirm = null;
+    applicationSettingsController.model.coarseGridPresets = next;
+  }
+
+  // A new preset is the default grid, or the current one.
+  _addGridPreset(settings) {
+    const list = this._gridPresets();
+    list.push(captureGridPreset(settings, `grid ${list.length + 1}`));
+    this._writeGridPresets(list);
+  }
+
+  _editGridPreset(index, patch) {
+    const list = this._gridPresets();
+    if (list[index]) {
+      list[index] = { ...list[index], ...patch };
+      this._writeGridPresets(list);
+    }
+  }
+
+  _deleteGridPreset(index, rowId) {
+    if (this._customDeleteConfirm !== rowId) {
+      this._customDeleteConfirm = rowId;
+      this._renderGridPresetRows();
+      return;
+    }
+    const list = this._gridPresets();
+    list.splice(index, 1);
+    this._writeGridPresets(list);
+  }
+
+  _renderGridPresetRows() {
+    const model = applicationSettingsController.model;
+    const number = (value, onCommit) =>
+      editableCell({ type: "number", value: Number(value) || 0, onCommit });
+    this.gridPresetTable.setRows(
+      this._gridPresets().map((preset, index) => ({ preset, index })),
+      ({ preset, index }) => {
+        const rowId = `grid:${index}`;
+        return tableRow(rowId, [
+          tableCell(
+            editableCell({
+              value: preset.name || "",
+              onCommit: (name) => this._editGridPreset(index, { name }),
+            })
+          ),
+          tableCell(
+            html.div({ class: "data-table-fields" }, [
+              number(preset.base, (base) => this._editGridPreset(index, { base })),
+              number(preset.increment, (increment) =>
+                this._editGridPreset(index, { increment })
+              ),
+            ])
+          ),
+          tableCell(
+            selectCell({
+              value: String(preset.secondary || 0),
+              options: [
+                { value: "0", label: "off" },
+                ...SECONDARY_GRID_MULTIPLIERS.map((multiplier) => ({
+                  value: String(multiplier),
+                  label: String(multiplier),
+                })),
+              ],
+              onChange: (secondary) =>
+                this._editGridPreset(index, { secondary: Number(secondary) }),
+            })
+          ),
+          actionsCell([
+            rowAction({
+              src: "/tabler-icons/check.svg",
+              tooltip: "Apply this grid",
+              tooltipPosition: "left",
+              onClick: () => applyGridPreset(model, preset),
+            }),
+            rowAction({
+              src: "/tabler-icons/refresh.svg",
+              tooltip: "Update from the current grid",
+              tooltipPosition: "left",
+              onClick: () =>
+                this._editGridPreset(index, captureGridPreset(model, preset.name)),
+            }),
+            this._presetDeleteAction(rowId, false, () =>
+              this._deleteGridPreset(index, rowId)
+            ),
+          ]),
+        ]);
+      },
+      { rowId: (item) => `grid:${item.index}` }
+    );
+  }
+
   // ---- Terminal presets table (ticket 71) -------------------------------------
   // Square, Rounded, Ball and Serif presets of every master (§6.4). Each kind
   // keeps its own list in each master; a row is one entry of one kind's list
@@ -1399,6 +1544,7 @@ export default class SkeletonSettingsPanel extends Panel {
 
     this._renderWidthPresetRows();
     this._renderTerminalPresetRows();
+    this._renderGridPresetRows();
   }
 }
 

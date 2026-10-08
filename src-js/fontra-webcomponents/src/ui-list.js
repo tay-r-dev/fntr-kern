@@ -167,6 +167,37 @@ export class UIList extends UnlitElement {
       text-align: right;
     }
 
+    /* A fitText column's head (see _makeHeader): its title over the column's
+       sample text, which is unseen and only gives the head its width. */
+    .text-cell-header.fit-text {
+      flex: none;
+      width: max-content;
+    }
+
+    .fit-text-sizer {
+      display: grid;
+    }
+
+    .fit-text-sizer > * {
+      grid-area: 1 / 1;
+    }
+
+    .fit-text-sample {
+      visibility: hidden;
+      height: 0;
+      overflow: hidden;
+    }
+
+    /* The sample in the rows' type: ui/table/entry. */
+    :host([look]) .fit-text-sample {
+      font-family: var(--ui-font-mono);
+      font-size: 9px;
+      font-weight: 220;
+      font-stretch: 80%;
+      text-transform: none;
+      font-feature-settings: "case" 1;
+    }
+
     input {
       font-family: fontra-ui-regular, -apple-system, sans-serif;
       font-size: 100%;
@@ -491,7 +522,7 @@ export class UIList extends UnlitElement {
     this.itemEqualFunc = (a, b) => getters.every((getter) => getter(a) === getter(b));
 
     for (const colDesc of columnDescriptions) {
-      if (colDesc.width) {
+      if (colDesc.width && colDesc.fitText == null) {
         this.setColumnWidth(colDesc.key, colDesc.width);
       }
     }
@@ -666,7 +697,7 @@ export class UIList extends UnlitElement {
           } else {
             cell = html.div({ class: classString }, [formattedValue]);
           }
-          if (colDesc.width) {
+          if (colDesc.width || colDesc.fitText != null) {
             cell.style.width = `var(${columnWidthProperty(colDesc.key)})`;
           }
         }
@@ -680,11 +711,28 @@ export class UIList extends UnlitElement {
 
   _makeHeader() {
     const header = html.div({ class: "header" });
+    this._fitTextObserver?.disconnect();
+    this._fitTextObserver = null;
 
     for (const colDesc of this.columnDescriptions) {
       const cell = html.div({ class: "text-cell-header header-cell " + colDesc.key });
       if (colDesc.align) {
         cell.classList.add(colDesc.align);
+      }
+      // A `fitText` column is as wide as that text in the rows' type, or as
+      // its title if that is wider -- "0000" for a number column. The head
+      // sizes itself to both, and the rows take its width.
+      if (colDesc.fitText != null) {
+        cell.classList.add("fit-text");
+        cell.append(
+          html.div({ class: "fit-text-sizer" }, [
+            html.span({}, [colDesc.title || colDesc.key]),
+            html.span({ class: "fit-text-sample" }, [String(colDesc.fitText)]),
+          ])
+        );
+        this._observeFitText(cell, colDesc.key);
+        header.appendChild(html.div({ class: "header-cell-container" }, [cell]));
+        continue;
       }
       if (colDesc.width) {
         cell.style.width = colDesc.minWidth
@@ -716,6 +764,25 @@ export class UIList extends UnlitElement {
       false
     );
     return this.headerContainer;
+  }
+
+  // The rows' cells take the head's width, padding as each counts it.
+  _observeFitText(cell, key) {
+    if (!this._fitTextObserver) {
+      this._fitTextObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const borderBox = getComputedStyle(entry.target).boxSizing === "border-box";
+          const width = borderBox
+            ? entry.borderBoxSize[0].inlineSize
+            : entry.contentRect.width;
+          if (width > 0) {
+            this.setColumnWidth(entry.target.dataset.fitKey, Math.ceil(width));
+          }
+        }
+      });
+    }
+    cell.dataset.fitKey = key;
+    this._fitTextObserver.observe(cell);
   }
 
   _setupResizeHandle(colDesc) {

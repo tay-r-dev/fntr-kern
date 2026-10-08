@@ -2,7 +2,9 @@ import { registerAction } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { makeFontAxisAccordionItems } from "@fontra/core/axis-ui.js";
 import {
+  applyGridPreset,
   buildCoarseGridValues,
+  captureGridPreset,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
   SECONDARY_GRID_MULTIPLIERS,
@@ -603,15 +605,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         gap: 6px;
       }
 
-      /* The font card's sections run edge to edge, so its padding is vertical. */
-      .ds-card--font {
-        padding: 8px 0;
-      }
-
-      .ds-card--font > .card-heading {
-        padding: 4px 8px 12px;
-      }
-
       .ds-heading--spaced {
         padding: 4px 0 12px;
       }
@@ -827,26 +820,64 @@ export default class DesignspaceNavigationPanel extends Panel {
         value: "off",
       });
 
-    // Grid presets have no backend yet: the Skeleton panel's preset control,
-    // shown and disabled.
+    // The grid presets (the Presets panel's Grid tab): pick one to apply it,
+    // add the current grid as a new one, or write it over the picked one.
+    const model = applicationSettingsController.model;
     const presets = new PresetHeaderControl({
-      onPick: () => {},
-      onAdd: () => {},
-      onUpdate: () => {},
-      onLock: () => {},
-      onRefresh: () => {},
+      onPick: (index) => {
+        const preset = model.coarseGridPresets?.[index];
+        if (preset) {
+          applyGridPreset(model, preset);
+        }
+      },
+      onAdd: () => {
+        const list = model.coarseGridPresets || [];
+        model.coarseGridPresets = [
+          ...list,
+          captureGridPreset(model, `grid ${list.length + 1}`),
+        ];
+      },
+      onUpdate: (index) => {
+        const list = [...(model.coarseGridPresets || [])];
+        if (list[index]) {
+          list[index] = captureGridPreset(model, list[index].name);
+          model.coarseGridPresets = list;
+        }
+      },
     });
-    for (const button of [
-      presets.addButton,
-      presets.refreshButton,
-      presets.lockButton,
-      presets.updateButton,
-    ]) {
-      button.disabled = true;
+    for (const button of [presets.addButton, presets.updateButton]) {
       button.style.width = button.style.height = "24px";
     }
-    presets.dropdown.disabled = true;
     presets.dropdown.style.setProperty("--multi-select-dropdown-width", "112px");
+    // The picked preset is the one the grid matches now.
+    const refreshPresets = () => {
+      const list = model.coarseGridPresets || [];
+      const current = captureGridPreset(model, "");
+      const matching = list.findIndex(
+        (preset) =>
+          model.coarseGridCustom &&
+          Number(preset.base) === current.base &&
+          Number(preset.increment) === current.increment &&
+          Number(preset.secondary || 0) === current.secondary
+      );
+      presets.lastPicked = matching >= 0 ? matching : null;
+      presets.refresh({
+        items: list.map((preset, index) => ({ value: index, label: preset.name })),
+        canCapture: true,
+        showPicked: true,
+      });
+    };
+    refreshPresets();
+    applicationSettingsController.addKeyListener(
+      [
+        "coarseGridPresets",
+        "coarseGridCustom",
+        "coarseGridBase",
+        "coarseGridIncrement",
+        "coarseGridSecondaryMultiplier",
+      ],
+      refreshPresets
+    );
 
     const latch = (id, src, tooltip) =>
       html.createDomElement("latch-button", {
@@ -1427,7 +1458,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     return html.div({ class: "panel" }, [
       html.div({ class: "card-column panel-section--flex" }, [
         this._buildPhraseSection(),
-        html.div({ class: "card ds-card--font" }, [
+        html.div({ class: "card card--headed" }, [
           html.div({ class: "card-heading" }, ["font"]),
           this.accordion,
         ]),
@@ -1556,6 +1587,17 @@ export default class DesignspaceNavigationPanel extends Panel {
       model.coarseGridSecondaryMultiplier = Number(event.detail.value);
       this.editorController.canvasController.requestUpdate();
     });
+    // A preset applied elsewhere sets it too.
+    applicationSettingsController.addKeyListener(
+      "coarseGridSecondaryMultiplier",
+      (event) => {
+        const value = String(event.newValue || 0);
+        if (control.value !== value) {
+          control.value = value;
+        }
+        this.editorController.canvasController.requestUpdate();
+      }
+    );
   }
 
   _readCoarseGridSettingsFromApp() {
@@ -1571,10 +1613,15 @@ export default class DesignspaceNavigationPanel extends Panel {
   _persistCoarseGridSettings() {
     const settings = this._coarseGridSettings;
     const model = applicationSettingsController.model;
-    model.coarseGridCustom = !!settings.custom;
-    model.coarseGridBase = normalizeCoarseGridBase(settings.base);
-    model.coarseGridIncrement = normalizeCoarseGridIncrement(settings.increment);
-    model.coarseGridDefaultSpacing = settings.spacing;
+    this._isPersistingCoarseGridSettings = true;
+    try {
+      model.coarseGridCustom = !!settings.custom;
+      model.coarseGridBase = normalizeCoarseGridBase(settings.base);
+      model.coarseGridIncrement = normalizeCoarseGridIncrement(settings.increment);
+      model.coarseGridDefaultSpacing = settings.spacing;
+    } finally {
+      this._isPersistingCoarseGridSettings = false;
+    }
   }
 
   _updateCoarseGridCustomFieldsVisibility() {
@@ -1695,6 +1742,25 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
 
     this._setupSecondaryGridControls();
+
+    // A grid preset applied from the Presets panel or the dropdown writes the
+    // settings directly; the controls and the spacing follow. The panel's own
+    // writes are skipped, so the two cannot feed each other.
+    applicationSettingsController.addKeyListener(
+      ["coarseGridCustom", "coarseGridBase", "coarseGridIncrement"],
+      () => {
+        if (this._isPersistingCoarseGridSettings) {
+          return;
+        }
+        this._coarseGridSettings = {
+          ...this._readCoarseGridSettingsFromApp(),
+          spacing: this.sceneSettings.coarseGridSpacing,
+        };
+        this._syncCoarseGridControls();
+        this._persistCoarseGridSettings();
+        this.editorController.canvasController.requestUpdate();
+      }
+    );
 
     this.sceneSettingsController.addKeyListener("coarseGridSpacing", (event) => {
       if (this._isApplyingCoarseGridSettings || event.senderInfo?.senderID === this) {

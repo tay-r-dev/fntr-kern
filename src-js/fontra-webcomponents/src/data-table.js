@@ -40,6 +40,9 @@ import "./ui-handle.js";
 
 const MAX_HIDEABLE_COLUMNS = 24;
 
+// The space between fields that share a cell (a `fitText` list).
+const FIT_FIELD_GAP = 2;
+
 // The looks' colors (`look` = "data" or "select"). Light colours are the design
 // system's tokens (core.css); dark ones stay hand-picked until the design has
 // a dark mode.
@@ -155,6 +158,12 @@ const DATA_TABLE_STYLES = `
   /* Width stays weak, so a caller's own width class wins. */
   :where(.data-table-input, .data-table-select) {
     width: 100%;
+  }
+
+  /* Fields sharing a cell, side by side (FIT_FIELD_GAP apart). */
+  :where(.data-table-fields) {
+    display: flex;
+    gap: ${FIT_FIELD_GAP}px;
   }
 
   /* The look is not weak: it has to beat a page's global input rule. */
@@ -945,8 +954,13 @@ export class DataTable extends HTMLElement {
   }
 
   // Column descriptor shape: { label, key, sortKey, sortable, selectAll,
-  // hideable, visible, align, headerClassName }. `sortKey` is opaque to this
-  // component -- it is whatever the caller passed back through `onSort`.
+  // hideable, visible, align, headerClassName, width, minWidth, noShrink,
+  // fitText, fitField }. A `fitText` column is as wide as that text in the
+  // rows' type, or as its head if that is wider -- "0000" for a number
+  // column, or a list for fields side by side. `fitField` measures it
+  // inside an editable cell's box. Such a column cannot be dragged or
+  // shrunk. `sortKey` is opaque to this component -- it is whatever the
+  // caller passed back through `onSort`.
   // `key` names a hideable column in the column menu and `setColumnVisible`.
   set columns(columns) {
     this._columns = columns || [];
@@ -1102,7 +1116,9 @@ export class DataTable extends HTMLElement {
     const last = visible[visible.length - 1];
     const fixed = visible.filter(({ column }) => column !== last?.column);
     const widthOf = ({ column, index }) =>
-      this._columnWidths?.[this._columnId(column, index)] ?? column.width ?? null;
+      column.fitText != null
+        ? this._fitTextWidth(column)
+        : (this._columnWidths?.[this._columnId(column, index)] ?? column.width ?? null);
     const anyWidth = fixed.some((entry) => widthOf(entry) != null);
 
     if (last) {
@@ -1126,7 +1142,10 @@ export class DataTable extends HTMLElement {
     let used = 0;
     fixed.forEach((entry, i) => {
       const th = entry.column._headerElement;
-      if (!th.querySelector(":scope > .data-table-column-grip")) {
+      if (
+        entry.column.fitText == null &&
+        !th.querySelector(":scope > .data-table-column-grip")
+      ) {
         th.appendChild(this._makeColumnGrip(entry.column, entry.index));
       }
       const width = shown[i] || null;
@@ -1148,8 +1167,47 @@ export class DataTable extends HTMLElement {
   // width for a column marked `noShrink`, which the box never narrows.
   _shrinkFloors(fixed, widths) {
     return fixed.map(({ column }, i) =>
-      column.noShrink ? (widths[i] ?? 0) : (column.minWidth ?? 24)
+      column.noShrink || column.fitText != null
+        ? (widths[i] ?? 0)
+        : (column.minWidth ?? 24)
     );
+  }
+
+  // A `fitText` column's width: its text set in a row's cell, or its label
+  // in its head, whichever is wider, with the cell's padding. A list is
+  // several fields side by side, FIT_FIELD_GAP apart. Measured while shown,
+  // so it follows the look's type.
+  _fitTextWidth(column) {
+    const measure = (cell, texts, className) => {
+      const style = getComputedStyle(cell);
+      let width =
+        parseFloat(style.paddingLeft) +
+        parseFloat(style.paddingRight) +
+        FIT_FIELD_GAP * (texts.length - 1);
+      for (const text of texts) {
+        const probe = document.createElement("span");
+        probe.className = className || "";
+        probe.style.cssText =
+          "display: inline-block; width: auto; position: absolute; visibility: hidden;";
+        probe.textContent = text;
+        cell.appendChild(probe);
+        width += probe.getBoundingClientRect().width;
+        probe.remove();
+      }
+      return width;
+    };
+    const head = measure(column._headerElement, [column.label || ""]);
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    row.appendChild(cell);
+    this._tbody.appendChild(row);
+    const text = measure(
+      cell,
+      [].concat(column.fitText).map(String),
+      column.fitField ? "data-table-input" : ""
+    );
+    row.remove();
+    return Math.ceil(Math.max(head, text));
   }
 
   _maxColumnWidth(column) {
@@ -1161,9 +1219,11 @@ export class DataTable extends HTMLElement {
         continue;
       }
       others +=
-        this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
-        entry.column.width ??
-        80;
+        entry.column.fitText != null
+          ? this._fitTextWidth(entry.column)
+          : (this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
+            entry.column.width ??
+            80);
     }
     const box = this._scroll?.clientWidth || 0;
     return box > 0 ? box - (last?.column.minWidth ?? 48) - others : Infinity;
@@ -1527,8 +1587,10 @@ export class DataTable extends HTMLElement {
       const visible = this._visibleColumns();
       const fixed = visible.slice(0, -1);
       const ids = fixed.map(({ column, index }) => this._columnId(column, index));
-      const current = fixed.map(
-        ({ column }, i) => this._columnWidths?.[ids[i]] ?? column.width ?? null
+      const current = fixed.map(({ column }, i) =>
+        column.fitText != null
+          ? this._fitTextWidth(column)
+          : (this._columnWidths?.[ids[i]] ?? column.width ?? null)
       );
       if (box < previous && current.every((width) => width != null)) {
         // Growing goes to the last column alone; the fixed columns stay.

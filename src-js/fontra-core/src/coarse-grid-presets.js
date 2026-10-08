@@ -71,3 +71,35 @@ export function secondaryCoarseGridSpacing(settings, primarySpacing) {
   }
   return primarySpacing * multiplier;
 }
+
+// A grid preset: a name, the custom spacing's base and increment, and the
+// secondary grid's multiplier (0 for off). The presets are an app setting,
+// as the grid's own settings are.
+export function captureGridPreset(settings, name) {
+  const custom = !!settings?.coarseGridCustom;
+  const secondary = Number(settings?.coarseGridSecondaryMultiplier);
+  return {
+    name,
+    base: custom
+      ? normalizeCoarseGridBase(settings.coarseGridBase)
+      : COARSE_GRID_DEFAULT_BASE,
+    increment: custom
+      ? normalizeCoarseGridIncrement(settings.coarseGridIncrement)
+      : COARSE_GRID_DEFAULT_INCREMENT,
+    secondary: SECONDARY_GRID_MULTIPLIERS.includes(secondary) ? secondary : 0,
+  };
+}
+
+// Applying a preset turns custom spacing on with its base and increment and
+// sets the secondary grid. The spacing snaps to the new steps where it is read.
+export function applyGridPreset(settings, preset) {
+  const secondary = Number(preset.secondary);
+  settings.coarseGridCustom = true;
+  settings.coarseGridBase = normalizeCoarseGridBase(preset.base);
+  settings.coarseGridIncrement = normalizeCoarseGridIncrement(preset.increment);
+  settings.coarseGridSecondaryMultiplier = SECONDARY_GRID_MULTIPLIERS.includes(
+    secondary
+  )
+    ? secondary
+    : 0;
+}
