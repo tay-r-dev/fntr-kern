@@ -90,10 +90,28 @@ export function captureGridPreset(settings, name) {
   };
 }
 
+// Whether the grid is the preset's: its base, increment and secondary grid.
+// A grid without custom spacing has the default base and increment.
+export function gridMatchesPreset(settings, preset) {
+  const current = captureGridPreset(settings, "");
+  return (
+    normalizeCoarseGridBase(preset.base) === current.base &&
+    normalizeCoarseGridIncrement(preset.increment) === current.increment &&
+    (Number(preset.secondary) || 0) === current.secondary
+  );
+}
+
 // Applying a preset turns custom spacing on with its base and increment and
 // sets the secondary grid. The spacing snaps to the new steps where it is read.
+// The preset is kept as the pick, so every preset dropdown shows it, however
+// it was applied; a bound grid stays bound, to this preset.
 export function applyGridPreset(settings, preset) {
   const secondary = Number(preset.secondary);
+  settings.coarseGridPresetPick = preset.name ?? null;
+  const bond = settings.coarseGridPresetBond;
+  if ((settings.coarseGridPresets || []).some((other) => other.name === bond)) {
+    settings.coarseGridPresetBond = preset.name ?? null;
+  }
   settings.coarseGridCustom = true;
   settings.coarseGridBase = normalizeCoarseGridBase(preset.base);
   settings.coarseGridIncrement = normalizeCoarseGridIncrement(preset.increment);

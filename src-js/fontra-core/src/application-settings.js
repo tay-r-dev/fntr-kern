@@ -17,6 +17,10 @@ export const applicationSettingsController = new ObservableController({
   coarseGridSecondaryMultiplier: 0,
   // fork: the grid presets, each {name, base, increment, secondary} (app-level, per D9)
   coarseGridPresets: [],
+  // fork: the name of the grid preset applied last, wherever from, or null
+  coarseGridPresetPick: null,
+  // fork: the name of the grid preset the grid is bound to, or null
+  coarseGridPresetBond: null,
   // fork: the grids' look, tuned in the Debug panel: black at these opacities,
   // dot diameters in screen pixels, zoomed out and with the unit grid showing
   gridFineOpacity: 0.06,

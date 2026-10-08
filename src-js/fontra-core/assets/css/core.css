@@ -532,7 +532,7 @@
   --text-input-background-color-dark: #333;
 
   --top-bar-background-color-light: var(--fontra-theme-marker)
-    var(--surface-base-basic-2);
+    var(--surface-base-basic-1);
   --top-bar-background-color-dark: #3c3c3c;
 
   --foreground-color: var(--foreground-color-light, var(--foreground-color-dark));

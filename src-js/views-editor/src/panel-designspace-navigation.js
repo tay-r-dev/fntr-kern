@@ -5,6 +5,7 @@ import {
   applyGridPreset,
   buildCoarseGridValues,
   captureGridPreset,
+  gridMatchesPreset,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
   SECONDARY_GRID_MULTIPLIERS,
@@ -820,57 +821,107 @@ export default class DesignspaceNavigationPanel extends Panel {
         value: "off",
       });
 
-    // The grid presets (the Presets panel's Grid tab): pick one to apply it,
-    // add the current grid as a new one, or write it over the picked one.
+    // The grid presets (the Presets panel's Grid tab), as the skeleton presets
+    // work (preset-header-control.js). Picking one applies it. The dropdown
+    // shows the bound preset, else the one applied last -- here or from the
+    // Presets panel's table -- kept while the grid is edited after it, else
+    // one the grid matches. Update writes the grid
+    // over the shown preset, live once they differ, in two presses. Lock binds
+    // the grid to the shown preset, and a bound grid's preset controls are
+    // held. Back to the preset applies the shown preset again, lit once the
+    // grid differs from it.
     const model = applicationSettingsController.model;
+    const list = () => model.coarseGridPresets || [];
+    const byName = (name) =>
+      name == null ? null : (list().find((preset) => preset.name === name) ?? null);
+    const shownPreset = () => list()[presets.lastPicked] ?? null;
     const presets = new PresetHeaderControl({
       onPick: (index) => {
-        const preset = model.coarseGridPresets?.[index];
+        const preset = list()[index];
         if (preset) {
           applyGridPreset(model, preset);
         }
       },
       onAdd: () => {
-        const list = model.coarseGridPresets || [];
-        model.coarseGridPresets = [
-          ...list,
-          captureGridPreset(model, `grid ${list.length + 1}`),
-        ];
+        const preset = captureGridPreset(model, `grid ${list().length + 1}`);
+        model.coarseGridPresets = [...list(), preset];
+        model.coarseGridPresetPick = preset.name;
       },
       onUpdate: (index) => {
-        const list = [...(model.coarseGridPresets || [])];
-        if (list[index]) {
-          list[index] = captureGridPreset(model, list[index].name);
-          model.coarseGridPresets = list;
+        const next = [...list()];
+        if (next[index]) {
+          next[index] = captureGridPreset(model, next[index].name);
+          model.coarseGridPresets = next;
+        }
+      },
+      onLock: () => {
+        const shown = shownPreset();
+        const bond = byName(model.coarseGridPresetBond);
+        model.coarseGridPresetBond =
+          bond && bond === shown ? null : (shown?.name ?? null);
+      },
+      onRefresh: () => {
+        const preset = shownPreset();
+        if (preset) {
+          applyGridPreset(model, preset);
         }
       },
     });
-    for (const button of [presets.addButton, presets.updateButton]) {
+    presets.lockButton.setAttribute("data-tooltip", "Bind the grid to this preset");
+    for (const button of [
+      presets.addButton,
+      presets.refreshButton,
+      presets.lockButton,
+      presets.updateButton,
+    ]) {
       button.style.width = button.style.height = "24px";
     }
     presets.dropdown.style.setProperty("--multi-select-dropdown-width", "112px");
-    // The picked preset is the one the grid matches now.
     const refreshPresets = () => {
-      const list = model.coarseGridPresets || [];
-      const current = captureGridPreset(model, "");
-      const matching = list.findIndex(
-        (preset) =>
-          model.coarseGridCustom &&
-          Number(preset.base) === current.base &&
-          Number(preset.increment) === current.increment &&
-          Number(preset.secondary || 0) === current.secondary
+      const items = list();
+      const bondIndex = items.findIndex(
+        (preset) => preset.name === model.coarseGridPresetBond
       );
-      presets.lastPicked = matching >= 0 ? matching : null;
+      const kept = items.findIndex(
+        (preset) => preset.name === model.coarseGridPresetPick
+      );
+      const matchIndex = items.findIndex((preset) => gridMatchesPreset(model, preset));
+      const shownIndex = [bondIndex, kept, matchIndex].find((index) => index >= 0);
+      presets.lastPicked = shownIndex ?? null;
+      const shown = items[shownIndex] ?? null;
+      const differs = !!shown && !gridMatchesPreset(model, shown);
+      const bound = bondIndex >= 0;
       presets.refresh({
-        items: list.map((preset, index) => ({ value: index, label: preset.name })),
+        items: items.map((preset, index) => ({ value: index, label: preset.name })),
         canCapture: true,
         showPicked: true,
+        updateEnabled: differs,
+        confirmUpdate: true,
+        bond: {
+          locked: bound && bondIndex === shownIndex,
+          lockEnabled: !!shown,
+          stale: differs,
+          refreshEnabled: differs,
+        },
       });
+      // A bound grid is held: its preset's controls take no edits.
+      for (const control of [
+        this.coarseGridCustomToggle,
+        this.coarseGridBaseInput,
+        this.coarseGridIncrementInput,
+        this.displayCard?.querySelector("#secondary-grid-multiplier"),
+      ]) {
+        if (control) {
+          control.disabled = bound;
+        }
+      }
     };
-    refreshPresets();
+    this._refreshGridPresets = refreshPresets;
     applicationSettingsController.addKeyListener(
       [
         "coarseGridPresets",
+        "coarseGridPresetBond",
+        "coarseGridPresetPick",
         "coarseGridCustom",
         "coarseGridBase",
         "coarseGridIncrement",
@@ -1742,6 +1793,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     }
 
     this._setupSecondaryGridControls();
+    this._refreshGridPresets();
 
     // A grid preset applied from the Presets panel or the dropdown writes the
     // settings directly; the controls and the spacing follow. The panel's own

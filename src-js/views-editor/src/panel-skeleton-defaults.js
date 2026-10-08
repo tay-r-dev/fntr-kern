@@ -956,9 +956,18 @@ export default class SkeletonSettingsPanel extends Panel {
     this._writeGridPresets(list);
   }
 
+  // A renamed preset keeps the grid's bond and pick, which are by name.
   _editGridPreset(index, patch) {
     const list = this._gridPresets();
     if (list[index]) {
+      const model = applicationSettingsController.model;
+      if (patch.name != null) {
+        for (const key of ["coarseGridPresetBond", "coarseGridPresetPick"]) {
+          if (model[key] === list[index].name) {
+            model[key] = patch.name;
+          }
+        }
+      }
       list[index] = { ...list[index], ...patch };
       this._writeGridPresets(list);
     }

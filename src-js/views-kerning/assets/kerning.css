@@ -103,7 +103,7 @@
 /* The design's colours (Figma 421:14557), light and dark. */
 :root {
   --kerning-panel-background-color-light: var(--fontra-theme-marker)
-    var(--surface-base-basic-2);
+    var(--surface-base-basic-1);
   --kerning-panel-background-color-dark: #1e1e1e;
   --kerning-panel-background-color: var(
     --kerning-panel-background-color-light,
