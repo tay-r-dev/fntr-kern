@@ -512,7 +512,7 @@ export default class TransformationPanel {
     this.originPickButton = pickButton;
     // The cross drops a picked or typed origin, back to the grid's centre.
     const clearButton = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/x.svg",
+      "src": "/images/cross.svg",
       "data-tooltip": translate("sidebar.selection-transformation.origin.clear"),
       "data-tooltipposition": "bottom",
     });
@@ -540,7 +540,7 @@ export default class TransformationPanel {
     formContents.push({
       type: "universal-row",
       field1: this._rowIcon(
-        "/tabler-icons/circle-dot.svg",
+        "/images/transform-panel-origin.svg",
         translate("sidebar.selection-transformation.origin")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: radioButtonOrigin },
@@ -559,7 +559,7 @@ export default class TransformationPanel {
       fieldX: moveXField,
       fieldY: moveYField,
     } = this._buildScrubXYRow({
-      icon: "/tabler-icons/arrow-move-right.svg",
+      icon: "/images/transform-panel-move.svg",
       tooltip: translate("sidebar.selection-transformation.move"),
       valueX: this.transformParameters.moveX,
       valueY: this.transformParameters.moveY,
@@ -656,7 +656,7 @@ export default class TransformationPanel {
     const scaleRow = {
       type: "universal-row",
       field1: this._rowIcon(
-        "/tabler-icons/resize.svg",
+        "/images/transform-panel-scale.svg",
         translate("sidebar.selection-transformation.scale")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: scaleInput },
@@ -695,7 +695,7 @@ export default class TransformationPanel {
     formContents.push({
       type: "universal-row",
       field1: this._rowIcon(
-        "/tabler-icons/rotate.svg",
+        "/images/transform-panel-rotate.svg",
         translate("sidebar.selection-transformation.rotate")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: rotateField },
@@ -707,7 +707,7 @@ export default class TransformationPanel {
       fieldX: skewXField,
       fieldY: skewYField,
     } = this._buildScrubXYRow({
-      icon: "/images/skew.svg",
+      icon: "/images/transform-panel-skew.svg",
       tooltip: translate("sidebar.selection-transformation.skew"),
       valueX: this.transformParameters.skewX,
       valueY: this.transformParameters.skewY,
@@ -770,7 +770,7 @@ export default class TransformationPanel {
       fieldX: dimensionWidthField,
       fieldY: dimensionHeightField,
     } = this._buildScrubXYRow({
-      icon: "/tabler-icons/dimensions.svg",
+      icon: "/images/transform-panel-dimension.svg",
       tooltip: translate("sidebar.selection-info.dimensions"),
       labels: ["W", "H"],
       valueX: this.transformParameters.dimensionWidth,
@@ -854,28 +854,34 @@ export default class TransformationPanel {
       groupLabel(`${K}.operations`),
       pairRow(
         tray([
-          segment("/tabler-icons/flip-vertical.svg", `${K}.flip.vertically`, () =>
-            this.transformSelection(
-              () => new Transform().scale(-1, 1),
-              "flip vertically"
-            )
+          segment(
+            "/images/transform-pane-lflip-vertical.svg",
+            `${K}.flip.vertically`,
+            () =>
+              this.transformSelection(
+                () => new Transform().scale(-1, 1),
+                "flip vertically"
+              )
           ),
-          segment("/tabler-icons/flip-horizontal.svg", `${K}.flip.horizontally`, () =>
-            this.transformSelection(
-              () => new Transform().scale(1, -1),
-              "flip horizontally"
-            )
+          segment(
+            "/images/transform-pane-lflip-horizontal.svg",
+            `${K}.flip.horizontally`,
+            () =>
+              this.transformSelection(
+                () => new Transform().scale(1, -1),
+                "flip horizontally"
+              )
           ),
         ]),
         tray([
           segment(
-            "/tabler-icons/layout-distribute-vertical.svg",
+            "/images/transform-pane-ldistribute-vertically.svg",
             `${K}.distribute.horizontally`,
             () => this.moveObjects(distributeHorizontally),
             spacingCard()
           ),
           segment(
-            "/tabler-icons/layout-distribute-horizontal.svg",
+            "/images/transform-pane-ldistribute-horizontally.svg",
             `${K}.distribute.vertically`,
             () => this.moveObjects(distributeVertically),
             spacingCard()
@@ -884,29 +890,29 @@ export default class TransformationPanel {
       ),
       pairRow(
         tray([
-          segment("/tabler-icons/vertical-align-left.svg", `${K}.align.left`, () =>
+          segment("/images/transform-panel-align-left.svg", `${K}.align.left`, () =>
             this.moveObjects(alignLeft)
           ),
-          segment("/tabler-icons/vertical-align-center.svg", `${K}.align.center`, () =>
-            this.moveObjects(alignCenter)
+          segment(
+            "/images/transform-panel-align-horizontally.svg",
+            `${K}.align.center`,
+            () => this.moveObjects(alignCenter)
           ),
-          segment("/tabler-icons/vertical-align-right.svg", `${K}.align.right`, () =>
+          segment("/images/transform-panel-alight-right.svg", `${K}.align.right`, () =>
             this.moveObjects(alignRight)
           ),
         ]),
         tray([
-          segment("/tabler-icons/horizontal-align-top.svg", `${K}.align.top`, () =>
+          segment("/images/transform-panel-align-top.svg", `${K}.align.top`, () =>
             this.moveObjects(alignTop)
           ),
           segment(
-            "/tabler-icons/horizontal-align-center.svg",
+            "/images/transform-panel-align-vertically.svg",
             `${K}.align.middle`,
             () => this.moveObjects(alignMiddle)
           ),
-          segment(
-            "/tabler-icons/horizontal-align-bottom.svg",
-            `${K}.align.bottom`,
-            () => this.moveObjects(alignBottom)
+          segment("/images/transform-panel-align-bottom.svg", `${K}.align.bottom`, () =>
+            this.moveObjects(alignBottom)
           ),
         ])
       ),
@@ -917,30 +923,28 @@ export default class TransformationPanel {
     // dropdown; simplify; balance.
     const P = `${K}.path-operations`;
     const booleanCard = tray([
-      segment("/tabler-icons/layers-subtract.svg", `${P}.subtract`, () =>
+      segment("/images/subtract.svg", `${P}.subtract`, () =>
         this.doPathOperations(this.pathOperations.subtractPath, "subtract")
       ),
-      segment("/tabler-icons/layers-intersect-2.svg", `${P}.intersect`, () =>
+      segment("/images/intersect.svg", `${P}.intersect`, () =>
         this.doPathOperations(this.pathOperations.intersectPath, "intersect")
       ),
-      segment("/tabler-icons/layers-difference.svg", `${P}.exclude`, () =>
+      segment("/images/exclude.svg", `${P}.exclude`, () =>
         this.doPathOperations(this.pathOperations.excludePath, "exclude")
       ),
     ]);
     const pathGroup = tray([
       segment(
-        "/tabler-icons/layers-union.svg",
+        "/images/union.svg",
         `${P}.union.more`,
         () => this.doPathOperations(this.pathOperations.unionPath, "union"),
         booleanCard
       ),
-      segment("/tabler-icons/shape.svg", "action.simplify-contour", () => {
+      segment("/images/simplify.svg", "action.simplify-contour", () => {
         this.sceneController.updateContextMenuState(null);
         this.sceneController.doSimplifySelectedContours();
       }),
-      segment("/tabler-icons/arrows-horizontal.svg", `${K}.harmonize.balance`, () =>
-        this.doBalance()
-      ),
+      segment("/images/balance.svg", `${K}.harmonize.balance`, () => this.doBalance()),
     ]);
 
     // Harmonize: one segment per continuity. G2's options hang off it; G3 has
