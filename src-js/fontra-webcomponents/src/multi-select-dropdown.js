@@ -260,6 +260,14 @@ export class MultiSelectDropdown extends UnlitElement {
       max-width: none;
     }
 
+    /* The icon mode (the overflow button) is its icon's size, not a field's:
+       it neither flexes nor takes a field's minimum. */
+    :host([icon-mode]) {
+      flex: none;
+      min-width: 0;
+      max-width: none;
+    }
+
     :host([disabled]) {
       cursor: default;
     }
@@ -427,6 +435,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
   connectedCallback() {
     super.connectedCallback();
+    this.toggleAttribute("icon-mode", !!this._icon);
     this._watchOwnLine();
   }
 
@@ -490,6 +499,10 @@ export class MultiSelectDropdown extends UnlitElement {
 
   set icon(value) {
     this._icon = value || "";
+    // A constructor may not set attributes; connectedCallback catches up.
+    if (this.isConnected) {
+      this.toggleAttribute("icon-mode", !!this._icon);
+    }
     this.requestUpdate();
   }
 
