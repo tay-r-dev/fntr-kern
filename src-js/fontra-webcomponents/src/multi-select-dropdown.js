@@ -242,13 +242,19 @@ export class MultiSelectDropdown extends UnlitElement {
     /* The host is the button: the whole box it draws takes the pointer. The
        inner button only draws the face, and takes the keyboard focus. */
     /* In a row it takes the room the row has, from 72px to 156px; its label
-       ends in an ellipsis where the field is narrower than it. */
+       ends in an ellipsis where the field is narrower than it. Its control
+       group moved to a line of its own under the heading, it fills that
+       line. */
     :host {
       display: inline-block;
       flex: 1 1 auto;
       min-width: 72px;
       max-width: 156px;
       cursor: pointer;
+    }
+
+    :host([own-line]) {
+      max-width: none;
     }
 
     :host([disabled]) {
@@ -411,6 +417,42 @@ export class MultiSelectDropdown extends UnlitElement {
       color: var(--multi-select-dropdown-disabled-text-color);
     }
   `;
+
+  connectedCallback() {
+    super.connectedCallback();
+    this._watchOwnLine();
+  }
+
+  disconnectedCallback() {
+    this._ownLineObserver?.disconnect();
+    this._ownLineObserver = null;
+  }
+
+  // In a control group (shared.css), marks whether the group has wrapped to
+  // a line of its own under its heading: it is then lower in its row than
+  // half its own height.
+  _watchOwnLine() {
+    let group = this.closest(".control-group");
+    while (group?.parentElement?.closest(".control-group")) {
+      group = group.parentElement.closest(".control-group");
+    }
+    const row = group?.parentElement;
+    if (!row) {
+      return;
+    }
+    const update = () => {
+      const groupBox = group.getBoundingClientRect();
+      const rowBox = row.getBoundingClientRect();
+      this.toggleAttribute(
+        "own-line",
+        groupBox.height > 0 && groupBox.top - rowBox.top > groupBox.height / 2
+      );
+    };
+    this._ownLineObserver?.disconnect();
+    this._ownLineObserver = new ResizeObserver(update);
+    this._ownLineObserver.observe(row);
+    update();
+  }
 
   constructor() {
     super();
