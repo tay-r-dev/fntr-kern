@@ -1,7 +1,12 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { markerGeometry } from "@fontra/core/marker-measure.js";
-import { getMarkerGroups, getMarkers, markerKind } from "@fontra/core/marker-model.js";
+import {
+  getMarkerGroups,
+  getMarkers,
+  markerKind,
+  skeletonPointNumber,
+} from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { round, throttleCalls } from "@fontra/core/utils.ts";
 import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
@@ -377,7 +382,7 @@ export default class MarkersPanel extends Panel {
         ? round(geometry.distance - marker.target, 1)
         : null;
     return tableRow(marker.id, [
-      this._idCell(marker, labels, positionedGlyph),
+      this._idCell(marker, labels, positionedGlyph, skeletonData),
       tableCell([value, afterValue(delta, angle)]),
       this._goalCell(marker),
       ...this._groupAndActionCells(marker, groupOptions),
@@ -385,10 +390,12 @@ export default class MarkersPanel extends Panel {
   }
 
   // The marker's name, and the points it holds on to after it.
-  _idCell(marker, labels, positionedGlyph) {
+  _idCell(marker, labels, positionedGlyph, skeletonData) {
     return tableCell([
       labels.get(marker.id),
-      additionalText(describeEnds(marker, positionedGlyph.glyph.flattenedPath)),
+      additionalText(
+        describeEnds(marker, positionedGlyph.glyph.flattenedPath, skeletonData)
+      ),
     ]);
   }
 
@@ -504,7 +511,7 @@ export default class MarkersPanel extends Panel {
         ? Number(((geometry.curvature || 0) - marker.target).toPrecision(4))
         : null;
     return tableRow(marker.id, [
-      this._idCell(marker, labels, positionedGlyph),
+      this._idCell(marker, labels, positionedGlyph, skeletonData),
       tableCell([
         value,
         afterValue(delta, geometry.stale ? null : formatRadius(geometry.radius)),
@@ -651,8 +658,10 @@ export function formatCurvature(curvature) {
 
 // What the marker is holding on to, named by the POINT it sits on. A segment number is
 // an artefact of how the outline is stored and means nothing to a person; the point at
-// the near end of that segment is something you can see and click.
-function describeEnds(marker, path) {
+// the near end of that segment is something you can see and click. Points are numbered
+// as the canvas labels them: an outline point by its number in the whole glyph (no
+// contour number -- it is unique already), a skeleton point by its own run, after "R.".
+function describeEnds(marker, path, skeletonData) {
   const parts = (marker.ends || [])
     .filter((end) => end.kind !== "cast")
     .map((end) => {
@@ -660,9 +669,13 @@ function describeEnds(marker, path) {
         case "pathSegment":
           return pointNameOfSegment(path, end);
         case "pathPoint":
-          return `${end.contourIndex}.${end.pointIndex}`;
-        case "skeletonPoint":
-          return translate("sidebar.markers.on-skeleton");
+          return pathPointName(path, end.contourIndex, end.pointIndex);
+        case "skeletonPoint": {
+          const number = skeletonPointNumber(skeletonData, end.contourId, end.pointId);
+          return number == null
+            ? translate("sidebar.markers.broken")
+            : translate("sidebar.markers.on-skeleton", number);
+        }
         case "free":
           return translate("sidebar.markers.free");
         default:
@@ -689,22 +702,30 @@ function pointNameOfSegment(path, end) {
   const segments = [...path.iterContourDecomposedSegments(end.contourIndex)];
   const segment = segments[end.segmentIndex];
   if (!segment) {
-    return `${end.contourIndex}.?`;
+    return "?";
   }
-  // The walk hands back point numbers counted across the whole path, and a marker row
-  // names points the way the canvas does, counted within their own contour.
-  const first = path.getContourAndPointIndex(segment.pointIndices[0])[1];
-  const last = path.getContourAndPointIndex(segment.pointIndices.at(-1))[1];
+  // The walk hands back point numbers counted across the whole path, as the canvas
+  // numbers them.
+  const first = segment.pointIndices[0];
+  const last = segment.pointIndices.at(-1);
   // A ray on an on-curve point is stored as a segment's end, but it sits on the point,
   // so it is named by the point. Named by the segment, a ray moved onto a corner read as
   // though it had gone to some segment instead.
   if (end.t === 0) {
-    return `${end.contourIndex}.${first}`;
+    return `${first}`;
   }
   if (end.t === 1) {
-    return `${end.contourIndex}.${last}`;
+    return `${last}`;
   }
-  return `${end.contourIndex}.${first}-${last}`;
+  return `${first}-${last}`;
+}
+
+// An outline point by its number in the whole glyph, as the canvas labels it.
+function pathPointName(path, contourIndex, pointIndex) {
+  if (!path || contourIndex < 0 || contourIndex >= path.numContours) {
+    return translate("sidebar.markers.broken");
+  }
+  return `${path.getAbsolutePointIndex(contourIndex, pointIndex)}`;
 }
 
 function signed(value) {

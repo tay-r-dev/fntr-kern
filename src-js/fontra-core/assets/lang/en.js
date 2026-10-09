@@ -610,7 +610,7 @@ export const strings = {
   "sidebar.markers.no-group": "No group",
   "sidebar.markers.no-groups": "No groups",
   "sidebar.markers.none": "No markers in this glyph",
-  "sidebar.markers.on-skeleton": "skeleton",
+  "sidebar.markers.on-skeleton": "R.%0",
   "sidebar.markers.rays": "Rays",
   "sidebar.markers.rulers": "Rulers",
   "sidebar.markers.show-group": "Show group",

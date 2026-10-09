@@ -675,3 +675,19 @@ export function unaimedRay(ends, path) {
   });
   return next;
 }
+
+// A skeleton point's number as the canvas labels it (the skeleton point
+// index layer): one run across every skeleton contour, on-curves and handles
+// alike, from 0. Null for a point that is gone.
+export function skeletonPointNumber(skeletonData, contourId, pointId) {
+  let number = 0;
+  for (const contour of skeletonData?.contours || []) {
+    const points = contour.points || [];
+    if (contour.id === contourId) {
+      const index = points.findIndex((point) => point.id === pointId);
+      return index < 0 ? null : number + index;
+    }
+    number += points.length;
+  }
+  return null;
+}
