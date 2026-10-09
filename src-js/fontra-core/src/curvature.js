@@ -376,7 +376,17 @@ const SPEEDPUNK_RESULTS_PER_OWNER = 6;
 // until the owner goes, which an edit does. `makePath` builds the path to comb; it
 // is asked once per owner and `variant`, a key for any setting the path depends on.
 // The last few rungs are kept, so zooming back and forth does not recompute.
-export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "") {
+// `holdRung` is for while the zoom moves: the last comb drawn with these settings
+// stands, whatever rung the zoom has reached, so no frame of the zoom pays for a
+// comb. The comb is in glyph units, so a held one still sits on the outline; the
+// caller asks again once the zoom settles.
+export function cachedSpeedPunkSamples(
+  owner,
+  makePath,
+  params = {},
+  variant = "",
+  { holdRung = false } = {}
+) {
   let entry = speedPunkCache.get(owner);
   if (!entry || entry.variant !== variant) {
     const path = makePath();
@@ -402,6 +412,10 @@ export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "
     )
   );
   const { zoomFactor, ...rest } = params;
+  const settingsKey = JSON.stringify(rest);
+  if (holdRung && entry.lastSettingsKey === settingsKey) {
+    return entry.lastSamples;
+  }
   const key = JSON.stringify({ ...rest, contourSegmentBudget });
   let samples = entry.results.get(key);
   if (samples) {
@@ -418,6 +432,8 @@ export function cachedSpeedPunkSamples(owner, makePath, params = {}, variant = "
     }
   }
   entry.results.set(key, samples);
+  entry.lastSettingsKey = settingsKey;
+  entry.lastSamples = samples;
   return samples;
 }
 

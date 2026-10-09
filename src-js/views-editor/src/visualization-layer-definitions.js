@@ -2095,8 +2095,9 @@ registerVisualizationLayerDefinition({
     );
 
     // The comb is kept per glyph and step rung (cachedSpeedPunkSamples): a zoom
-    // step redraws it rather than recomputing it. The path depends on two settings,
-    // which name the cached variant.
+    // step redraws it rather than recomputing it, and while the zoom moves the
+    // last comb holds across rungs, so no zoom frame computes one. The path
+    // depends on two settings, which name the cached variant.
     const variant = [
       applicationSettingsController.model.skeletonShowGeneratedGeometry !== false,
       !!applicationSettingsController.model.skeletonSpeedPunk,
@@ -2117,7 +2118,8 @@ registerVisualizationLayerDefinition({
         zoomFactor: controller.magnification || 1.0,
         adaptStepsToCurveLength: parameters.adaptStepsToCurveLength,
       },
-      variant
+      variant,
+      { holdRung: !!controller.isZooming }
     );
     if (!quads.length) return;
 

@@ -61,6 +61,53 @@ describe("cachedSpeedPunkSamples", () => {
     expect(other).to.not.equal(a);
   });
 
+  it("holds the last comb while the zoom moves, across rungs", () => {
+    const owner = {};
+    let built = 0;
+    const makePath = () => {
+      built++;
+      return quarterPath();
+    };
+    const a = cachedSpeedPunkSamples(owner, makePath, { ...params, zoomFactor: 1 });
+    const held = cachedSpeedPunkSamples(
+      owner,
+      makePath,
+      { ...params, zoomFactor: 16 },
+      "",
+      { holdRung: true }
+    );
+    expect(held).to.equal(a);
+    expect(built).to.equal(1);
+    // Once the zoom settles, the comb for its rung.
+    const settled = cachedSpeedPunkSamples(owner, makePath, {
+      ...params,
+      zoomFactor: 16,
+    });
+    expect(settled).to.not.equal(a);
+    expect(settled.length).to.be.above(a.length);
+  });
+
+  it("does not hold a comb drawn with other settings, or for another owner", () => {
+    const owner = {};
+    const a = cachedSpeedPunkSamples(owner, quarterPath, { ...params, zoomFactor: 1 });
+    const otherSettings = cachedSpeedPunkSamples(
+      owner,
+      quarterPath,
+      { ...params, zoomFactor: 16, sharpness: 2 },
+      "",
+      { holdRung: true }
+    );
+    expect(otherSettings).to.not.equal(a);
+    const otherOwner = cachedSpeedPunkSamples(
+      {},
+      quarterPath,
+      { ...params, zoomFactor: 16 },
+      "",
+      { holdRung: true }
+    );
+    expect(otherOwner.length).to.be.above(0);
+  });
+
   it("draws the samples computeSpeedPunkSamples draws at the rung's step count", () => {
     const samples = cachedSpeedPunkSamples({}, quarterPath, {
       ...params,

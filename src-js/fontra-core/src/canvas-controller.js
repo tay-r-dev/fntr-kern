@@ -7,6 +7,9 @@ const DEFAULT_MAX_MAGNIFICATION = 200;
 // How quickly a wheel-notch zoom glides to its target: the time constant of the
 // easing, in ms. Smaller is snappier.
 const ZOOM_GLIDE_MS = 60;
+// The zoom counts as moving until this long after its last step. Layers that
+// would rebuild for a new magnification (SpeedPunk) hold until then.
+const ZOOM_SETTLE_MS = 150;
 
 export class CanvasController {
   constructor(canvas, magnificationChangedCallback) {
@@ -319,9 +322,21 @@ export class CanvasController {
     // adjust origin
     this.origin.x += (1 - zoomFactor) * center.x * prevMagnification;
     this.origin.y -= (1 - zoomFactor) * center.y * prevMagnification;
+    this._markZooming();
     this._magnificationChangedCallback?.(this.magnification);
     this.requestUpdate();
     this._dispatchEvent("viewBoxChanged", "magnification");
+  }
+
+  // While the zoom moves, `isZooming` is true; once it settles, one more draw
+  // lets held layers catch up with the magnification.
+  _markZooming() {
+    this.isZooming = true;
+    clearTimeout(this._zoomSettleTimer);
+    this._zoomSettleTimer = setTimeout(() => {
+      this.isZooming = false;
+      this.requestUpdate();
+    }, ZOOM_SETTLE_MS);
   }
 
   // Eases the magnification toward a target that each notch multiplies, about the
