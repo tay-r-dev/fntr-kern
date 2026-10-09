@@ -139,3 +139,10 @@ export function spreadColumnWidths(widths, delta, minimum = 24) {
   }
   return [...widths];
 }
+
+// A table's own copy of the column descriptors it was given. The table keeps
+// its state on them (each column's head cell), so descriptors one caller hands
+// to several tables must not be shared between those tables.
+export function ownColumns(columns) {
+  return (columns || []).map((column) => ({ ...column }));
+}

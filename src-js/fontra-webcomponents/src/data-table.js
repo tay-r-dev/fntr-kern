@@ -2,6 +2,7 @@ import * as html from "@fontra/core/html-utils.js";
 import {
   clampWindowStart,
   fitColumnWidths,
+  ownColumns,
   parseCellValue,
   spreadColumnWidths,
   parseStoredColumnWidths,
@@ -1064,7 +1065,7 @@ export class DataTable extends HTMLElement {
   // caller passed back through `onSort`.
   // `key` names a hideable column in the column menu and `setColumnVisible`.
   set columns(columns) {
-    this._columns = columns || [];
+    this._columns = ownColumns(columns);
     this._build();
   }
 

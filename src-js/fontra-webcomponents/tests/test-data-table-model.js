@@ -2,6 +2,7 @@ import { expect } from "chai";
 import {
   clampWindowStart,
   fitColumnWidths,
+  ownColumns,
   spreadColumnWidths,
   parseCellValue,
   parseStoredColumnWidths,
@@ -12,6 +13,19 @@ import {
 } from "../src/data-table-model.js";
 
 describe("data-table-model", () => {
+  it("gives each table its own copy of the column descriptors", () => {
+    const shared = { label: "id", width: 96 };
+    const columns = [shared, { label: "" }];
+    const first = ownColumns(columns);
+    const second = ownColumns(columns);
+    expect(first[0]).to.not.equal(shared);
+    expect(first[0]).to.not.equal(second[0]);
+    expect(first[0]).to.deep.equal(shared);
+    first[0]._headerElement = "first table's head";
+    expect(second[0]._headerElement).to.equal(undefined);
+    expect(shared._headerElement).to.equal(undefined);
+  });
+
   it("clamps the window start inside the item list", () => {
     expect(clampWindowStart(0, 4, 100)).to.equal(0);
     expect(clampWindowStart(50, 4, 100)).to.equal(0);
