@@ -181,6 +181,21 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 ---
 
+## Canvas stalls in Firefox (all layers)
+
+**The stall was the GPU canvas waiting on the GPU, not our JavaScript.** Two
+Firefox profiles (5 and 9 Oct) show the same thing in every 100 to 207 ms
+stall at the start of a zoom or during a drag: the content thread idle, the
+GPU process's CanvasRenderer in `WaitForSynchronizationObjectFromCpu`, every
+other thread idle. The cause was every label card drawing Figma's background
+blur by drawing the canvas onto itself through `filter: blur()`, which a GPU
+canvas answers with a readback: once a card, every frame. The cards are opaque,
+so the blur showed only on a faded measurement label. **A JS profile that is
+idle in a stall points at the GPU process; read its canvas thread.** A
+grid tile made each zoom frame was a smaller GPU allocation of the same kind.
+
+---
+
 ## The coarse grid (map F1)
 
 **The zoom lag came back with the dot look.** `3b55057a9` fixed it by stroking
