@@ -72,6 +72,37 @@ export function secondaryCoarseGridSpacing(settings, primarySpacing) {
   return primarySpacing * multiplier;
 }
 
+// The coarse grid's dots are drawn as one tile, repeated, so a frame costs the
+// same however many dots are on screen: a circle per crossing was tens of
+// thousands of circles a frame just before the dots give way, zoomed out. The
+// tile is whole pixels and the grid's period is not, so the pattern is scaled
+// down onto the period, by under one pixel's worth across the tile; every dot
+// centre still lands exactly on its crossing. All in device pixels: `period` is
+// the distance between crossings, `originX`/`originY` one crossing's position.
+// Past COARSE_GRID_TILE_MAX_PERIOD the dots are few and the tile would be large,
+// so there is no tile and the dots are drawn one by one.
+export const COARSE_GRID_TILE_MAX_PERIOD = 64;
+
+export function coarseGridDotTile({ period, radius, originX, originY }) {
+  if (!(period > 0) || period > COARSE_GRID_TILE_MAX_PERIOD) {
+    return null;
+  }
+  const size = Math.ceil(period);
+  const scale = period / size;
+  // The dot sits in the tile's centre; the matrix takes that centre to the
+  // crossing.
+  return {
+    size,
+    radius: radius / scale,
+    matrix: {
+      a: scale,
+      d: scale,
+      e: originX - period / 2,
+      f: originY - period / 2,
+    },
+  };
+}
+
 // A grid preset: a name, the custom spacing's base and increment, and the
 // secondary grid's multiplier (0 for off). The presets are an app setting,
 // as the grid's own settings are.

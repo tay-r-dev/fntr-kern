@@ -1,5 +1,8 @@
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
-import { secondaryCoarseGridSpacing } from "@fontra/core/coarse-grid-presets.js";
+import {
+  coarseGridDotTile,
+  secondaryCoarseGridSpacing,
+} from "@fontra/core/coarse-grid-presets.js";
 import {
   LABEL_COLORS,
   LABEL_COLORS_DARK_MODE,
@@ -2426,8 +2429,18 @@ registerVisualizationLayerDefinition({
       }
       ctx.globalAlpha = baseAlpha * opacity;
       const radius = size / 2;
-      // Every dot in one path and one fill: a fill per dot was hundreds of
-      // separate rasterisations a frame, zoomed out.
+      // Dense dots are one repeated tile (coarseGridDotTile); a circle per
+      // crossing was tens of thousands of circles a frame, zoomed out.
+      if (
+        fillCoarseGridDotTile(ctx, spacing, radius, params.dotColor, {
+          xMin,
+          yMin,
+          xMax,
+          yMax,
+        })
+      ) {
+        continue;
+      }
       ctx.beginPath();
       const xStart = Math.floor(xMin / spacing) * spacing;
       const yStart = Math.floor(yMin / spacing) * spacing;
@@ -2441,6 +2454,61 @@ registerVisualizationLayerDefinition({
     }
   },
 });
+
+const coarseGridTiles = new Map();
+
+// Fills the view box with the dots at `spacing` as one pattern, in device pixels,
+// with a dot centre on every crossing. False where the dots are few enough to draw
+// one by one.
+function fillCoarseGridDotTile(ctx, spacing, radius, color, viewBox) {
+  const m = ctx.getTransform();
+  const scale = Math.hypot(m.a, m.b);
+  const tile = coarseGridDotTile({
+    period: spacing * scale,
+    radius: radius * scale,
+    originX: m.e,
+    originY: m.f,
+  });
+  if (!tile) {
+    return false;
+  }
+  const key = `${tile.size}|${tile.radius}|${color}`;
+  let pattern = coarseGridTiles.get(key);
+  if (!pattern) {
+    const canvas = new OffscreenCanvas(tile.size, tile.size);
+    const tileContext = canvas.getContext("2d");
+    tileContext.fillStyle = color;
+    tileContext.beginPath();
+    tileContext.arc(tile.size / 2, tile.size / 2, tile.radius, 0, 2 * Math.PI);
+    tileContext.fill();
+    pattern = ctx.createPattern(canvas, "repeat");
+    // One tile a zoom step: keep only the last few.
+    if (coarseGridTiles.size >= 8) {
+      coarseGridTiles.delete(coarseGridTiles.keys().next().value);
+    }
+    coarseGridTiles.set(key, pattern);
+  }
+  pattern.setTransform(
+    new DOMMatrix([tile.matrix.a, 0, 0, tile.matrix.d, tile.matrix.e, tile.matrix.f])
+  );
+  const corners = [
+    m.transformPoint({ x: viewBox.xMin, y: viewBox.yMin }),
+    m.transformPoint({ x: viewBox.xMax, y: viewBox.yMax }),
+  ];
+  const left = Math.min(corners[0].x, corners[1].x);
+  const top = Math.min(corners[0].y, corners[1].y);
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = pattern;
+  ctx.fillRect(
+    left,
+    top,
+    Math.abs(corners[1].x - corners[0].x),
+    Math.abs(corners[1].y - corners[0].y)
+  );
+  ctx.restore();
+  return true;
+}
 
 // The Tunni gizmos on ordinary curves. Each gizmo shows only once the cursor has
 // rested near it, and fades in and out (tunni-gizmos.js); a label follows its gizmo.

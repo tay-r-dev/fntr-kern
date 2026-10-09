@@ -1,7 +1,9 @@
 import {
   COARSE_GRID_DEFAULT_SPACING,
   COARSE_GRID_DEFAULT_VALUES,
+  COARSE_GRID_TILE_MAX_PERIOD,
   buildCoarseGridValues,
+  coarseGridDotTile,
   normalizeCoarseGridBase,
   normalizeCoarseGridIncrement,
   secondaryCoarseGridSpacing,
@@ -74,5 +76,45 @@ describe("coarse-grid-presets", () => {
     expect(
       secondaryCoarseGridSpacing({ ...settings, coarseGridCustom: false }, 20)
     ).to.equal(100);
+  });
+
+  it("the dot tile puts a dot centre on every crossing, at the asked radius", () => {
+    for (const [period, radius, originX, originY] of [
+      [6, 1.5, 0, 0],
+      [7.37, 1.875, 123.4, -56.7],
+      [63.9, 3, -1000.25, 2000.5],
+    ]) {
+      const tile = coarseGridDotTile({ period, radius, originX, originY });
+      expect(Number.isInteger(tile.size)).to.equal(true);
+      const { a, d, e, f } = tile.matrix;
+      expect(tile.radius * a).to.be.closeTo(radius, 1e-9);
+      for (let i = -3; i <= 3; i++) {
+        for (let j = -3; j <= 3; j++) {
+          const tx = tile.size / 2 + i * tile.size;
+          const ty = tile.size / 2 + j * tile.size;
+          expect(a * tx + e).to.be.closeTo(originX + i * period, 1e-9);
+          expect(d * ty + f).to.be.closeTo(originY + j * period, 1e-9);
+        }
+      }
+    }
+  });
+
+  it("the dot tile shrinks its pattern by at most a pixel's worth", () => {
+    for (const period of [6, 6.01, 9.99, 33.3, 64]) {
+      const tile = coarseGridDotTile({ period, radius: 1, originX: 0, originY: 0 });
+      expect(tile.matrix.a).to.be.at.most(1);
+      expect(tile.matrix.a).to.be.above(1 - 1 / tile.size - 1e-9);
+    }
+  });
+
+  it("no dot tile past the period where the dots are few", () => {
+    expect(
+      coarseGridDotTile({
+        period: COARSE_GRID_TILE_MAX_PERIOD + 0.01,
+        radius: 1,
+        originX: 0,
+        originY: 0,
+      })
+    ).to.equal(null);
   });
 });
