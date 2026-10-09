@@ -37,6 +37,7 @@ import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-d
 import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
 import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 74
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import { dialog, dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import {
   CAP_ANGLE_MAX,
@@ -586,8 +587,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteWidthPreset(sourceId, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderWidthPresetRows();
+      this._armDelete(rowId, () => this._renderWidthPresetRows());
       return;
     }
     const next = this._sourcePresetList(
@@ -630,7 +630,11 @@ export default class SkeletonSettingsPanel extends Panel {
       master: this._getEffectiveSource().sourceId ?? null,
       case: getSkeletonGlyphCase(this.sceneController.sceneSettings?.selectedGlyphName),
     });
-    const currentToggle = html.createDomElement("labeled-toggle");
+    // Its name is the toggle's own label, before the pill.
+    const currentToggle = html.createDomElement("labeled-toggle", {
+      label: translate("sidebar.skeleton-settings.filter.current"),
+    });
+    currentToggle.setAttribute("mirror", "");
     currentToggle.addEventListener("change", () => {
       const target = currentToggle.checked
         ? currentFilter()
@@ -642,12 +646,7 @@ export default class SkeletonSettingsPanel extends Panel {
       }
       onChange();
     });
-    const current = html.div({ class: "button-row" }, [
-      html.span({ class: "field-label" }, [
-        translate("sidebar.skeleton-settings.filter.current"),
-      ]),
-      currentToggle,
-    ]);
+    const current = html.div({ class: "button-row" }, [currentToggle]);
     // "All" leaves the dropdown reading as its field name (Master, Case, Type).
     const option = (value, label, picked) => ({
       value,
@@ -882,10 +881,26 @@ export default class SkeletonSettingsPanel extends Panel {
     )}`;
   }
 
+  // The first press on a row's trash arms it; a press anywhere but on the
+  // armed trash disarms it.
+  _armDelete(rowId, render) {
+    this._customDeleteConfirm = rowId;
+    render();
+    disarmOnClickAway(
+      () => this._armedTrash,
+      () => {
+        if (this._customDeleteConfirm === rowId) {
+          this._customDeleteConfirm = null;
+          render();
+        }
+      }
+    );
+  }
+
   // The trash takes two presses; the armed trash stays visible as a cross.
   _presetDeleteAction(rowId, readOnly, onClick) {
     const confirming = this._customDeleteConfirm === rowId;
-    return rowAction({
+    const button = rowAction({
       src: confirming ? "/images/cross.svg" : "/images/bin.svg",
       tooltip: translate(
         confirming
@@ -897,6 +912,10 @@ export default class SkeletonSettingsPanel extends Panel {
       disabled: readOnly,
       onClick,
     });
+    if (confirming) {
+      this._armedTrash = button;
+    }
+    return button;
   }
 
   // ---- Grid presets table ---------------------------------------------------
@@ -938,8 +957,7 @@ export default class SkeletonSettingsPanel extends Panel {
 
   _deleteGridPreset(index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderGridPresetRows();
+      this._armDelete(rowId, () => this._renderGridPresetRows());
       return;
     }
     const list = this._gridPresets();
@@ -1351,8 +1369,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteTerminalPreset(sourceId, type, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderTerminalPresetRows();
+      this._armDelete(rowId, () => this._renderTerminalPresetRows());
       return;
     }
     const next = this._terminalPresetList(sourceId, type);

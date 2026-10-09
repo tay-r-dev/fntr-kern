@@ -510,7 +510,6 @@ function readSnapParameter(path) {
 // Figma 379:22417's panel, card and field colours, light and dark.
 const DESIGNSPACE_PANEL_COLORS = {
   "ds-card-background-color": ["#ffffff", "#2a2a2a"],
-  "ds-heading-color": ["#848484", "#a0a0a0"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
@@ -575,15 +574,6 @@ export default class DesignspaceNavigationPanel extends Panel {
 
       .ds-heading--spaced {
         padding: 4px 0 12px;
-      }
-
-      /* ui/heading/h3 */
-      .ds-subheading {
-        flex: 1 1 auto;
-        font: var(--ui-text-heading-h3);
-        letter-spacing: var(--ui-tracking);
-        text-transform: uppercase;
-        color: var(--ds-heading-color);
       }
 
       .ds-label--dark {
@@ -909,24 +899,14 @@ export default class DesignspaceNavigationPanel extends Panel {
       "data-tooltip": "Point label settings",
       "data-tooltipposition": "top",
     });
-    // The popover closes itself on any press outside it, this button's too,
-    // before the click lands; so the click reads whether it was open at the press.
-    let wasOpen = false;
-    settingsButton.addEventListener("pointerdown", () => {
-      wasOpen = !!this._pointLabelsPopover?.matches(":popover-open");
-    });
-    settingsButton.onclick = () => {
-      if (!wasOpen) {
-        this._showPointLabelsPopover(settingsButton);
-      }
-    };
+    settingsButton.onclick = () => this._togglePointLabelsPopover(settingsButton);
 
     return html.div({ class: "card" }, [
       html.div({ class: "card-heading ds-heading--spaced" }, ["display"]),
       html.div({ class: "ds-stack ds-stack--sections" }, [
         html.div({ id: "coarse-grid-content", class: "ds-stack" }, [
           html.div({ class: "control-row" }, [
-            html.div({ class: "ds-subheading" }, ["grid"]),
+            html.div({ class: "card-subheading" }, ["grid"]),
             presets.element,
           ]),
           html.div({ class: "ds-stack ds-stack--grid" }, [
@@ -965,7 +945,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           ]),
         ]),
         html.div({ class: "ds-stack" }, [
-          html.div({ class: "ds-subheading" }, ["measurement"]),
+          html.div({ class: "card-subheading" }, ["measurement"]),
           html.div({ class: "ds-row ds-row--measurement" }, [
             html.div({ class: "ds-field" }, [
               html.div({ class: "section-label" }, ["Speedpunk"]),
@@ -1027,7 +1007,8 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   // Figma 381:23113: which values each kind of point label shows, in two
   // columns. A native popover, so a click elsewhere or Escape closes it.
-  _showPointLabelsPopover(anchor) {
+  // Opened and closed by its button (html-utils.js's ButtonPopover).
+  _togglePointLabelsPopover(anchor) {
     if (!this._pointLabelsPopover) {
       const column = (title, keys) => {
         const element = html.div({ class: "ds-popover-column" }, [
@@ -1047,7 +1028,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         ]);
         return element;
       };
-      this._pointLabelsPopover = html.div({ class: "ds-popover", popover: "auto" }, [
+      this._pointLabelsPopover = html.div({ class: "ds-popover" }, [
         column("Point labels", {
           Distance: "showLabelsDistance",
           Tension: "showLabelsTension",
@@ -1062,10 +1043,11 @@ export default class DesignspaceNavigationPanel extends Panel {
       this.shadowRoot.appendChild(this._pointLabelsPopover);
     }
     const popover = this._pointLabelsPopover;
+    this._pointLabelsButtonPopover ??= new html.ButtonPopover(popover, anchor);
     const rect = anchor.getBoundingClientRect();
     popover.style.left = `${rect.left}px`;
     popover.style.top = `${rect.bottom + 4}px`;
-    popover.showPopover();
+    this._pointLabelsButtonPopover.toggle();
   }
 
   initActions() {
@@ -1167,7 +1149,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           open: true,
           content: html.div(
             {
-              style: "display: grid; grid-template-rows: 1fr auto auto; height: 100%;",
+              style:
+                "display: grid; grid-template-rows: 1fr auto auto; gap: 0; height: 100%;",
             },
             [
               // table/select (Figma 421:12696) with the add and delete keys
@@ -1200,7 +1183,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           open: true,
           content: html.div(
             {
-              style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
+              style:
+                "display: grid; grid-template-rows: 1fr auto; gap: 0; height: 100%;",
             },
             [
               selectLookList("layers-list", "data"),

@@ -48,3 +48,30 @@ export function showArmedTooltip(anchor, message) {
 
   return () => tooltip.remove();
 }
+
+// A press anywhere but on the armed control disarms it. `anchor` is the armed
+// control, or a function that returns it, for a control drawn anew while
+// armed. One control is armed at a time: arming another stops watching for
+// the last. `disarm` must do nothing when the control is no longer armed --
+// a control pressed a second time may have disarmed itself already.
+let stopWatchingClickAway = null;
+
+export function disarmOnClickAway(anchor, disarm) {
+  stopWatchingClickAway?.();
+  const onPointerDown = (event) => {
+    const element = typeof anchor === "function" ? anchor() : anchor;
+    if (element && event.composedPath().includes(element)) {
+      return;
+    }
+    stop();
+    disarm();
+  };
+  const stop = () => {
+    window.removeEventListener("pointerdown", onPointerDown, true);
+    if (stopWatchingClickAway === stop) {
+      stopWatchingClickAway = null;
+    }
+  };
+  window.addEventListener("pointerdown", onPointerDown, true);
+  stopWatchingClickAway = stop;
+}

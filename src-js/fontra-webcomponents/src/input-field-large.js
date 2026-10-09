@@ -114,8 +114,8 @@ export class InputFieldLarge extends UnlitElement {
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
-      /* ui/label/S */
-      font: var(--ui-text-label-s);
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
     }

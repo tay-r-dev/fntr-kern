@@ -114,9 +114,9 @@ export class IconButton extends UnlitElement {
       transition:
         background-color 150ms,
         color 150ms;
-      /* ui/label/S, for a text segment. */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
+      /* ui/label/XS, for a text segment. */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
     }
 
     /* The icon is 12px whatever the button's size: the button grows or
@@ -258,11 +258,9 @@ export class IconButton extends UnlitElement {
       border-radius: 0.8em;
       background: var(--overflow-popover-background-color);
       color: inherit;
-      /* ui/label/S's size in the old UI font, for the checks and toggles
-         a card holds. */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
-      font-family: var(--ui-font-old);
+      /* ui/label/XS, for the checks and toggles a card holds. */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }
 
@@ -291,17 +289,13 @@ export class IconButton extends UnlitElement {
         this._focusKeeper.save();
       }
     });
-    this.addEventListener("pointerdown", (event) => {
-      if (own(event)) {
-        this._wasOpen = this._card?.matches(":popover-open") ?? false;
-      }
-    });
-    // The right button opens the dropdown at once.
+    // The right button opens the dropdown at once, and a second right press
+    // closes it.
     this.addEventListener("contextmenu", (event) => {
       if (own(event) && this.dropdown) {
         event.preventDefault();
         event.stopPropagation();
-        this._openDropdown();
+        this._cardPopover.toggle();
       }
     });
     // A keyboard press on the focused inner button bubbles here as a click too.
@@ -311,8 +305,8 @@ export class IconButton extends UnlitElement {
       }
       if (this._buttonOnClick) {
         this._buttonOnClick(event);
-      } else if (this.dropdown && !this._wasOpen) {
-        this._openDropdown();
+      } else if (this.dropdown) {
+        this._cardPopover.toggle();
       }
       event.stopImmediatePropagation();
       this._focusKeeper.restore();
@@ -342,8 +336,8 @@ export class IconButton extends UnlitElement {
     if (this._button) {
       this._button.disabled = value;
     }
-    if (value && this._card?.matches(":popover-open")) {
-      this._card.hidePopover();
+    if (value) {
+      this._cardPopover?.close();
     }
   }
 
@@ -401,9 +395,11 @@ export class IconButton extends UnlitElement {
     }
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "popover-card", popover: "auto" }, [
+      // Opened and closed by this button (html-utils.js's ButtonPopover).
+      this._card = html.div({ class: "popover-card" }, [
         html.createDomElement("slot", { name: "dropdown" }),
       ]);
+      this._cardPopover = new html.ButtonPopover(this._card, this);
       // Placed under the button's right edge, and kept on screen -- same
       // placement overflow-popover.js used.
       this._card.addEventListener("beforetoggle", (event) => {
@@ -422,10 +418,9 @@ export class IconButton extends UnlitElement {
     this.requestUpdate();
   }
 
-  _openDropdown() {
-    if (this._card && !this._card.matches(":popover-open")) {
-      this._card.showPopover();
-    }
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this._cardPopover?.close();
   }
 
   click() {

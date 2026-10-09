@@ -9,7 +9,10 @@ import {
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { round, throttleCalls } from "@fontra/core/utils.ts";
-import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
+import {
+  disarmOnClickAway,
+  showArmedTooltip,
+} from "@fontra/web-components/armed-tooltip.js";
 import {
   actionsCell,
   additionalText,
@@ -570,8 +573,8 @@ export default class MarkersPanel extends Panel {
 
   // Erasing a section cannot be seen coming, so it takes two presses. The first press
   // arms and shows a tooltip; the second, within the lapse, erases that section only.
-  // The arming lapses on its own, so a stray press never leaves a live delete sitting
-  // under the cursor.
+  // The arming lapses on its own, or with a press anywhere else, so a stray press never
+  // leaves a live delete sitting under the cursor.
   async pressEraseSection(kind, anchor) {
     if (this._eraseArmed === kind) {
       this._disarmErase();
@@ -585,6 +588,7 @@ export default class MarkersPanel extends Panel {
       translate("sidebar.markers.erase-section-armed")
     );
     this._eraseTimer = setTimeout(() => this._disarmErase(), ERASE_ARMED_MILLISECONDS);
+    disarmOnClickAway(anchor, () => this._disarmErase());
   }
 
   _disarmErase() {

@@ -1,5 +1,6 @@
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/icon-button.js";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
 import "@fontra/web-components/multi-select-dropdown.js";
@@ -104,6 +105,7 @@ export class PresetHeaderControl {
                 "data-tooltip",
                 translate("sidebar.skeleton-parameters.width-preset.update-confirm")
               );
+              disarmOnClickAway(this.updateButton, () => this._disarmUpdate());
               return;
             }
             this._disarmUpdate();

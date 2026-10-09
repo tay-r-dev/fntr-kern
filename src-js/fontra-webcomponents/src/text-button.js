@@ -65,8 +65,8 @@ export class TextButton extends UnlitElement {
       background-color: var(--text-button-background-color);
       color: var(--text-button-text-color);
       cursor: inherit;
-      /* interactive/button: label/S at the light weight */
-      font: 320 condensed 10px / 12px var(--ui-font-mono);
+      /* ui/label/XS (Figma 2004:29282) */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       white-space: nowrap;
@@ -74,7 +74,6 @@ export class TextButton extends UnlitElement {
 
     :host([data-size="S"]) button {
       height: 19px;
-      font: 320 condensed 10px / 10px var(--ui-font-mono);
     }
 
     .face {

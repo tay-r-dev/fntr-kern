@@ -464,9 +464,8 @@ const DATA_TABLE_STYLES = `
   data-table[look] .data-table th {
     height: var(--tbl-height, 24px);
     box-sizing: border-box;
-    font: 400 8px / 10px var(--ui-font-mono);
-    font-stretch: 90%;
-    letter-spacing: var(--ui-tracking);
+    font: var(--ui-text-table-heading);
+    letter-spacing: var(--ui-tracking-table-heading);
     text-transform: uppercase;
     color: var(--data-table-look-heading-color);
   }
@@ -499,15 +498,11 @@ const DATA_TABLE_STYLES = `
     font-weight: 400;
   }
 
-  /* ui/table/entry */
+  /* ui/label/XS */
   data-table[look] .data-table td {
     height: var(--tbl-height, 24px);
     box-sizing: border-box;
-    font-family: var(--ui-font-mono);
-    font-size: 9px;
-    font-weight: 220;
-    font-stretch: 80%;
-    line-height: 10px;
+    font: var(--ui-text-label-xs);
     letter-spacing: var(--ui-tracking);
     font-feature-settings: "case" 1;
     color: var(--data-table-look-entry-color);

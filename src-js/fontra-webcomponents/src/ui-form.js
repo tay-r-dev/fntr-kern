@@ -102,7 +102,7 @@ export class Form extends SimpleElement {
        a small mixed-case section label. A header with no level is h4. */
     .ui-form-label.header-h2 {
       font: var(--ui-text-heading-h2);
-      letter-spacing: var(--ui-tracking);
+      letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
     }
 

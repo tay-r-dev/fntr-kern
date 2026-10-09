@@ -156,6 +156,7 @@ import {
   tableCell,
   tableRow,
 } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/input-field-large.js";
@@ -6735,6 +6736,18 @@ export class KerningViewController extends ViewController {
     this.resetArmedKey = armedKey;
     this.updateResetButtonLabel();
     if (!commit) {
+      if (armedKey) {
+        // A press anywhere but on Reset disarms it.
+        disarmOnClickAway(
+          document.querySelector("#kerning-pairtable-reset-zero"),
+          () => {
+            if (this.resetArmedKey === armedKey) {
+              this.resetArmedKey = null;
+              this.updateResetButtonLabel();
+            }
+          }
+        );
+      }
       return;
     }
     const rows = targetIds.map((id) => {

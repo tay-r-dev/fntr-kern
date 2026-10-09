@@ -32,6 +32,7 @@ import {
   throttleCalls,
 } from "@fontra/core/utils.ts";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/input-field-large.js"; // the plain metrics fields
 import "@fontra/web-components/icon-button.js";
 import "@fontra/web-components/labeled-toggle.js";
@@ -622,28 +623,42 @@ export default class SelectionInfoPanel extends Panel {
       }
       const isConfirming = this._metricsUnlinkConfirm === side;
       const isOverridden = metricsKeyDisplay[side].level === "source";
+      const unlinkButton = html.createDomElement("icon-button", {
+        "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
+        "disabled": editLocked,
+        "data-tooltip": translate(
+          isConfirming
+            ? "sidebar.selection-info.metrics-key.unlink.confirm"
+            : "sidebar.selection-info.metrics-key.unlink.tooltip"
+        ),
+        "data-tooltipposition": "left",
+        "onclick": async () => {
+          if (this._metricsUnlinkConfirm !== side) {
+            this._metricsUnlinkConfirm = side;
+            await this.update();
+            // A press anywhere but on the armed button disarms it.
+            disarmOnClickAway(
+              () => this._armedUnlinkButton,
+              () => {
+                if (this._metricsUnlinkConfirm === side) {
+                  this._metricsUnlinkConfirm = null;
+                  this.update();
+                }
+              }
+            );
+            return;
+          }
+          this._metricsUnlinkConfirm = null;
+          await this._unlinkMetricsKey(glyphName, varGlyphController, side);
+          await this.update();
+        },
+      });
+      if (isConfirming) {
+        this._armedUnlinkButton = unlinkButton;
+      }
       keyControls.push(
         html.span({ class: "field-label" }, [side === "left" ? "L" : "R"]),
-        html.createDomElement("icon-button", {
-          "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
-          "disabled": editLocked,
-          "data-tooltip": translate(
-            isConfirming
-              ? "sidebar.selection-info.metrics-key.unlink.confirm"
-              : "sidebar.selection-info.metrics-key.unlink.tooltip"
-          ),
-          "data-tooltipposition": "left",
-          "onclick": async () => {
-            if (this._metricsUnlinkConfirm !== side) {
-              this._metricsUnlinkConfirm = side;
-              await this.update();
-              return;
-            }
-            this._metricsUnlinkConfirm = null;
-            await this._unlinkMetricsKey(glyphName, varGlyphController, side);
-            await this.update();
-          },
-        }),
+        unlinkButton,
         html.createDomElement("icon-button", {
           "src": isOverridden
             ? "/tabler-icons/link.svg"
@@ -710,7 +725,7 @@ export default class SelectionInfoPanel extends Panel {
     );
   }
 
-  // A ui/label/XS caption over its control, 4px apart.
+  // A ui/heading/h5 caption over its control, 4px apart.
   _labeled(label, control) {
     return html.div({ class: "field-group" }, [
       html.span({ class: "field-label" }, [label]),

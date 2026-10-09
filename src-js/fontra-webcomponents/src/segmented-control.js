@@ -85,9 +85,9 @@ export class SegmentedControl extends UnlitElement {
       border-radius: var(--sl-sgc-radius);
       background: transparent;
       color: var(--segmented-control-off-text-color);
-      /* ui/label/M */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       white-space: nowrap;
       cursor: pointer;
       box-sizing: border-box;

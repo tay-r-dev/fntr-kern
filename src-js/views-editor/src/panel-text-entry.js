@@ -366,13 +366,14 @@ export default class TextEntryPanel extends Panel {
   }
 
   // A one-choice dropdown (select/dropdown, Figma 2004:29427) with its label
-  // above, kept in step with the scene setting `key`. `options` may change in
+  // above, the card's full width, kept in step with the scene setting `key`. `options` may change in
   // place; `sync` redraws it.
   _makeDropdown(label, key, options) {
     const element = html.createDomElement("multi-select-dropdown", {
       label,
       labelAbove: true,
       singleChoice: true,
+      stretch: true,
     });
     const sync = () => {
       element.items = options.map((option) => ({

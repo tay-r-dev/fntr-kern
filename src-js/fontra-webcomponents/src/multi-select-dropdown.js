@@ -156,8 +156,8 @@ const listStyles = `
     border: 1px solid var(--multi-select-dropdown-list-border-color);
     border-radius: 6px;
     box-shadow: 0 2px 8px var(--multi-select-dropdown-list-shadow-color);
-    /* ui/label/S */
-    font: var(--ui-text-label-s);
+    /* ui/label/XS */
+    font: var(--ui-text-label-xs);
     letter-spacing: var(--ui-tracking);
     font-feature-settings: "case" 1;
   }
@@ -247,7 +247,7 @@ export class MultiSelectDropdown extends UnlitElement {
     /* In a row it takes the room the row has, from 72px to 156px; its label
        ends in an ellipsis where the field is narrower than it. Its control
        group moved to a line of its own under the heading, it fills that
-       line. */
+       line; with stretch set it fills the room it is given anywhere. */
     :host {
       display: inline-block;
       flex: 1 1 auto;
@@ -256,7 +256,8 @@ export class MultiSelectDropdown extends UnlitElement {
       cursor: pointer;
     }
 
-    :host([own-line]) {
+    :host([own-line]),
+    :host([stretch]) {
       max-width: none;
     }
 
@@ -280,12 +281,10 @@ export class MultiSelectDropdown extends UnlitElement {
       gap: 4px;
     }
 
-    /* ui/label/XS */
+    /* ui/heading/h5: the name is outside the field. */
     .heading {
-      font: 320 9px / 10px var(--ui-font-mono);
-      font-stretch: 75%;
+      font: var(--ui-text-heading-h5);
       letter-spacing: var(--ui-tracking);
-      font-feature-settings: "case" 1;
       color: var(--multi-select-dropdown-heading-color);
       white-space: nowrap;
       overflow: hidden;
@@ -301,7 +300,7 @@ export class MultiSelectDropdown extends UnlitElement {
       padding: 4px 6px;
       gap: 4px;
       /* ui/label/S */
-      font: var(--ui-text-label-s);
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       box-sizing: border-box;
@@ -560,6 +559,16 @@ export class MultiSelectDropdown extends UnlitElement {
     this._labelAbove = !!value;
     this.toggleAttribute("label-above", this._labelAbove);
     this.requestUpdate();
+  }
+
+  // `stretch`: no 156px cap; the field fills the width its place gives it.
+  get stretch() {
+    return this._stretch ?? false;
+  }
+
+  set stretch(value) {
+    this._stretch = !!value;
+    this.toggleAttribute("stretch", this._stretch);
   }
 
   // The picks the field shows. A pick flagged `showsLabel` (an "All") reads

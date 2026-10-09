@@ -126,16 +126,16 @@ theme marker until the design has a dark mode.
   gap: 8px;
 }
 
-/* ./heading (Figma 2004:29687): ui/heading/h2, text/base/basic/5. */
+/* ./heading (Figma 2004:29687): heading/h1, text/base/basic/5. */
 .card-heading {
   margin: 0;
-  font: var(--ui-text-heading-h2);
-  letter-spacing: var(--ui-tracking);
+  font: var(--ui-text-heading-h1);
+  letter-spacing: var(--ui-tracking-sans);
   text-transform: uppercase;
   color: var(--shared-heading);
 }
 
-/* A caption over its field: ui/label/XS, 4px above it. */
+/* A caption over its field: ui/heading/h5, 4px above it. */
 .field-group {
   display: flex;
   flex-direction: column;
@@ -144,9 +144,8 @@ theme marker until the design has a dark mode.
 }
 
 .field-label {
-  font: var(--ui-text-label-xs);
+  font: var(--ui-text-heading-h5);
   letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
   color: var(--shared-label);
 }
 
@@ -162,7 +161,7 @@ theme marker until the design has a dark mode.
 }
 
 /* checkmark (Figma 2004:29411): a native checkbox with our checkbox assets
-   and its name, ui/label/S -- a label.checkmark-row holding an
+   and its name, ui/label/XS -- a label.checkmark-row holding an
    input.checkmark. At rest a checked box is the grey check and an empty one
    the light box, both with grey names; hover lights the check lime or
    darkens the box, and darkens the name. */
@@ -177,7 +176,7 @@ theme marker until the design has a dark mode.
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-label-xs);
   letter-spacing: var(--ui-tracking);
   font-feature-settings: "case" 1;
   color: var(--shared-label);
@@ -195,6 +194,14 @@ theme marker until the design has a dark mode.
   border-radius: var(--corner-outer-xs);
   background: var(--shared-check) center / contain no-repeat;
   cursor: pointer;
+}
+
+/* Any other checkbox's name, the label after it, is inside its control
+   too: ui/label/XS. */
+input[type="checkbox"] + label {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
 }
 
 .checkmark-row:hover .checkmark {
@@ -252,14 +259,13 @@ theme marker until the design has a dark mode.
 }
 
 /* A name beside its segmented control: a three-state choice (automatic, on,
-   off) standing among checkmarks, in their ui/label/S. */
+   off) standing among checkmarks. The name is outside the control: h5. */
 .segmented-row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-heading-h5);
   letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
   color: var(--text-base-basic-3);
   white-space: nowrap;
 }
@@ -270,13 +276,13 @@ theme marker until the design has a dark mode.
   margin: 0 -8px;
 }
 
-/* A section heading inside a card (Figma 2004:29689): ui/heading/h3,
+/* A section heading inside a card (Figma 2004:29689): heading/h2,
    text/base/basic/3. */
 .card-subheading {
   flex: 1;
   margin: 0;
-  font: var(--ui-text-heading-h3);
-  letter-spacing: var(--ui-tracking);
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking-sans);
   text-transform: uppercase;
   color: var(--text-base-basic-3);
 }
@@ -681,7 +687,7 @@ glyph-cell-view .glyph-count {
 }
 
 /* The small value box (Figma "smol", 4102:1602): a 16px input in
-   ui/table/entry, bare at rest, grey on hover and while typing. */
+   ui/label/XS, bare at rest, grey on hover and while typing. */
 .entry-field {
   box-sizing: border-box;
   width: 36px;
@@ -883,13 +889,13 @@ glyph-cell-view .glyph-count {
 }
 
 /* A small static table (Figma 4108:2787, 4128:2937): bordered, 6px corners,
-   24px rows, each but the last ruled under; ui/label/S. */
+   24px rows, each but the last ruled under; ui/label/XS. */
 .static-table {
   width: 100%;
   border: 1px solid var(--line-base-basic-1);
   border-radius: 6px;
   border-spacing: 0;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-label-xs);
   letter-spacing: var(--ui-tracking);
   font-feature-settings: "case" 1;
   color: var(--text-base-basic-2);
@@ -904,9 +910,10 @@ glyph-cell-view .glyph-count {
   white-space: nowrap;
 }
 
-/* Its head (Figma 4156:3209): ui/heading/h4, uppercase, text/base/basic/3. */
+/* Its head (Figma 4156:3209): ui/table/heading, text/base/basic/3. */
 .static-table th {
-  font: var(--ui-text-heading-h4);
+  font: var(--ui-text-table-heading);
+  letter-spacing: var(--ui-tracking-table-heading);
   text-transform: uppercase;
   color: var(--text-base-basic-3);
 }
@@ -1119,10 +1126,14 @@ glyph-cell-view .glyph-count {
   justify-self: stretch;
 }
 
-/* The redesigned panels' plain text takes the design's sizes in the old
-   UI font: label/XS for row labels, values and whole-width rows, label/S
-   for checks. The new components and headings bring Martian Mono. */
-.ui-form-label,
+/* A row's label is outside its control: h5. */
+.ui-form-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+}
+
+/* The redesigned panels' other plain text takes the design's size in the
+   old UI font. The new components and headings bring Martian Mono. */
 .ui-form-value,
 .ui-form-full-width {
   font: var(--ui-text-label-s);
@@ -1130,9 +1141,9 @@ glyph-cell-view .glyph-count {
   font-family: var(--ui-font-old);
 }
 
+/* A check's name is inside its control: label/XS. */
 .ui-form-label.checkbox,
 .ui-form-value.checkbox {
-  font: var(--ui-text-label-m);
-  letter-spacing: var(--ui-tracking-label-m);
-  font-family: var(--ui-font-old);
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
 }

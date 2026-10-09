@@ -280,3 +280,67 @@ export function naturalCellWidth(cell) {
   probe.remove();
   return width;
 }
+
+// A popover its button opens and closes. It is a manual popover: an auto
+// popover closes itself on the press on its button, and the button's click
+// then opens it again, so the button could never close it. Here a press on
+// the button, or in the popover, is the button's own; a press anywhere else
+// closes it, except in a menu opened from it, and so does Escape. `owner` is
+// the element whose presses are the button's: the button, or a component
+// holding both the button and the popover.
+export class ButtonPopover {
+  constructor(popover, owner) {
+    this.popover = popover;
+    this.owner = owner;
+    popover.popover = "manual";
+  }
+
+  get isOpen() {
+    return this.popover.matches(":popover-open");
+  }
+
+  toggle() {
+    if (this.isOpen) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  open() {
+    if (this.isOpen) {
+      return;
+    }
+    this.popover.showPopover();
+    const onPointerDown = (event) => {
+      const path = event.composedPath();
+      if (
+        path.includes(this.owner) ||
+        path.includes(this.popover) ||
+        path.some((node) => node.tagName === "MENU-PANEL")
+      ) {
+        return;
+      }
+      this.close();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        this.close();
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    this._stopWatching = () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }
+
+  close() {
+    this._stopWatching?.();
+    this._stopWatching = null;
+    if (this.isOpen) {
+      this.popover.hidePopover();
+    }
+  }
+}

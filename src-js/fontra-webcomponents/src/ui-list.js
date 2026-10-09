@@ -194,12 +194,10 @@ export class UIList extends UnlitElement {
       overflow: hidden;
     }
 
-    /* The sample in the rows' type: ui/table/entry. */
+    /* The sample in the rows' type: ui/label/XS. */
     :host([look]) .fit-text-sample {
-      font-family: var(--ui-font-mono);
-      font-size: 9px;
-      font-weight: 220;
-      font-stretch: 80%;
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       text-transform: none;
       font-feature-settings: "case" 1;
     }
@@ -255,9 +253,8 @@ export class UIList extends UnlitElement {
       height: var(--tbl-height, 24px);
       padding: 0 8px;
       /* ui/table/heading */
-      font: 400 8px / 10px var(--ui-font-mono);
-      font-stretch: 90%;
-      letter-spacing: var(--ui-tracking);
+      font: var(--ui-text-table-heading);
+      letter-spacing: var(--ui-tracking-table-heading);
       text-transform: uppercase;
       color: var(--table-look-heading-color);
     }
@@ -346,12 +343,8 @@ export class UIList extends UnlitElement {
       border-bottom: 1px solid var(--table-look-rule-color);
       background-color: var(--table-look-background-color);
       color: var(--table-look-entry-color);
-      /* ui/table/entry */
-      font-family: var(--ui-font-mono);
-      font-size: 9px;
-      font-weight: 220;
-      font-stretch: 80%;
-      line-height: 10px;
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
     }
