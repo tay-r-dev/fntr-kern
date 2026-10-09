@@ -504,6 +504,11 @@ export class UIList extends UnlitElement {
     if (this.minHeight) {
       this.rowsContainer.style.minHeight = this.minHeight;
     }
+    // A table look takes the shared table scrollbars (shared.css), and, having
+    // no height grip, the reserved strip for its sideways scrollbar.
+    const look = this.hasAttribute("look");
+    this.rowsContainer.classList.toggle("table-scroll", look);
+    this.rowsContainer.classList.toggle("table-scroll--strip", look);
 
     const contents = [];
 

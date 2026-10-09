@@ -424,41 +424,12 @@ const DATA_TABLE_STYLES = `
     overflow-x: auto;
   }
 
-  /* A table without a height of its own keeps a 16px strip under its rows
-     for its sideways scrollbar, scrolling or not, so the scrollbar never
-     covers a row. A table whose height is set scrolls both ways inside it.
-     The scrollbars are the thin ones, which take their room rather than
-     float over the rows. */
+  /* A table without a height of its own keeps a strip under its rows for
+     its sideways scrollbar (shared.css's .table-scroll--strip); one whose
+     height is set scrolls both ways inside it. */
   data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
     overflow-x: scroll;
     overflow-y: hidden;
-  }
-
-  data-table[look] > .data-table-scroll::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-
-  data-table[look] > .data-table-scroll::-webkit-scrollbar-track,
-  data-table[look] > .data-table-scroll::-webkit-scrollbar-corner {
-    background: transparent;
-  }
-
-  data-table[look] > .data-table-scroll::-webkit-scrollbar-thumb {
-    background: var(--icon-base-basic-4);
-    border-radius: 4px;
-    border: 2px solid var(--data-table-look-background-color);
-  }
-
-  /* The reserved strip: 16px, its thumb as thin as the others. */
-  data-table[look]:not(.data-table-scrollable) > .data-table-scroll::-webkit-scrollbar {
-    height: 16px;
-  }
-
-  data-table[look]:not(.data-table-scrollable)
-    > .data-table-scroll::-webkit-scrollbar-thumb:horizontal {
-    border-width: 6px 2px;
-    border-radius: 8px;
   }
 
   data-table[look] .data-table {
@@ -1191,6 +1162,21 @@ export class DataTable extends HTMLElement {
   // The rows sit in a scroll box of `--data-table-height`.
   set scrollable(value) {
     this.classList.toggle("data-table-scrollable", !!value);
+    this._updateScrollClasses();
+  }
+
+  // A look table's scroll box takes the shared table scrollbars, and the
+  // reserved sideways strip while it has no height of its own.
+  _updateScrollClasses() {
+    if (!this._scroll) {
+      return;
+    }
+    const look = this.hasAttribute("look");
+    this._scroll.classList.toggle("table-scroll", look);
+    this._scroll.classList.toggle(
+      "table-scroll--strip",
+      look && !this.classList.contains("data-table-scrollable")
+    );
   }
 
   // A grip under the scroll box sets its height by drag. The height is kept
@@ -1216,6 +1202,7 @@ export class DataTable extends HTMLElement {
     } else {
       this.removeAttribute("look");
     }
+    this._updateScrollClasses();
     this._applyLookToActions();
   }
 
@@ -1791,6 +1778,7 @@ export class DataTable extends HTMLElement {
     table.classList.toggle("data-table-clickable", this._isClickable());
 
     this._scroll = html.div({ class: "data-table-scroll" }, [table]);
+    this._updateScrollClasses();
     this._scroll.addEventListener("scroll", () => this._scrolled());
     const handle = html.createDomElement("ui-handle");
     handle.addEventListener("handle-drag-start", () => this._startResize());

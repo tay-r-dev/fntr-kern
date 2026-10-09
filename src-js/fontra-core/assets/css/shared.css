@@ -764,6 +764,40 @@ glyph-cell-view .glyph-count {
   background: var(--text-base-basic-4);
 }
 
+/* A table's scroll box (data-table, ui-list): the design's thin scrollbars,
+   8px with a 4px grey thumb and no track, which take their room rather than
+   float over the rows. One without a height of its own (.table-scroll--strip)
+   keeps a 16px strip under its rows for its sideways scrollbar, scrolling or
+   not. */
+.table-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.table-scroll::-webkit-scrollbar-track,
+.table-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.table-scroll::-webkit-scrollbar-thumb {
+  background: var(--icon-base-basic-4);
+  border-radius: 4px;
+  border: 2px solid var(--surface-base-basic-0);
+}
+
+.table-scroll.table-scroll--strip {
+  overflow-x: scroll;
+}
+
+.table-scroll.table-scroll--strip::-webkit-scrollbar {
+  height: 16px;
+}
+
+.table-scroll.table-scroll--strip::-webkit-scrollbar-thumb:horizontal {
+  border-width: 6px 2px;
+  border-radius: 8px;
+}
+
 /* Buttons side by side, 4px apart. */
 .button-row {
   display: flex;
