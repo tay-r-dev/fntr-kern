@@ -848,6 +848,27 @@ glyph-cell-view .glyph-count {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 0L3 2L0 4Z' fill='%23dadada'/%3E%3C/svg%3E");
 }
 
+/* Firefox has none of the above: the standard properties instead, its
+   thinnest width, line 4 on no track (no hover colour, no triangles). A
+   panel's is transparent until shown; what the column holds keeps its own
+   colour rather than inherit that. In Chromium the standard properties
+   would override the above, so they are for Firefox alone. */
+@supports not selector(::-webkit-scrollbar) {
+  .table-scroll,
+  .card-column {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-base-basic-4) transparent;
+  }
+
+  .card-column:not(.scrollbar-shown) {
+    scrollbar-color: transparent transparent;
+  }
+
+  .card-column:not(.scrollbar-shown) > * {
+    scrollbar-color: auto;
+  }
+}
+
 .table-scroll.table-scroll--strip {
   overflow-x: scroll;
 }
