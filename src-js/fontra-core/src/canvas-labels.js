@@ -262,10 +262,11 @@ function blurBehind(context, left, top, width, height, radius, blur) {
 
 // Figma's label/Q (typeCAD, node 2004:29990): the Q-measure plaque. A white card
 // with a 6 radius and 6 of padding, rows 5 apart; each row a 6px icon and a value 6
-// apart. The value is Martian Mono thin and condensed at 9 in text/base/basic/3;
+// apart. The value is Martian Mono thin and condensed at 9 in text/base/basic/1;
 // small print -- a header, or the distribution under a width -- is 7, light and
-// semi-condensed, in text/base/basic/4. The card has no outline, a pale drop shadow
-// (0 1 1.5, shadow/base/1) and the label's background blur. The design has one
+// semi-condensed: the header in text/base/basic/3, the distribution in
+// icon/base/basic/2, as the icons are. The card has no outline, a pale drop shadow
+// (0 1 3, shadow/base/1) and the label's background blur. The design has one
 // variant, light, so the plaque is light in both themes.
 //
 //   plaque = {
@@ -360,7 +361,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
 
   let y = top + padding;
   if (header) {
-    context.fillStyle = PLAQUE_COLORS.small;
+    context.fillStyle = PLAQUE_COLORS.header;
     setLabelFont(context, smallSize, TRACKING);
     context.fillText(header.left, left + padding, y + smallLine / 2);
     const gap = PLAQUE.headerSeparatorGap;
@@ -399,7 +400,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     valueFont(row.tracking ? TRACKING : 0);
     context.fillText(row.value, textX, valueTop + valueLine / 2);
     if (row.sub) {
-      context.fillStyle = PLAQUE_COLORS.small;
+      context.fillStyle = PLAQUE_COLORS.sub;
       setLabelFont(context, smallSize, TRACKING);
       fillJoined(
         context,
@@ -435,8 +436,8 @@ const PLAQUE = {
   // The values' face: Figma's thin (220) at width 75, the nearest static face.
   valueWeight: 200,
   valueStretch: "condensed",
-  // The card's drop shadow: 0 1 1.5, in screen pixels.
-  shadowBlur: 1.5,
+  // The card's drop shadow: 0 1 3, in screen pixels.
+  shadowBlur: 3,
 };
 
 // Values joined by a separator with `gap` either side of it, in the current font.
@@ -466,11 +467,12 @@ function joinedItems(parts, separator) {
   return items;
 }
 
-// text/base/basic/3 and 4, shadow/base/1.
+// text/base/basic/1 and 3, icon/base/basic/2, shadow/base/1.
 const PLAQUE_COLORS = {
   fill: "#FFFFFF",
-  value: "#8D8D8D",
-  small: "#B8B8B8",
+  value: "#1E1E1E",
+  header: "#8D8D8D",
+  sub: "#515151",
   shadow: "#EDEDED",
 };
 
@@ -507,7 +509,7 @@ export function setLabelFont(
   context.letterSpacing = `${tracking * size}px`;
 }
 
-// The frame's 6px plaque icons, in icon/base/basic/4, served from /images. The width
+// The frame's 6px plaque icons, in icon/base/basic/2, served from /images. The width
 // row draws the distance icon.
 const PLAQUE_ICONS = {
   distance: { src: "/images/plaque-distance.svg", width: 6, height: 6 },

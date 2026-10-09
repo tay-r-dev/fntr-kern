@@ -94,8 +94,9 @@ describe("canvas labels keep one font across zoom", () => {
   });
 });
 
-// label/Q (Figma 2004:29990): the values thin and condensed in text/base/basic/3,
-// the small print in text/base/basic/4, a card with no outline.
+// label/Q (Figma 2004:29990): the values thin and condensed in text/base/basic/1,
+// the header in text/base/basic/3, a width's distribution in icon/base/basic/2, a
+// card with no outline.
 describe("the plaque draws label/Q", () => {
   function drawn() {
     const context = recordingContext(1);
@@ -115,24 +116,30 @@ describe("the plaque draws label/Q", () => {
       PLAQUE_SCREEN_PARAMETERS,
       { x: 0, y: 0 },
       {
+        header: { left: "", right: ["10", "30"] },
         rows: [{ icon: "width", value: "40.0", sub: ["20.0", "20.0"] }],
       }
     );
     return { texts, strokes };
   }
 
-  it("sets the value thin and condensed, in text/base/basic/3", () => {
+  it("sets the value thin and condensed, in text/base/basic/1", () => {
     const value = drawn().texts.find((t) => t.text === "40.0");
     expect(value.font).to.match(/^200 /);
     expect(value.stretch).to.equal("condensed");
-    expect(value.color).to.equal("#8D8D8D");
+    expect(value.color).to.equal("#1E1E1E");
   });
 
-  it("sets the small print light and semi-condensed, in text/base/basic/4", () => {
+  it("sets the distribution light and semi-condensed, in icon/base/basic/2", () => {
     const small = drawn().texts.find((t) => t.text === "20.0");
     expect(small.font).to.match(/^300 /);
     expect(small.stretch).to.equal("semi-condensed");
-    expect(small.color).to.equal("#B8B8B8");
+    expect(small.color).to.equal("#515151");
+  });
+
+  it("sets the header in text/base/basic/3", () => {
+    const header = drawn().texts.find((t) => t.text === "30");
+    expect(header.color).to.equal("#8D8D8D");
   });
 
   it("draws no outline", () => {

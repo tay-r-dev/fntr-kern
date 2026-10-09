@@ -99,7 +99,7 @@ export class InputFieldLarge extends UnlitElement {
     /* ./scrub-field (Figma 2004:29534): a tray (in-bsr/in-bln, ruled on
        top) holding a container (in-csr/in-sln, a 1px line all round,
        transparent at rest). In the container, 3px apart from a 3px left
-       inset: the scrub icon, the label, the value filling the rest, an 18px
+       inset: the scrub icon, the label filling the rest, the value, an 18px
        square slot and the increment. While scrubbing or typing the tray
        also takes the line on its outer side. */
     .box {
@@ -221,10 +221,9 @@ export class InputFieldLarge extends UnlitElement {
       color: var(--input-field-large-handle-disabled-color);
     }
 
-    /* The label keeps its width and gives way only when the value would be
-       squeezed; then it truncates. */
+    /* The label takes the room the value leaves, and truncates. */
     .name {
-      flex: 0 1 auto;
+      flex: 1 1 auto;
       min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -249,14 +248,17 @@ export class InputFieldLarge extends UnlitElement {
       color: var(--input-field-large-handle-color);
     }
 
-    /* The value fills what the label leaves, read from the left. Stretched
-       to the container's height, so a blank value -- a mixed selection, or
-       no selection at all -- still has something to click. */
+    /* The value hugs its text at the right, before the slot and the
+       increment (pushed there even without a label). Stretched to the
+       container's height, so a blank value -- a mixed selection, or no
+       selection at all -- still has something to click. */
     .value {
-      flex: 1 0 auto;
+      flex: 0 0 auto;
+      margin-left: auto;
       align-self: stretch;
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       min-width: 22px;
       min-height: 1.2em;
       white-space: nowrap;
@@ -275,9 +277,9 @@ export class InputFieldLarge extends UnlitElement {
     }
 
     .value input {
-      width: 100%;
+      width: 4em;
       min-width: 0;
-      text-align: left;
+      text-align: right;
       border: none;
       background: transparent;
       color: inherit;
