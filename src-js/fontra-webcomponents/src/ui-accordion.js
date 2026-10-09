@@ -54,7 +54,7 @@ export class Accordion extends UnlitElement {
   /* Every accordion's contents: 12px under the header and in at the sides,
      8px under. An accordion runs to its card's edges, so these are the
      distances from the card's edge too. A plain div
-     given as the contents lays its parts out top to bottom, 8px apart, so a
+     given as the contents lays its parts out top to bottom, touching, so a
      caller writes no layout for it; a caller's own rules for that div win
      over this default. */
   .ui-accordion-item-content {
@@ -66,7 +66,7 @@ export class Accordion extends UnlitElement {
   ::slotted(div[slot$="-content"]) {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0;
   }
 
   /* accordion switch (Figma 413:31167): a grey header bar ruled above and
