@@ -321,7 +321,9 @@ export class InputFieldLarge extends UnlitElement {
 
     /* button/increment (Figma 2004:29110): 12px wide, 2px in at top and
        bottom and 1px at the sides; an up and a down half, each holding a 6px
-       arrow. The hovered half lifts to white with a darker arrow. */
+       arrow. The hovered half lifts to white with a darker arrow. It keeps
+       its room but shows only while the field is hovered, scrubbed or typed
+       in (opacity 0 in every state of the design). */
     .hover-steppers {
       display: flex;
       flex-direction: column;
@@ -330,6 +332,12 @@ export class InputFieldLarge extends UnlitElement {
       box-sizing: border-box;
       width: 12px;
       padding: 2px 1px;
+      opacity: 0;
+    }
+
+    .box:hover:not(.disabled) .hover-steppers,
+    .box:is(.scrubbing, .editing, :focus-within) .hover-steppers {
+      opacity: 1;
     }
 
     .stepper {

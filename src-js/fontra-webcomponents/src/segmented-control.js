@@ -43,7 +43,9 @@ const colors = {
     "#5a5a60",
   ],
   "segmented-control-on-hover-text-color": ["var(--sl-sgc-lb-active-hover)", "#e9e9ed"],
-  "segmented-control-on-text-color": ["var(--sl-sgc-lb-active-rest)", "#e9e9ed"],
+  // The lit chip's label: text/base/basic/3 at rest (the chip's own binding,
+  // Figma 2004:29364 and 2004:29368), text 2 while the tray is hovered.
+  "segmented-control-on-text-color": ["var(--text-base-basic-3)", "#e9e9ed"],
   "segmented-control-disabled-text-color": ["var(--sl-sgc-lb-disabled)", "#ffffff40"],
   "segmented-control-hover-background-color": ["var(--sl-sgc-sr-hover)", "#9cbb12"],
   "segmented-control-hover-text-color": ["var(--sl-sgc-lb-hover)", "#fff"],
