@@ -85,6 +85,8 @@ import {
   groupAccordionHeaderButtons,
   makeAccordionHeaderButton,
   makeClickableIconHeader,
+  persistAccordionOpenState,
+  restoreAccordionOpenState,
 } from "@fontra/web-components/ui-accordion.js";
 
 import { LABEL_TUNING, LABEL_TUNING_DEFAULTS } from "@fontra/core/canvas-labels.js";
@@ -238,44 +240,8 @@ function debugResetButton(id) {
   ]);
 }
 
-// Bug fix: no accordion item's open/closed state survived a reload -- every
-// `open` below is a fixed initial value, nothing ever read or wrote it
-// back. Restored from local storage before an accordion first renders, and
-// persisted on every open/close from then on -- the same "read once, write
-// on change" idiom kerning.js's own KERNING_ALIGN_STORAGE_KEY already uses
-// for the alignment row.
+// The accordions' open items are kept under this prefix (ui-accordion.js).
 const ACCORDION_OPEN_STORAGE_PREFIX = "fontra-designspace-navigation-accordion-open.";
-
-function restoreAccordionOpenState(items) {
-  for (const item of items) {
-    if (!item.id) {
-      continue;
-    }
-    try {
-      const stored = localStorage.getItem(ACCORDION_OPEN_STORAGE_PREFIX + item.id);
-      if (stored != null) {
-        item.open = stored === "1";
-      }
-    } catch (error) {
-      // Storage can legitimately fail (quota, private browsing) -- fall back
-      // to the item's own default rather than surface an error over it.
-    }
-  }
-  return items;
-}
-
-function persistAccordionOpenState(accordion) {
-  accordion.onItemOpenClose = (item, open) => {
-    if (!item.id) {
-      return;
-    }
-    try {
-      localStorage.setItem(ACCORDION_OPEN_STORAGE_PREFIX + item.id, open ? "1" : "0");
-    } catch (error) {
-      // Same as above: losing persistence here isn't worth surfacing.
-    }
-  };
-}
 
 const FONTRA_STATUS_KEY = "fontra.development.status";
 const FONTRA_STATUS_DEFINITIONS_KEY = "fontra.sourceStatusFieldDefinitions";
@@ -1168,322 +1134,330 @@ export default class DesignspaceNavigationPanel extends Panel {
 
     this._updateFontAxes = updateFontAxes;
 
-    this.accordion.items = restoreAccordionOpenState([
-      fontAxesAccordionItem,
-      hiddenFontAxesAccordionItem,
-      {
-        id: "glyph-axes-accordion-item",
-        label: translate("sidebar.designspace-navigation.glyph-axes"),
-        open: true,
-        content: html.createDomElement(
-          "designspace-location",
-          // The slot slider (Figma 421:15034 / 421:15066).
-          { id: "glyph-axes", style: "height: 100%;", look: "slot" },
-          []
-        ),
-        auxiliaryHeaderElement: groupAccordionHeaderButtons([
-          makeAccordionHeaderButton({
-            icon: "tool",
-            tooltip: translate("sidebar.designspace-navigation.glyph-axes.edit"),
-            onclick: (event) => this.editGlyphAxes(),
-          }),
-          makeAccordionHeaderButton({
-            icon: "refresh",
-            id: "reset-glyph-axes-button",
-            tooltip: translate("sidebar.designspace-navigation.glyph-axes.reset"),
-            onclick: (event) => this.resetGlyphAxesToDefault(),
-          }),
-        ]),
-      },
-      {
-        id: "glyph-sources-accordion-item",
-        label: translate("sidebar.designspace-navigation.glyph-sources"),
-        open: true,
-        content: html.div(
-          {
-            style: "display: grid; grid-template-rows: 1fr auto auto; height: 100%;",
-          },
-          [
-            // table/select (Figma 421:12696) with the add and delete keys
-            // under it.
-            selectLookList("sources-list"),
-            html.createDomElement("add-remove-buttons", {
-              style: "padding: 4px 0 0 0;",
-              id: "sources-list-add-remove-buttons",
-              textButtons: true,
+    this.accordion.items = restoreAccordionOpenState(
+      [
+        fontAxesAccordionItem,
+        hiddenFontAxesAccordionItem,
+        {
+          id: "glyph-axes-accordion-item",
+          label: translate("sidebar.designspace-navigation.glyph-axes"),
+          open: true,
+          content: html.createDomElement(
+            "designspace-location",
+            // The slot slider (Figma 421:15034 / 421:15066).
+            { id: "glyph-axes", style: "height: 100%;", look: "slot" },
+            []
+          ),
+          auxiliaryHeaderElement: groupAccordionHeaderButtons([
+            makeAccordionHeaderButton({
+              icon: "tool",
+              tooltip: translate("sidebar.designspace-navigation.glyph-axes.edit"),
+              onclick: (event) => this.editGlyphAxes(),
             }),
-            html.createDomElement("div", {
-              id: "interpolation-error-info",
+            makeAccordionHeaderButton({
+              icon: "refresh",
+              id: "reset-glyph-axes-button",
+              tooltip: translate("sidebar.designspace-navigation.glyph-axes.reset"),
+              onclick: (event) => this.resetGlyphAxesToDefault(),
             }),
-          ]
-        ),
-        auxiliaryHeaderElement: groupAccordionHeaderButtons([
-          makeAccordionHeaderButton({
-            icon: "menu-2",
-            id: "glyph-sources-sort-options-button",
-            tooltip: translate(
-              "sidebar.designspace-navigation.glyph-sources-sort-options"
-            ),
-            onclick: (event) => this.showGlyphSourcesSortOptionsMenu(event),
-          }),
-        ]),
-      },
-      {
-        id: "glyph-layers-accordion-item",
-        label: translate("sidebar.designspace-navigation.glyph-source-layers"),
-        open: true,
-        content: html.div(
-          {
-            style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
-          },
-          [
-            selectLookList("layers-list", "data"),
-            html.createDomElement("add-remove-buttons", {
-              style: "padding: 4px 0 0 0;",
-              id: "source-layers-add-remove-buttons",
-              textButtons: true,
+          ]),
+        },
+        {
+          id: "glyph-sources-accordion-item",
+          label: translate("sidebar.designspace-navigation.glyph-sources"),
+          open: true,
+          content: html.div(
+            {
+              style: "display: grid; grid-template-rows: 1fr auto auto; height: 100%;",
+            },
+            [
+              // table/select (Figma 421:12696) with the add and delete keys
+              // under it.
+              selectLookList("sources-list"),
+              html.createDomElement("add-remove-buttons", {
+                style: "padding: 4px 0 0 0;",
+                id: "sources-list-add-remove-buttons",
+                textButtons: true,
+              }),
+              html.createDomElement("div", {
+                id: "interpolation-error-info",
+              }),
+            ]
+          ),
+          auxiliaryHeaderElement: groupAccordionHeaderButtons([
+            makeAccordionHeaderButton({
+              icon: "menu-2",
+              id: "glyph-sources-sort-options-button",
+              tooltip: translate(
+                "sidebar.designspace-navigation.glyph-sources-sort-options"
+              ),
+              onclick: (event) => this.showGlyphSourcesSortOptionsMenu(event),
             }),
-          ]
-        ),
-      },
-    ]);
-    persistAccordionOpenState(this.accordion);
+          ]),
+        },
+        {
+          id: "glyph-layers-accordion-item",
+          label: translate("sidebar.designspace-navigation.glyph-source-layers"),
+          open: true,
+          content: html.div(
+            {
+              style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
+            },
+            [
+              selectLookList("layers-list", "data"),
+              html.createDomElement("add-remove-buttons", {
+                style: "padding: 4px 0 0 0;",
+                id: "source-layers-add-remove-buttons",
+                textButtons: true,
+              }),
+            ]
+          ),
+        },
+      ],
+      ACCORDION_OPEN_STORAGE_PREFIX
+    );
+    persistAccordionOpenState(this.accordion, ACCORDION_OPEN_STORAGE_PREFIX);
 
     // Ticket 24, spec §2.1/§2.3: a second Accordion, under its own "Visual"
     // heading -- ui-accordion.js takes an items array with no room for a
     // plain heading between two of them, and is left unchanged, so the
     // heading sits between two Accordion elements instead.
     this.visualAccordion = new Accordion();
-    this.visualAccordion.items = restoreAccordionOpenState([
-      this._buildGridLookAccordionItem(),
-      {
-        // Ticket 29: one column per kind of curve, and no switch for the whole
-        // section. The toggle is that kind's curvature gizmo; the checks under
-        // it are its on-curve gizmo and its tension label. Rows run across the
-        // columns, so the grid fills toggles first, then on-curve, then label.
-        id: "tunni-accordion-item",
-        label: translate("sidebar.designspace-navigation.tunni"),
-        open: false,
-        content: html.div(
-          {
-            id: "tunni-content",
-            style: `
+    this.visualAccordion.items = restoreAccordionOpenState(
+      [
+        this._buildGridLookAccordionItem(),
+        {
+          // Ticket 29: one column per kind of curve, and no switch for the whole
+          // section. The toggle is that kind's curvature gizmo; the checks under
+          // it are its on-curve gizmo and its tension label. Rows run across the
+          // columns, so the grid fills toggles first, then on-curve, then label.
+          id: "tunni-accordion-item",
+          label: translate("sidebar.designspace-navigation.tunni"),
+          open: false,
+          content: html.div(
+            {
+              id: "tunni-content",
+              style: `
               display: grid;
               grid-template-columns: repeat(3, auto);
               gap: 10px 12px;
               justify-content: start;
               align-items: center;
             `,
-          },
-          [
-            ...Object.keys(TUNNI_KINDS).map((kind) =>
-              html.createDomElement("labeled-toggle", {
-                id: `tunni-${kind}-toggle`,
-                label: translate(`sidebar.designspace-navigation.tunni.${kind}`),
-              })
-            ),
-            ...["on-curve", "label"].flatMap((row) =>
-              Object.keys(TUNNI_KINDS).map((kind) =>
-                debugCheckmark(
-                  `tunni-${kind}-${row}`,
-                  translate(`sidebar.designspace-navigation.tunni.${row}`)
+            },
+            [
+              ...Object.keys(TUNNI_KINDS).map((kind) =>
+                html.createDomElement("labeled-toggle", {
+                  id: `tunni-${kind}-toggle`,
+                  label: translate(`sidebar.designspace-navigation.tunni.${kind}`),
+                })
+              ),
+              ...["on-curve", "label"].flatMap((row) =>
+                Object.keys(TUNNI_KINDS).map((kind) =>
+                  debugCheckmark(
+                    `tunni-${kind}-${row}`,
+                    translate(`sidebar.designspace-navigation.tunni.${row}`)
+                  )
                 )
-              )
-            ),
-            html.createDomElement("labeled-toggle", {
-              id: "tunni-labels-always-visible-toggle",
-              label: translate(
-                "sidebar.designspace-navigation.tunni.labels-always-visible"
               ),
-              style: "grid-column: 1 / -1;",
-            }),
-          ]
-        ),
-      },
-      {
-        // Tickets 30 and 31: app settings, per D9. SpeedPunk on skeleton only
-        // draws while the generated outline is hidden and SpeedPunk is on.
-        id: "skeleton-visual-accordion-item",
-        label: translate("sidebar.designspace-navigation.skeleton"),
-        auxiliaryHeaderElement: this._makeGizmoHandlesControl(),
-        open: false,
-        content: html.div(
-          {
-            id: "skeleton-visual-content",
-          },
-          [
-            html.createDomElement("labeled-toggle", {
-              id: "skeleton-show-generated-toggle",
-              label: translate(
-                "sidebar.designspace-navigation.skeleton.show-generated"
-              ),
-            }),
-            html.createDomElement("labeled-toggle", {
-              id: "skeleton-speedpunk-toggle",
-              label: translate("sidebar.designspace-navigation.skeleton.speedpunk"),
-            }),
-            sliderField({
-              id: "skeleton-width-input",
-              defaultValue: 1.5,
-              label: translate("sidebar.designspace-navigation.skeleton.width"),
-              minValue: 0.5,
-              maxValue: 12,
-              step: 0.5,
-              integer: false,
-            }),
-            sliderField({
-              id: "skeleton-width-ungenerated-input",
-              defaultValue: 3,
-              label: translate(
-                "sidebar.designspace-navigation.skeleton.width-ungenerated"
-              ),
-              minValue: 0.5,
-              maxValue: 12,
-              step: 0.5,
-              integer: false,
-            }),
-            sliderField({
-              id: "skeleton-ribs-opacity-input",
-              defaultValue: 100,
-              label: translate("sidebar.designspace-navigation.skeleton.ribs"),
-              minValue: 0,
-              maxValue: 100,
-              integer: true,
-            }),
-          ]
-        ),
-      },
-      {
-        id: "speedpunk-accordion-item",
-        label: translate("sidebar.designspace-navigation.speedpunk"),
-        open: false,
-        auxiliaryHeaderElement: this._makeVisualHeaderToggle("speedpunk-header-toggle"),
-        content: html.div(
-          {
-            id: "speedpunk-content",
-          },
-          [
-            sliderField({
-              id: "speedpunk-peak-height-input",
-              defaultValue: SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM,
-              label: translate("sidebar.designspace-navigation.speedpunk.peak-height"),
-              minValue: SPEEDPUNK_PEAK_HEIGHT_MIN_UPM,
-              maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
-              integer: true,
-            }),
-            sliderField({
-              id: "speedpunk-color-tight-turn-input",
-              defaultValue: SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES,
-              label: translate(
-                "sidebar.designspace-navigation.speedpunk.color-tight-turn"
-              ),
-              minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
-              maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
-              integer: true,
-            }),
-            sliderField({
-              id: "speedpunk-reference-turn-input",
-              defaultValue: SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES,
-              label: translate(
-                "sidebar.designspace-navigation.speedpunk.reference-turn"
-              ),
-              minValue: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
-              maxValue: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
-              integer: true,
-            }),
-            sliderField({
-              id: "speedpunk-sharpness-input",
-              defaultValue: SPEEDPUNK_SHARPNESS_DEFAULT,
-              label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
-              minValue: SPEEDPUNK_SHARPNESS_MIN,
-              maxValue: SPEEDPUNK_SHARPNESS_MAX,
-              step: 0.1,
-              integer: false,
-            }),
-            sliderField({
-              id: "speedpunk-color-flat-turn-input",
-              defaultValue: SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES,
-              label: translate(
-                "sidebar.designspace-navigation.speedpunk.color-flat-turn"
-              ),
-              minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
-              maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
-              integer: true,
-            }),
-            sliderField({
-              id: "speedpunk-opacity-input",
-              defaultValue: SPEEDPUNK_OPACITY_DEFAULT,
-              label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
-              minValue: SPEEDPUNK_OPACITY_MIN,
-              maxValue: SPEEDPUNK_OPACITY_MAX,
-              step: 0.05,
-              integer: false,
-            }),
-          ]
-        ),
-      },
-      {
-        // Ticket 27, spec §2.3: the two rows out of the debug accordion's
-        // whole resolver that a designer actually sets, as labeled toggles
-        // (their own row, not a header toggle -- no master switch exists to
-        // put on this header yet, see the ticket's Out of scope). The debug
-        // accordion keeps the whole set, unmoved; both stay in sync through
-        // the same setSnapParameter/subscribeSnapParameters this file
-        // already used for the debug row alone.
-        id: "snapping-and-smart-guides-accordion-item",
-        label: "Snapping and smart guides",
-        open: false,
-        content: html.div(
-          {},
-          [
-            SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "offCurveSources"),
-            SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "snapDuringFixedRib"),
-          ].map((control) =>
-            html.createDomElement("labeled-toggle", {
-              id: `snapping-guides-${control.path.replace(".", "-")}-toggle`,
-              label: control.label,
-            })
-          )
-        ),
-      },
-      {
-        // How the Tunni gizmos reveal themselves, for tuning by hand. Live and
-        // stored per browser, like the snapping debug numbers below.
-        id: "tunni-debug-accordion-item",
-        label: "Tunni (debug)",
-        open: false,
-        content: tuningControlsContent("tunni-debug", TUNNI_DEBUG_CONTROLS),
-      },
-      {
-        // The canvas labels' sizes -- the pill, the Q plaque, and the measurement
-        // labels on handles and gizmos. Live and stored per browser.
-        id: "labels-debug-accordion-item",
-        label: "Labels (debug)",
-        open: false,
-        content: tuningControlsContent("labels-debug", LABEL_DEBUG_CONTROLS),
-      },
-      {
-        // Which modified drags snap. Each modifier states its own geometry, so
-        // all are off by default; these switches are for trying the other way.
-        id: "modifier-snapping-debug-accordion-item",
-        label: "Modifier snapping (debug)",
-        open: false,
-        content: html.div({}, snappingDebugRows(MOD_SNAP_CONTROLS)),
-      },
-      {
-        id: "snapping-debug-accordion-item",
-        label: "Snapping (debug)",
-        open: false,
-        content: html.div({}, [
-          ...snappingDebugRows(SNAPPING_TUNING_CONTROLS),
-          debugResetButton("snapping-debug-reset"),
-          // Below the sliders, and at a fixed height. The readout changes line
-          // count from frame to frame, and above them that reflow moved every
-          // slider under the cursor.
-          html.div(
+              html.createDomElement("labeled-toggle", {
+                id: "tunni-labels-always-visible-toggle",
+                label: translate(
+                  "sidebar.designspace-navigation.tunni.labels-always-visible"
+                ),
+                style: "grid-column: 1 / -1;",
+              }),
+            ]
+          ),
+        },
+        {
+          // Tickets 30 and 31: app settings, per D9. SpeedPunk on skeleton only
+          // draws while the generated outline is hidden and SpeedPunk is on.
+          id: "skeleton-visual-accordion-item",
+          label: translate("sidebar.designspace-navigation.skeleton"),
+          auxiliaryHeaderElement: this._makeGizmoHandlesControl(),
+          open: false,
+          content: html.div(
             {
-              id: "snapping-debug-readout",
-              style: `
+              id: "skeleton-visual-content",
+            },
+            [
+              html.createDomElement("labeled-toggle", {
+                id: "skeleton-show-generated-toggle",
+                label: translate(
+                  "sidebar.designspace-navigation.skeleton.show-generated"
+                ),
+              }),
+              html.createDomElement("labeled-toggle", {
+                id: "skeleton-speedpunk-toggle",
+                label: translate("sidebar.designspace-navigation.skeleton.speedpunk"),
+              }),
+              sliderField({
+                id: "skeleton-width-input",
+                defaultValue: 1.5,
+                label: translate("sidebar.designspace-navigation.skeleton.width"),
+                minValue: 0.5,
+                maxValue: 12,
+                step: 0.5,
+                integer: false,
+              }),
+              sliderField({
+                id: "skeleton-width-ungenerated-input",
+                defaultValue: 3,
+                label: translate(
+                  "sidebar.designspace-navigation.skeleton.width-ungenerated"
+                ),
+                minValue: 0.5,
+                maxValue: 12,
+                step: 0.5,
+                integer: false,
+              }),
+              sliderField({
+                id: "skeleton-ribs-opacity-input",
+                defaultValue: 100,
+                label: translate("sidebar.designspace-navigation.skeleton.ribs"),
+                minValue: 0,
+                maxValue: 100,
+                integer: true,
+              }),
+            ]
+          ),
+        },
+        {
+          id: "speedpunk-accordion-item",
+          label: translate("sidebar.designspace-navigation.speedpunk"),
+          open: false,
+          auxiliaryHeaderElement: this._makeVisualHeaderToggle(
+            "speedpunk-header-toggle"
+          ),
+          content: html.div(
+            {
+              id: "speedpunk-content",
+            },
+            [
+              sliderField({
+                id: "speedpunk-peak-height-input",
+                defaultValue: SPEEDPUNK_PEAK_HEIGHT_DEFAULT_UPM,
+                label: translate(
+                  "sidebar.designspace-navigation.speedpunk.peak-height"
+                ),
+                minValue: SPEEDPUNK_PEAK_HEIGHT_MIN_UPM,
+                maxValue: SPEEDPUNK_PEAK_HEIGHT_MAX_UPM,
+                integer: true,
+              }),
+              sliderField({
+                id: "speedpunk-color-tight-turn-input",
+                defaultValue: SPEEDPUNK_COLOR_TIGHT_TURN_DEFAULT_DEGREES,
+                label: translate(
+                  "sidebar.designspace-navigation.speedpunk.color-tight-turn"
+                ),
+                minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+                maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+                integer: true,
+              }),
+              sliderField({
+                id: "speedpunk-reference-turn-input",
+                defaultValue: SPEEDPUNK_REFERENCE_TURN_DEFAULT_DEGREES,
+                label: translate(
+                  "sidebar.designspace-navigation.speedpunk.reference-turn"
+                ),
+                minValue: SPEEDPUNK_REFERENCE_TURN_MIN_DEGREES,
+                maxValue: SPEEDPUNK_REFERENCE_TURN_MAX_DEGREES,
+                integer: true,
+              }),
+              sliderField({
+                id: "speedpunk-sharpness-input",
+                defaultValue: SPEEDPUNK_SHARPNESS_DEFAULT,
+                label: translate("sidebar.designspace-navigation.speedpunk.sharpness"),
+                minValue: SPEEDPUNK_SHARPNESS_MIN,
+                maxValue: SPEEDPUNK_SHARPNESS_MAX,
+                step: 0.1,
+                integer: false,
+              }),
+              sliderField({
+                id: "speedpunk-color-flat-turn-input",
+                defaultValue: SPEEDPUNK_COLOR_FLAT_TURN_DEFAULT_DEGREES,
+                label: translate(
+                  "sidebar.designspace-navigation.speedpunk.color-flat-turn"
+                ),
+                minValue: SPEEDPUNK_COLOR_TURN_MIN_DEGREES,
+                maxValue: SPEEDPUNK_COLOR_TURN_MAX_DEGREES,
+                integer: true,
+              }),
+              sliderField({
+                id: "speedpunk-opacity-input",
+                defaultValue: SPEEDPUNK_OPACITY_DEFAULT,
+                label: translate("sidebar.designspace-navigation.speedpunk.opacity"),
+                minValue: SPEEDPUNK_OPACITY_MIN,
+                maxValue: SPEEDPUNK_OPACITY_MAX,
+                step: 0.05,
+                integer: false,
+              }),
+            ]
+          ),
+        },
+        {
+          // Ticket 27, spec §2.3: the two rows out of the debug accordion's
+          // whole resolver that a designer actually sets, as labeled toggles
+          // (their own row, not a header toggle -- no master switch exists to
+          // put on this header yet, see the ticket's Out of scope). The debug
+          // accordion keeps the whole set, unmoved; both stay in sync through
+          // the same setSnapParameter/subscribeSnapParameters this file
+          // already used for the debug row alone.
+          id: "snapping-and-smart-guides-accordion-item",
+          label: "Snapping and smart guides",
+          open: false,
+          content: html.div(
+            {},
+            [
+              SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "offCurveSources"),
+              SNAPPING_DEBUG_CONTROLS.find((c) => c.path === "snapDuringFixedRib"),
+            ].map((control) =>
+              html.createDomElement("labeled-toggle", {
+                id: `snapping-guides-${control.path.replace(".", "-")}-toggle`,
+                label: control.label,
+              })
+            )
+          ),
+        },
+        {
+          // How the Tunni gizmos reveal themselves, for tuning by hand. Live and
+          // stored per browser, like the snapping debug numbers below.
+          id: "tunni-debug-accordion-item",
+          label: "Tunni (debug)",
+          open: false,
+          content: tuningControlsContent("tunni-debug", TUNNI_DEBUG_CONTROLS),
+        },
+        {
+          // The canvas labels' sizes -- the pill, the Q plaque, and the measurement
+          // labels on handles and gizmos. Live and stored per browser.
+          id: "labels-debug-accordion-item",
+          label: "Labels (debug)",
+          open: false,
+          content: tuningControlsContent("labels-debug", LABEL_DEBUG_CONTROLS),
+        },
+        {
+          // Which modified drags snap. Each modifier states its own geometry, so
+          // all are off by default; these switches are for trying the other way.
+          id: "modifier-snapping-debug-accordion-item",
+          label: "Modifier snapping (debug)",
+          open: false,
+          content: html.div({}, snappingDebugRows(MOD_SNAP_CONTROLS)),
+        },
+        {
+          id: "snapping-debug-accordion-item",
+          label: "Snapping (debug)",
+          open: false,
+          content: html.div({}, [
+            ...snappingDebugRows(SNAPPING_TUNING_CONTROLS),
+            debugResetButton("snapping-debug-reset"),
+            // Below the sliders, and at a fixed height. The readout changes line
+            // count from frame to frame, and above them that reflow moved every
+            // slider under the cursor.
+            html.div(
+              {
+                id: "snapping-debug-readout",
+                style: `
                 flex: none;
                 font: var(--ui-text-label-xs);
                 letter-spacing: var(--ui-tracking);
@@ -1494,13 +1468,15 @@ export default class DesignspaceNavigationPanel extends Panel {
                 border-top: 1px solid var(--line-base-basic-1);
                 height: 15em;
               `,
-            },
-            ["no snap"]
-          ),
-        ]),
-      },
-    ]);
-    persistAccordionOpenState(this.visualAccordion);
+              },
+              ["no snap"]
+            ),
+          ]),
+        },
+      ],
+      ACCORDION_OPEN_STORAGE_PREFIX
+    );
+    persistAccordionOpenState(this.visualAccordion, ACCORDION_OPEN_STORAGE_PREFIX);
 
     // Everything left in the old Visual accordion is tuning, and lives in the
     // Debug panel (panel-debug.js), which shows this same element.

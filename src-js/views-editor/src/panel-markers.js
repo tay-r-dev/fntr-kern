@@ -17,6 +17,11 @@ import {
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, tickets 64, 65
 import "@fontra/web-components/text-button.js";
 import {
+  Accordion,
+  persistAccordionOpenState,
+  restoreAccordionOpenState,
+} from "@fontra/web-components/ui-accordion.js";
+import {
   createGroup,
   deleteGroup,
   deleteMarkers,
@@ -40,21 +45,17 @@ import Panel from "./panel.js";
 // How long a section trash stays armed, in milliseconds.
 const ERASE_ARMED_MILLISECONDS = 4000;
 
-// The Measurements card (Figma 4118:11629): a section per marker kind, each a
-// heading with its eye and trash over a table, and the groups table.
-const MARKERS_PANEL_STYLES = `
-  .markers-card {
-    gap: 12px;
-  }
+// The sections' open items are kept under this prefix (ui-accordion.js).
+const ACCORDION_OPEN_STORAGE_PREFIX = "fontra-markers-accordion-open.";
 
+// The Measurements card (Figma 4118:11629): a switch accordion with a
+// section per marker kind, its eye and trash in the header over a table, and
+// the groups table.
+const MARKERS_PANEL_STYLES = `
   .markers-section {
     display: flex;
     flex-direction: column;
-    gap: 6px;
-  }
-
-  .markers-section[hidden] {
-    display: none;
+    gap: 4px;
   }
 
   .markers-heading-actions {
@@ -132,18 +133,23 @@ export default class MarkersPanel extends Panel {
       measuredColumns
     );
     this.groups = this._buildGroupSection();
+    this.accordion = new Accordion();
+    this.accordion.setAttribute("switch", "");
+    this.accordion.items = restoreAccordionOpenState(
+      [this.rays, this.dimensions, this.rulers, this.curvatures, this.groups].map(
+        (section) => section.item
+      ),
+      ACCORDION_OPEN_STORAGE_PREFIX
+    );
+    persistAccordionOpenState(this.accordion, ACCORDION_OPEN_STORAGE_PREFIX);
     this.contentElement.appendChild(
       html.div({ class: "card-column panel-section--flex" }, [
-        html.div({ class: "card card--headed markers-card" }, [
+        html.div({ class: "card card--headed" }, [
           html.div({ class: "card-heading" }, [
             translate("sidebar.markers.measurements"),
           ]),
           this.noGlyphNote,
-          this.rays.element,
-          this.dimensions.element,
-          this.rulers.element,
-          this.curvatures.element,
-          this.groups.element,
+          this.accordion,
         ]),
       ])
     );
@@ -191,7 +197,8 @@ export default class MarkersPanel extends Panel {
     return table;
   }
 
-  // A section: heading with its eye and trash, a note when empty, and the table.
+  // A section: an accordion item with its eye and trash in the header, a note
+  // when empty, and the table.
   _buildMarkerSection(kind, labelKey, columns) {
     const eye = html.createDomElement("icon-button", {
       "src": "/tabler-icons/eye.svg",
@@ -206,15 +213,17 @@ export default class MarkersPanel extends Panel {
     trash.onclick = (event) => this.pressEraseSection(kind, event.currentTarget);
     const table = this._buildTable(kind, columns);
     const empty = html.div({ class: "card-note" }, [translate("sidebar.markers.none")]);
-    const element = html.div({ class: "markers-section" }, [
-      html.div({ class: "card-heading-row" }, [
-        html.div({ class: "card-subheading" }, [translate(labelKey)]),
-        html.div({ class: "markers-heading-actions" }, [eye, trash]),
+    const item = {
+      id: kind,
+      label: translate(labelKey),
+      open: true,
+      content: html.div({ class: "markers-section" }, [empty, table]),
+      auxiliaryHeaderElement: html.div({ class: "markers-heading-actions" }, [
+        eye,
+        trash,
       ]),
-      empty,
-      table,
-    ]);
-    return { element, eye, trash, table, empty, markers: [] };
+    };
+    return { item, eye, trash, table, empty, markers: [] };
   }
 
   _buildGroupSection() {
@@ -234,22 +243,24 @@ export default class MarkersPanel extends Panel {
     const empty = html.div({ class: "card-note" }, [
       translate("sidebar.markers.no-groups"),
     ]);
-    const element = html.div({ class: "markers-section" }, [
-      html.div({ class: "card-heading-row" }, [
-        html.div({ class: "card-subheading" }, [translate("sidebar.markers.groups")]),
+    const item = {
+      id: "groups",
+      label: translate("sidebar.markers.groups"),
+      open: true,
+      content: html.div({ class: "markers-section" }, [
+        empty,
+        table,
+        html.div({ class: "button-row" }, [
+          // button/text, size S (Figma 414:31310).
+          html.createDomElement("text-button", {
+            label: translate("sidebar.markers.new-group"),
+            size: "S",
+            onclick: () => this._createNextGroup(),
+          }),
+        ]),
       ]),
-      empty,
-      table,
-      html.div({ class: "button-row" }, [
-        // button/text, size S (Figma 414:31310).
-        html.createDomElement("text-button", {
-          label: translate("sidebar.markers.new-group"),
-          size: "S",
-          onclick: () => this._createNextGroup(),
-        }),
-      ]),
-    ]);
-    return { element, table, empty, groups: [] };
+    };
+    return { item, table, empty, groups: [] };
   }
 
   _getPositionedGlyph() {
@@ -270,15 +281,7 @@ export default class MarkersPanel extends Panel {
   async update() {
     const positionedGlyph = this._getPositionedGlyph();
     this.noGlyphNote.hidden = !!positionedGlyph;
-    for (const section of [
-      this.rays,
-      this.dimensions,
-      this.rulers,
-      this.curvatures,
-      this.groups,
-    ]) {
-      section.element.hidden = !positionedGlyph;
-    }
+    this.accordion.hidden = !positionedGlyph;
     if (!positionedGlyph) {
       this._disarmErase();
       return;

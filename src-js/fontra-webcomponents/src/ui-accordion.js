@@ -260,6 +260,40 @@ export class Accordion extends UnlitElement {
 
 customElements.define("ui-accordion", Accordion);
 
+// An accordion's open and closed items survive a reload: restored from local
+// storage under `prefix` + the item's id before the accordion first renders,
+// and stored on every open or close from then on. Storage that fails leaves
+// each item at its own default.
+export function restoreAccordionOpenState(items, prefix) {
+  for (const item of items) {
+    if (!item.id) {
+      continue;
+    }
+    try {
+      const stored = localStorage.getItem(prefix + item.id);
+      if (stored != null) {
+        item.open = stored === "1";
+      }
+    } catch (error) {
+      // The item's own default stands.
+    }
+  }
+  return items;
+}
+
+export function persistAccordionOpenState(accordion, prefix) {
+  accordion.onItemOpenClose = (item, open) => {
+    if (!item.id) {
+      return;
+    }
+    try {
+      localStorage.setItem(prefix + item.id, open ? "1" : "0");
+    } catch (error) {
+      // Losing the state here isn't worth surfacing.
+    }
+  };
+}
+
 export function makeClickableIconHeader(iconPath, onClick) {
   const focus = new FocusKeeper();
   return html.div(
