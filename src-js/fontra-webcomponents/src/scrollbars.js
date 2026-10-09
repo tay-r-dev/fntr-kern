@@ -10,6 +10,8 @@ const MIN_THUMB = 16;
 // A rail's strip across (shared.css's .scrollbar-rail).
 const RAIL = 8;
 const ARROW_STEP = 40;
+// A wheel 'line' (Firefox's delta mode 1), in pixels.
+const WHEEL_LINE = 16;
 const ARROW_REPEAT_DELAY = 300;
 const ARROW_REPEAT_INTERVAL = 50;
 const REVEAL_DELAY = 500;
@@ -226,6 +228,23 @@ function makeBar(box, axis) {
     thumb.addEventListener("pointerup", onEnd);
     thumb.addEventListener("lostpointercapture", onEnd);
   });
+
+  // The wheel over a bar scrolls the box, as over the box itself; over the
+  // sideways bar either wheel direction scrolls sideways.
+  rail.addEventListener(
+    "wheel",
+    (event) => {
+      event.preventDefault();
+      const unit =
+        event.deltaMode === 1 ? WHEEL_LINE : event.deltaMode === 2 ? clientSize() : 1;
+      if (vertical) {
+        box.scrollBy({ left: event.deltaX * unit, top: event.deltaY * unit });
+      } else {
+        box.scrollBy({ left: (event.deltaX || event.deltaY) * unit });
+      }
+    },
+    { passive: false }
+  );
 
   // A press on the track jumps a page toward the pointer.
   track.addEventListener("pointerdown", (event) => {
