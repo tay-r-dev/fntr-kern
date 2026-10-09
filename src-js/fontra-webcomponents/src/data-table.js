@@ -428,6 +428,33 @@ const DATA_TABLE_STYLES = `
     overflow-y: hidden;
   }
 
+  /* A table whose columns keep their widths shows its sideways scrollbar
+     always, as an 8px strip under the rows that takes its own room (its
+     rows' scrollbar is drawn the same); the height grip sits above it. */
+  data-table[look].data-table-scrolls-sideways > .data-table-scroll {
+    overflow-x: scroll;
+  }
+
+  data-table[look].data-table-scrolls-sideways > .data-table-scroll::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  data-table[look].data-table-scrolls-sideways > .data-table-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  data-table[look].data-table-scrolls-sideways
+    > .data-table-scroll::-webkit-scrollbar-thumb {
+    background: var(--icon-base-basic-4);
+    border-radius: 4px;
+    border: 2px solid var(--data-table-look-background-color);
+  }
+
+  data-table[look].data-table-scrolls-sideways > .data-table-grip > ui-handle {
+    bottom: 8px;
+  }
+
   data-table[look] .data-table {
     font-size: inherit;
   }
@@ -1280,6 +1307,10 @@ export class DataTable extends HTMLElement {
     // Columns that do not shrink can leave the table wider than its box, which
     // then scrolls sideways.
     this._table.style.tableLayout = anyWidth && box > 0 ? "fixed" : "";
+    this.classList.toggle(
+      "data-table-scrolls-sideways",
+      visible.some(({ column }) => column.noShrink)
+    );
     this._table.style.minWidth =
       anyWidth && box > 0 && used + lastWidth > box ? `${used + lastWidth}px` : "";
   }
