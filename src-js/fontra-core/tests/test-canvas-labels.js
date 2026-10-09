@@ -69,10 +69,15 @@ describe("canvas labels keep one font across zoom", () => {
   it("a plaque sets the same fonts at every zoom", () => {
     const fontsAt = (scale) => {
       const context = recordingContext(scale);
-      drawPlaque(context, atZoom(PLAQUE_SCREEN_PARAMETERS, scale), { x: 0, y: 0 }, {
-        header: { left: "#3", right: ["10", "20"] },
-        rows: [{ icon: "width", value: "40", sub: ["20", "20"] }],
-      });
+      drawPlaque(
+        context,
+        atZoom(PLAQUE_SCREEN_PARAMETERS, scale),
+        { x: 0, y: 0 },
+        {
+          header: { left: "#3", right: ["10", "20"] },
+          rows: [{ icon: "width", value: "40", sub: ["20", "20"] }],
+        }
+      );
       return context.fonts;
     };
     expect(fontsAt(0.37)).to.deep.equal(fontsAt(1));
@@ -86,6 +91,52 @@ describe("canvas labels keep one font across zoom", () => {
     };
     // Zoomed far out, where the minimum screen size holds the label up.
     expect(fontAt(0.05)).to.deep.equal(fontAt(0.08));
+  });
+});
+
+// label/Q (Figma 2004:29990): the values thin and condensed in text/base/basic/3,
+// the small print in text/base/basic/4, a card with no outline.
+describe("the plaque draws label/Q", () => {
+  function drawn() {
+    const context = recordingContext(1);
+    const texts = [];
+    let strokes = 0;
+    context.fontStretch = "";
+    context.fillText = (text) =>
+      texts.push({
+        text: String(text),
+        font: context.font,
+        stretch: context.fontStretch,
+        color: context.fillStyle,
+      });
+    context.stroke = () => strokes++;
+    drawPlaque(
+      context,
+      PLAQUE_SCREEN_PARAMETERS,
+      { x: 0, y: 0 },
+      {
+        rows: [{ icon: "width", value: "40.0", sub: ["20.0", "20.0"] }],
+      }
+    );
+    return { texts, strokes };
+  }
+
+  it("sets the value thin and condensed, in text/base/basic/3", () => {
+    const value = drawn().texts.find((t) => t.text === "40.0");
+    expect(value.font).to.match(/^200 /);
+    expect(value.stretch).to.equal("condensed");
+    expect(value.color).to.equal("#8D8D8D");
+  });
+
+  it("sets the small print light and semi-condensed, in text/base/basic/4", () => {
+    const small = drawn().texts.find((t) => t.text === "20.0");
+    expect(small.font).to.match(/^300 /);
+    expect(small.stretch).to.equal("semi-condensed");
+    expect(small.color).to.equal("#B8B8B8");
+  });
+
+  it("draws no outline", () => {
+    expect(drawn().strokes).to.equal(0);
   });
 });
 

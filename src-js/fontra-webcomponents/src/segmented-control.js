@@ -64,15 +64,15 @@ export class SegmentedControl extends UnlitElement {
       box-sizing: border-box;
       /* select/segmented's tray at 24px; a view whose design sets the
          sl-sgb numbers smaller (20px, 5px corners) sets these. */
-      height: var(--segmented-control-height, 24px);
-      padding: var(--segmented-control-tray-padding, 3px);
+      height: var(--segmented-control-height, var(--sl-sgb-height));
+      padding: var(--segmented-control-tray-padding, var(--sl-sgb-padding));
       gap: 0;
       background: var(--segmented-control-tray-color);
       /* The design draws the tray's line inside, so it takes no room: a
          rule on top at rest, on top and at the sides on hover, all round when
          disabled. */
       box-shadow: inset 0 1px 0 var(--segmented-control-border-color);
-      border-radius: var(--segmented-control-radius, 6px);
+      border-radius: var(--segmented-control-radius, var(--sl-sgb-radius));
     }
 
     button {
@@ -86,7 +86,6 @@ export class SegmentedControl extends UnlitElement {
       /* ui/label/M */
       font: var(--ui-text-label-m);
       letter-spacing: var(--ui-tracking-label-m);
-      font-feature-settings: "case" 1;
       white-space: nowrap;
       cursor: pointer;
       box-sizing: border-box;
@@ -105,7 +104,7 @@ export class SegmentedControl extends UnlitElement {
 
     .row:hover button.on {
       background: var(--segmented-control-on-hover-background-color);
-      box-shadow: 0 1px 2px var(--segmented-control-on-hover-shadow-color);
+      box-shadow: 0 1px 1px var(--segmented-control-on-hover-shadow-color);
       color: var(--segmented-control-on-hover-text-color);
     }
 
@@ -117,7 +116,7 @@ export class SegmentedControl extends UnlitElement {
 
     button.on {
       background: var(--segmented-control-on-background-color);
-      box-shadow: 0 1px 3px var(--segmented-control-on-shadow-color);
+      box-shadow: 0 1px 1.5px var(--segmented-control-on-shadow-color);
       color: var(--segmented-control-on-text-color);
     }
 
@@ -166,6 +165,11 @@ export class SegmentedControl extends UnlitElement {
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       height: var(--segmented-control-button-height, 100%);
+    }
+
+    /* The heading's lit pill casts a paler shadow (Figma 2004:29331). */
+    :host([small]:not([disabled])) .row:not(:hover) button.on {
+      box-shadow: 0 1px 1px var(--shadow-base-1);
     }
   `;
 

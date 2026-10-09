@@ -22,6 +22,7 @@ const MEASURE_LABEL_WEIGHT = 200;
 for (const weight of [LABEL_WEIGHT, MEASURE_LABEL_WEIGHT]) {
   globalThis.document?.fonts?.load(`${weight} semi-condensed 10px fontra-ui-mono`);
 }
+globalThis.document?.fonts?.load("200 condensed 10px fontra-ui-mono");
 
 // The sizes a designer can tune by hand, from the "Labels (debug)" accordion in the
 // left panel. Live: every draw reads them. The panel stores them per browser.
@@ -180,22 +181,31 @@ function drawCardBackground(
   width,
   height,
   radius,
-  { fill, border, borderColor = LABEL_BORDER_COLOR }
+  {
+    fill,
+    border,
+    borderColor = LABEL_BORDER_COLOR,
+    shadowColor = LABEL_SHADOW_COLOR,
+    shadowBlur = 1,
+  }
 ) {
   // A shadow is set in device pixels and ignores the transform, so it is one device
   // pixel's worth of the screen at every zoom.
   const pixel = globalThis.devicePixelRatio || 1;
   blurBehind(context, left, top, width, height, radius, LABEL_BACKDROP_BLUR * pixel);
   context.save();
-  context.shadowColor = LABEL_SHADOW_COLOR;
+  context.shadowColor = shadowColor;
   context.shadowOffsetY = pixel;
-  context.shadowBlur = pixel;
+  context.shadowBlur = shadowBlur * pixel;
   context.fillStyle = fill;
   context.beginPath();
   context.roundRect(left, top, width, height, radius);
   context.fill();
   context.restore();
 
+  if (!border) {
+    return;
+  }
   context.lineWidth = border;
   context.strokeStyle = borderColor;
   context.beginPath();
@@ -250,12 +260,13 @@ function blurBehind(context, left, top, width, height, radius, blur) {
   context.restore();
 }
 
-// Figma's label/Q (typeCAD, node 333:17339): the Q-measure plaque. A white card with a
-// 6 radius and 6 of padding, rows 5 apart; each row an icon and a value 6 apart. The
-// value is Martian Mono at 9 in #303030; small print -- a header, or the distribution
-// under a width -- is 7 in #8E8E8E. It carries the label's outline, shadow and
-// background blur. The design has one variant, light, so the plaque is light in both
-// themes.
+// Figma's label/Q (typeCAD, node 2004:29990): the Q-measure plaque. A white card
+// with a 6 radius and 6 of padding, rows 5 apart; each row a 6px icon and a value 6
+// apart. The value is Martian Mono thin and condensed at 9 in text/base/basic/3;
+// small print -- a header, or the distribution under a width -- is 7, light and
+// semi-condensed, in text/base/basic/4. The card has no outline, a pale drop shadow
+// (0 1 1.5, shadow/base/1) and the label's background blur. The design has one
+// variant, light, so the plaque is light in both themes.
 //
 //   plaque = {
 //     header?: {left, right: [a, b]},   // small print across the top, a • b at right
@@ -281,8 +292,11 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   context.textBaseline = "middle";
   context.textAlign = "left";
 
-  const measure = (text, size, tracking) => {
-    setLabelFont(context, size, tracking);
+  const valueFont = (tracking) =>
+    setLabelFont(context, valueSize, tracking, PLAQUE.valueWeight, PLAQUE.valueStretch);
+  const smallFont = () => setLabelFont(context, smallSize, TRACKING);
+  const measure = (text, font) => {
+    font();
     return context.measureText(text).width;
   };
 
@@ -301,7 +315,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     headerWidth = header.left
       ? Math.max(
           PLAQUE.minHeaderWidth,
-          measure(header.left, smallSize, TRACKING) + iconGap + rightWidth
+          measure(header.left, smallFont) + iconGap + rightWidth
         )
       : rightWidth;
   }
@@ -311,7 +325,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     const iconWidth = icon ? icon.width : 0;
     const iconHeight = icon ? icon.height : 0;
     const gap = icon ? iconGap : 0;
-    const valueWidth = measure(row.value, valueSize, row.tracking ? TRACKING : 0);
+    const valueWidth = measure(row.value, () => valueFont(row.tracking ? TRACKING : 0));
     setLabelFont(context, smallSize, TRACKING);
     const subWidth = row.sub
       ? joinedWidth(context, row.sub, "/", PLAQUE.subSeparatorGap)
@@ -339,7 +353,9 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
 
   drawCardBackground(context, left, top, width, height, PLAQUE.radius, {
     fill: PLAQUE_COLORS.fill,
-    border: parameters.labelBorderWidth / px,
+    border: 0,
+    shadowColor: PLAQUE_COLORS.shadow,
+    shadowBlur: PLAQUE.shadowBlur,
   });
 
   let y = top + padding;
@@ -362,8 +378,10 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
   for (const row of rows) {
     const x = left + padding;
     // A one-line row centres its icon on the value; a row with small print under it
-    // aligns the icon with the top, as the width row does.
-    const iconTop = row.sub ? y : y + (row.height - row.iconHeight) / 2;
+    // sets the icon at the top, 2 down, as the width row does.
+    const iconTop = row.sub
+      ? y + PLAQUE.subIconInset
+      : y + (row.height - row.iconHeight) / 2;
     if (row.icon) {
       drawPlaqueIcon(
         context,
@@ -378,7 +396,7 @@ export function drawPlaque(context, parameters, at, plaque, { onIconLoad } = {})
     const textX = x + row.iconWidth + row.gap;
     const valueTop = row.sub ? y : y + (row.height - valueLine) / 2;
     context.fillStyle = PLAQUE_COLORS.value;
-    setLabelFont(context, valueSize, row.tracking ? TRACKING : 0);
+    valueFont(row.tracking ? TRACKING : 0);
     context.fillText(row.value, textX, valueTop + valueLine / 2);
     if (row.sub) {
       context.fillStyle = PLAQUE_COLORS.small;
@@ -404,15 +422,21 @@ const PLAQUE = {
   rowGap: 5,
   iconGap: 6,
   radius: 6,
-  // Line heights over font sizes: 12 over 9 and 10 over 7 in the frame.
-  valueLineRatio: 12 / 9,
+  // Line heights over font sizes: 10 over 9 and 10 over 7 in the frame.
+  valueLineRatio: 10 / 9,
   smallLineRatio: 10 / 7,
   minHeaderWidth: 46,
   // The room either side of the bullet between the header's two coordinates, and of
-  // the slash in a width's left/right distribution. The frame sets both at none; the
-  // slash reads cramped at none, so it is given two.
+  // the slash in a width's left/right distribution: none, as the frame sets them.
   headerSeparatorGap: 0,
-  subSeparatorGap: 2,
+  subSeparatorGap: 0,
+  // The width row's icon sits 2 below the row's top.
+  subIconInset: 2,
+  // The values' face: Figma's thin (220) at width 75, the nearest static face.
+  valueWeight: 200,
+  valueStretch: "condensed",
+  // The card's drop shadow: 0 1 1.5, in screen pixels.
+  shadowBlur: 1.5,
 };
 
 // Values joined by a separator with `gap` either side of it, in the current font.
@@ -442,10 +466,12 @@ function joinedItems(parts, separator) {
   return items;
 }
 
+// text/base/basic/3 and 4, shadow/base/1.
 const PLAQUE_COLORS = {
   fill: "#FFFFFF",
-  value: "#303030",
-  small: "#8E8E8E",
+  value: "#8D8D8D",
+  small: "#B8B8B8",
+  shadow: "#EDEDED",
 };
 
 export const PLAQUE_SCREEN_PARAMETERS = {
@@ -473,24 +499,22 @@ export function setLabelFont(
   context,
   size,
   tracking = TRACKING,
-  weight = LABEL_WEIGHT
+  weight = LABEL_WEIGHT,
+  stretch = "semi-condensed"
 ) {
   context.font = `${weight} ${size}px ${LABEL_FONT_FAMILY}`;
-  context.fontStretch = "semi-condensed";
+  context.fontStretch = stretch;
   context.letterSpacing = `${tracking * size}px`;
 }
 
-// The five icons, exported from the frame as they are, served from /images.
+// The frame's 6px plaque icons, in icon/base/basic/4, served from /images. The width
+// row draws the distance icon.
 const PLAQUE_ICONS = {
-  distance: { src: "/images/measure-distance.svg", width: 9, height: 9 },
-  tension: { src: "/images/measure-tension.svg", width: 9, height: 9 },
-  angle: { src: "/images/measure-angle.svg", width: 9, height: 9 },
-  width: { src: "/images/measure-width.svg", width: 9, height: 11 },
-  tangentialShift: {
-    src: "/images/measure-tangential-shift.svg",
-    width: 9,
-    height: 9,
-  },
+  distance: { src: "/images/plaque-distance.svg", width: 6, height: 6 },
+  tension: { src: "/images/plaque-curvature.svg", width: 6, height: 6 },
+  angle: { src: "/images/plaque-angle.svg", width: 6, height: 6 },
+  width: { src: "/images/plaque-distance.svg", width: 6, height: 6 },
+  tangentialShift: { src: "/images/plaque-shift.svg", width: 6, height: 6 },
 };
 
 const iconImages = new Map();

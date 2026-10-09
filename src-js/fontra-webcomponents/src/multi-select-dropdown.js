@@ -35,13 +35,15 @@ import { themeColorCSS } from "./theme-support.js";
 // hand-picked until the design has a dark mode.
 const colors = {
   "multi-select-dropdown-background-color": ["var(--sl-drf-sr-rest)", "#2c2c2c"],
+  // The field's own bindings (Figma 2004:29427), base tokens rather than the
+  // sl-drf aliases: line 1 at rest and on hover, surface 1 on hover.
   "multi-select-dropdown-border-color": [
-    "var(--sl-drf-ln-rest)",
+    "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "multi-select-dropdown-hover-color": ["var(--sl-drf-sr-hover)", "#464646"],
+  "multi-select-dropdown-hover-color": ["var(--surface-base-basic-1)", "#464646"],
   "multi-select-dropdown-hover-border-color": [
-    "var(--sl-drf-ln-hover)",
+    "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.18)",
   ],
   // The open ("selecting") field: white with a faint border (a Figma literal).
@@ -52,7 +54,7 @@ const colors = {
   ],
   "multi-select-dropdown-disabled-color": ["var(--sl-drf-sr-disabled)", "#333"],
   "multi-select-dropdown-disabled-border-color": [
-    "var(--sl-drf-ln-disabled)",
+    "var(--line-base-basic-0)",
     "rgba(255, 255, 255, 0.08)",
   ],
   // The field's text: empty (the property name, or "select" under a label)
@@ -60,10 +62,7 @@ const colors = {
   "multi-select-dropdown-placeholder-color": ["var(--sl-drf-lb-empty-rest)", "#8e8e8e"],
   "multi-select-dropdown-text-color": ["var(--sl-drf-lb-empty-hover)", "#e0e0e0"],
   "multi-select-dropdown-open-text-color": ["var(--sl-drf-lb-empty-focus)", "#e0e0e0"],
-  "multi-select-dropdown-filled-text-color": [
-    "var(--sl-drf-lb-filled-rest)",
-    "#b0b0b0",
-  ],
+  "multi-select-dropdown-filled-text-color": ["var(--text-base-basic-2)", "#b0b0b0"],
   "multi-select-dropdown-filled-hover-text-color": [
     "var(--sl-drf-lb-filled-hover)",
     "#e0e0e0",
@@ -73,6 +72,10 @@ const colors = {
   "multi-select-dropdown-chevron-color": ["var(--sl-drf-ic-rest)", "#8e8e8e"],
   "multi-select-dropdown-chevron-hover-color": ["var(--sl-drf-ic-hover)", "#e0e0e0"],
   "multi-select-dropdown-chevron-open-color": ["var(--sl-drf-ic-focus)", "#e0e0e0"],
+  "multi-select-dropdown-chevron-filled-hover-color": [
+    "var(--icon-base-basic-1)",
+    "#f0f0f0",
+  ],
   "multi-select-dropdown-chevron-disabled-color": [
     "var(--sl-drf-ic-disabled)",
     "#5a5a5a",
@@ -102,7 +105,7 @@ const colors = {
     "#e0e0e0",
   ],
   "multi-select-dropdown-item-multi-hover-color": [
-    "var(--sl-drm-lb-multi-hover)",
+    "var(--text-base-basic-2)",
     "#e0e0e0",
   ],
   "multi-select-dropdown-item-hover-background-color": [
@@ -126,7 +129,7 @@ const colors = {
     "#d0eb49",
   ],
   "multi-select-dropdown-item-check-color": [
-    "var(--sl-drm-ic-multi-active)",
+    "var(--icon-color-lime-basic-3)",
     "#d0eb49",
   ],
   "multi-select-dropdown-item-checked-hover-background-color": [
@@ -138,7 +141,7 @@ const colors = {
     "#3b5600",
   ],
   "multi-select-dropdown-item-check-hover-color": [
-    "var(--sl-drm-ic-multi-active-hover)",
+    "var(--icon-color-lime-basic-2)",
     "#3b5600",
   ],
 };
@@ -286,7 +289,7 @@ export class MultiSelectDropdown extends UnlitElement {
       background-color: var(--multi-select-dropdown-background-color);
       color: var(--multi-select-dropdown-placeholder-color);
       border: 1px solid var(--multi-select-dropdown-border-color);
-      border-radius: 6px;
+      border-radius: var(--sl-drf-nm-corner);
       padding: 4px 6px;
       gap: 4px;
       /* ui/label/S */
@@ -294,7 +297,7 @@ export class MultiSelectDropdown extends UnlitElement {
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       box-sizing: border-box;
-      height: var(--multi-select-dropdown-height, 24px);
+      height: var(--multi-select-dropdown-height, var(--sl-drf-nm-height));
       width: var(--multi-select-dropdown-width, 100%);
       max-width: 100%;
       display: inline-flex;
@@ -329,7 +332,12 @@ export class MultiSelectDropdown extends UnlitElement {
       color: var(--multi-select-dropdown-chevron-hover-color);
     }
 
-    button.open .chevron {
+    :host(:hover) button.filled .chevron {
+      color: var(--multi-select-dropdown-chevron-filled-hover-color);
+    }
+
+    button.open .chevron,
+    :host(:hover) button.open .chevron {
       color: var(--multi-select-dropdown-chevron-open-color);
     }
 
@@ -372,7 +380,7 @@ export class MultiSelectDropdown extends UnlitElement {
 
     /* The chevron flips while the list is open. */
     button.open .chevron {
-      transform: none;
+      transform: scaleY(-1);
     }
 
     /* A label longer than the button ends in an ellipsis; the triangle stays. */
@@ -386,13 +394,12 @@ export class MultiSelectDropdown extends UnlitElement {
       opacity: var(--multi-select-dropdown-label-opacity, 1);
     }
 
-    /* The design's 12px chevron; the icon points up, so it turns to point down. */
+    /* The design's 8px chevron-down. */
     .chevron {
       display: block;
       flex: 0 0 auto;
-      width: 12px;
-      height: 12px;
-      transform: rotate(180deg);
+      width: 8px;
+      height: 8px;
     }
 
     /* Ticket 48: the icon mode, which is how the overflow button draws. */
@@ -595,7 +602,7 @@ export class MultiSelectDropdown extends UnlitElement {
             (this._tagSpan = html.span({ class: "tag" })),
             html.createDomElement("inline-svg", {
               class: "chevron",
-              src: "/tabler-icons/chevron-up.svg",
+              src: "/images/chevron-down.svg",
             }),
           ]
     );

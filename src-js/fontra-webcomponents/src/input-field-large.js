@@ -36,7 +36,7 @@ import { themeColorCSS } from "./theme-support.js";
 // ones ui-form.js's own label-drag scrub uses.
 // input/field/basic and ./scrub-field (Figma 2004:29576, 2004:29534): a grey
 // tray ruled on top holding the box the label and value sit in. The box is
-// invisible at rest, ruled on hover, and white with the lime line while
+// unruled at rest, ruled on hover, and white with the lime line while
 // scrubbing or typing -- the tray then lightens and takes side lines too.
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
@@ -47,6 +47,8 @@ const colors = {
   "input-field-large-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
   "input-field-large-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
   "input-field-large-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
+  "input-field-large-rest-background-color": ["var(--in-csr-rest)", "#3a3a3a"],
+  "input-field-large-rest-border-color": ["var(--in-sln-rest)", "transparent"],
   "input-field-large-hover-background-color": ["var(--in-csr-hover)", "#464646"],
   "input-field-large-hover-border-color": [
     "var(--in-sln-hover)",
@@ -54,28 +56,34 @@ const colors = {
   ],
   "input-field-large-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
   "input-field-large-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
-  // The label: grey at rest, dark on hover and while active.
+  "input-field-large-disabled-background-color": ["var(--in-csr-disabled)", "#3a3a3a"],
+  "input-field-large-disabled-border-color": ["var(--in-sln-disabled)", "transparent"],
+  // The label.
   "input-field-large-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
   "input-field-large-hover-text-color": ["var(--in-lbl-hover)", "#e0e0e0"],
+  "input-field-large-focus-text-color": ["var(--in-lbl-focus)", "#e0e0e0"],
   "input-field-large-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
-  // The value: darker than the label at rest, near-black while active.
+  // The value.
   "input-field-large-value-rest-text-color": ["var(--in-vl-rest)", "#b0b0b0"],
+  "input-field-large-value-hover-text-color": ["var(--in-vl-hover)", "#e0e0e0"],
   "input-field-large-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
   "input-field-large-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
-  // The scrub (drag-arrows) icon.
-  "input-field-large-handle-color": ["var(--in-ic-rest)", "#777777"],
-  "input-field-large-handle-active-color": ["var(--in-ic-focus)", "#999999"],
-  "input-field-large-handle-disabled-color": ["var(--in-ic-disabled)", "#555555"],
+  // The scrub (drag-arrows) icon: the component's own bindings (icon/base/
+  // basic 3 at rest, 2 on hover and focus, 4 disabled).
+  "input-field-large-handle-color": ["var(--icon-base-basic-3)", "#777777"],
+  "input-field-large-handle-active-color": ["var(--icon-base-basic-2)", "#999999"],
+  "input-field-large-handle-disabled-color": ["var(--icon-base-basic-4)", "#555555"],
   // input/field/slider (Figma 2004:29608): the value's share of the range as
   // a bar -- grey at rest (a Figma literal), lime while active.
   "input-field-large-fill-color": ["#e9e9e9", "#4a4a4a"],
   "input-field-large-active-fill-color": ["var(--in-sln-focus)", "#6f8a1e"],
   "input-field-large-selection-color": ["var(--in-sln-focus)", "#5c7033"],
-  "input-field-large-stepper-color": ["#d9d9d9", "#666666"],
-  "input-field-large-stepper-active-color": ["#303030", "#dddddd"],
-  // button/increment (Figma 2004:29110): the hovered half lifts to white.
+  // button/increment (Figma 2004:29110): icon/base/basic/3 arrows; the
+  // hovered half lifts to surface/base/basic/0 with an icon/base/basic/1 arrow.
+  "input-field-large-stepper-color": ["var(--icon-base-basic-3)", "#666666"],
+  "input-field-large-stepper-active-color": ["var(--icon-base-basic-1)", "#dddddd"],
   "input-field-large-stepper-hover-background-color": [
-    "var(--bt-sgb-sr-hover)",
+    "var(--surface-base-basic-0)",
     "#555",
   ],
 };
@@ -88,17 +96,20 @@ export class InputFieldLarge extends UnlitElement {
       display: block;
     }
 
-    /* The design is two nested boxes: the outer .box keeps the constant gray
-       background and padding; the inner container carries the border and all
-       hover/scrub/manual-input background and text changes. */
+    /* ./scrub-field (Figma 2004:29534): a tray (in-bsr/in-bln, ruled on
+       top) holding a container (in-csr/in-sln, a 1px line all round,
+       transparent at rest). In the container, 3px apart from a 3px left
+       inset: the scrub icon, the label, the value filling the rest, an 18px
+       square slot and the increment. While scrubbing or typing the tray
+       also takes the line on its outer side. */
     .box {
       background-color: var(--input-field-large-background-color);
       border: 0 solid var(--input-field-large-border-color);
       border-top-width: 1px;
-      border-radius: 6px;
+      border-radius: var(--in-bsn-corner);
       box-sizing: border-box;
-      height: 24px;
-      padding: 3px;
+      height: var(--in-bsn-height);
+      padding: var(--in-bsn-pad);
       color: var(--input-field-large-text-color);
       cursor: ew-resize;
       user-select: none;
@@ -109,30 +120,18 @@ export class InputFieldLarge extends UnlitElement {
       font-feature-settings: "case" 1;
     }
 
-    /* No border at rest: hover and active draw theirs as an inset ring, so
-       nothing moves when it appears. */
-    .inner {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      border-radius: 3px;
-      box-sizing: border-box;
-      height: 100%;
-      padding: 0 0 0 6px;
-    }
-
-    .inner::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      box-shadow: inset 0 0 0 1px transparent;
-      pointer-events: none;
-    }
-
     .inner {
       position: relative;
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      box-sizing: border-box;
+      height: 100%;
+      padding: 0 0 0 3px;
       overflow: hidden;
+      background-color: var(--input-field-large-rest-background-color);
+      border: 1px solid var(--input-field-large-rest-border-color);
+      border-radius: var(--in-cnn-corner);
     }
 
     .inner > :not(.fill) {
@@ -153,26 +152,27 @@ export class InputFieldLarge extends UnlitElement {
 
     .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner {
       background-color: var(--input-field-large-hover-background-color);
+      border-color: var(--input-field-large-hover-border-color);
       color: var(--input-field-large-hover-text-color);
     }
 
-    .box:hover:not(.disabled):not(.editing):not(.scrubbing) .inner::after {
-      box-shadow: inset 0 0 0 1px var(--input-field-large-hover-border-color);
+    .box:hover:not(.disabled):not(.editing):not(.scrubbing) .value {
+      color: var(--input-field-large-value-hover-text-color);
     }
 
-    /* Scrubbing and manual input share the design's active look: lime accent
-       border on white, dark text. */
-    .box.scrubbing .inner,
-    .box.editing .inner,
-    .box:focus-within .inner {
+    .box:hover:not(.disabled) .scrub-icon {
+      color: var(--input-field-large-handle-active-color);
+    }
+
+    /* Scrubbing and typing share the focus look: white with the lime line. */
+    .box:is(.scrubbing, .editing, :focus-within) .inner {
       background-color: var(--input-field-large-active-background-color);
-      color: var(--input-field-large-active-text-color);
+      border-color: var(--input-field-large-active-border-color);
+      color: var(--input-field-large-focus-text-color);
     }
 
-    .box.scrubbing .inner::after,
-    .box.editing .inner::after,
-    .box:focus-within .inner::after {
-      box-shadow: inset 0 0 0 1px var(--input-field-large-active-border-color);
+    .box:is(.scrubbing, .editing, :focus-within) .value {
+      color: var(--input-field-large-active-text-color);
     }
 
     .box.scrubbing,
@@ -183,18 +183,14 @@ export class InputFieldLarge extends UnlitElement {
       border-width: 1px 1px 0;
     }
 
-    /* One of a linked pair (input-scrub.js): the side line only on the
-       pair's outer edge. */
+    /* One of a linked pair (input-scrub.js), Figma's side=L / side=R: the
+       side line only on the pair's outer edge. */
     :host([side="left"]) .box:is(.scrubbing, .editing, :focus-within) {
       border-right-width: 0;
     }
 
     :host([side="right"]) .box:is(.scrubbing, .editing, :focus-within) {
       border-left-width: 0;
-    }
-
-    .box:is(.scrubbing, .editing, :focus-within) .name {
-      color: var(--input-field-large-hover-text-color);
     }
 
     .box:is(.scrubbing, .editing, :focus-within) .scrub-icon {
@@ -207,12 +203,14 @@ export class InputFieldLarge extends UnlitElement {
 
     .box.disabled {
       cursor: default;
-    }
-
-    .box.disabled {
       background-color: var(--input-field-large-tray-disabled-color);
       border-color: var(--input-field-large-tray-disabled-border-color);
       color: var(--input-field-large-disabled-text-color);
+    }
+
+    .box.disabled .inner {
+      background-color: var(--input-field-large-disabled-background-color);
+      border-color: var(--input-field-large-disabled-border-color);
     }
 
     .box.disabled .value {
@@ -223,11 +221,18 @@ export class InputFieldLarge extends UnlitElement {
       color: var(--input-field-large-handle-disabled-color);
     }
 
+    /* The label keeps its width and gives way only when the value would be
+       squeezed; then it truncates. */
     .name {
-      flex: 1 1 auto;
+      flex: 0 1 auto;
+      min-width: 0;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .name:empty {
+      display: none;
     }
 
     .apply-icon {
@@ -244,19 +249,19 @@ export class InputFieldLarge extends UnlitElement {
       color: var(--input-field-large-handle-color);
     }
 
-    /* Stretched to the inner container's height, so a blank value -- a mixed
-       selection, or no selection at all -- still has something to click.
-       Centred on its own text line it collapsed to zero height, and the
-       keyboard editor it opens was out of reach. */
+    /* The value fills what the label leaves, read from the left. Stretched
+       to the container's height, so a blank value -- a mixed selection, or
+       no selection at all -- still has something to click. */
     .value {
-      flex: 0 0 auto;
+      flex: 1 0 auto;
       align-self: stretch;
       display: flex;
       align-items: center;
-      justify-content: center;
       min-width: 22px;
       min-height: 1.2em;
+      white-space: nowrap;
       cursor: text;
+      color: var(--input-field-large-value-rest-text-color);
     }
 
     .value.scrub-only {
@@ -269,20 +274,17 @@ export class InputFieldLarge extends UnlitElement {
       opacity: 0.6;
     }
 
-    .box:not(:hover):not(.scrubbing):not(.editing):not(.disabled) .value {
-      color: var(--input-field-large-value-rest-text-color);
-    }
-
     .value input {
-      width: 4em;
-      text-align: center;
+      width: 100%;
+      min-width: 0;
+      text-align: left;
       border: none;
       background: transparent;
       color: inherit;
       font: inherit;
       padding: 0;
       outline: none;
-      /* The design's own up/down steppers replace the native spin buttons. */
+      /* The design's own increment replaces the native spin buttons. */
       appearance: textfield;
       -moz-appearance: textfield;
     }
@@ -296,61 +298,7 @@ export class InputFieldLarge extends UnlitElement {
 
     .value input::selection {
       background: var(--input-field-large-selection-color);
-      color: #151515;
-    }
-
-    .stepper {
-      display: grid;
-      place-items: center;
-      flex: 1 1 0;
-      width: 10px;
-      min-height: 0;
-      margin: 0;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      color: var(--input-field-large-stepper-color);
-      cursor: pointer;
-    }
-
-    .stepper:hover {
-      color: var(--input-field-large-stepper-active-color);
-      background: var(--input-field-large-stepper-hover-background-color);
-      border-radius: 2px;
-    }
-
-    .stepper::before {
-      width: 0;
-      height: 0;
-      border-right: 3.5px solid transparent;
-      border-left: 3.5px solid transparent;
-      content: "";
-    }
-
-    .stepper.up::before {
-      border-bottom: 4px solid currentColor;
-    }
-
-    .stepper.down::before {
-      border-top: 4px solid currentColor;
-    }
-
-    /* Ticket (coordinator addendum): button/icon/increment, node 287:15519 --
-       the up/down stepper, present in every state (including the plain
-       "input/string" mode) rather than only while editing. Invisible at rest;
-       a hover, a drag or the keyboard focus the editing input already gets
-       reveals it. One instance serves both rest and editing: while the value
-       is being edited its clicks press the input's arrow keys, so they step
-       the live edit instead of committing over it. */
-    .hover-steppers {
-      display: flex;
-      flex-direction: column;
-      align-self: stretch;
-      justify-content: center;
-      box-sizing: border-box;
-      width: 10px;
-      padding: 2px 0;
-      opacity: 0;
+      color: var(--input-field-large-active-text-color);
     }
 
     /* A read-only aside after the value, in parentheses: a metrics key's
@@ -361,15 +309,60 @@ export class InputFieldLarge extends UnlitElement {
       color: var(--text-base-basic-4);
     }
 
-    /* The end slot: one icon the caller puts after the value. */
+    /* The slot (Figma's 18px square "Slot"): one icon the caller puts after
+       the value. */
     ::slotted([slot="end"]) {
       flex: 0 0 auto;
+      width: 18px;
+      height: 18px;
     }
 
-    .box:hover:not(.disabled) .hover-steppers,
-    .box.scrubbing .hover-steppers,
-    .box:focus-within .hover-steppers {
-      opacity: 1;
+    /* button/increment (Figma 2004:29110): 12px wide, 2px in at top and
+       bottom and 1px at the sides; an up and a down half, each holding a 6px
+       arrow. The hovered half lifts to white with a darker arrow. */
+    .hover-steppers {
+      display: flex;
+      flex-direction: column;
+      align-self: stretch;
+      flex: 0 0 auto;
+      box-sizing: border-box;
+      width: 12px;
+      padding: 2px 1px;
+    }
+
+    .stepper {
+      display: grid;
+      place-items: center;
+      flex: 1 1 0;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 2px;
+      background: transparent;
+      color: var(--input-field-large-stepper-color);
+      cursor: pointer;
+    }
+
+    .box:not(.disabled) .stepper:hover {
+      color: var(--input-field-large-stepper-active-color);
+      background: var(--input-field-large-stepper-hover-background-color);
+    }
+
+    .box.disabled .stepper {
+      cursor: default;
+    }
+
+    .stepper::before {
+      width: 6px;
+      height: 6px;
+      content: "";
+      background-color: currentColor;
+      mask: url("/images/arrow-down.svg") center / contain no-repeat;
+    }
+
+    .stepper.up::before {
+      transform: rotate(180deg);
     }
   `;
 
@@ -660,22 +653,23 @@ export class InputFieldLarge extends UnlitElement {
         },
       },
       [
+        // ./scrub-field's order: scrub icon, label, value, slot, increment.
         html.div({ class: "inner" }, [
           ...(this._fillElement ? [this._fillElement] : []),
           ...(this._iconElement ? [this._iconElement] : []),
-          this._nameElement,
           ...(this._scrubIcon
             ? [
                 html.createDomElement("inline-svg", {
                   class: "scrub-icon",
-                  src: "/tabler-icons/arrows-horizontal.svg",
+                  src: "/images/scrub.svg",
                 }),
               ]
             : []),
+          this._nameElement,
           this._valueElement,
           ...(this._note ? [html.span({ class: "note" }, [`(${this._note})`])] : []),
-          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
           html.createDomElement("slot", { name: "end" }),
+          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
         ]),
       ]
     );
@@ -683,8 +677,8 @@ export class InputFieldLarge extends UnlitElement {
     return this._box;
   }
 
-  // The always-present increment control (Figma 287:15519, "button/icon/
-  // increment"): opacity 0 until a hover/drag/focus reveals it (CSS above).
+  // The increment (Figma 2004:29110, button/increment), shown in every
+  // state.
   // A click steps the value exactly one keyStepScrubValue tick and applies
   // it immediately -- no live drag stream, since there is no gesture to
   // batch into one undo step.

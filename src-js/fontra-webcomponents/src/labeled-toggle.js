@@ -14,7 +14,8 @@ import { themeColorCSS } from "./theme-support.js";
 // the same convention every other UnlitElement-based component in this
 // tree uses (see UI-NOMENCLATURE.md's own note on icon-button.js).
 //
-// select/toggle (Figma 2004:29380): a 22x12 pill, the label 4px after it.
+// select/toggle (Figma 2004:29380): a 22x12 pill, the label (ui/label/XS)
+// 4px after it -- or before it, with the `mirror` attribute.
 // Off it is pale grey, darker on hover; on it is mid grey, lime on hover.
 // Each track has a line at the top and sides, drawn inside; the thumb carries
 // the shade.
@@ -54,13 +55,18 @@ export class LabeledToggle extends UnlitElement {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      /* ui/label/S */
-      font: var(--ui-text-label-s);
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       color: var(--labeled-toggle-text-color);
       cursor: pointer;
       user-select: none;
+    }
+
+    /* mirror=true: the label first, the pill after it. */
+    :host([mirror]) label {
+      flex-direction: row-reverse;
     }
 
     label:hover:not(:has(:disabled)) {

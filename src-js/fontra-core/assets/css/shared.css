@@ -66,28 +66,28 @@ theme marker until the design has a dark mode.
   --shared-heading-light: var(--fontra-theme-marker) var(--text-base-basic-5);
   --shared-heading-dark: #6a6a6a;
   --shared-heading: var(--shared-heading-light, var(--shared-heading-dark));
-  --shared-label-light: var(--fontra-theme-marker) var(--text-base-basic-3);
+  --shared-label-light: var(--fontra-theme-marker) var(--sl-bsb-lb-rest);
   --shared-label-dark: #9a9a9a;
   --shared-label: var(--shared-label-light, var(--shared-label-dark));
-  --shared-label-hover-light: var(--fontra-theme-marker) #303030;
+  --shared-label-hover-light: var(--fontra-theme-marker) var(--sl-bsb-lb-hover);
   --shared-label-hover-dark: #e0e0e0;
   --shared-label-hover: var(--shared-label-hover-light, var(--shared-label-hover-dark));
-  --shared-label-disabled-light: var(--fontra-theme-marker) var(--text-base-basic-4);
+  --shared-label-disabled-light: var(--fontra-theme-marker) var(--sl-bsb-lb-disabled);
   --shared-label-disabled-dark: #6a6a6a;
   --shared-label-disabled: var(
     --shared-label-disabled-light,
     var(--shared-label-disabled-dark)
   );
-  --shared-check-light: var(--fontra-theme-marker) #e9e9e9;
+  --shared-check-light: var(--fontra-theme-marker) var(--sl-bsb-sr-rest);
   --shared-check-dark: #444444;
   --shared-check: var(--shared-check-light, var(--shared-check-dark));
-  --shared-check-hover-light: var(--fontra-theme-marker) #d9d9d9;
+  --shared-check-hover-light: var(--fontra-theme-marker) var(--sl-bsb-sr-hover);
   --shared-check-hover-dark: #555555;
   --shared-check-hover: var(--shared-check-hover-light, var(--shared-check-hover-dark));
-  --shared-check-line-light: var(--fontra-theme-marker) rgba(21, 21, 21, 0.05);
+  --shared-check-line-light: var(--fontra-theme-marker) var(--sl-bsb-ln-rest);
   --shared-check-line-dark: rgba(255, 255, 255, 0.05);
   --shared-check-line: var(--shared-check-line-light, var(--shared-check-line-dark));
-  --shared-check-line-hover-light: var(--fontra-theme-marker) rgba(21, 21, 21, 0.1);
+  --shared-check-line-hover-light: var(--fontra-theme-marker) var(--sl-bsb-ln-hover);
   --shared-check-line-hover-dark: rgba(255, 255, 255, 0.1);
   --shared-check-line-hover: var(
     --shared-check-line-hover-light,
@@ -161,7 +161,7 @@ theme marker until the design has a dark mode.
   min-width: 0;
 }
 
-/* checkmark (Figma 379:22544): a native checkbox with our checkbox assets
+/* checkmark (Figma 2004:29411): a native checkbox with our checkbox assets
    and its name, ui/label/S -- a label.checkmark-row holding an
    input.checkmark. At rest a checked box is the grey check and an empty one
    the light box, both with grey names; hover lights the check lime or
@@ -188,11 +188,11 @@ theme marker until the design has a dark mode.
   appearance: none;
   flex: none;
   margin: 0;
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   border: 1px solid var(--shared-check-line);
   border-bottom: none;
-  border-radius: 4px;
+  border-radius: var(--corner-outer-xs);
   background: var(--shared-check) center / contain no-repeat;
   cursor: pointer;
 }
