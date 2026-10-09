@@ -1508,6 +1508,40 @@ export class DataTable extends HTMLElement {
     column.visible = !!visible;
     this._applyColumnVisibility();
     this._applyColumnWidths();
+    this._storeHiddenColumns();
+  }
+
+  // Where the hideable columns turned off are kept: set after `columns`, it
+  // turns them off again, and every toggle from then on is stored.
+  set hiddenColumnsStorageKey(key) {
+    this._hiddenColumnsStorageKey = key;
+    let hidden = [];
+    try {
+      hidden = JSON.parse(localStorage.getItem(key) || "[]");
+    } catch {
+      hidden = [];
+    }
+    for (const column of this._columns) {
+      if (column.hideable && column.key) {
+        column.visible = !hidden.includes(column.key);
+      }
+    }
+    this._applyColumnVisibility();
+    this._applyColumnWidths();
+  }
+
+  _storeHiddenColumns() {
+    if (!this._hiddenColumnsStorageKey) {
+      return;
+    }
+    const hidden = this._columns
+      .filter((column) => column.hideable && column.key && column.visible === false)
+      .map((column) => column.key);
+    try {
+      localStorage.setItem(this._hiddenColumnsStorageKey, JSON.stringify(hidden));
+    } catch {
+      // The columns still show as toggled for this page.
+    }
   }
 
   isColumnVisible(key) {

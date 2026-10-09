@@ -74,7 +74,8 @@ const MARKERS_PANEL_STYLES = `
 const ID_COLUMN = { width: 96, minWidth: 32 };
 const VALUE_COLUMN = { width: 120, minWidth: 48 };
 const NUMBER_COLUMN = { fitText: "0000", align: "right" };
-const GOAL_COLUMN = { fitText: "0000", fitField: true };
+// Goal can be turned off from the table head's menu (right-click).
+const GOAL_COLUMN = { key: "goal", hideable: true, fitText: "0000", fitField: true };
 const GROUP_COLUMN = { width: 56, minWidth: 40 };
 const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 
@@ -190,6 +191,7 @@ export default class MarkersPanel extends Panel {
     table.look = "select";
     table.columns = columns;
     table.columnWidthsStorageKey = `fontra-markers-${kind}-column-widths`;
+    table.hiddenColumnsStorageKey = `fontra-markers-${kind}-hidden-columns`;
     table.resizable = true;
     table.minHeight = 48;
     table.style.setProperty("--data-table-height", "72px");
