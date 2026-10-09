@@ -877,6 +877,11 @@ glyph-cell-view .glyph-count {
   flex: none;
 }
 
+/* What follows the heading keeps to the opposite side, wrapped or not. */
+.control-row > :first-child + * {
+  margin-left: auto;
+}
+
 /* A small static table (Figma 4108:2787, 4128:2937): bordered, 6px corners,
    24px rows, each but the last ruled under; ui/label/S. */
 .static-table {

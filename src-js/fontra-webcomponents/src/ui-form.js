@@ -92,6 +92,12 @@ export class Form extends SimpleElement {
       margin-bottom: 4px;
     }
 
+    /* Whatever a heading carries keeps to the side opposite its name, on the
+       heading's line or, wrapped, on a line of its own. */
+    .ui-form-label.header > * {
+      margin-left: auto;
+    }
+
     /* Heading levels by the Figma style names: h2 to h4 are uppercase, h5 is
        a small mixed-case section label. A header with no level is h4. */
     .ui-form-label.header-h2 {
