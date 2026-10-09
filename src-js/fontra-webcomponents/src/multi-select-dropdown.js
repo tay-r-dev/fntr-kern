@@ -241,13 +241,13 @@ export class MultiSelectDropdown extends UnlitElement {
 
     /* The host is the button: the whole box it draws takes the pointer. The
        inner button only draws the face, and takes the keyboard focus. */
-    /* In a row it takes the room the row has, from 72px to 172px; its label
+    /* In a row it takes the room the row has, from 72px to 156px; its label
        ends in an ellipsis where the field is narrower than it. */
     :host {
       display: inline-block;
       flex: 1 1 auto;
       min-width: 72px;
-      max-width: 172px;
+      max-width: 156px;
       cursor: pointer;
     }
 

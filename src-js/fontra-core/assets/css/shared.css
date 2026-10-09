@@ -772,10 +772,13 @@ glyph-cell-view .glyph-count {
 }
 
 /* Controls that end in dropdowns (a preset or filter bar), 4px apart: the
-   dropdowns share the group's room, each down to its 72px minimum. */
+   dropdowns share the group's room, each down to its 72px minimum. Room the
+   dropdowns cannot take is left before them, so the controls keep to the
+   far side from the heading. */
 .control-group {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 4px;
   flex: 1 1 0;
   min-width: min-content;
