@@ -192,6 +192,13 @@ near the working zoom. **A changed look can bring a closed cost back**; one
 path was the fix for lines, not for circles. Dense dots are one repeated tile
 now (`coarseGridDotTile`).
 
+**The frame-timed redraw was lost in a merge.** `8b61b21ee` drew the canvas on
+animation frames; no commit removed it, and every branch tip had the
+zero-delay timer again, so zoom and drag drew off the display's clock. A
+merge can drop a fix silently; `git log -S` on the helper's name finds only
+the commit that added it. The wheel glides now step inside the draw, because
+a step made in its own frame callback is drawn one frame late.
+
 ---
 
 ## Harmonize (map F8, carried fork extras)
