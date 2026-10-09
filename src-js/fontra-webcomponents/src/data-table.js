@@ -2,6 +2,7 @@ import * as html from "@fontra/core/html-utils.js";
 import {
   clampWindowStart,
   fitColumnWidths,
+  huggedColumnWidth,
   ownColumns,
   parseCellValue,
   spreadColumnWidths,
@@ -1343,6 +1344,33 @@ export class DataTable extends HTMLElement {
     return box > 0 ? box - (last?.column.minWidth ?? 48) - others : Infinity;
   }
 
+  _hugColumn(column, index) {
+    const cells = [column._headerElement];
+    for (const row of this._tbody?.children || []) {
+      const cell = row.children[index];
+      if (cell) {
+        cells.push(cell);
+      }
+    }
+    const visible = this._visibleColumns();
+    const lastColumn = visible[visible.length - 1]?.column;
+    this._columnWidths = { ...this._columnWidths };
+    for (const entry of visible) {
+      if (entry.column !== lastColumn) {
+        this._columnWidths[this._columnId(entry.column, entry.index)] = Math.round(
+          entry.column._headerElement.getBoundingClientRect().width
+        );
+      }
+    }
+    this._columnWidths[this._columnId(column, index)] = huggedColumnWidth(
+      cells.map((cell) => html.naturalCellWidth(cell)),
+      column.minWidth ?? 24,
+      this._maxColumnWidth(column)
+    );
+    this._applyColumnWidths();
+    this._storeColumnWidths();
+  }
+
   _storeColumnWidths() {
     try {
       localStorage.setItem(
@@ -1411,12 +1439,11 @@ export class DataTable extends HTMLElement {
       grip.addEventListener("pointerup", onEnd);
       grip.addEventListener("lostpointercapture", onEnd);
     });
-    // A double-click lets every column go back to sharing the table's width.
+    // A double-click hugs the column to its contents: its head and the rows
+    // drawn now.
     grip.addEventListener("dblclick", (event) => {
       event.stopPropagation();
-      this._columnWidths = {};
-      this._applyColumnWidths();
-      this._storeColumnWidths();
+      this._hugColumn(column, index);
     });
     return grip;
   }

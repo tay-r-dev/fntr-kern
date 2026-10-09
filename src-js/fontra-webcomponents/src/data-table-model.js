@@ -146,3 +146,11 @@ export function spreadColumnWidths(widths, delta, minimum = 24) {
 export function ownColumns(columns) {
   return (columns || []).map((column) => ({ ...column }));
 }
+
+// The width a double-click on a column's divider gives it: its widest
+// content (head included), in whole pixels, never under its minimum nor over
+// what the table has room for.
+export function huggedColumnWidth(contentWidths, minWidth, maxWidth) {
+  const widest = Math.ceil(Math.max(0, ...contentWidths));
+  return Math.min(maxWidth, Math.max(minWidth, widest));
+}

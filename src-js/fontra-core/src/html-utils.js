@@ -226,3 +226,46 @@ export const b = createDomElement.bind(null, "b");
 export const i = createDomElement.bind(null, "i");
 export const pre = createDomElement.bind(null, "pre");
 // Let's add more once needed
+
+// A table cell's width if it hugged its contents: a hidden copy set beside it
+// at its natural width, padding and border included. A field in it counts as
+// its value set in that field's type.
+export function naturalCellWidth(cell) {
+  const copy = cell.cloneNode(true);
+  const asText = (field) => {
+    const text = document.createElement("span");
+    text.className = field.className;
+    text.textContent =
+      field.tagName === "SELECT"
+        ? (field.selectedOptions[0]?.textContent ?? "")
+        : field.value;
+    text.style.cssText = "display: inline-block; width: auto;";
+    return text;
+  };
+  const fields = cell.matches("input, select")
+    ? [cell]
+    : [...cell.querySelectorAll("input, select")];
+  const copies = cell.matches("input, select")
+    ? [copy]
+    : [...copy.querySelectorAll("input, select")];
+  let probe = copy;
+  copies.forEach((field, i) => {
+    field.value = fields[i].value;
+    const text = asText(fields[i]);
+    if (field === copy) {
+      probe = text;
+    } else {
+      field.replaceWith(text);
+    }
+  });
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  probe.style.width = "max-content";
+  probe.style.minWidth = "0";
+  probe.style.maxWidth = "none";
+  probe.style.whiteSpace = "nowrap";
+  cell.parentElement.appendChild(probe);
+  const width = probe.getBoundingClientRect().width;
+  probe.remove();
+  return width;
+}

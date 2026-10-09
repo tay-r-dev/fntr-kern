@@ -2,6 +2,7 @@ import { expect } from "chai";
 import {
   clampWindowStart,
   fitColumnWidths,
+  huggedColumnWidth,
   ownColumns,
   spreadColumnWidths,
   parseCellValue,
@@ -13,6 +14,14 @@ import {
 } from "../src/data-table-model.js";
 
 describe("data-table-model", () => {
+  it("hugs a column to its widest content, within its bounds", () => {
+    expect(huggedColumnWidth([30, 72.2, 50], 24, 200)).to.equal(73);
+    expect(huggedColumnWidth([10, 12], 24, 200)).to.equal(24);
+    expect(huggedColumnWidth([400], 24, 200)).to.equal(200);
+    expect(huggedColumnWidth([], 24, 200)).to.equal(24);
+    expect(huggedColumnWidth([90], 24, Infinity)).to.equal(90);
+  });
+
   it("gives each table its own copy of the column descriptors", () => {
     const shared = { label: "id", width: 96 };
     const columns = [shared, { label: "" }];

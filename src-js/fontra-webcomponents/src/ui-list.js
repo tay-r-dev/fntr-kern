@@ -3,6 +3,7 @@ import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { firstItemOfSet, isEqualSet } from "@fontra/core/set-ops.js";
 import { message } from "@fontra/web-components/modal-dialog.js";
+import { huggedColumnWidth } from "./data-table-model.js";
 import { themeColorCSS } from "./theme-support.js";
 
 const LIST_CHUNK_SIZE = 200; // the amount of items added to the list at a time
@@ -802,6 +803,11 @@ export class UIList extends UnlitElement {
 
   _setupResizeHandle(colDesc) {
     const resizeHandle = html.div({ class: "header-resize-handle" });
+    // A double-click hugs the column to its contents: its head and its rows.
+    resizeHandle.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      this._hugColumn(colDesc, resizeHandle.previousElementSibling);
+    });
 
     let initialEvent;
     let initialWidth;
@@ -837,6 +843,27 @@ export class UIList extends UnlitElement {
     };
 
     return resizeHandle;
+  }
+
+  _hugColumn(colDesc, headerCell) {
+    const index = this.columnDescriptions.indexOf(colDesc);
+    const style = getComputedStyle(this);
+    // The head cell is drawn short of the column by its divider.
+    const divider =
+      parseFloat(style.getPropertyValue("--column-header-divider-thickness")) +
+      parseFloat(style.getPropertyValue("--column-header-divider-right-margin"));
+    const widths = [html.naturalCellWidth(headerCell) + (divider || 0)];
+    for (const row of this.rowsElement?.children || []) {
+      const cell = row.children[index];
+      if (cell) {
+        widths.push(html.naturalCellWidth(cell));
+      }
+    }
+    this.setColumnWidth(
+      colDesc.key,
+      huggedColumnWidth(widths, colDesc.minWidth ?? 24, Infinity),
+      true
+    );
   }
 
   _makeCellEditor(cell, colDesc, item) {
