@@ -113,6 +113,12 @@ Two things given up, both real: an absolute colour cannot stretch the contrast o
 a flat letter, which now draws nearly one colour; and colour and length encode
 the same number twice, kept because they are read at different distances.
 
+**The rung cache moved the stutter, it did not remove it.** Each doubling of
+the zoom still computed a comb inside a zoom frame: 3 to 6 ms on `M^1` in Node,
+362 quads at 25 % to 5,800 at 4,800 %. While the zoom moves the last comb now
+holds across rungs, and the settled zoom's comb follows 150 ms after the last
+step.
+
 ### Three things the comb does differently from the donor (`_external/speedpunk`)
 
 |               | donor                                                    | this comb                                                                                              |
