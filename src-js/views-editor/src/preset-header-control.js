@@ -40,6 +40,7 @@ export class PresetHeaderControl {
     // rem, not em: the Generation dropdown sits in a section heading and the
     // Terminal one in a row, and the two do not share a font size.
     this.dropdown.style.setProperty("--multi-select-dropdown-width", "8.5rem");
+    this.dropdown.style.marginLeft = "2px";
     this.dropdown.singleChoice = true;
     this.dropdown.addEventListener("change", (event) => {
       const [value] = [].concat(event.detail.checked);
@@ -71,9 +72,8 @@ export class PresetHeaderControl {
         );
       });
     }
-    // Square tiles, the design's 20px button/icon size. The icon-button
-    // itself insets the glyph to 80%, so no padding here -- the hover fill
-    // covers the whole tile.
+    // The design's button/icon, touching one another; the dropdown sits 2px
+    // after them. No padding: the hover fill covers the whole button.
     const iconButton = (src, tooltipKey, onclick) => {
       const button = html.createDomElement("icon-button", {
         "src": src,
@@ -130,7 +130,7 @@ export class PresetHeaderControl {
       : null;
     this.element = html.div(
       {
-        style: "display: flex; gap: 2px; align-items: center; font-weight: normal;",
+        style: "display: flex; align-items: center; font-weight: normal;",
       },
       [
         this.addButton,
