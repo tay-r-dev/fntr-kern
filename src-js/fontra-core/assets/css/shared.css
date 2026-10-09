@@ -765,6 +765,29 @@ glyph-cell-view .glyph-count {
   gap: 4px;
 }
 
+/* Controls that end in dropdowns (a preset or filter bar), 4px apart: the
+   dropdowns share the group's room, each down to its 72px minimum. */
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 0;
+  min-width: min-content;
+}
+
+/* A heading and its control group: the group takes the rest of the line, and
+   moves to a line of its own once it no longer fits at its minimum. */
+.control-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.control-row > :not(.control-group) {
+  flex: none;
+}
+
 /* A small static table (Figma 4108:2787, 4128:2937): bordered, 6px corners,
    24px rows, each but the last ruled under; ui/label/S. */
 .static-table {

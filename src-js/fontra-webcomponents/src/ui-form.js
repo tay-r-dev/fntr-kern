@@ -74,15 +74,18 @@ export class Form extends SimpleElement {
       height: 0.2em;
     }
 
+    /* The heading and its extra element; a control group there takes the
+       rest of the line, or a line of its own once it no longer fits. */
     .ui-form-label.header {
       overflow-x: unset;
       font-weight: normal;
       grid-column: 1 / span 2;
       text-align: left;
-      display: grid;
-      grid-template-columns: auto auto;
+      display: flex;
+      flex-wrap: wrap;
       justify-content: space-between;
       align-items: center;
+      gap: 4px 8px;
       /* 12px from a heading to its first row, with the row gap. */
       margin-bottom: 4px;
     }

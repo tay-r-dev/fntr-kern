@@ -83,18 +83,8 @@ const SKELETON_SETTINGS_STYLES = `
     gap: 4px;
   }
 
-  .preset-heading-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
-  .preset-heading-row > .button-row {
-    gap: 4px;
-  }
-
   /* Current sits 8px before the dropdowns. */
-  .preset-heading-row > .button-row > .button-row {
+  .preset-heading-row > .control-group > .button-row {
     padding-right: 8px;
   }
 `;
@@ -186,7 +176,7 @@ export default class SkeletonSettingsPanel extends Panel {
     };
     const presetSection = (title, filters, table, buttons) =>
       html.div({ class: "preset-section" }, [
-        html.div({ class: "preset-heading-row" }, [
+        html.div({ class: "preset-heading-row control-row" }, [
           html.div({ class: "card-subheading" }, [title]),
           filters,
         ]),
@@ -621,8 +611,7 @@ export default class SkeletonSettingsPanel extends Panel {
     const dropdown = (field) => {
       const element = html.createDomElement("multi-select-dropdown");
       element.singleChoice = true;
-      // Figma 4109:3960: 92px wide, 20px high.
-      element.style.setProperty("--multi-select-dropdown-width", "92px");
+      // Figma 4109:3960: 20px high; it takes its share of the bar.
       element.style.setProperty("--multi-select-dropdown-height", "20px");
       element.addEventListener("change", (event) => {
         const [value] = [].concat(event.detail.checked);
@@ -724,7 +713,7 @@ export default class SkeletonSettingsPanel extends Panel {
       }
     };
     return {
-      element: html.div({ class: "button-row" }, [
+      element: html.div({ class: "control-group" }, [
         current,
         ...(type ? [type] : []),
         master,

@@ -35,11 +35,8 @@ export class PresetHeaderControl {
       label: translate("sidebar.skeleton-parameters.width-preset"),
     });
     this.dropdown.style.setProperty("--multi-select-dropdown-height", DROPDOWN_HEIGHT);
-    // One fixed width for every preset dropdown, so a longer name does not move
-    // the buttons beside it; a name that does not fit ends in an ellipsis. In
-    // rem, not em: the Generation dropdown sits in a section heading and the
-    // Terminal one in a row, and the two do not share a font size.
-    this.dropdown.style.setProperty("--multi-select-dropdown-width", "8.5rem");
+    // The dropdown takes the rest of the group, after the buttons; a name that
+    // does not fit ends in an ellipsis.
     this.dropdown.style.marginLeft = "2px";
     this.dropdown.singleChoice = true;
     this.dropdown.addEventListener("change", (event) => {
@@ -129,9 +126,7 @@ export class PresetHeaderControl {
         )
       : null;
     this.element = html.div(
-      {
-        style: "display: flex; align-items: center; font-weight: normal;",
-      },
+      { class: "control-group", style: "gap: 0; font-weight: normal;" },
       [
         this.addButton,
         this.refreshButton,

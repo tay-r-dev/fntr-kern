@@ -1017,20 +1017,17 @@ export default class SkeletonParametersPanel {
     // values-only refresh, which never places the wrapper, and the preset
     // dropdown left the panel.
     this.serifPresetHeader = html.div(
-      { style: "display: flex; align-items: center; gap: 0.2rem;" },
+      { class: "control-group", style: "gap: 0.2rem;" },
       [this.terminalPresetControl.element, this.serifSidesOverflow]
     );
     // The kind's own heading under the Terminal header: its name, then the
     // preset controls for that kind. Built once, like the rows it heads.
     this.terminalTypeTitle = html.span({ style: "font-weight: bold;" }, []);
-    this.terminalTypeControls = html.div({}, []);
-    this.terminalTypeHeader = html.div(
-      {
-        style:
-          "display: flex; align-items: center; justify-content: space-between; gap: 0.5em;",
-      },
-      [this.terminalTypeTitle, this.terminalTypeControls]
-    );
+    this.terminalTypeControls = html.div({ class: "control-group" }, []);
+    this.terminalTypeHeader = html.div({ class: "control-row" }, [
+      this.terminalTypeTitle,
+      this.terminalTypeControls,
+    ]);
     // Ticket 58: the Cup group, three single fields, one row each.
     this.serifCupFields = {
       cup: this._makeSerifCupField("cup", "serif-underside-cup"),

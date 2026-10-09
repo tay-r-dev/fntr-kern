@@ -241,8 +241,12 @@ export class MultiSelectDropdown extends UnlitElement {
 
     /* The host is the button: the whole box it draws takes the pointer. The
        inner button only draws the face, and takes the keyboard focus. */
+    /* In a row it takes the room the row has, never under 72px; its label
+       ends in an ellipsis where the field is narrower than it. */
     :host {
       display: inline-block;
+      flex: 1 1 auto;
+      min-width: 72px;
       cursor: pointer;
     }
 
@@ -284,7 +288,7 @@ export class MultiSelectDropdown extends UnlitElement {
       font-feature-settings: "case" 1;
       box-sizing: border-box;
       height: var(--multi-select-dropdown-height, 24px);
-      width: var(--multi-select-dropdown-width, auto);
+      width: var(--multi-select-dropdown-width, 100%);
       max-width: 100%;
       display: inline-flex;
       align-items: center;

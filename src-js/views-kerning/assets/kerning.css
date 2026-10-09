@@ -157,10 +157,9 @@
   --multi-select-dropdown-height: 20px;
 }
 
-/* A dropdown's width sizes its field only through the variable. */
+/* A dropdown's field fills the width it is given. */
 #kerning-font-preview-glyphset-select {
   width: 110px;
-  --multi-select-dropdown-width: 100%;
 }
 
 /* The row divider: straddles the 8px between the two cards. */
@@ -311,7 +310,6 @@
 
 #kerning-status-source-select {
   width: 110px;
-  --multi-select-dropdown-width: 100%;
 }
 
 #kerning-phrase-section {
@@ -335,7 +333,6 @@
 
 #kerning-preset-select {
   width: 94px;
-  --multi-select-dropdown-width: 100%;
 }
 
 #kerning-preset-add-button {
@@ -1013,7 +1010,6 @@ data-table[look]
 }
 
 #kerning-pairtable-filters > * {
-  --multi-select-dropdown-width: 100%;
   flex: 1 1 0;
   min-width: 0;
 }

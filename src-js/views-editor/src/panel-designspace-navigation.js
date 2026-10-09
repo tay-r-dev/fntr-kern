@@ -843,7 +843,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     ]) {
       button.style.width = button.style.height = "24px";
     }
-    presets.dropdown.style.setProperty("--multi-select-dropdown-width", "112px");
     const refreshPresets = () => {
       const items = list();
       const bondIndex = items.findIndex(
@@ -926,7 +925,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       html.div({ class: "card-heading ds-heading--spaced" }, ["display"]),
       html.div({ class: "ds-stack ds-stack--sections" }, [
         html.div({ id: "coarse-grid-content", class: "ds-stack" }, [
-          html.div({ class: "ds-row" }, [
+          html.div({ class: "control-row" }, [
             html.div({ class: "ds-subheading" }, ["grid"]),
             presets.element,
           ]),
