@@ -71,12 +71,14 @@ const MARKERS_PANEL_STYLES = `
 // The columns, by the shared table rule: a column of numbers fits four
 // digits or its head; one of names or several values is dragged to fit; the
 // actions take what is left.
-const ID_COLUMN = { width: 96, minWidth: 32 };
-const VALUE_COLUMN = { width: 120, minWidth: 48 };
+// Dragged and hugged columns keep their widths in a narrow panel: the table
+// scrolls sideways instead.
+const ID_COLUMN = { width: 96, minWidth: 32, noShrink: true };
+const VALUE_COLUMN = { width: 120, minWidth: 48, noShrink: true };
 const NUMBER_COLUMN = { fitText: "0000", align: "right" };
 // Goal can be turned off from the table head's menu (right-click).
 const GOAL_COLUMN = { key: "goal", hideable: true, fitText: "0000", fitField: true };
-const GROUP_COLUMN = { width: 56, minWidth: 40 };
+const GROUP_COLUMN = { width: 56, minWidth: 40, noShrink: true };
 const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 
 export default class MarkersPanel extends Panel {
@@ -234,6 +236,7 @@ export default class MarkersPanel extends Panel {
         label: translate("sidebar.markers.column.name"),
         width: 120,
         minWidth: 40,
+        noShrink: true,
       },
       {
         label: translate("sidebar.markers.column.type"),

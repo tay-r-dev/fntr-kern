@@ -425,7 +425,7 @@ const DATA_TABLE_STYLES = `
   }
 
   data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
-    overflow: hidden;
+    overflow-y: hidden;
   }
 
   data-table[look] .data-table {
@@ -438,6 +438,14 @@ const DATA_TABLE_STYLES = `
     white-space: nowrap;
     vertical-align: middle;
     border-bottom: 1px solid var(--data-table-look-rule-color);
+  }
+
+  /* A cell keeps its column's width; what does not fit ends in an
+     ellipsis. The actions are left whole: their buttons sit over the rule. */
+  data-table[look] .data-table th,
+  data-table[look] .data-table td:not(:has(> .data-table-actions)) {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* A collapsed border does not travel with a sticky head, so the head's
@@ -1268,8 +1276,10 @@ export class DataTable extends HTMLElement {
       last.column._headerElement.style.width =
         anyWidth && box > 0 ? `${lastWidth}px` : "";
     }
+    // The columns are their widths, not their contents' (a fixed layout).
     // Columns that do not shrink can leave the table wider than its box, which
     // then scrolls sideways.
+    this._table.style.tableLayout = anyWidth && box > 0 ? "fixed" : "";
     this._table.style.minWidth =
       anyWidth && box > 0 && used + lastWidth > box ? `${used + lastWidth}px` : "";
   }
@@ -1325,7 +1335,12 @@ export class DataTable extends HTMLElement {
     return Math.ceil(Math.max(head, text));
   }
 
+  // The widest a column may be dragged or hugged: what the box has room for,
+  // or no limit for a column that does not shrink (the table scrolls).
   _maxColumnWidth(column) {
+    if (column.noShrink) {
+      return Infinity;
+    }
     const visible = this._visibleColumns();
     const last = visible[visible.length - 1];
     let others = 0;
