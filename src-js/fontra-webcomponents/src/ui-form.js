@@ -28,7 +28,9 @@ export class Form extends SimpleElement {
     .ui-form {
       display: grid;
       align-items: center;
-      grid-template-columns: var(--label-column-width) auto;
+      /* The value column takes what the labels leave and can narrow with the
+         panel: nothing in it pushes the form wider than its box. */
+      grid-template-columns: var(--label-column-width) minmax(0, 1fr);
       /* The design's rhythm: 8px between rows. */
       gap: 8px 0.35rem;
       margin: 0em;
@@ -124,6 +126,12 @@ export class Form extends SimpleElement {
       padding: 0.1em 0.3em;
       font-family: "fontra-ui-regular";
       font-size: 100%;
+    }
+
+    .ui-form-value,
+    .ui-form-full-width,
+    .ui-form-label.header {
+      min-width: 0;
     }
 
     .ui-form-value {
@@ -252,6 +260,14 @@ export class Form extends SimpleElement {
       display: flex;
       align-items: center;
       gap: 0.35rem;
+    }
+
+    /* The fields sharing a row narrow with it rather than overflow it. */
+    .ui-form-value.edit-number > *,
+    .ui-form-value.edit-number-x-y > *,
+    .ui-form-value.edit-text-double > *,
+    .ui-form-value.universal-row > * {
+      min-width: 0;
     }
 
     /* A slider sharing its row with a number input takes whatever the input
