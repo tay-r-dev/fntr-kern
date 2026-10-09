@@ -477,8 +477,9 @@ glyph-cell-view .glyph-count {
 }
 
 /* Its dropdown arrow (the select's `dropdown`): a 4px arrow-down 2px in
-   from the plate's lower right corner, shown while the pointer is over the
-   toolbar. Pale at rest and selected, darker hovered, lime selected. */
+   from the plate's lower right corner, always shown. Pale at rest and
+   selected, darker hovered, lime selected while the pointer is over the
+   toolbar. */
 .toolbar-select.multi-tool::after {
   content: "";
   position: absolute;
@@ -489,11 +490,6 @@ glyph-cell-view .glyph-count {
   background-color: var(--toolbar-arrow-color);
   mask: url("/images/arrow-down.svg") center / 4px 4px no-repeat;
   pointer-events: none;
-  visibility: hidden;
-}
-
-.toolbar:hover .toolbar-select.multi-tool::after {
-  visibility: visible;
 }
 
 .multi-tool:has(> .toolbar-select:first-child:hover) {
@@ -828,13 +824,8 @@ glyph-cell-view .glyph-count {
 .selection-row-group-icons {
   display: flex;
   align-items: center;
-  /* The design's button/icon row (Figma 312:2780): 20px tiles, 2px apart. */
+  /* The design's button/icon row (Figma 312:2780): its buttons 2px apart. */
   gap: 2px;
-}
-
-.selection-row-group-icons icon-button {
-  width: 20px;
-  height: 20px;
 }
 
 .selection-row-group-icons input[type="number"] {

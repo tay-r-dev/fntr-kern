@@ -22,9 +22,8 @@ import "@fontra/web-components/multi-select-dropdown.js";
 // The caller owns the list, the capture and the writes. Items carry whatever
 // value the caller needs to find the entry again, typically its index in the
 // stored list, and may carry a shorter `name` for the button.
-// The design's button/icon tile (Figma 306:1426): 20px square, with the
-// dropdown input at its own 24px (Figma 287:15745).
-const TILE = "20px";
+// The dropdown input at its own 24px (Figma 287:15745); the buttons are the
+// design's button/icon at their own size.
 const DROPDOWN_HEIGHT = "24px";
 
 export class PresetHeaderControl {
@@ -80,7 +79,7 @@ export class PresetHeaderControl {
         "src": src,
         "data-tooltip": translate(tooltipKey),
         "data-tooltipposition": "top",
-        "style": `display: block; width: ${TILE}; height: ${TILE};`,
+        "style": "display: block;",
       });
       button.onclick = onclick;
       return button;

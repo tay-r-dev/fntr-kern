@@ -66,9 +66,7 @@ export default class RelatedGlyphPanel extends Panel {
       gap: 2px;
     }
 
-    .compose-heading-row > icon-button,
-    .compose-heading-row > overflow-popover,
-    .compose-actions > icon-button {
+    .compose-heading-row > overflow-popover {
       width: 16px;
       height: 16px;
     }

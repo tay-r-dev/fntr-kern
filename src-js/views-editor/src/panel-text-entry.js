@@ -145,11 +145,6 @@ export default class TextEntryPanel extends Panel {
       align-items: center;
       gap: 4px;
     }
-
-    .shaping-header-controls > icon-button {
-      width: 16px;
-      height: 16px;
-    }
   `;
 
   constructor(editorController) {

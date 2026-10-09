@@ -23,11 +23,6 @@ export class ChainLink extends UnlitElement {
       flex: 0 0 auto;
     }
 
-    icon-button {
-      width: 1.2em;
-      height: 1.2em;
-    }
-
     icon-button.mixed {
       opacity: 0.45;
     }

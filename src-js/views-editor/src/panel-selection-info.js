@@ -265,7 +265,6 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.user-settings.glyph.background-image"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "style": `width: 1.3em;`,
           "src": "/tabler-icons/refresh.svg",
           "onclick": (event) => this._resetTransformationForBackgroundImage(),
           "data-tooltip": translate(
@@ -336,7 +335,6 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.selection-info.component.transformation"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "style": `width: 1.3em;`,
           "src": "/tabler-icons/refresh.svg",
           "onclick": (event) => this._resetTransformationForComponent(index),
           "data-tooltip": translate(
@@ -423,7 +421,6 @@ export default class SelectionInfoPanel extends Panel {
               [
                 html.createDomElement("icon-button", {
                   "id": "component-axis-options-button",
-                  "style": `width: 1.3em;`,
                   "src": "/tabler-icons/menu-2.svg",
                   "onclick": (event) => this.showComponentAxesOptionsMenu(event),
                   "data-tooltip": translate(
@@ -432,7 +429,6 @@ export default class SelectionInfoPanel extends Panel {
                   "data-tooltipposition": "left",
                 }),
                 html.createDomElement("icon-button", {
-                  "style": `width: 1.3em;`,
                   "src": "/tabler-icons/refresh.svg",
                   "onclick": (event) => this._resetAxisValuesForComponent(index),
                   "data-tooltip": translate(
@@ -1813,10 +1809,5 @@ const METRICS_PANEL_STYLES = `
     align-items: center;
     justify-content: flex-end;
     gap: 4px;
-  }
-
-  .metrics-key-controls icon-button {
-    width: 16px;
-    height: 16px;
   }
 `;

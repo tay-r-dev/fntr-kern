@@ -110,11 +110,6 @@ export default class TransformationPanel {
     opacity: 1;
   }
 
-  .origin-buttons icon-button {
-    width: 16px;
-    height: 16px;
-  }
-
   /* A 24px square: 3 x 6px dots and two 3px gaps. */
   .origin-radio-buttons {
     display: grid;

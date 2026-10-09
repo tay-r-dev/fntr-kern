@@ -260,8 +260,6 @@ const DATA_TABLE_STYLES = `
   }
 
   :where(.data-table-action) {
-    width: 1.1em;
-    height: 1.1em;
     display: inline-flex;
     vertical-align: middle;
   }
@@ -622,9 +620,10 @@ const DATA_TABLE_STYLES = `
 
   /* The row's icons: button/table icon, a 16px slot with 4px corners
      around icon-button's 15px glyph; 4px apart. */
+  /* button/table's 24px box over the row's own 24px: it lays over the
+     row's rule rather than growing the row. */
   data-table[look] tbody icon-button {
-    width: 16px;
-    height: 16px;
+    margin-bottom: -1px;
     vertical-align: middle;
     --icon-button-inner-radius: 4px;
   }

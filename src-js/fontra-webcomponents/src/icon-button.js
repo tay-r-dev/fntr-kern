@@ -66,8 +66,12 @@ export class IconButton extends UnlitElement {
 
     /* The host is the button: the whole box it draws, padding included,
        takes the pointer. The inner button only draws the face, and takes the
-       keyboard focus. */
+       keyboard focus. button/icon and button/table (Figma 2004:29230,
+       4054:1391) are a 24px box round a 16px icon; a container that draws
+       the button as part of itself (the tray's segments) sets its own. */
     :host {
+      width: var(--bt-sgb-height);
+      height: var(--bt-sgb-height);
       line-height: 0;
       /* For the badge dot at the button's top-right corner. */
       position: relative;
@@ -106,11 +110,8 @@ export class IconButton extends UnlitElement {
       letter-spacing: var(--ui-tracking-label-m);
     }
 
-    /* The icon keeps one size whatever the button's size (button/icon,
-       Figma 2004:29230; button/table, Figma 4054:1391): the button grows or
-       shrinks around it, the icon does not scale with it. The design says
-       15px, but its icons are drawn on a 24px grid in 1.5px strokes, which
-       only land on whole pixels at 16px; at 15px they blur. */
+    /* The icon is 16px whatever the button's size: the button grows or
+       shrinks around it, the icon does not scale with it. */
     button > inline-svg:not(.icon-button-chevron) {
       display: block;
       flex: none;

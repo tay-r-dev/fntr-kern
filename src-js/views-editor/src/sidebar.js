@@ -1,5 +1,4 @@
 import * as html from "@fontra/core/html-utils.js";
-import { translate } from "@fontra/core/localization.js";
 import { clamp, hyphenatedToLabel } from "@fontra/core/utils.ts";
 
 export const MIN_SIDEBAR_WIDTH = 200;
@@ -47,8 +46,6 @@ export class Sidebar {
         {
           "class": "tab-pane-tab",
           "data-sidebarName": panelElement.identifier,
-          "data-tooltip": translate("sidebar." + panelElement.identifier),
-          "data-tooltipposition": this.identifier === "right" ? "left" : "right",
         },
         [
           html.createDomElement("inline-svg", { src: panelElement.iconPath }),

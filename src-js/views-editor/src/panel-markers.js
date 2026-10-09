@@ -62,11 +62,6 @@ const MARKERS_PANEL_STYLES = `
     gap: 2px;
   }
 
-  .markers-heading-actions icon-button {
-    width: 16px;
-    height: 16px;
-  }
-
   .markers-broken {
     color: var(--fontra-red-color, #c00);
   }
