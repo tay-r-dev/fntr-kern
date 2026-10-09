@@ -1,5 +1,11 @@
 import { normalizeRect, rectCenter, validateRect } from "./rectangle.ts";
-import { assert, clamp, consolidateCalls, isNumber, withSavedState } from "./utils.ts";
+import {
+  assert,
+  clamp,
+  consolidateCallsToAnimationFrame,
+  isNumber,
+  withSavedState,
+} from "./utils.ts";
 
 const DEFAULT_MIN_MAGNIFICATION = 0.005;
 const DEFAULT_MAX_MAGNIFICATION = 200;
@@ -58,7 +64,8 @@ export class CanvasController {
     // canvas.addEventListener("pointercancel", this.onEvent.bind(this), false);
 
     this.setupSize();
-    this.requestUpdate = consolidateCalls(() => this.draw());
+    // Draw at most once per displayed frame, in step with the display.
+    this.requestUpdate = consolidateCallsToAnimationFrame(() => this.draw());
     this.requestUpdate();
   }
 
@@ -177,6 +184,9 @@ export class CanvasController {
   }
 
   draw() {
+    // A glide steps here, in the frame that draws it: stepped in its own frame
+    // callback, each step would be drawn a frame late.
+    this._stepGlides(performance.now());
     const scale = this.devicePixelRatio;
     this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
     if (!this.sceneView) {
@@ -356,22 +366,7 @@ export class CanvasController {
       return;
     }
     this._zoomGlide = { target, anchor, time: performance.now() };
-    const tick = (now) => {
-      const glide = this._zoomGlide;
-      const dt = Math.max(0, now - glide.time);
-      glide.time = now;
-      const remaining = Math.log(glide.target / this.magnification);
-      if (Math.abs(remaining) < 0.002) {
-        this._doPinchMagnify(glide.anchor, glide.target / this.magnification);
-        delete this._zoomGlide;
-        return;
-      }
-      // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
-      const share = 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
-      this._doPinchMagnify(glide.anchor, Math.exp(remaining * share));
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+    this.requestUpdate();
   }
 
   // Eases the origin through the distance the notches still owe. A notch
@@ -386,28 +381,46 @@ export class CanvasController {
       return;
     }
     this._scrollGlide = { x: step.x, y: step.y, time: performance.now() };
-    const tick = (now) => {
-      const glide = this._scrollGlide;
-      const dt = Math.max(0, now - glide.time);
-      glide.time = now;
-      const done = Math.hypot(glide.x, glide.y) < 0.5;
+    this.requestUpdate();
+  }
+
+  // One step of each running glide. A step that moves the view asks for the next
+  // frame, so a glide runs until it arrives.
+  _stepGlides(now) {
+    const zoom = this._zoomGlide;
+    if (zoom) {
+      const dt = Math.max(0, now - zoom.time);
+      zoom.time = now;
+      const remaining = Math.log(zoom.target / this.magnification);
+      if (Math.abs(remaining) < 0.002) {
+        delete this._zoomGlide;
+        this._doPinchMagnify(zoom.anchor, zoom.target / this.magnification);
+      } else {
+        // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
+        const share = 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
+        this._doPinchMagnify(zoom.anchor, Math.exp(remaining * share));
+      }
+    }
+    const scroll = this._scrollGlide;
+    if (scroll) {
+      const dt = Math.max(0, now - scroll.time);
+      scroll.time = now;
+      const done = Math.hypot(scroll.x, scroll.y) < 0.5;
       // Covers ~63% of what is left every ZOOM_GLIDE_MS, whatever the frame rate.
       const share = done ? 1 : 1 - Math.exp(-dt / ZOOM_GLIDE_MS);
-      const dx = glide.x * share;
-      const dy = glide.y * share;
-      glide.x -= dx;
-      glide.y -= dy;
+      const dx = scroll.x * share;
+      const dy = scroll.y * share;
+      scroll.x -= dx;
+      scroll.y -= dy;
       this.origin.x += dx;
       this.origin.y += dy;
-      this.requestUpdate();
-      this._dispatchEvent("viewBoxChanged", "origin");
       if (done) {
         delete this._scrollGlide;
-        return;
+      } else {
+        this.requestUpdate();
       }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
+      this._dispatchEvent("viewBoxChanged", "origin");
+    }
   }
 
   onEvent(event) {

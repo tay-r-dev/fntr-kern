@@ -7,6 +7,7 @@ import {
   clamp,
   compare,
   consolidateCalls,
+  consolidateCallsToAnimationFrame,
   disambiguateGlyphName,
   dumpURLFragment,
   enumerate,
@@ -95,6 +96,37 @@ describe("consolidateCalls", () => {
     setTimeout(() => {
       expect(workedTimes).to.be.equals(1);
     });
+  });
+});
+
+describe("consolidateCallsToAnimationFrame", () => {
+  it("runs the callback once, later, with the first call's arguments", async () => {
+    const calls = [];
+    const fun = consolidateCallsToAnimationFrame((value) => calls.push(value));
+    fun(1);
+    fun(2);
+    expect(calls).to.deep.equal([]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).to.deep.equal([1]);
+    fun(3);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(calls).to.deep.equal([1, 3]);
+  });
+
+  it("runs on the display's frame where there is one, not on a timer", () => {
+    const frames = [];
+    globalThis.requestAnimationFrame = (callback) => frames.push(callback);
+    try {
+      const calls = [];
+      const fun = consolidateCallsToAnimationFrame(() => calls.push(1));
+      fun();
+      fun();
+      expect(frames.length).to.equal(1);
+      frames[0]();
+      expect(calls).to.deep.equal([1]);
+    } finally {
+      delete globalThis.requestAnimationFrame;
+    }
   });
 });
 

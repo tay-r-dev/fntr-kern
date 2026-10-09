@@ -58,6 +58,35 @@ export function consolidateCalls<Fn extends (...args: any[]) => void>(
   };
 }
 
+/**
+ * Like consolidateCalls, but runs func once before the next repaint, in step
+ * with the display. A zero-delay timer runs off the frame clock: several draws
+ * in one displayed frame and none in the next, which is what makes a zoom or a
+ * drag uneven. Falls back to a zero-delay timer where requestAnimationFrame is
+ * missing (Node-based tests).
+ */
+export function consolidateCallsToAnimationFrame<Fn extends (...args: any[]) => void>(
+  func: Fn
+): (...args: Parameters<Fn>) => void {
+  let didSchedule = false;
+
+  return (...args) => {
+    if (didSchedule) {
+      return;
+    }
+    didSchedule = true;
+    const run = () => {
+      didSchedule = false;
+      func(...args);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 0);
+    }
+  };
+}
+
 export type TimeoutID = ReturnType<typeof setTimeout>;
 
 /**
