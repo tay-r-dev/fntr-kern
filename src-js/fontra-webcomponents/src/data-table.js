@@ -424,7 +424,7 @@ const DATA_TABLE_STYLES = `
     overflow-x: auto;
   }
 
-  /* A table without a height of its own keeps an 8px strip under its rows
+  /* A table without a height of its own keeps a 16px strip under its rows
      for its sideways scrollbar, scrolling or not, so the scrollbar never
      covers a row. A table whose height is set scrolls both ways inside it.
      The scrollbars are the thin ones, which take their room rather than
@@ -448,6 +448,17 @@ const DATA_TABLE_STYLES = `
     background: var(--icon-base-basic-4);
     border-radius: 4px;
     border: 2px solid var(--data-table-look-background-color);
+  }
+
+  /* The reserved strip: 16px, its thumb as thin as the others. */
+  data-table[look]:not(.data-table-scrollable) > .data-table-scroll::-webkit-scrollbar {
+    height: 16px;
+  }
+
+  data-table[look]:not(.data-table-scrollable)
+    > .data-table-scroll::-webkit-scrollbar-thumb:horizontal {
+    border-width: 6px 2px;
+    border-radius: 8px;
   }
 
   data-table[look] .data-table {
