@@ -112,6 +112,12 @@ theme marker until the design has a dark mode.
   scrollbar-color: var(--icon-base-basic-4) transparent;
 }
 
+/* The scrollbar colour is inherited: what the column holds (a table that
+   scrolls sideways, say) keeps its own scrollbars visible. */
+.card-column > * {
+  scrollbar-color: auto;
+}
+
 /* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
    rule is drawn outside the fill, over the grey, as Figma strokes it. */
 .card {
