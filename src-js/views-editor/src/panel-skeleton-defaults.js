@@ -73,18 +73,8 @@ import {
 const TERMINAL_PRESET_KINDS = ["square", "round", "drop", "serif"];
 
 const SKELETON_SETTINGS_STYLES = `
-  .presets-card,
-  .preset-tab {
+  .presets-card {
     gap: 12px;
-  }
-
-  .preset-tab {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .preset-tab[hidden] {
-    display: none;
   }
 
   .preset-section {
@@ -175,7 +165,7 @@ export default class SkeletonSettingsPanel extends Panel {
       translate("sidebar.skeleton-parameters.drop-dead-points.warning"),
     ]);
     // PRESETS (Figma 4109:3396): the width and terminal presets, each a
-    // heading with its filters over a table and its two buttons; the Grid tab
+    // heading with its filters over a table and its two buttons, then
     // (Figma 4129:3638) the grid presets.
     this._appendStyle(SKELETON_SETTINGS_STYLES);
     const presetTable = (columns, storageKey, columnWidthsKey = null) => {
@@ -305,38 +295,21 @@ export default class SkeletonSettingsPanel extends Panel {
         this._addGridPreset(applicationSettingsController.model)
       ),
     ]);
-    gridSection.hidden = true;
     applicationSettingsController.addKeyListener("coarseGridPresets", () =>
       this._renderGridPresetRows()
     );
 
     // The pen's width is the skeleton pen's own setting, in the canvas
-    // corner while the pen is out (edit-tools-skeleton.js).
-    const skeletonTab = html.div({ class: "preset-tab" }, [
-      this.widthPresetsSection,
-      this.terminalPresetsSection,
-    ]);
-    const tabs = html.createDomElement("segmented-control", {
-      options: [
-        { value: "skeleton", label: "Skeleton" },
-        { value: "grid", label: "Grid" },
-      ],
-      value: "skeleton",
-    });
-    tabs.setAttribute("small", "");
-    tabs.addEventListener("change", (event) => {
-      skeletonTab.hidden = event.detail.value !== "skeleton";
-      gridSection.hidden = event.detail.value !== "grid";
-    });
-
+    // corner while the pen is out (edit-tools-skeleton.js). The skeleton and
+    // grid presets are shown together.
     this.contentElement.appendChild(
       html.div({ class: "panel-section--flex card-column" }, [
         html.div({ class: "card card--headed presets-card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["presets"]),
-            tabs,
           ]),
-          skeletonTab,
+          this.widthPresetsSection,
+          this.terminalPresetsSection,
           gridSection,
         ]),
         // The generator's settings; not in the presets design, so they keep
