@@ -175,6 +175,19 @@ keyboard after an edit; sharpness and opacity store the full float of a drag.
 
 ---
 
+## The coarse grid (map F1)
+
+**The zoom lag came back with the dot look.** `3b55057a9` fixed it by stroking
+every grid line as one path, so a frame cost one line per row and column.
+`abf2e77b3` changed the grid to dots, one circle per crossing, which is
+quadratic in the zoom-out: about 44,000 circles a frame on a 1600 by 1000
+canvas just before the dots give way at 6 pixels apart, and that zoom sits
+near the working zoom. **A changed look can bring a closed cost back**; one
+path was the fix for lines, not for circles. Dense dots are one repeated tile
+now (`coarseGridDotTile`).
+
+---
+
 ## Harmonize (map F8, carried fork extras)
 
 **State: shipped, reworked 2026-09-24.** Under G2 two ticks choose the
