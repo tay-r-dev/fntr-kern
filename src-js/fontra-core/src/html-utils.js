@@ -237,14 +237,20 @@ export function naturalCellWidth(cell) {
     const box = document.createElement("span");
     box.className = field.className;
     if (field.tagName === "SELECT") {
-      const { width, maxWidth } = field.style;
-      field.style.width = "auto";
+      // Measured where it stands, freed of the width its column gives it:
+      // its max-content is its longest choice, and as a flex item it must
+      // not shrink back into the wrapper while measured.
+      const saved = field.getAttribute("style");
+      field.style.width = "max-content";
       field.style.maxWidth = "none";
-      box.style.cssText = `display: inline-block; width: ${
-        field.getBoundingClientRect().width
-      }px;`;
-      field.style.width = width;
-      field.style.maxWidth = maxWidth;
+      field.style.flex = "none";
+      const width = field.getBoundingClientRect().width;
+      if (saved == null) {
+        field.removeAttribute("style");
+      } else {
+        field.setAttribute("style", saved);
+      }
+      box.style.cssText = `display: inline-block; flex: none; width: ${width}px;`;
     } else {
       box.textContent = field.value;
       box.style.cssText = "display: inline-block; width: auto;";
