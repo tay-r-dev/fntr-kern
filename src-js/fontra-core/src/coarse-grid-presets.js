@@ -90,10 +90,12 @@ export function coarseGridDotTile({ period, radius, originX, originY }) {
   const size = Math.ceil(period);
   const scale = period / size;
   // The dot sits in the tile's centre; the matrix takes that centre to the
-  // crossing.
+  // crossing. Its radius in the tile is held to an eighth of a pixel, so every
+  // period that shares a tile size shares a handful of tiles, and a zoom reuses
+  // them rather than making a new one each frame: a new tile is a new texture.
   return {
     size,
-    radius: radius / scale,
+    radius: Math.round((8 * radius) / scale) / 8,
     matrix: {
       a: scale,
       d: scale,

@@ -2484,8 +2484,8 @@ function fillCoarseGridDotTile(ctx, spacing, radius, color, viewBox) {
     tileContext.arc(tile.size / 2, tile.size / 2, tile.radius, 0, 2 * Math.PI);
     tileContext.fill();
     pattern = ctx.createPattern(canvas, "repeat");
-    // One tile a zoom step: keep only the last few.
-    if (coarseGridTiles.size >= 8) {
+    // A few per tile size; a zoom through the whole range reuses them.
+    if (coarseGridTiles.size >= 256) {
       coarseGridTiles.delete(coarseGridTiles.keys().next().value);
     }
     coarseGridTiles.set(key, pattern);

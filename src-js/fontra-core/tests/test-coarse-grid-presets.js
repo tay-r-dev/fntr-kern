@@ -87,7 +87,7 @@ describe("coarse-grid-presets", () => {
       const tile = coarseGridDotTile({ period, radius, originX, originY });
       expect(Number.isInteger(tile.size)).to.equal(true);
       const { a, d, e, f } = tile.matrix;
-      expect(tile.radius * a).to.be.closeTo(radius, 1e-9);
+      expect(tile.radius * a).to.be.closeTo(radius, 1 / 16);
       for (let i = -3; i <= 3; i++) {
         for (let j = -3; j <= 3; j++) {
           const tx = tile.size / 2 + i * tile.size;
@@ -105,6 +105,16 @@ describe("coarse-grid-presets", () => {
       expect(tile.matrix.a).to.be.at.most(1);
       expect(tile.matrix.a).to.be.above(1 - 1 / tile.size - 1e-9);
     }
+  });
+
+  it("periods that share a tile size share one tile, so a zoom reuses them", () => {
+    const tiles = new Set();
+    for (let period = 6.001; period <= 64; period += 0.01) {
+      const tile = coarseGridDotTile({ period, radius: 1.5, originX: 0, originY: 0 });
+      tiles.add(`${tile.size}|${tile.radius}`);
+    }
+    // 59 sizes, a few radii each: a few hundred tiles at most, not one a frame.
+    expect(tiles.size).to.be.below(59 * 4);
   });
 
   it("no dot tile past the period where the dots are few", () => {
