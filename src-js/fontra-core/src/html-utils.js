@@ -228,39 +228,44 @@ export const pre = createDomElement.bind(null, "pre");
 // Let's add more once needed
 
 // A table cell's width if it hugged its contents: a hidden copy set beside it
-// at its natural width, padding and border included. A field in it counts as
-// its value set in that field's type.
+// at its natural width, padding and border included. A text field counts as
+// its value set in that field's type; a dropdown as its own natural width,
+// which fits its longest choice.
 export function naturalCellWidth(cell) {
   const copy = cell.cloneNode(true);
-  const asText = (field) => {
-    const text = document.createElement("span");
-    text.className = field.className;
-    text.textContent =
-      field.tagName === "SELECT"
-        ? (field.selectedOptions[0]?.textContent ?? "")
-        : field.value;
-    text.style.cssText = "display: inline-block; width: auto;";
-    return text;
+  const stand = (field) => {
+    const box = document.createElement("span");
+    box.className = field.className;
+    if (field.tagName === "SELECT") {
+      const { width, maxWidth } = field.style;
+      field.style.width = "auto";
+      field.style.maxWidth = "none";
+      box.style.cssText = `display: inline-block; width: ${
+        field.getBoundingClientRect().width
+      }px;`;
+      field.style.width = width;
+      field.style.maxWidth = maxWidth;
+    } else {
+      box.textContent = field.value;
+      box.style.cssText = "display: inline-block; width: auto;";
+    }
+    return box;
   };
-  const fields = cell.matches("input, select")
-    ? [cell]
-    : [...cell.querySelectorAll("input, select")];
-  const copies = cell.matches("input, select")
-    ? [copy]
-    : [...copy.querySelectorAll("input, select")];
+  const isField = cell.matches("input, select");
+  const fields = isField ? [cell] : [...cell.querySelectorAll("input, select")];
+  const copies = isField ? [copy] : [...copy.querySelectorAll("input, select")];
   let probe = copy;
   copies.forEach((field, i) => {
-    field.value = fields[i].value;
-    const text = asText(fields[i]);
+    const box = stand(fields[i]);
     if (field === copy) {
-      probe = text;
+      probe = box;
     } else {
-      field.replaceWith(text);
+      field.replaceWith(box);
     }
   });
   probe.style.position = "absolute";
   probe.style.visibility = "hidden";
-  probe.style.width = "max-content";
+  probe.style.width = probe.style.width || "max-content";
   probe.style.minWidth = "0";
   probe.style.maxWidth = "none";
   probe.style.whiteSpace = "nowrap";
