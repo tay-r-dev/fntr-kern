@@ -107,6 +107,7 @@ const FEATURE_TABLES = ["GSUB", "GPOS-emulated", "GPOS"];
 export default class TextEntryPanel extends Panel {
   identifier = "text-entry";
   iconPath = "/images/texttool.svg";
+  tabLabel = "input";
 
   // Figma 4098:7786: INPUT TEXT and TEXT SHAPING cards.
   static styles = `

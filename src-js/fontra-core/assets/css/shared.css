@@ -354,26 +354,26 @@ glyph-cell-view .glyph-count {
   opacity: 50%;
 }
 
-/* The tool notch (Figma 4129:3788): the panel grey hanging from a canvas
-   card's top edge, ruled at the sides and under with 14px lower corners,
-   4px round its strips at the sides and under. A view places it. */
-.tool-notch {
+/* The toolbar (Figma 4231:4039): the panel grey hanging from a canvas card's
+   top edge, ruled at the sides and under with 10px lower corners, its groups
+   4px apart and 2px in from its sides and under. A view places it. */
+.toolbar {
   display: flex;
-  flex-direction: row;
+  align-items: center;
   gap: 4px;
-  padding: 0 4px 4px;
+  padding: 0 2px 2px;
   background-color: var(--surface-base-basic-1);
   border: 1px solid var(--line-base-basic-1);
   border-top: none;
-  border-radius: 0 0 14px 14px;
-  box-shadow: 0 1px 4px var(--shadow-base-1);
+  border-radius: 0 0 10px 10px;
   pointer-events: auto;
 }
 
-/* Its two ears: where the card's top rule turns down into the notch's side
-   on a 10px round, tangent to the rule at the ear's outer end. */
-.tool-notch::before,
-.tool-notch::after {
+/* Its two outer ears: where the card's top rule turns down into the
+   toolbar's side on a 10px round, tangent to the rule at the ear's outer
+   end. */
+.toolbar::before,
+.toolbar::after {
   content: "";
   position: absolute;
   top: 0;
@@ -381,7 +381,7 @@ glyph-cell-view .glyph-count {
   height: 11px;
 }
 
-.tool-notch::before {
+.toolbar::before {
   left: -11px;
   background: radial-gradient(
     circle 10.5px at 0 10.5px,
@@ -392,7 +392,7 @@ glyph-cell-view .glyph-count {
   );
 }
 
-.tool-notch::after {
+.toolbar::after {
   right: -11px;
   background: radial-gradient(
     circle 10.5px at 100% 10.5px,
@@ -403,141 +403,84 @@ glyph-cell-view .glyph-count {
   );
 }
 
-/* A tool strip: a row of tool buttons, flat in the notch. A multi-tool's
-   subtools drop below its button. */
-.tools-item {
-  --tool-hover-light: var(--fontra-theme-marker) #eee;
-  --tool-hover-dark: #333;
-  --tool-hover: var(--tool-hover-light, var(--tool-hover-dark));
-  --tool-active-light: var(--fontra-theme-marker) #ccc;
-  --tool-active-dark: #555;
-  --tool-active: var(--tool-active-light, var(--tool-active-dark));
-  --tool-selected-light: var(--fontra-theme-marker) #666;
-  --tool-selected-dark: #ccc;
-  --tool-selected: var(--tool-selected-light, var(--tool-selected-dark));
+/* A group: its selects touching on a white tray, 2px round them. */
+.toolbar-group {
   display: flex;
-  background-color: var(--ui-element-background-color);
-  border-radius: 0.65em;
-  box-shadow: 1px 1px 5px #0006;
-  cursor: pointer;
-  height: min-content;
-  pointer-events: auto;
-}
-
-.tool-notch .tools-item {
-  box-shadow: none;
-}
-
-.tool-button,
-.subtool-button {
-  justify-content: center;
   align-items: center;
+  padding: 2px;
+  background-color: var(--surface-base-basic-0);
+  border-radius: 8px;
+}
+
+/* ./toolbar-select (Figma 4231:3847): an 18px icon in currentColor on a
+   24px plate. At rest the icon is pale and bare, hovered darker; the
+   selected one sits on the grey plate, which turns lime while the pointer is
+   over the toolbar. */
+.toolbar-select {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: var(--corner-outer-l);
+  color: var(--icon-base-basic-3);
+  cursor: pointer;
   user-select: none;
-  background-color: var(--ui-element-background-color);
-  fill: var(--foreground-color);
-  width: 2.2rem;
-  height: 1.9rem;
-  padding: 0.1rem;
-  transition: 0.15s;
-  display: inline-grid;
-  box-sizing: content-box; /* FIXME: use border-box */
 }
 
-.tool-button:first-child,
-.subtool-button:first-child {
-  border-radius: 0.65em 0 0 0.65em;
+.toolbar-select:hover {
+  color: var(--icon-base-basic-2);
 }
 
-.tool-button:first-child:has(
-    .subtool-button:nth-child(2)[style*="visibility: visible;"]
-  ) {
-  border-radius: 0.65em 0 0 0;
+.toolbar-select.selected:not(.multi-tool),
+.multi-tool.selected > .toolbar-select:first-child {
+  background-color: var(--surface-base-basic-2);
+  color: var(--icon-base-basic-2);
 }
 
-.tool-button:last-child,
-.subtool-button:last-child {
-  border-radius: 0 0.65em 0.65em 0;
+.toolbar:hover .toolbar-select.selected:not(.multi-tool),
+.toolbar:hover .multi-tool.selected > .toolbar-select:first-child {
+  background-color: var(--surface-color-lime-basic-2);
+  color: var(--icon-color-lime-basic-1);
 }
 
-.subtool-button {
-  margin-top: -0.1rem;
-  fill: unset;
-  background-color: unset;
+.toolbar-icon {
+  display: block;
+  width: 18px;
+  height: 18px;
 }
 
-.multi-tool::after {
-  position: absolute;
-  content: "";
-  border-top: 5px solid transparent;
-  border-right: 5px solid var(--foreground-color);
-  margin-right: -5px;
-  margin-left: 1.8rem;
-  margin-top: calc(1.9rem - 6px);
-  pointer-events: none;
+.toolbar-icon > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
-.subtool-button:last-child {
-  border-radius: 0 0 0.65em 0.65em;
+/* A multi-tool: one select's place, showing its current tool. Holding it
+   drops the others below, each on a white plate. */
+.toolbar-select.multi-tool {
+  display: grid;
+  grid-auto-rows: 24px;
+  align-content: start;
+  padding: 0;
 }
 
-.subtool-button:not(:first-child) {
+.multi-tool > .toolbar-select:not(:first-child) {
   visibility: hidden;
-  transition-duration: 100ms;
-  background-color: var(--ui-element-background-color);
-  fill: var(--foreground-color);
-  box-shadow: 1px 3px 3px #0006;
+  background-color: var(--surface-base-basic-0);
+  box-shadow: 0 1px 4px var(--shadow-base-1);
 }
 
-.tool-icon {
-  width: 1.75rem;
-  height: 1.75rem;
-  position: relative;
-}
-
-.tool-icon:hover {
-  position: relative;
-  transform: scale(1.1, 1.1);
-}
-
-.tool-icon--hidden {
-  display: none;
-}
-
-.subtool-button:hover,
-.tool-button:hover {
-  background-color: var(--tool-hover);
-}
-
-.subtool-button:active,
-.tool-button:active {
-  background-color: var(--tool-active);
-}
-
-.selected .subtool-button:first-child,
-.tool-button.selected {
-  background-color: var(--tool-selected);
-  fill: var(--background-color);
-}
-
-.tool-button.selected .icon-tabler {
-  stroke: var(--background-color);
-}
-
-.multi-tool.selected::after {
-  border-right: 5px solid var(--background-color);
-}
-
-.subtool-button:not(:first-child) .icon-tabler {
-  stroke: var(--foreground-color);
-}
-
-/* The tab pane (Figma 4167:3435): a column of icon tabs at a window edge,
-   each switching what the sidebar beside it shows. Mark it .left or .right
-   for its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs
-   are 24px and touch, 4px in from the edge. Resting on the tabs -- not the
-   pane's empty length -- for 2s opens them to 32px, 4px apart and shadowed,
-   8px in, and the pane widens from 28px to 40px, moving its neighbour aside.
-   Leaving closes them at once. Clicks and hover colours never wait. */
+/* The tab pane (Figma 4167:3435): a column of tabs at a window edge, each
+   switching what the sidebar beside it shows. Mark it .left or .right for
+   its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs are
+   24px icons, touching, 4px in from the edge. Resting on the tabs -- not
+   the pane's empty length -- for 2s opens them to 60px tiles with their
+   names, 4px apart on a white card 4px round them and 8px in, and the pane
+   widens from 28px to 76px, moving its neighbour aside. Leaving closes them
+   at once. Clicks and hover colours never wait. */
 .tab-pane {
   display: flex;
   flex-direction: column;
@@ -555,21 +498,42 @@ glyph-cell-view .glyph-count {
 }
 
 /* The tabs' column, edge padding included: the hover area runs the pane's
-   width and the tabs' length, gaps included. */
+   width and the tabs' length, gaps included. The card is drawn behind the
+   tabs, clear of the edge padding. */
 .tab-pane-tabs {
   --tab-open: 0;
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: calc(4px * var(--tab-open));
-  padding-left: calc(4px + 4px * var(--tab-open));
+  padding: calc(4px * var(--tab-open));
+  padding-left: calc(4px + 8px * var(--tab-open));
   pointer-events: auto;
   transition: --tab-open 150ms;
 }
 
 .tab-pane.right > .tab-pane-tabs {
-  padding-left: 0;
-  padding-right: calc(4px + 4px * var(--tab-open));
+  padding-left: calc(4px * var(--tab-open));
+  padding-right: calc(4px + 8px * var(--tab-open));
+}
+
+.tab-pane-tabs::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 0 calc(4px + 4px * var(--tab-open));
+  background-color: color-mix(
+    in srgb,
+    var(--surface-base-basic-0) calc(100% * var(--tab-open)),
+    transparent
+  );
+  border-radius: 14px;
+}
+
+.tab-pane.right > .tab-pane-tabs::before {
+  inset: 0 calc(4px + 4px * var(--tab-open)) 0 0;
 }
 
 .tab-pane-tabs:hover {
@@ -577,21 +541,21 @@ glyph-cell-view .glyph-count {
   transition-delay: 2s;
 }
 
-/* ./tab (Figma 4167:3375): an icon in currentColor. At rest the selected tab
-   is the darker grey on a ruled grey plate, the others pale and bare, and a
-   hovered tab darkens its icon. Open, the selected plate turns white and its
-   icon darker still. */
+/* ./tab-tab (Figma 4167:3375): an icon in currentColor over its name. At
+   rest a 14px icon, pale, the selected one on a ruled grey plate. Open a
+   60px tile, the 32px icon over its 8px name, shadowed; a hovered tile
+   darkens, and the selected one is lime. */
 .tab-pane-tab {
   flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: calc(24px + 8px * var(--tab-open));
-  height: calc(24px + 8px * var(--tab-open));
-  padding: 5px;
+  width: calc(24px + 36px * var(--tab-open));
+  height: calc(24px + 36px * var(--tab-open));
   border: 1px solid transparent;
-  border-radius: 6px;
-  color: var(--text-base-basic-4);
+  border-radius: calc(var(--corner-outer-l) + 4px * var(--tab-open));
+  color: var(--icon-base-basic-3);
   filter: drop-shadow(
     0 4px 2px
       color-mix(in srgb, var(--shadow-base-1) calc(100% * var(--tab-open)), transparent)
@@ -599,29 +563,63 @@ glyph-cell-view .glyph-count {
   cursor: pointer;
 }
 
-.tab-pane-tab > * {
+.tab-pane-tab > inline-svg {
+  flex: none;
+  display: block;
+  width: calc(14px + 18px * var(--tab-open));
+  height: calc(14px + 18px * var(--tab-open));
+}
+
+.tab-pane-tab > inline-svg > svg {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.tab-pane-tab:hover {
+/* Its name: the design's 8px label (Martian Mono 450 at width 80, here the
+   nearest static), shown only as the tile opens. */
+.tab-pane-tab-label {
+  flex: none;
+  height: calc(10px * var(--tab-open));
+  overflow: hidden;
+  opacity: var(--tab-open);
+  font: 400 condensed 8px / 10px var(--ui-font-mono);
+  font-feature-settings: "case" 1;
+  letter-spacing: var(--ui-tracking);
+  white-space: nowrap;
   color: var(--text-base-basic-3);
 }
 
+.tab-pane-tab:hover {
+  color: var(--icon-base-basic-2);
+}
+
+.tab-pane-tab:hover > .tab-pane-tab-label {
+  color: var(--text-base-basic-2);
+}
+
 .tab-pane-tab.selected {
-  padding: calc(2px + 2px * var(--tab-open)) 4px;
+  gap: calc(2px * var(--tab-open));
   background-color: color-mix(
     in srgb,
-    var(--surface-base-basic-0) calc(100% * var(--tab-open)),
+    var(--surface-color-lime-basic-2) calc(100% * var(--tab-open)),
     var(--surface-base-basic-2)
   );
-  border-color: var(--line-base-basic-1);
+  border-color: color-mix(
+    in srgb,
+    transparent calc(100% * var(--tab-open)),
+    var(--line-base-basic-1)
+  );
   color: color-mix(
     in srgb,
-    var(--text-base-basic-2) calc(100% * var(--tab-open)),
-    var(--text-base-basic-3)
+    var(--icon-color-lime-basic-2) calc(100% * var(--tab-open)),
+    var(--icon-base-basic-3)
   );
+  filter: none;
+}
+
+.tab-pane-tab.selected > .tab-pane-tab-label {
+  color: var(--text-color-lime-basic-2);
 }
 
 /* A canvas corner (Figma 4173:4283, 4134:3975): controls floating in one

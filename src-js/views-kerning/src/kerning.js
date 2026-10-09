@@ -7318,13 +7318,7 @@ export class KerningViewController extends ViewController {
         fullscreenButton.style.display = "none";
         return;
       }
-      const on = !!document.fullscreenElement;
-      fullscreenButton
-        .querySelector(".tool-icon--fullscreen-enter")
-        .classList.toggle("tool-icon--hidden", on);
-      fullscreenButton
-        .querySelector(".tool-icon--fullscreen-exit")
-        .classList.toggle("tool-icon--hidden", !on);
+      fullscreenButton.classList.toggle("selected", !!document.fullscreenElement);
     };
     updateFullscreenButton();
     document.addEventListener("fullscreenchange", updateFullscreenButton);

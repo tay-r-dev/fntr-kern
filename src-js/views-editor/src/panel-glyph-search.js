@@ -8,6 +8,7 @@ import Panel from "./panel.js";
 export default class GlyphSearchPanel extends Panel {
   identifier = "glyph-search";
   iconPath = "/images/magnifyingglass.svg";
+  tabLabel = "search";
 
   // GLYPH SEARCH (Figma 4098:8012): the field, the glyph table and the glyph
   // sets switches in one card.

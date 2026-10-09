@@ -85,6 +85,7 @@ const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 export default class MarkersPanel extends Panel {
   identifier = "markers";
   iconPath = "/tabler-icons/ruler-measure.svg";
+  tabLabel = "measure";
 
   constructor(editorController) {
     super(editorController);

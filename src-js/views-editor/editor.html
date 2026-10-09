@@ -56,54 +56,55 @@
                gizmo / handles switch, and the skeleton pen's own settings
                while the pen is out (edit-tools-skeleton.js). -->
           <div id="canvas-corner-top-left" class="canvas-corner top-left"></div>
-          <div
-            id="skeleton-pen-settings"
-            class="canvas-corner top-right"
-            hidden
-          ></div>
+          <div id="skeleton-pen-settings" class="canvas-corner top-right" hidden></div>
           <div class="tool-overlay-container">
-            <div class="tools-overlay tool-notch">
-              <div id="edit-tools" class="tools-item">
+            <div class="tools-overlay toolbar">
+              <div id="edit-tools" class="toolbar-group">
                 <!-- content will be filled in dynamically -->
               </div>
-              <div id="zoom-tools" class="tools-item">
+              <div id="zoom-tools" class="toolbar-group">
                 <div
-                  class="tool-button"
+                  class="toolbar-select"
                   data-tool="zoom-out"
                   data-tooltip="Zoom out"
                   data-tooltipposition="bottom"
                 >
-                  <inline-svg class="tool-icon" src="/images/minus.svg"></inline-svg>
+                  <inline-svg
+                    class="toolbar-icon"
+                    src="/images/tool-panel-minus.svg"
+                  ></inline-svg>
                 </div>
                 <div
-                  class="tool-button"
+                  class="toolbar-select"
                   data-tool="zoom-in"
                   data-tooltip="Zoom in"
                   data-tooltipposition="bottom"
                 >
-                  <inline-svg class="tool-icon" src="/images/plus.svg"></inline-svg>
+                  <inline-svg
+                    class="toolbar-icon"
+                    src="/images/tool-panel-plus.svg"
+                  ></inline-svg>
                 </div>
                 <div
-                  class="tool-button"
+                  class="toolbar-select"
                   data-tool="zoom-fit-selection"
                   data-tooltip="Zoom to fit selection"
                   data-tooltipposition="bottom"
                 >
-                  <inline-svg class="tool-icon" src="/images/bullseye.svg"></inline-svg>
+                  <inline-svg
+                    class="toolbar-icon"
+                    src="/images/tool-panel-center-glyph.svg"
+                  ></inline-svg>
                 </div>
                 <div
-                  class="tool-button"
+                  class="toolbar-select"
                   data-tool="toggle-fullscreen"
                   data-tooltip="Toggle fullscreen"
                   data-tooltipposition="bottom"
                 >
                   <inline-svg
-                    class="tool-icon tool-icon--fullscreen-enter tool-icon--hidden"
-                    src="/tabler-icons/maximize.svg"
-                  ></inline-svg>
-                  <inline-svg
-                    class="tool-icon tool-icon--fullscreen-exit tool-icon--hidden"
-                    src="/tabler-icons/minimize.svg"
+                    class="toolbar-icon"
+                    src="/images/tool-panel-full-screen-mode.svg"
                   ></inline-svg>
                 </div>
               </div>

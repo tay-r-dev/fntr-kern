@@ -180,6 +180,7 @@ async function writeFontFileToOPFS(fileName, file) {
 export default class ReferenceFontPanel extends Panel {
   identifier = "reference-font";
   iconPath = "/images/reference.svg";
+  tabLabel = "reference";
 
   static styles = `
     .reference-font-card {

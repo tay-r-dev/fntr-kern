@@ -134,9 +134,9 @@
   min-height: 0;
 }
 
-/* The tool notch (shared.css's .tool-notch), centred on the canvas card's
+/* The toolbar (shared.css's .toolbar), centred on the canvas card's
    top edge: under the column's 8px padding. */
-#kerning-tool-notch {
+#kerning-toolbar {
   position: absolute;
   top: 8px;
   left: 50%;

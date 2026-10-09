@@ -46,6 +46,7 @@ import Panel from "./panel.js";
 export default class SelectionInfoPanel extends Panel {
   identifier = "selection-info";
   iconPath = "/images/info.svg";
+  tabLabel = "metrics";
 
   constructor(editorController) {
     super(editorController);
@@ -111,10 +112,12 @@ export default class SelectionInfoPanel extends Panel {
     this.selectionCard = html.div({ class: "card metrics-card--form" }, [
       this.infoForm,
     ]);
-    this.cardsElement = html.div(
-      { class: "panel-section--flex card-column" },
-      [this.spacingCard, this.letterspacerHost, this.kerningCard, this.selectionCard]
-    );
+    this.cardsElement = html.div({ class: "panel-section--flex card-column" }, [
+      this.spacingCard,
+      this.letterspacerHost,
+      this.kerningCard,
+      this.selectionCard,
+    ]);
     this._appendStyle(METRICS_PANEL_STYLES);
     return html.div({ class: "panel" }, [this.cardsElement]);
   }
@@ -563,8 +566,7 @@ export default class SelectionInfoPanel extends Panel {
           await this._evaluateSidebearingInput(input, varGlyphController, side),
         recordExtraChanges: (glyph, layerInfo, value) =>
           this._recordPendingMetricsKey(glyph, layerInfo, side, value),
-        getValue: (layerGlyph, layerGlyphController) =>
-          layerGlyphController[marginKey],
+        getValue: (layerGlyph, layerGlyphController) => layerGlyphController[marginKey],
         setValue: (layerGlyph, layerGlyphController, fieldItem, value) =>
           side === "left"
             ? setLeftMarginOnLayer(layerGlyph, layerGlyphController, value)
@@ -647,7 +649,9 @@ export default class SelectionInfoPanel extends Panel {
           },
         }),
         html.createDomElement("icon-button", {
-          "src": isOverridden ? "/tabler-icons/link.svg" : "/tabler-icons/link-plus.svg",
+          "src": isOverridden
+            ? "/tabler-icons/link.svg"
+            : "/tabler-icons/link-plus.svg",
           "on": isOverridden,
           "disabled": editLocked,
           "data-tooltip": translate(
@@ -657,7 +661,11 @@ export default class SelectionInfoPanel extends Panel {
           ),
           "data-tooltipposition": "left",
           "onclick": async () => {
-            await this._toggleMetricsSourceOverride(glyphName, varGlyphController, side);
+            await this._toggleMetricsSourceOverride(
+              glyphName,
+              varGlyphController,
+              side
+            );
             await this.update();
           },
         })

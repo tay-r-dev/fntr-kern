@@ -132,6 +132,7 @@ function textKey(label, onClick) {
 export default class SkeletonSettingsPanel extends Panel {
   identifier = "skeleton-settings";
   iconPath = "/tabler-icons/bone.svg";
+  tabLabel = "presets";
 
   constructor(editorController) {
     super(editorController);

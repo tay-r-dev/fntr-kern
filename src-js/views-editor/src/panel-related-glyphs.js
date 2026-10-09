@@ -42,6 +42,7 @@ const COMPOSITION_ACTION_ICONS = {
 export default class RelatedGlyphPanel extends Panel {
   identifier = "related-glyphs";
   iconPath = "/tabler-icons/binary-tree-2.svg";
+  tabLabel = "compose";
 
   // COMPOSE GLYPHS (Figma 4122:9325): the mark cloud switch, then the
   // composition heading, its component table, its buttons and the previews.

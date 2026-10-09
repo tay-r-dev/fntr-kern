@@ -36,7 +36,7 @@ import { setMarkerPlacementPreview } from "./visualization-layer-markers.js";
 // Its own hit test does NOT apply the pointer tool's generated-geometry precedence: this
 // tool exists precisely to reach the markers that precedence hides.
 export class MarkerTool extends BaseTool {
-  iconPath = "/images/markertool.svg";
+  iconPath = "/images/tool-panel-marker.svg";
   identifier = "marker-tool";
 
   constructor(editor) {

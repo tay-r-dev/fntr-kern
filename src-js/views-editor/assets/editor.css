@@ -320,7 +320,7 @@ body {
   display: none;
 }
 
-/* The tool notch (shared.css's .tool-notch), from the card's top edge (the
+/* The toolbar (shared.css's .toolbar), from the card's top edge (the
    top bar, then the card's 8px), centred on the window: opening, closing or
    resizing a sidebar leaves it where it is. */
 .tools-overlay {

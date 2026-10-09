@@ -23,6 +23,7 @@ import { equalGlyphSelection } from "./scene-controller.js";
 export default class CharactersGlyphsPanel extends Panel {
   identifier = "characters-glyphs";
   iconPath = "/tabler-icons/columns.svg";
+  tabLabel = "characters";
 
   // One card filling the column: the three lists as an accordion switch,
   // each scrolling inside it.

@@ -79,7 +79,7 @@ import { dialog, dialogSetup, message } from "@fontra/web-components/modal-dialo
 import "@fontra/web-components/range-slider.js";
 import "@fontra/web-components/segmented-control.js"; // for the Skeleton heading's Gizmo/Handles
 import "@fontra/web-components/text-button.js"; // the debug sections' resets
-import "@fontra/web-components/ui-text-input.js"; // the Phrase card's input/text
+import "@fontra/web-components/ui-text-input.js"; // the Phrase and Note cards' input/text
 import {
   Accordion,
   groupAccordionHeaderButtons,
@@ -587,6 +587,7 @@ export function makeGizmoHandlesControl(settings) {
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
   iconPath = "/images/sliders.svg";
+  tabLabel = "workspace";
 
   constructor(editorController) {
     super(editorController);
@@ -1514,8 +1515,43 @@ export default class DesignspaceNavigationPanel extends Panel {
           this.accordion,
         ]),
         this.displayCard,
+        this._buildNoteCard(),
       ]),
     ]);
+  }
+
+  // The glyph's note: the heading with the glyph's name beside it, over the
+  // note in the several-line input/text. A change saves it to the glyph.
+  _buildNoteCard() {
+    this.glyphNoteHeader = html.div({ class: "section-label" });
+    this.glyphNoteInput = html.createDomElement("ui-text-input", { multiline: true });
+    this.glyphNoteInput.addEventListener("change", () => {
+      if (this._glyphNoteGlyphName) {
+        saveGlyphNote(
+          this._glyphNoteGlyphName,
+          this.editorController.sceneController,
+          this.glyphNoteInput.value
+        );
+      }
+    });
+    return html.div({ class: "card" }, [
+      html.div({ class: "card-heading-row" }, [
+        html.div({ class: "card-heading" }, ["note"]),
+        this.glyphNoteHeader,
+      ]),
+      this.glyphNoteInput,
+    ]);
+  }
+
+  async _updateGlyphNote() {
+    const varGlyph = (await this.sceneModel.getSelectedVariableGlyphController())
+      ?.glyph;
+    this._glyphNoteGlyphName = varGlyph?.name;
+    this.glyphNoteHeader.textContent = varGlyph
+      ? varGlyph.name
+      : translate("sidebar.glyph-note.no-glyph-selected");
+    this.glyphNoteInput.value = varGlyph?.customData["fontra.glyph.note"] ?? "";
+    this.glyphNoteInput.disabled = !varGlyph;
   }
 
   get glyphAxesElement() {
@@ -2347,6 +2383,14 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   setup() {
     this._updateFontAxes();
+
+    const updateGlyphNote = throttleCalls(() => this._updateGlyphNote(), 100);
+    this.sceneSettingsController.addKeyListener(
+      ["selectedGlyphName", "selection"],
+      updateGlyphNote
+    );
+    this.sceneController.addCurrentGlyphChangeListener(updateGlyphNote);
+    updateGlyphNote();
     this.glyphAxesElement.values = this.sceneSettings.glyphLocation;
 
     this.glyphAxesElement.addEventListener(
@@ -4306,6 +4350,20 @@ function statusListCell(item, colDesc) {
 
 function cellColorStyle(color) {
   return `background-color: ${rgbaToCSS(color)}; width: 100%;`;
+}
+
+async function saveGlyphNote(glyphName, sceneController, newNote) {
+  await sceneController.editNamedGlyphAndRecordChanges(glyphName, (glyph) => {
+    const oldNote = glyph.customData["fontra.glyph.note"];
+    glyph.customData["fontra.glyph.note"] = newNote;
+    return translate(
+      oldNote
+        ? newNote
+          ? "sidebar.glyph-note.undo.edit"
+          : "sidebar.glyph-note.undo.delete"
+        : "sidebar.glyph-note.undo.add"
+    );
+  });
 }
 
 function getSourceCompareFunc(locationProperty, axisNames) {

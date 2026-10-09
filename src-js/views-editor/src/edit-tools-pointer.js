@@ -180,7 +180,7 @@ export class PointerTools {
 }
 
 export class PointerTool extends BaseTool {
-  iconPath = "/images/pointer.svg";
+  iconPath = "/images/tool-panel-pointer.svg";
   identifier = "pointer-tool";
 
   constructor(...args) {

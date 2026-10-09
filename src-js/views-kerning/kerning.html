@@ -270,84 +270,99 @@
              two row children do), so a gutter positioned directly against
              ITS box is never clipped. -->
         <div id="kerning-middle-resize-gutter"></div>
-        <!-- The notch (Figma 4129:3788): the editor's tool strip, the tools
-             then the zoom group, hanging from the canvas card's top edge. -->
-        <div id="kerning-tool-notch" class="tool-notch">
-          <div class="tools-item">
+        <!-- The toolbar (Figma 4231:4039): the editor's tool strip, the
+             tools then the zoom group, hanging from the canvas card's top
+             edge. -->
+        <div id="kerning-toolbar" class="toolbar">
+          <div class="toolbar-group">
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-tool="pointer-tool"
               data-tooltip="Pointer"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/pointer.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-pointer.svg"
+              ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-tool="sidebearing-tool"
               data-tooltip="Sidebearing"
               data-tooltipposition="bottom"
             >
               <inline-svg
-                class="tool-icon"
-                src="/images/sidebearingtool.svg"
+                class="toolbar-icon"
+                src="/images/tool-panel-spacing.svg"
               ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-tool="kerning-tool"
               data-tooltip="Kerning"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/kerningtool.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-kerning.svg"
+              ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-tool="hand-tool"
               data-tooltip="Hand"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/hand.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-hand.svg"
+              ></inline-svg>
             </div>
           </div>
-          <div class="tools-item">
+          <div class="toolbar-group">
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-zoom="zoom-out"
               data-tooltip="Zoom out"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/minus.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-minus.svg"
+              ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-zoom="zoom-in"
               data-tooltip="Zoom in"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/plus.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-plus.svg"
+              ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-zoom="zoom-fit"
               data-tooltip="Zoom to fit"
               data-tooltipposition="bottom"
             >
-              <inline-svg class="tool-icon" src="/images/bullseye.svg"></inline-svg>
+              <inline-svg
+                class="toolbar-icon"
+                src="/images/tool-panel-center-glyph.svg"
+              ></inline-svg>
             </div>
             <div
-              class="tool-button"
+              class="toolbar-select"
               data-zoom="toggle-fullscreen"
               data-tooltip="Toggle fullscreen"
               data-tooltipposition="bottom"
             >
               <inline-svg
-                class="tool-icon tool-icon--fullscreen-enter"
-                src="/tabler-icons/maximize.svg"
-              ></inline-svg>
-              <inline-svg
-                class="tool-icon tool-icon--fullscreen-exit tool-icon--hidden"
-                src="/tabler-icons/minimize.svg"
+                class="toolbar-icon"
+                src="/images/tool-panel-full-screen-mode.svg"
               ></inline-svg>
             </div>
           </div>

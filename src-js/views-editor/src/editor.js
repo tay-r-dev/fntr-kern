@@ -141,7 +141,6 @@ import DebugPanel from "./panel-debug.js";
 import DesignspaceNavigationPanel, {
   makeGizmoHandlesControl,
 } from "./panel-designspace-navigation.js";
-import GlyphNotePanel from "./panel-glyph-note.js";
 import GlyphSearchPanel from "./panel-glyph-search.js";
 import MarkersPanel from "./panel-markers.js";
 import ReferenceFontPanel from "./panel-reference-font.js";
@@ -1216,10 +1215,10 @@ export class EditorController extends ViewController {
       SkeletonPenTool,
       KnifeTool,
       ShapeTool,
-      MetricsTool,
       PowerRulerTool,
       MarkerTool,
       HandTool,
+      MetricsTool,
     ];
 
     for (const editToolClass of editToolClasses) {
@@ -1228,7 +1227,9 @@ export class EditorController extends ViewController {
 
     this.setSelectedTool("pointer-tool");
 
-    for (const zoomElement of document.querySelectorAll("#zoom-tools > .tool-button")) {
+    for (const zoomElement of document.querySelectorAll(
+      "#zoom-tools > .toolbar-select"
+    )) {
       const toolIdentifier = zoomElement.dataset.tool;
       zoomElement.dataset.tooltip = translate(toolIdentifier);
       zoomElement.onclick = () => {
@@ -1278,7 +1279,7 @@ export class EditorController extends ViewController {
         html.div({
           "id": wrapperID,
           "data-tool": tool.identifier,
-          "class": "tool-button multi-tool",
+          "class": "toolbar-select multi-tool",
         })
       );
     } else {
@@ -1291,14 +1292,14 @@ export class EditorController extends ViewController {
       const toolButton = html.div(
         {
           "class":
-            wrapperID === "edit-tools" ? "tool-button selected" : "subtool-button",
+            wrapperID === "edit-tools" ? "toolbar-select selected" : "toolbar-select",
           "data-tool": tool.identifier,
           "data-tooltip": translate("editor." + tool.identifier),
           "data-tooltipposition": index ? "right" : "bottom",
         },
         [
           html.createDomElement("inline-svg", {
-            class: "tool-icon",
+            class: "toolbar-icon",
             src: tool.iconPath,
           }),
         ]
@@ -1386,7 +1387,6 @@ export class EditorController extends ViewController {
     this.addSidebarPanel(new SelectionPanel(this), "right");
     this.addSidebarPanel(new SkeletonSettingsPanel(this), "right");
     this.addSidebarPanel(new MarkersPanel(this), "right");
-    this.addSidebarPanel(new GlyphNotePanel(this), "right");
     this.addSidebarPanel(new RelatedGlyphsPanel(this), "right");
     this.addSidebarPanel(new CharactersGlyphsPanel(this), "right");
 
@@ -1508,7 +1508,7 @@ export class EditorController extends ViewController {
     let selectedToolIdentifier = toolIdentifier;
 
     for (const editToolItem of document.querySelectorAll(
-      "#edit-tools > .tool-button"
+      "#edit-tools > .toolbar-select"
     )) {
       let shouldSelect = editToolItem.dataset.tool === toolIdentifier;
 
@@ -1539,7 +1539,7 @@ export class EditorController extends ViewController {
 
   getToolIdentifierFromMultiTool(toolIdentifier) {
     for (const editToolItem of document.querySelectorAll(
-      "#edit-tools > .tool-button"
+      "#edit-tools > .toolbar-select"
     )) {
       if (
         editToolItem.classList.contains("multi-tool") &&
@@ -4269,28 +4269,14 @@ export class EditorController extends ViewController {
   updateFullscreenButton() {
     // hide button in case fullscreen is not enabled on device
     const fullscreenButtonEl = document.querySelector(
-      ".tool-button[data-tool='toggle-fullscreen']"
+      ".toolbar-select[data-tool='toggle-fullscreen']"
     );
     if (!document.fullscreenEnabled) {
       fullscreenButtonEl.style.display = "none";
       return;
     }
-    // fullscreen is enabled, show the right icon depending on the fullscreen state
-    const fullscreenEnterIconEl = fullscreenButtonEl.querySelector(
-      ".tool-icon--fullscreen-enter"
-    );
-    const fullscreenExitIconEl = fullscreenButtonEl.querySelector(
-      ".tool-icon--fullscreen-exit"
-    );
-    if (document.fullscreenElement) {
-      // fullscreen state is on, display exit-fullscreen button icon
-      fullscreenEnterIconEl.classList.add("tool-icon--hidden");
-      fullscreenExitIconEl.classList.remove("tool-icon--hidden");
-    } else {
-      // fullscreen state is off, display enter-fullscreen button icon
-      fullscreenEnterIconEl.classList.remove("tool-icon--hidden");
-      fullscreenExitIconEl.classList.add("tool-icon--hidden");
-    }
+    // fullscreen is enabled: the button shows selected while it is on
+    fullscreenButtonEl.classList.toggle("selected", !!document.fullscreenElement);
   }
 
   animateToViewBox(viewBox) {

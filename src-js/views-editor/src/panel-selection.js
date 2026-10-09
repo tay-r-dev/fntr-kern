@@ -10,6 +10,7 @@ import TransformationPanel from "./panel-transformation.js";
 export default class SelectionPanel extends Panel {
   identifier = "selection";
   iconPath = "/tabler-icons/shape.svg";
+  tabLabel = "transform";
 
   getContentElement() {
     return html.div({ class: "panel" }, []);

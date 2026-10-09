@@ -37,7 +37,6 @@ import {
 } from "./skeleton-editing.js";
 import { SnappingSession } from "./snapping-interactions.js";
 
-
 // W turns on insertion-point placement for as long as it is held, the way Z
 // and D do on the pointer tool. Alt is already the handle insert on this same
 // click and Shift is the angle constraint, so the third thing to place at a
@@ -50,7 +49,7 @@ import { SnappingSession } from "./snapping-interactions.js";
 const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
 
 export class SkeletonPenTool extends BaseTool {
-  iconPath = "/images/skeleton-pen.svg";
+  iconPath = "/images/tool-panel-ribbon-pen.svg";
   identifier = "skeleton-pen-tool";
 
   constructor(...args) {

@@ -8,6 +8,7 @@ import Panel from "./panel.js";
 export default class DebugPanel extends Panel {
   identifier = "debug";
   iconPath = "/tabler-icons/bug.svg";
+  tabLabel = "settings";
 
   constructor(editorController, accordion) {
     super(editorController);

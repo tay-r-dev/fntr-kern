@@ -45,7 +45,10 @@ export class Sidebar {
           "data-tooltip": translate("sidebar." + panelElement.identifier),
           "data-tooltipposition": this.identifier === "right" ? "left" : "right",
         },
-        [html.createDomElement("inline-svg", { src: panelElement.iconPath })]
+        [
+          html.createDomElement("inline-svg", { src: panelElement.iconPath }),
+          html.div({ class: "tab-pane-tab-label" }, [panelElement.tabLabel]),
+        ]
       )
     );
   }

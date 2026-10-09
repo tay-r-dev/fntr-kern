@@ -15,7 +15,7 @@ import { dumpURLFragment } from "@fontra/core/utils.ts";
 import { BaseTool, shouldInitiateDrag } from "@fontra/views-editor/edit-tools-base.js";
 
 export class SelectTool extends BaseTool {
-  iconPath = "/images/pointer.svg";
+  iconPath = "/images/tool-panel-pointer.svg";
   identifier = "pointer-tool";
 
   handleHover(event) {
