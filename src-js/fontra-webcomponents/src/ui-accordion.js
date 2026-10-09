@@ -293,8 +293,9 @@ export function groupAccordionHeaderButtons(buttons) {
 }
 
 export function makeAccordionHeaderButton(button) {
+  // button/icon at size S.
   let options = {
-    style: "width: 1.4em; height: 1.4em;",
+    size: "S",
     src: `/tabler-icons/${button.icon}.svg`,
     onclick: button.onclick,
   };

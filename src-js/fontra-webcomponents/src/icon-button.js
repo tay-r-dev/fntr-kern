@@ -83,6 +83,15 @@ export class IconButton extends UnlitElement {
       cursor: default;
     }
 
+    /* Size S (the number tokens' S mode): a 16px box with 4px corners
+       round a 12px icon, 2px in. */
+    :host([size="S"]) {
+      width: var(--height-s);
+      height: var(--height-s);
+      --icon-button-inner-radius: var(--corner-outer-s);
+      --icon-button-icon-size: calc(var(--height-s) - 2 * var(--padding-s));
+    }
+
     button {
       display: flex;
       align-items: center;
@@ -320,6 +329,7 @@ export class IconButton extends UnlitElement {
     latch: { type: Boolean },
     badge: { type: Boolean },
     table: { type: Boolean },
+    size: { type: String },
   };
 
   get disabled() {
@@ -449,6 +459,11 @@ export class IconButton extends UnlitElement {
       children
     );
     this.toggleAttribute("table", !!this.table);
+    if (this.size) {
+      this.setAttribute("size", this.size);
+    } else {
+      this.removeAttribute("size");
+    }
     this.toggleAttribute("badge", !!this.badge);
     const result = this.dropdown ? [this._button, this._card] : [this._button];
     if (this.badge) {
