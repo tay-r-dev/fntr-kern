@@ -228,7 +228,7 @@ export default class MarkersPanel extends Panel {
         label: translate("sidebar.markers.column.type"),
         fitText: longest(MARKER_KINDS.map((kind) => kindName(kind))),
       },
-      { label: translate("sidebar.markers.column.count"), width: 64, minWidth: 32 },
+      { label: translate("sidebar.markers.column.count"), ...NUMBER_COLUMN },
       ACTIONS_COLUMN,
     ]);
     const empty = html.div({ class: "card-note" }, [
