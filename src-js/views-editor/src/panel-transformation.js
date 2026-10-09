@@ -71,10 +71,10 @@ export default class TransformationPanel {
     min-width: 0;
   }
 
+  /* 16px: the icons' 24px grid lands on whole pixels there. */
   .row-icon {
     width: 16px;
     height: 16px;
-    padding: 2px;
   }
 
   /* A static row icon is an inline-svg: fill its box. */

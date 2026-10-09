@@ -103,6 +103,13 @@ theme marker until the design has a dark mode.
   padding: 8px;
   overflow: hidden auto;
   background-color: var(--shared-surface);
+  scrollbar-color: transparent transparent;
+}
+
+/* The scrollbar keeps its strip but shows only once the pointer has rested
+   on that strip (sidebar.js). */
+.card-column.scrollbar-shown {
+  scrollbar-color: var(--icon-base-basic-4) transparent;
 }
 
 /* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
@@ -413,7 +420,7 @@ glyph-cell-view .glyph-count {
 }
 
 /* ./toolbar-select (Figma 4231:3847): an 18px icon in currentColor on a
-   24px plate. At rest the icon is pale and bare, hovered darker; the
+   28px plate. At rest the icon is pale and bare, hovered darker; the
    selected one sits on the grey plate, which turns lime while the pointer is
    over the toolbar. */
 .toolbar-select {
@@ -421,9 +428,9 @@ glyph-cell-view .glyph-count {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 4px;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
   border-radius: var(--corner-outer-l);
   color: var(--icon-base-basic-3);
   cursor: pointer;
@@ -461,10 +468,40 @@ glyph-cell-view .glyph-count {
 /* A multi-tool: one select's place, showing its current tool. Holding it
    drops the others below, each on a white plate. */
 .toolbar-select.multi-tool {
+  position: relative;
   display: grid;
-  grid-auto-rows: 24px;
+  grid-auto-rows: 28px;
   align-content: start;
   padding: 0;
+  --toolbar-arrow-color: var(--icon-base-basic-3);
+}
+
+/* Its dropdown arrow (the select's `dropdown`): a 4px arrow-down 2px in
+   from the plate's lower right corner, shown while the pointer is over the
+   toolbar. Pale at rest and selected, darker hovered, lime selected. */
+.toolbar-select.multi-tool::after {
+  content: "";
+  position: absolute;
+  top: 22.4px;
+  left: 22px;
+  width: 4px;
+  height: 4px;
+  background-color: var(--toolbar-arrow-color);
+  mask: url("/images/arrow-down.svg") center / 4px 4px no-repeat;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.toolbar:hover .toolbar-select.multi-tool::after {
+  visibility: visible;
+}
+
+.multi-tool:has(> .toolbar-select:first-child:hover) {
+  --toolbar-arrow-color: var(--icon-base-basic-2);
+}
+
+.toolbar:hover .multi-tool.selected {
+  --toolbar-arrow-color: var(--icon-color-lime-basic-2);
 }
 
 .multi-tool > .toolbar-select:not(:first-child) {

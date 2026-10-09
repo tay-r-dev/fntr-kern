@@ -5,6 +5,11 @@ import { clamp, hyphenatedToLabel } from "@fontra/core/utils.ts";
 export const MIN_SIDEBAR_WIDTH = 200;
 export const MAX_SIDEBAR_WIDTH = 500;
 
+// How long the pointer rests on a panel's scrollbar strip before the
+// scrollbar shows, and the strip's least width where scrollbars overlay.
+const SCROLLBAR_REVEAL_DELAY = 500;
+const SCROLLBAR_MIN_STRIP = 8;
+
 export class Sidebar {
   constructor(identifier) {
     this.identifier = identifier;
@@ -88,11 +93,49 @@ export class Sidebar {
   attach(element) {
     this.container = element;
     this.initResizeGutter();
+    this.initScrollbarReveal();
 
     if (localStorage.getItem(`fontra-selected-sidebar-${this.identifier}`)) {
       const container = document.querySelector(`.sidebar-container.${this.identifier}`);
       container.classList.add("visible");
     }
+  }
+
+  // A panel's scrolling column (shared.css's .card-column, inside the panel's
+  // shadow root) shows its scrollbar only after the pointer has rested on the
+  // scrollbar's strip, and hides it as soon as the pointer leaves the strip.
+  initScrollbarReveal() {
+    const container = this.container.querySelector(
+      `.sidebar-container.${this.identifier}`
+    );
+    if (!container) {
+      return;
+    }
+    let column;
+    let timer;
+    const hide = () => {
+      clearTimeout(timer);
+      column?.classList.remove("scrollbar-shown");
+      column = undefined;
+    };
+    container.addEventListener("pointermove", (event) => {
+      const target = event
+        .composedPath()
+        .find((element) => element.classList?.contains("card-column"));
+      if (!target || !isOnScrollbarStrip(target, event.clientX)) {
+        hide();
+        return;
+      }
+      if (target !== column) {
+        hide();
+        column = target;
+        timer = setTimeout(
+          () => column.classList.add("scrollbar-shown"),
+          SCROLLBAR_REVEAL_DELAY
+        );
+      }
+    });
+    container.addEventListener("pointerleave", hide);
   }
 
   applyWidth(width, saveLocalStorage = false) {
@@ -184,4 +227,15 @@ export class Sidebar {
     const sidebarWidth = this.getStoredWidth();
     this.applyWidth(sidebarWidth);
   }
+}
+
+function isOnScrollbarStrip(element, clientX) {
+  if (element.scrollHeight <= element.clientHeight) {
+    return false;
+  }
+  const strip = Math.max(
+    element.offsetWidth - element.clientWidth,
+    SCROLLBAR_MIN_STRIP
+  );
+  return clientX >= element.getBoundingClientRect().right - strip;
 }

@@ -858,7 +858,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // Update rewrites the row's values from the selection, keeping its name.
   _presetUpdateAction(disabled, onClick) {
     return rowAction({
-      src: "/tabler-icons/refresh.svg",
+      src: "/images/update.svg",
       tooltip: translate("sidebar.skeleton-settings.update-from-selection"),
       tooltipPosition: "left",
       disabled,
@@ -924,7 +924,7 @@ export default class SkeletonSettingsPanel extends Panel {
   _presetDeleteAction(rowId, readOnly, onClick) {
     const confirming = this._customDeleteConfirm === rowId;
     return rowAction({
-      src: confirming ? "/tabler-icons/x.svg" : "/tabler-icons/trash.svg",
+      src: confirming ? "/images/cross.svg" : "/images/bin.svg",
       tooltip: translate(
         confirming
           ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
@@ -1030,7 +1030,7 @@ export default class SkeletonSettingsPanel extends Panel {
               onClick: () => applyGridPreset(model, preset),
             }),
             rowAction({
-              src: "/tabler-icons/refresh.svg",
+              src: "/images/update.svg",
               tooltip: "Update from the current grid",
               tooltipPosition: "left",
               onClick: () =>

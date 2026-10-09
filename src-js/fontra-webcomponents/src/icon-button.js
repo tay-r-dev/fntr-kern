@@ -106,13 +106,15 @@ export class IconButton extends UnlitElement {
       letter-spacing: var(--ui-tracking-label-m);
     }
 
-    /* The design's icon is 15px whatever the button's size (button/icon,
+    /* The icon keeps one size whatever the button's size (button/icon,
        Figma 2004:29230; button/table, Figma 4054:1391): the button grows or
-       shrinks around it, the icon does not scale with it. */
+       shrinks around it, the icon does not scale with it. The design says
+       15px, but its icons are drawn on a 24px grid in 1.5px strokes, which
+       only land on whole pixels at 16px; at 15px they blur. */
     button > inline-svg:not(.icon-button-chevron) {
       display: block;
       flex: none;
-      height: var(--icon-button-icon-size, 15px);
+      height: var(--icon-button-icon-size, 16px);
       width: auto;
       aspect-ratio: 1;
     }

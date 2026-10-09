@@ -367,6 +367,13 @@ function percentOfRatio(summary) {
 
 // Composed into panel-selection.js's Selection panel, not registered as its
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
+// The rib lock latches' icons, by lock kind.
+const LOCK_ICONS = {
+  handles: "/images/lock-handle.svg",
+  slide: "/images/lock-shift.svg",
+  width: "/images/lock-width.svg",
+};
+
 export default class SkeletonParametersPanel {
   constructor(editorController, contentElement) {
     this.editorController = editorController;
@@ -610,31 +617,29 @@ export default class SkeletonParametersPanel {
 
     // Tied ribs reflects the selection: greyed where no point has a straight
     // to tie across, and on, off or mixed over the points that do.
-    this.tiedButton = latchButton("/tabler-icons/link-plus.svg", "tied", (value) =>
+    this.tiedButton = latchButton("/images/tie.svg", "tied", (value) =>
       this._onWidthChange("tied", value)
     );
     // Detach sits beside it: it frees the selected ribs' generated handles from
     // the construction, holding each where it stands.
-    this.detachButton = latchButton("/tabler-icons/unlink.svg", "detached", (value) =>
+    this.detachButton = latchButton("/images/detach.svg", "detached", (value) =>
       this._onRibChange("detached", value)
     );
     // Reset is three parts, and the selection sets their reach: a skeleton point
     // resets both of its sides, a rib that side alone, a generated handle that
     // handle alone, which greys the other two.
     this.resetHandleButton = iconButton(
-      "/tabler-icons/rotate.svg",
+      "/images/reset-handle.svg",
       "reset-handle",
       () =>
         this._singleGeneratedHandle
           ? this._resetSingleGeneratedHandle()
           : this._resetRibs("handles")
     );
-    this.resetSlideButton = iconButton(
-      "/tabler-icons/arrows-horizontal.svg",
-      "reset-slide",
-      () => this._resetRibs("slide")
+    this.resetSlideButton = iconButton("/images/reset-shift.svg", "reset-slide", () =>
+      this._resetRibs("slide")
     );
-    this.resetAllButton = iconButton("/tabler-icons/refresh.svg", "reset-all", () =>
+    this.resetAllButton = iconButton("/images/reset-all.svg", "reset-all", () =>
       this._resetRibs("all")
     );
     // Each group's buttons sit in one tray, as in the design. The Rib group
@@ -758,7 +763,7 @@ export default class SkeletonParametersPanel {
     this.ribLockButtons = Object.fromEntries(
       SKELETON_LOCK_KINDS.map((kind) => [
         kind,
-        latchButton(`/images/lock-${kind}.svg`, `locked.${kind}`, (value) =>
+        latchButton(LOCK_ICONS[kind], `locked.${kind}`, (value) =>
           this._onRibChange(`locked-${kind}`, value)
         ),
       ])
@@ -773,7 +778,7 @@ export default class SkeletonParametersPanel {
     // Rib options: a 24px three-dot icon button whose card holds the rib angle
     // and the lock latches.
     this.ribOverflow = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/dots-vertical.svg",
+      "src": "/images/overflow.svg",
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });

@@ -86,7 +86,7 @@ export class PresetHeaderControl {
       return button;
     };
     this.addButton = iconButton(
-      "/images/preset-add.svg",
+      "/images/plus.svg",
       "sidebar.skeleton-parameters.width-preset.add",
       () => {
         this._disarmUpdate();
@@ -95,7 +95,7 @@ export class PresetHeaderControl {
     );
     this.updateButton = onUpdate
       ? iconButton(
-          "/images/preset-update.svg",
+          "/images/update.svg",
           "sidebar.skeleton-parameters.width-preset.update",
           () => {
             if (this.lastPicked == null) {
@@ -117,14 +117,14 @@ export class PresetHeaderControl {
       : null;
     this.lockButton = onLock
       ? iconButton(
-          "/tabler-icons/lock.svg",
+          "/images/lock.svg",
           "sidebar.skeleton-parameters.width-preset.lock",
           () => onLock(this.lastPicked)
         )
       : null;
     this.refreshButton = onRefresh
       ? iconButton(
-          "/tabler-icons/refresh.svg",
+          "/images/refresh.svg",
           "sidebar.skeleton-parameters.width-preset.refresh",
           () => onRefresh()
         )
