@@ -1,7 +1,13 @@
 // The canvas labels, drawn from the typeCAD Figma file: label/simple, the pill every
 // marker and ruler readout sits on, and label/Q, the Q-measure plaque. Both are cards
-// with the same outline, drop shadow and background blur (drawCardBackground), set in
-// Martian Mono, the app's fontra-ui-mono face.
+// with the same outline and drop shadow (drawCardBackground), set in Martian Mono, the
+// app's fontra-ui-mono face.
+//
+// Figma's background blur is left out. A canvas can only blur what lies under a card
+// by drawing the canvas onto itself through a blur filter, and a GPU canvas answers
+// that by reading its pixels back and waiting for the GPU: once a card, every frame,
+// which stalled zoom and drag for 100 to 200 ms. The cards are opaque, so the blur
+// showed only where a measurement label fades, zoomed out.
 //
 // Every measurement here is in screen pixels. A layer passes them as screen parameters,
 // which the layer machinery turns into glyph units at the current zoom, so the labels
@@ -47,8 +53,6 @@ export const LABEL_TUNING_DEFAULTS = Object.freeze({
 export const LABEL_TUNING = { ...LABEL_TUNING_DEFAULTS };
 const LABEL_SEPARATOR = "•";
 const LABEL_SHADOW_COLOR = "rgba(0, 0, 0, 0.2)";
-// Figma's background blur, in CSS pixels.
-const LABEL_BACKDROP_BLUR = 2;
 
 // label/simple (node 333:17292). A fully rounded pill 18 high with 8 of padding each
 // side; its values in Martian Mono at 9, the heading/h5 face, separated by a small grey
@@ -171,8 +175,7 @@ export const LABEL_COLORS_DARK_MODE = {
 
 const LABEL_BORDER_COLOR = "#1515150D";
 
-// The card every label stands on: the background blur, then the fill with its drop
-// shadow, then the outline, which runs outside the card so that it adds to the card's
+// The card every label stands on: the fill with its drop shadow, then the outline, which runs outside the card so that it adds to the card's
 // size rather than eating into its fill. The context is in screen orientation (y down).
 function drawCardBackground(
   context,
@@ -192,7 +195,6 @@ function drawCardBackground(
   // A shadow is set in device pixels and ignores the transform, so it is one device
   // pixel's worth of the screen at every zoom.
   const pixel = globalThis.devicePixelRatio || 1;
-  blurBehind(context, left, top, width, height, radius, LABEL_BACKDROP_BLUR * pixel);
   context.save();
   context.shadowColor = shadowColor;
   context.shadowOffsetY = pixel;
@@ -219,54 +221,13 @@ function drawCardBackground(
   context.stroke();
 }
 
-// Figma's background blur: whatever is already drawn under the card, blurred, inside
-// the card's shape. A canvas cannot blur what lies behind a shape, so the pixels under
-// it are copied back onto themselves through a blur filter, clipped to the card. The
-// copy is only of the card's own box, in device pixels, with room for the blur to reach
-// in from outside it. `blur` is in device pixels.
-function blurBehind(context, left, top, width, height, radius, blur) {
-  if (!("filter" in context)) {
-    return;
-  }
-  const m = context.getTransform();
-  const corners = [
-    [left, top],
-    [left + width, top],
-    [left, top + height],
-    [left + width, top + height],
-  ].map(([x, y]) => ({ x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f }));
-  const reach = Math.ceil(blur * 3);
-  const canvas = context.canvas;
-  const x0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.x))) - reach);
-  const y0 = Math.max(0, Math.floor(Math.min(...corners.map((c) => c.y))) - reach);
-  const x1 = Math.min(
-    canvas.width,
-    Math.ceil(Math.max(...corners.map((c) => c.x))) + reach
-  );
-  const y1 = Math.min(
-    canvas.height,
-    Math.ceil(Math.max(...corners.map((c) => c.y))) + reach
-  );
-  if (x1 <= x0 || y1 <= y0) {
-    return;
-  }
-  context.save();
-  context.beginPath();
-  context.roundRect(left, top, width, height, radius);
-  context.clip();
-  context.setTransform(1, 0, 0, 1, 0, 0);
-  context.filter = `blur(${blur}px)`;
-  context.drawImage(canvas, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
-  context.restore();
-}
-
 // Figma's label/Q (typeCAD, node 2004:29990): the Q-measure plaque. A white card
 // with a 6 radius and 6 of padding, rows 5 apart; each row a 6px icon and a value 6
 // apart. The value is Martian Mono thin and condensed at 9 in text/base/basic/1;
 // small print -- a header, or the distribution under a width -- is 7, light and
 // semi-condensed: the header in text/base/basic/3, the distribution in
 // icon/base/basic/2, as the icons are. The card has no outline, a pale drop shadow
-// (0 1 3, shadow/base/1) and the label's background blur. The design has one
+// (0 1 3, shadow/base/1); the design's background blur is left out (top of file). The design has one
 // variant, light, so the plaque is light in both themes.
 //
 //   plaque = {

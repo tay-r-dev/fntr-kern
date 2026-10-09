@@ -165,3 +165,47 @@ describe("measurement labels fade below the screen minimum", () => {
     expect(measureLabelAlpha(at(cutoff * 0.9))).to.be.above(half);
   });
 });
+
+// Drawing a canvas onto itself through a filter makes a GPU canvas read its pixels
+// back and wait for the GPU, once a label, every frame: the stall behind the zoom
+// and drag lag. The cards are opaque, so nothing of it showed.
+describe("canvas labels never read the canvas back", () => {
+  function watchingContext() {
+    const context = recordingContext(1);
+    context.canvas = { width: 1000, height: 1000 };
+    context.filter = "none";
+    context.readBacks = 0;
+    context.drawImage = (image) => {
+      if (image === context.canvas) {
+        context.readBacks++;
+      }
+    };
+    return context;
+  }
+
+  it("a pill draws without reading the canvas", () => {
+    const context = watchingContext();
+    drawLabel(
+      context,
+      { ...LABEL_SCREEN_PARAMETERS, ...LABEL_COLORS },
+      { x: 0, y: 0 },
+      ["12"]
+    );
+    expect(context.readBacks).to.equal(0);
+    expect(context.filter).to.equal("none");
+  });
+
+  it("a plaque draws without reading the canvas", () => {
+    const context = watchingContext();
+    drawPlaque(
+      context,
+      PLAQUE_SCREEN_PARAMETERS,
+      { x: 0, y: 0 },
+      {
+        rows: [{ icon: "width", value: "40" }],
+      }
+    );
+    expect(context.readBacks).to.equal(0);
+    expect(context.filter).to.equal("none");
+  });
+});
