@@ -4,6 +4,7 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 import { firstItemOfSet, isEqualSet } from "@fontra/core/set-ops.js";
 import { message } from "@fontra/web-components/modal-dialog.js";
 import { huggedColumnWidth } from "./data-table-model.js";
+import { attachScrollbars } from "./scrollbars.js";
 import { themeColorCSS } from "./theme-support.js";
 
 const LIST_CHUNK_SIZE = 200; // the amount of items added to the list at a time
@@ -474,6 +475,9 @@ export class UIList extends UnlitElement {
       [this.rowsElement]
     );
 
+    // The design's scrollbars, drawn (scrollbars.js).
+    this._scrollbars = attachScrollbars(this.rowsContainer);
+
     this.rowsContainer.addEventListener(
       "scroll",
       (event) => this._scrollHandler(event),
@@ -504,11 +508,9 @@ export class UIList extends UnlitElement {
     if (this.minHeight) {
       this.rowsContainer.style.minHeight = this.minHeight;
     }
-    // A table look takes the shared table scrollbars (shared.css), and, having
-    // no height grip, the reserved strip for its sideways scrollbar.
-    const look = this.hasAttribute("look");
-    this.rowsContainer.classList.toggle("table-scroll", look);
-    this.rowsContainer.classList.toggle("table-scroll--strip", look);
+    // A table look, having no height grip, keeps a 16px strip under its rows
+    // for its sideways bar, scrolling or not.
+    this._scrollbars.setReserve(this.hasAttribute("look") ? 16 : 0);
 
     const contents = [];
 

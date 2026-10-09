@@ -12,6 +12,7 @@ import {
   stepCellValue,
   windowEnd,
 } from "./data-table-model.js";
+import { attachScrollbars } from "./scrollbars.js";
 import "./icon-button.js";
 import { showMenu } from "./menu-panel.js";
 import { selectRange, selectRow } from "./table-selection.js";
@@ -424,11 +425,10 @@ const DATA_TABLE_STYLES = `
     overflow-x: auto;
   }
 
-  /* A table without a height of its own keeps a strip under its rows for
-     its sideways scrollbar (shared.css's .table-scroll--strip); one whose
-     height is set scrolls both ways inside it. */
+  /* A table without a height of its own scrolls only sideways, with a
+     strip kept under its rows for that bar (_updateScrollReserve); one
+     whose height is set scrolls both ways inside it. */
   data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
-    overflow-x: scroll;
     overflow-y: hidden;
   }
 
@@ -1162,20 +1162,17 @@ export class DataTable extends HTMLElement {
   // The rows sit in a scroll box of `--data-table-height`.
   set scrollable(value) {
     this.classList.toggle("data-table-scrollable", !!value);
-    this._updateScrollClasses();
+    this._updateScrollReserve();
   }
 
-  // A look table's scroll box takes the shared table scrollbars, and the
-  // reserved sideways strip while it has no height of its own.
-  _updateScrollClasses() {
-    if (!this._scroll) {
-      return;
-    }
-    const look = this.hasAttribute("look");
-    this._scroll.classList.toggle("table-scroll", look);
-    this._scroll.classList.toggle(
-      "table-scroll--strip",
-      look && !this.classList.contains("data-table-scrollable")
+  // A look table without a height of its own keeps a 16px strip under its
+  // rows for its sideways bar, scrolling or not, so the bar never covers a
+  // row.
+  _updateScrollReserve() {
+    this._scrollbars?.setReserve(
+      this.hasAttribute("look") && !this.classList.contains("data-table-scrollable")
+        ? 16
+        : 0
     );
   }
 
@@ -1202,7 +1199,7 @@ export class DataTable extends HTMLElement {
     } else {
       this.removeAttribute("look");
     }
-    this._updateScrollClasses();
+    this._updateScrollReserve();
     this._applyLookToActions();
   }
 
@@ -1778,7 +1775,9 @@ export class DataTable extends HTMLElement {
     table.classList.toggle("data-table-clickable", this._isClickable());
 
     this._scroll = html.div({ class: "data-table-scroll" }, [table]);
-    this._updateScrollClasses();
+    // The design's scrollbars, drawn (scrollbars.js).
+    this._scrollbars = attachScrollbars(this._scroll);
+    this._updateScrollReserve();
     this._scroll.addEventListener("scroll", () => this._scrolled());
     const handle = html.createDomElement("ui-handle");
     handle.addEventListener("handle-drag-start", () => this._startResize());

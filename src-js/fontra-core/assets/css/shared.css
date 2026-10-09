@@ -751,138 +751,97 @@ glyph-cell-view .glyph-count {
   background: var(--text-base-basic-4);
 }
 
-/* The design's scrollbars (tables' scroll boxes, data-table and ui-list,
-   and a panel's card column): a 2px thumb in line 4, line 2 under the
-   pointer, the arrow triangles the same, no track and no fill. They take
-   their own room rather than float over what they scroll. A panel's shows
-   only once the pointer has rested on its strip (sidebar.js); the strip is
-   kept meanwhile. A table without a height of its own keeps a 16px strip
-   under its rows for its sideways scrollbar, scrolling or not
-   (.table-scroll--strip). The triangles are images, so their colours are
-   the two tokens' values. */
-.table-scroll::-webkit-scrollbar,
-.card-column::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-  background: transparent;
+/* The drawn scrollbars (scrollbars.js): the box's own are hidden; each bar
+   is a rail beside it -- an 8px strip that takes the pointer -- holding a 2px
+   thumb in line 4, line 2 under the pointer or while dragged, with an arrow
+   triangle at each end in the same colours. No track, no fill. A rail with
+   `reveal` shows only once the pointer has rested on it (a panel's column);
+   `reserved` is the 16px strip kept under a table's rows. */
+.drawn-scrollbars {
+  scrollbar-width: none;
 }
 
-.table-scroll::-webkit-scrollbar-track,
-.table-scroll::-webkit-scrollbar-corner,
-.card-column::-webkit-scrollbar-track,
-.card-column::-webkit-scrollbar-corner {
-  background: transparent;
+.drawn-scrollbars::-webkit-scrollbar {
+  display: none;
 }
 
-.table-scroll::-webkit-scrollbar-thumb,
-.card-column::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
-  border-radius: 3px;
-  background-clip: padding-box;
-  background-color: transparent;
+.scrollbar-rail {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  box-sizing: border-box;
 }
 
-.table-scroll::-webkit-scrollbar-thumb,
-.card-column.scrollbar-shown::-webkit-scrollbar-thumb {
+.scrollbar-rail[hidden] {
+  display: none;
+}
+
+.scrollbar-rail.vertical {
+  flex-direction: column;
+  width: 8px;
+}
+
+.scrollbar-rail.horizontal {
+  flex-direction: row;
+  height: 8px;
+}
+
+.scrollbar-rail.horizontal.reserved {
+  height: 16px;
+}
+
+.scrollbar-track {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.scrollbar-thumb {
+  position: absolute;
+  border-radius: 1px;
   background-color: var(--line-base-basic-4);
 }
 
-.table-scroll::-webkit-scrollbar-thumb:hover,
-.card-column.scrollbar-shown::-webkit-scrollbar-thumb:hover {
+.scrollbar-rail.vertical .scrollbar-thumb {
+  left: 3px;
+  width: 2px;
+}
+
+.scrollbar-rail.horizontal .scrollbar-thumb {
+  top: calc(50% - 1px);
+  height: 2px;
+}
+
+.scrollbar-arrow {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  align-self: center;
+  background-color: var(--line-base-basic-4);
+  mask: url("/images/arrow-down.svg") center / 4px 4px no-repeat;
+}
+
+.scrollbar-rail.vertical .scrollbar-arrow.back {
+  transform: rotate(180deg);
+}
+
+.scrollbar-rail.horizontal .scrollbar-arrow.back {
+  transform: rotate(90deg);
+}
+
+.scrollbar-rail.horizontal .scrollbar-arrow.forward {
+  transform: rotate(-90deg);
+}
+
+.scrollbar-thumb:hover,
+.scrollbar-thumb.dragging,
+.scrollbar-arrow:hover {
   background-color: var(--line-base-basic-2);
 }
 
-.table-scroll::-webkit-scrollbar-button:single-button,
-.card-column::-webkit-scrollbar-button:single-button {
-  display: block;
-  width: 6px;
-  height: 8px;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  background-position: center;
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:horizontal,
-.card-column::-webkit-scrollbar-button:single-button:horizontal {
-  width: 8px;
-  height: 6px;
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M2 0L4 3H0Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:vertical:decrement:hover,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M2 0L4 3H0Z' fill='%23dadada'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M0 0H4L2 3Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:vertical:increment:hover,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:increment:hover {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M0 0H4L2 3Z' fill='%23dadada'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:horizontal:decrement,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 2L3 0V4Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:horizontal:decrement:hover,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:decrement:hover {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 2L3 0V4Z' fill='%23dadada'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:horizontal:increment,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 0L3 2L0 4Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
-}
-
-.table-scroll::-webkit-scrollbar-button:single-button:horizontal:increment:hover,
-.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:increment:hover {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 0L3 2L0 4Z' fill='%23dadada'/%3E%3C/svg%3E");
-}
-
-/* Firefox has none of the above: the standard properties instead, its
-   thinnest width, line 4 on no track (no hover colour, no triangles). A
-   panel's is transparent until shown; what the column holds keeps its own
-   colour rather than inherit that. In Chromium the standard properties
-   would override the above, so they are for Firefox alone. */
-@supports not selector(::-webkit-scrollbar) {
-  .table-scroll,
-  .card-column {
-    scrollbar-width: thin;
-    scrollbar-color: var(--line-base-basic-4) transparent;
-  }
-
-  .card-column:not(.scrollbar-shown) {
-    scrollbar-color: transparent transparent;
-  }
-
-  .card-column:not(.scrollbar-shown) > * {
-    scrollbar-color: auto;
-  }
-}
-
-.table-scroll.table-scroll--strip {
-  overflow-x: scroll;
-}
-
-.table-scroll.table-scroll--strip::-webkit-scrollbar {
-  height: 16px;
-}
-
-.table-scroll.table-scroll--strip::-webkit-scrollbar-thumb:horizontal {
-  border-width: 7px 2px;
-}
-
-.table-scroll.table-scroll--strip::-webkit-scrollbar-button:single-button:horizontal {
-  height: 16px;
+.scrollbar-rail.reveal:not(.shown) > * {
+  visibility: hidden;
 }
 
 /* Buttons side by side, 4px apart. */
