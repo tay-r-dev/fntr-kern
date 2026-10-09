@@ -103,19 +103,6 @@ theme marker until the design has a dark mode.
   padding: 8px;
   overflow: hidden auto;
   background-color: var(--shared-surface);
-  scrollbar-color: transparent transparent;
-}
-
-/* The scrollbar keeps its strip but shows only once the pointer has rested
-   on that strip (sidebar.js). */
-.card-column.scrollbar-shown {
-  scrollbar-color: var(--icon-base-basic-4) transparent;
-}
-
-/* The scrollbar colour is inherited: what the column holds (a table that
-   scrolls sideways, say) keeps its own scrollbars visible. */
-.card-column > * {
-  scrollbar-color: auto;
 }
 
 /* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
@@ -764,25 +751,101 @@ glyph-cell-view .glyph-count {
   background: var(--text-base-basic-4);
 }
 
-/* A table's scroll box (data-table, ui-list): the design's thin scrollbars,
-   8px with a 4px grey thumb and no track, which take their room rather than
-   float over the rows. One without a height of its own (.table-scroll--strip)
-   keeps a 16px strip under its rows for its sideways scrollbar, scrolling or
-   not. */
-.table-scroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.table-scroll::-webkit-scrollbar-track,
-.table-scroll::-webkit-scrollbar-corner {
+/* The design's scrollbars (tables' scroll boxes, data-table and ui-list,
+   and a panel's card column): a 2px thumb in line 4, line 2 under the
+   pointer, the arrow triangles the same, no track and no fill. They take
+   their own room rather than float over what they scroll. A panel's shows
+   only once the pointer has rested on its strip (sidebar.js); the strip is
+   kept meanwhile. A table without a height of its own keeps a 16px strip
+   under its rows for its sideways scrollbar, scrolling or not
+   (.table-scroll--strip). The triangles are images, so their colours are
+   the two tokens' values. */
+.table-scroll::-webkit-scrollbar,
+.card-column::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
   background: transparent;
 }
 
-.table-scroll::-webkit-scrollbar-thumb {
-  background: var(--icon-base-basic-4);
-  border-radius: 4px;
-  border: 2px solid var(--surface-base-basic-0);
+.table-scroll::-webkit-scrollbar-track,
+.table-scroll::-webkit-scrollbar-corner,
+.card-column::-webkit-scrollbar-track,
+.card-column::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.table-scroll::-webkit-scrollbar-thumb,
+.card-column::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 3px;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+
+.table-scroll::-webkit-scrollbar-thumb,
+.card-column.scrollbar-shown::-webkit-scrollbar-thumb {
+  background-color: var(--line-base-basic-4);
+}
+
+.table-scroll::-webkit-scrollbar-thumb:hover,
+.card-column.scrollbar-shown::-webkit-scrollbar-thumb:hover {
+  background-color: var(--line-base-basic-2);
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button,
+.card-column::-webkit-scrollbar-button:single-button {
+  display: block;
+  width: 6px;
+  height: 8px;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:horizontal,
+.card-column::-webkit-scrollbar-button:single-button:horizontal {
+  width: 8px;
+  height: 6px;
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:vertical:decrement,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M2 0L4 3H0Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:vertical:decrement:hover,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:decrement:hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M2 0L4 3H0Z' fill='%23dadada'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:vertical:increment,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M0 0H4L2 3Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:vertical:increment:hover,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:vertical:increment:hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3'%3E%3Cpath d='M0 0H4L2 3Z' fill='%23dadada'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:horizontal:decrement,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 2L3 0V4Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:horizontal:decrement:hover,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:decrement:hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 2L3 0V4Z' fill='%23dadada'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:horizontal:increment,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 0L3 2L0 4Z' fill='%23b8b8b8'/%3E%3C/svg%3E");
+}
+
+.table-scroll::-webkit-scrollbar-button:single-button:horizontal:increment:hover,
+.card-column.scrollbar-shown::-webkit-scrollbar-button:single-button:horizontal:increment:hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='3' height='4'%3E%3Cpath d='M0 0L3 2L0 4Z' fill='%23dadada'/%3E%3C/svg%3E");
 }
 
 .table-scroll.table-scroll--strip {
@@ -794,8 +857,11 @@ glyph-cell-view .glyph-count {
 }
 
 .table-scroll.table-scroll--strip::-webkit-scrollbar-thumb:horizontal {
-  border-width: 6px 2px;
-  border-radius: 8px;
+  border-width: 7px 2px;
+}
+
+.table-scroll.table-scroll--strip::-webkit-scrollbar-button:single-button:horizontal {
+  height: 16px;
 }
 
 /* Buttons side by side, 4px apart. */
