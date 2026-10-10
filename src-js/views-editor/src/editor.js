@@ -931,7 +931,8 @@ export class EditorController extends ViewController {
     document.querySelector(".top-bar-container").appendChild(myMenuBar);
   }
 
-  // The smart-scale settings live here until the tool settings panel exists.
+  // The smart-scale and simplify settings live here until the tool settings
+  // panel exists.
   getEditMenuItems() {
     const settings = applicationSettingsController.model;
     const preserve = () => settings.preserveAspectRatio !== false;
@@ -954,6 +955,18 @@ export class EditorController extends ViewController {
             enabled: preserve,
             callback: () =>
               (settings.slideBothTensionPoints = !settings.slideBothTensionPoints),
+          },
+        ],
+      },
+      {
+        title: translate("action.simplify-contour.title"),
+        getItems: () => [
+          {
+            title: translate("action.simplify-contour.masters-together"),
+            checked: settings.simplifyMastersTogether !== false,
+            callback: () =>
+              (settings.simplifyMastersTogether =
+                settings.simplifyMastersTogether === false),
           },
         ],
       },

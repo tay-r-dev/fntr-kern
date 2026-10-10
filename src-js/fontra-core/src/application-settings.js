@@ -71,6 +71,10 @@ export const applicationSettingsController = new ObservableController({
   // straights to keep each curve's proportions. Off, it only adjusts handles
   // (app-level, per D9).
   preserveAspectRatio: true,
+  // fork: Simplify works on every master being edited at once, so they stay
+  // compatible. Off, it simplifies only the master being edited (app-level,
+  // per D9).
+  simplifyMastersTogether: true,
   // fork: mark-cloud settings (app-level, per D9 — not written to project files)
   compositionMarkCloudOn: false,
   // fork: related-glyphs preview tiles follow their glyph live, or hold still

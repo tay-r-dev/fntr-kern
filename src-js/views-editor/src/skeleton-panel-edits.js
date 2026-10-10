@@ -1099,7 +1099,12 @@ export async function simplifyPanelSkeletonContours(
   let changedCount = 0;
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
-    const entries = Object.entries(editingLayers);
+    // Every master being edited, or only the edit layer when Simplify is set
+    // to leave the other masters alone.
+    const kept = new Set(sceneController.simplifyLayers(editingLayers));
+    const entries = Object.entries(editingLayers).filter(([, layerGlyph]) =>
+      kept.has(layerGlyph)
+    );
     if (!entries.length) {
       return;
     }

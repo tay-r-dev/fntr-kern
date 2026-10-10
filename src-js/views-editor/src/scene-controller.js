@@ -2377,6 +2377,18 @@ export class SceneController {
   // removes any points at all, as one undoable change. A tolerance control
   // only ever asked the designer to guess a number the command can find for
   // itself, and every answer other than the smallest is a worse drawing.
+  // The layers Simplify works on: every master being edited, or, with the
+  // Edit menu's "Simplify all masters together" off, only the one being
+  // edited.
+  simplifyLayers(layerGlyphs) {
+    const layers = Object.values(layerGlyphs);
+    if (applicationSettingsController.model.simplifyMastersTogether !== false) {
+      return layers;
+    }
+    const editLayer = layerGlyphs[this.sceneSettings.editLayerName] || layers[0];
+    return editLayer ? [editLayer] : [];
+  }
+
   async doSimplifySelectedContours() {
     // A skeleton selection answers this itself, as Harmonize does: the
     // centerline is simplified and written through the skeleton's own path,
@@ -2411,7 +2423,7 @@ export class SceneController {
 
     let simplifiedAny = false;
     await this.editLayersAndRecordChanges((layerGlyphs) => {
-      const layers = Object.values(layerGlyphs);
+      const layers = this.simplifyLayers(layerGlyphs);
       const rewritten = [];
       const simplifiedContours = new Map();
       for (const contourIndex of contourIndices) {

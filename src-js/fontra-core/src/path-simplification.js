@@ -1114,11 +1114,18 @@ function nearestDistance(point, polyline, floor = -1) {
   return Math.sqrt(nearest);
 }
 
+// A straight piece carries its two ends only, so it is traced as a line.
 function piecesPolyline(pieces, steps = CANDIDATE_POLYLINE_STEPS) {
   const polyline = [];
   for (const piece of pieces) {
+    const [p0, p1] = piece.points;
     for (let i = 0; i <= steps; i++) {
-      polyline.push(cubicPoint(piece.points, i / steps));
+      const t = i / steps;
+      polyline.push(
+        piece.kind === "line"
+          ? { x: p0.x + (p1.x - p0.x) * t, y: p0.y + (p1.y - p0.y) * t }
+          : cubicPoint(piece.points, t)
+      );
     }
   }
   return polyline;
