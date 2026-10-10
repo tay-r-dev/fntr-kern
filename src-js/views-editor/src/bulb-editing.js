@@ -13,11 +13,9 @@ import {
   resolveSkeletonAddressAcrossLayers,
 } from "./skeleton-editing.js";
 
-// Bulb edits are preferred construction targets. The joint solve can adjust
-// other handles to retain the wall and smooth joins. E and its incoming handle
-// are coupled to the exact wall cut; the remaining points use Z/Alt tangential
-// slides. A plain neck drag can also move normally, and Shift+Z turns its shared
-// tangent. V-slide belongs only to N.
+// Bulb edits are preferred construction targets on the ball's own points. E and
+// its incoming handle are coupled to the exact wall cut; B and C use Z/Alt
+// tangential slides. The easing fillet after C has no edits.
 
 export function isBulbSelectionItem(item) {
   return bulbRoleOfSide(`${item}`.split("/")[2]) !== null;
@@ -34,32 +32,19 @@ export function createBulbPointTargetEntries(
   if (
     !carry &&
     behaviorName !== "rib-tangent-interpolate" &&
-    behaviorName !== "rib-interpolate" &&
-    behaviorName !== "rib-default"
+    behaviorName !== "rib-interpolate"
   ) {
     return [];
   }
   const items = (parseSelection([...selection]).editableGeneratedPoint || [])
     .filter(isBulbSelectionItem)
     .map((item) => parseEditableGeneratedPointKey(`editableGeneratedPoint/${item}`))
-    .filter(
-      (item) =>
-        item.side !== "bulb-entry" &&
-        (behaviorName !== "rib-default" || item.side === "bulb-neck")
-    );
+    .filter((item) => item.side !== "bulb-entry");
   return makeBulbEntries(layerGlyph, items, options, (station, stored) => (delta) => {
     const along = dot(delta, station.tangent);
     return {
       slide: Math.round(stored.slide + along),
       carry: carry ? Math.round(stored.carry + along) : stored.carry,
-      ...(behaviorName === "rib-default"
-        ? {
-            normal: Math.round(
-              stored.normal +
-                dot(delta, { x: -station.tangent.y, y: station.tangent.x })
-            ),
-          }
-        : {}),
     };
   });
 }
@@ -70,7 +55,8 @@ export function createBulbHandleTargetEntries(
   behaviorName,
   options
 ) {
-  const turn = behaviorName === "generated-handle-turn";
+  // The ball's handles keep their axes: a turn has nothing to act on.
+  if (behaviorName === "generated-handle-turn") return [];
   const equalize =
     behaviorName?.startsWith("equalize") === true ||
     behaviorName === "alternate" ||
@@ -78,11 +64,7 @@ export function createBulbHandleTargetEntries(
   const items = (parseSelection([...selection]).editableGeneratedHandle || [])
     .filter(isBulbSelectionItem)
     .map((item) => parseEditableGeneratedHandleKey(`editableGeneratedHandle/${item}`))
-    .filter(
-      (item) =>
-        !(item.side === "bulb-entry" && item.role === "in") &&
-        (!turn || item.side === "bulb-neck")
-    );
+    .filter((item) => !(item.side === "bulb-entry" && item.role === "in"));
   return makeBulbEntries(layerGlyph, items, options, (station, stored, item) => {
     const slot = item.role;
     const other = slot === "in" ? "out" : "in";
@@ -91,16 +73,6 @@ export function createBulbHandleTargetEntries(
     const axis =
       unit(station.point, handle) ??
       (slot === "in" ? scale(station.tangent, -1) : station.tangent);
-    if (turn)
-      return (delta) => {
-        const a = { x: handle.x - station.point.x, y: handle.y - station.point.y };
-        const b = { x: a.x + delta.x, y: a.y + delta.y };
-        return {
-          turn:
-            stored.turn +
-            0.5 * Math.atan2(a.x * b.y - a.y * b.x, a.x * b.x + a.y * b.y),
-        };
-      };
     return (delta) => {
       const along = dot(delta, axis);
       const values = { [slot]: Math.round(stored[slot] + along) };
@@ -163,16 +135,12 @@ function makeBulbEntries(layerGlyph, items, options, makeWriter) {
         return rollbackChange;
       },
       makeChangeForDelta(delta) {
-        const changes = makeEditSkeletonChange(
-          originalLayerGlyph,
-          (working) => {
-            for (const { contourIndex, pointIndex, role, write } of writers) {
-              const point = working.contours?.[contourIndex]?.points?.[pointIndex];
-              if (point) setSkeletonCapBallEdit(point, role, write(delta));
-            }
-          },
-          { bulbInteractive: true }
-        );
+        const changes = makeEditSkeletonChange(originalLayerGlyph, (working) => {
+          for (const { contourIndex, pointIndex, role, write } of writers) {
+            const point = working.contours?.[contourIndex]?.points?.[pointIndex];
+            if (point) setSkeletonCapBallEdit(point, role, write(delta));
+          }
+        });
         rollbackChange = changes.rollbackChange;
         return changes.change;
       },

@@ -1374,37 +1374,13 @@ registerVisualizationLayerDefinition({
     const glyph = positionedGlyph.glyph;
     context.strokeStyle = parameters.color;
     context.lineWidth = parameters.strokeWidth;
-    const previewCoordinates = new Set(
-      [...getBulbPreviewPointIndices(positionedGlyph, model)].map((i) => {
-        const p = glyph.path.getPoint(i);
-        return `${p.x},${p.y}`;
-      })
-    );
     for (const [pt1, pt2] of glyph.path.iterHandles(
       getGizmoHiddenContourIndices(positionedGlyph, model)
     )) {
-      if (
-        previewCoordinates.has(`${pt1.x},${pt1.y}`) ||
-        previewCoordinates.has(`${pt2.x},${pt2.y}`)
-      )
-        continue;
       strokeLine(context, pt1.x, pt1.y, pt2.x, pt2.y);
     }
   },
 });
-
-function getBulbPreviewPointIndices(positionedGlyph, model) {
-  const result = new Set();
-  const path = positionedGlyph.glyph.path;
-  for (const entry of getTunniSkeletonData(positionedGlyph, model)?.generated || []) {
-    if (!Number.isInteger(entry.pathContourIndex)) continue;
-    (entry.pointMap || []).forEach((point, i) => {
-      if (point?.bulbPreview)
-        result.add(path.getAbsolutePointIndex(entry.pathContourIndex, i));
-    });
-  }
-  return result;
-}
 
 // While generated contours are edited through their gizmos, their handle lines
 // are not control surfaces. Null when gizmo mode is off, so direct handle
@@ -1472,17 +1448,11 @@ function drawnPath2d(positionedGlyph, model, closedOnly = false) {
 // On a suppressed contour the off-curve nodes are circles attached to nothing
 // once their handle lines are gone, so they are dropped; the on-curve nodes stay
 // because they say where the outline is.
-function* iterGizmoVisibleNodes(
-  path,
-  hiddenContourIndices,
-  undrawnContourIndices,
-  previewPoints
-) {
+function* iterGizmoVisibleNodes(path, hiddenContourIndices, undrawnContourIndices) {
   let pointIndex = 0;
   for (const point of path.iterPoints()) {
     const contourIndex = path.getContourIndex(pointIndex);
     if (
-      !previewPoints?.has(pointIndex) &&
       !undrawnContourIndices?.has(contourIndex) &&
       (!point.type || !hiddenContourIndices?.has(contourIndex))
     ) {
@@ -1498,8 +1468,7 @@ function* iterGizmoVisibleNodesByIndex(
   path,
   pointIndices,
   hiddenContourIndices,
-  undrawnContourIndices,
-  previewPoints
+  undrawnContourIndices
 ) {
   for (const pointIndex of pointIndices || []) {
     const point = path.getPoint(pointIndex);
@@ -1508,7 +1477,6 @@ function* iterGizmoVisibleNodesByIndex(
     }
     const contourIndex = path.getContourIndex(pointIndex);
     if (
-      previewPoints?.has(pointIndex) ||
       undrawnContourIndices?.has(contourIndex) ||
       (point.type && hiddenContourIndices?.has(contourIndex))
     ) {
@@ -1536,8 +1504,7 @@ registerVisualizationLayerDefinition({
     for (const pt of iterGizmoVisibleNodes(
       glyph.path,
       getGizmoHiddenContourIndices(positionedGlyph, model),
-      getUndrawnContourIndices(positionedGlyph, model),
-      getBulbPreviewPointIndices(positionedGlyph, model)
+      getUndrawnContourIndices(positionedGlyph, model)
     )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
@@ -1577,8 +1544,7 @@ registerVisualizationLayerDefinition({
       glyph.path,
       selectedPointIndices,
       hiddenContourIndices,
-      undrawnContourIndices,
-      getBulbPreviewPointIndices(positionedGlyph, model)
+      undrawnContourIndices
     )) {
       fillNode(
         context,
@@ -1594,8 +1560,7 @@ registerVisualizationLayerDefinition({
       glyph.path,
       selectedPointIndices,
       hiddenContourIndices,
-      undrawnContourIndices,
-      getBulbPreviewPointIndices(positionedGlyph, model)
+      undrawnContourIndices
     )) {
       fillNode(context, pt, cornerSize, smoothSize, handleSize);
     }
@@ -1607,8 +1572,7 @@ registerVisualizationLayerDefinition({
       glyph.path,
       hoveredPointIndices,
       hiddenContourIndices,
-      undrawnContourIndices,
-      getBulbPreviewPointIndices(positionedGlyph, model)
+      undrawnContourIndices
     )) {
       strokeNode(
         context,

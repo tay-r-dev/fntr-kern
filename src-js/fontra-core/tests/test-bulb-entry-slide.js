@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { slideBulbEntryForCurvature } from "../src/bulb-entry-slide.js";
 import { bulbEndCurvature } from "../src/bulb-harmonization.js";
-import { buildFourPointBulb } from "../src/bulb-geometry.js";
+import { buildBulb } from "../src/bulb-geometry.js";
 import { splitCubicAt } from "../src/offset-contour.js";
 
 describe("bulb entry V-slide fallback", () => {
@@ -62,13 +62,12 @@ describe("bulb entry V-slide fallback", () => {
       [417, 435],
       [304, 435],
     ].map(([x, y], i) => ({ x, y, ...(i === 1 || i === 2 ? { type: "cubic" } : {}) }));
-    const r = buildFourPointBulb({
+    const r = buildBulb({
       wall,
       inner,
       radius: 94.77,
       shape: 0,
       easing: 0.59,
-      easeCurvature: 0.14,
     });
     // No position between the extreme and the wall's centre meets the jump
     // while keeping the wall exact and the ball within tolerance. The shapes

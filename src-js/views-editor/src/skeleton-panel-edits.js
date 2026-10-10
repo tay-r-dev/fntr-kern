@@ -432,13 +432,9 @@ async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabe
     const applyValue = (value) => {
       const allChanges = [];
       for (const [layerName, layerGlyph] of entries) {
-        const changes = editSkeleton(
-          layerGlyph,
-          (working) => {
-            mutate(working, referenceSkeletonData, value);
-          },
-          { bulbPreview: true }
-        );
+        const changes = editSkeleton(layerGlyph, (working) => {
+          mutate(working, referenceSkeletonData, value);
+        });
         allChanges.push(changes.prefixed(["layers", layerName, "glyph"]));
       }
       return new ChangeCollector().concat(...allChanges);
@@ -1238,7 +1234,7 @@ export async function setPanelCapStyle(
       : capStyle === "square"
         ? ["capAngle", "capDistance"]
         : capStyle === "drop"
-          ? ["capBallRatio", "capBallShape", "capBallEasing", "capBallEaseCurvature"]
+          ? ["capBallRatio", "capBallShape", "capBallEasing"]
           : [];
   return editSelectedSkeletonPoints(
     sceneController,

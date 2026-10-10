@@ -787,7 +787,6 @@ export const strings = {
   "sidebar.skeleton-parameters": "Skeleton Parameters",
   "sidebar.skeleton-parameters.cap-angle": "Project angle",
   "sidebar.skeleton-parameters.cap-ball": "Size",
-  "sidebar.skeleton-parameters.cap-ball-ease-curvature": "Ease curvature",
   "sidebar.skeleton-parameters.cap-ball-easing": "Ease distance",
   "sidebar.skeleton-parameters.cap-ball-shape": "Shape",
   "sidebar.skeleton-parameters.cap-ball-side": "Ball side",

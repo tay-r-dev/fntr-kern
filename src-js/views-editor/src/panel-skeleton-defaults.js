@@ -1245,13 +1245,6 @@ export default class SkeletonSettingsPanel extends Panel {
             set("capBallEasing"),
             percent
           ),
-          field(
-            "cap-ball-ease-curvature",
-            working.capBallEaseCurvature,
-            { minValue: 0, maxValue: 100 },
-            set("capBallEaseCurvature"),
-            percent
-          ),
         ]),
       ]);
     }

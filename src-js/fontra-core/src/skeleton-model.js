@@ -144,41 +144,24 @@ export const CAP_POINT_FIELDS = [
   "capDistance",
   "capBallRatio",
   "capBallShape",
-  // Bulb easing scales both N handles from the corner limit to a smooth neck.
-  // The neck's curvature field is a preferred construction target; the shared
-  // G2 solve can compensate on either side. It has no skeleton segment pin.
+  // Bulb easing grows the fillet in the corner where the ball meets the inner
+  // wall. It is the fillet's only control.
   "capBallEasing",
-  "capBallEaseCurvature",
 ];
-// Where a bulb's neck keeps the number the curvature gizmo writes. Named once
-// here and matched against the provenance the generator stamps, so the two
-// cannot drift apart.
-export const CAP_CURVATURE_FIELDS = new Set(["capBallEaseCurvature"]);
 
 // A bulb's own points, which Z and Alt edit the way they edit any generated
-// point: the entry on the outer wall, the ball's bottom and side apexes, the
-// shared neck. W remains an existing wall point. The four bulb points belong to
-// the cap, not to a rib, so their edits live on the cap-owning point, one
-// block per point, in the cap's own order from the outer wall to the inner.
+// point: the entry on the outer wall and the ball's bottom and side apexes. The
+// easing fillet after them has no edits: the easing slider sets it. The bulb's
+// points belong to the cap, not to a rib, so their edits live on the
+// cap-owning point, one block per point, in the cap's own order from the outer
+// wall to the inner.
 //
 // `slide` moves the on-curve along its tangent, positive toward the inner
 // wall. `carry` is the part of it Z carried to the two handles. `in` and
 // `out` lengthen the handle before and after it, along the handle's own line.
-// These are preferred construction values, followed by the shared solve.
 // E and its incoming handle remain coupled to the exact wall cut.
-export const CAP_BALL_EDIT_ROLES = Object.freeze(["entry", "bottom", "side", "neck"]);
-// `vslide` is the V-slide: the share of a neighbouring segment's parameter the
-// neck has slid into along the outline, positive toward the inner wall.
-// `normal` moves N across its tangent; `turn` rotates its shared tangent in radians.
-const CAP_BALL_EDIT_FIELDS = Object.freeze([
-  "slide",
-  "carry",
-  "in",
-  "out",
-  "vslide",
-  "normal",
-  "turn",
-]);
+export const CAP_BALL_EDIT_ROLES = Object.freeze(["entry", "bottom", "side"]);
+const CAP_BALL_EDIT_FIELDS = Object.freeze(["slide", "carry", "in", "out"]);
 const BULB_SIDE_PREFIX = "bulb-";
 
 // Bulb points ride in the side slot of the generated-point keys, so every
@@ -3612,12 +3595,7 @@ const TERMINAL_PRESET_TYPES = Object.freeze({
     key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED,
   },
   drop: {
-    fields: Object.freeze([
-      "capBallRatio",
-      "capBallShape",
-      "capBallEasing",
-      "capBallEaseCurvature",
-    ]),
+    fields: Object.freeze(["capBallRatio", "capBallShape", "capBallEasing"]),
     key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP,
   },
 });
@@ -4596,9 +4574,7 @@ export function findGeneratedPathAddress(skeletonData, contourId, pointId, side,
       const provenance = pointMap[contourPointIndex];
       const matches = bulbRole
         ? provenance?.bulbRole === bulbRole && provenance.bulbSlot === role
-        : provenance?.side === side &&
-          provenance.role === role &&
-          provenance.bulbRole !== "neck";
+        : provenance?.side === side && provenance.role === role && !provenance.bulbRole;
       if (provenance?.skeletonPointId === numericPointId && matches) {
         return {
           pathContourIndex: generatedEntry.pathContourIndex,
@@ -5095,7 +5071,6 @@ export function resolveGeneratedPointProvenance(skeletonData, path, pathPointInd
     pointId,
     side: provenance.side,
     role: provenance.role,
-    capCurvatureField: provenance.capCurvatureField ?? null,
     bulbRole: provenance.bulbRole ?? null,
     bulbSlot: provenance.bulbSlot ?? null,
     contour,
@@ -5116,6 +5091,8 @@ export function resolveEditableGeneratedTarget(skeletonData, path, pathPointInde
   // a drag wrote that rib's nudge and moved the ball's anchor: 52 units of one
   // ball handle for a 10-unit slide of the entry.
   if (provenance.bulbRole) {
+    // The easing fillet's points are the slider's alone.
+    if (!CAP_BALL_EDIT_ROLES.includes(provenance.bulbRole)) return null;
     const side = bulbSideOfRole(provenance.bulbRole);
     const role = provenance.bulbSlot;
     const kind =
@@ -6027,40 +6004,10 @@ export function calculateGeneratedCurvatureEdits({
   if (!start || start.role !== "onCurve" || start.skeletonPointId === undefined) {
     return null;
   }
-  // A bulb's neck stores its curvature in a cap field on the cap-owning point,
-  // because there is no skeleton segment behind it to pin. Nothing else about
-  // the drag changes: the same tension is measured the same way. It carries no
-  // collapse tail either — a cap handle has no stored offset to put one on, so
-  // the pin is the whole answer and a drag below its floor simply stops.
-  //
-  // The neck publishes the drawn construction tension and its stored value.
-  // Apply the gizmo's change to that value: the harmonizer is not a linear
-  // multiplier, and dividing by a guessed scale made still grabs move the bulb.
   // A ball segment states its answer as the two handles the drag arrived at.
   // The writer turns them into the bulb's handle lengths.
   if (isBulbBallSegment(provenance)) {
     return { bulb: true, segmentPointIndex, tension, controls: pinned };
-  }
-  const capCurvatureField = generatedSegmentCapCurvatureField(provenance);
-  if (capCurvatureField) {
-    const scale = provenance[1]?.capCurvatureScale;
-    return {
-      segmentPointIndex,
-      skeletonPointId: start.skeletonPointId,
-      side: start.side,
-      capCurvatureField,
-      tension: Number.isFinite(provenance[1]?.capCurvatureTension)
-        ? Math.max(
-            0,
-            provenance[1].capCurvatureValue +
-              tension -
-              provenance[1].capCurvatureTension
-          )
-        : scale > 0
-          ? tension / scale
-          : tension,
-      collapse: [],
-    };
   }
   // The tail below the pin's floor, if the drag reached it: whatever `moved`
   // asks for beyond what the pin can hold, carried as a displacement on the one
@@ -6191,7 +6138,6 @@ function computeGeneratedTunniSegments(skeletonData, path) {
       const pointIndices = segment.parentPointIndices.map(
         (absolute) => absolute - contourStart
       );
-      if (pointIndices.some((i) => pointMap[i]?.bulbPreview)) continue;
       const isCubicControl = (absolute) =>
         (path.pointTypes[absolute] & VarPackedPath.POINT_TYPE_MASK) ===
         VarPackedPath.OFF_CURVE_CUBIC;
@@ -6223,11 +6169,7 @@ function computeGeneratedTunniSegments(skeletonData, path) {
         continue;
       }
       const bulbBall = isBulbBallSegment(provenance);
-      if (
-        (bulbBall || generatedSegmentCapCurvatureField(provenance)) &&
-        !hasForwardTangentIntersection(segment.points)
-      )
-        continue;
+      if (bulbBall && !hasForwardTangentIntersection(segment.points)) continue;
       const side = bulbBall ? null : provenance[0].side;
       if (
         !bulbBall &&
@@ -6237,8 +6179,7 @@ function computeGeneratedTunniSegments(skeletonData, path) {
         continue;
       }
       // A segment collapsed onto one spot has no gizmo axis, and its control
-      // would sit on top of the point. A bulb's neck at easing 0 is one: the
-      // plain notch, with the neck's four points kept for the point count.
+      // would sit on top of the point.
       const [p0, p1, p2, p3] = segment.points;
       const under = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < 1;
       if (under(p0, p3) && under(p0, p1) && under(p3, p2)) {
@@ -6323,13 +6264,9 @@ function getGeneratedOnCurveMovability(skeletonData, segment) {
   if (!contour) {
     return [false, false];
   }
-  // A bulb's neck carries the curvature gizmo and nothing else. Its two ends are
-  // cap geometry — one on the ball, one a trim point — so the on-curve gizmo has
-  // no rib end to slide, and offering it would move the whole rib instead.
-  if (
-    generatedSegmentCapCurvatureField(segment.provenance) ||
-    isBulbBallSegment(segment.provenance)
-  ) {
+  // A ball segment's two ends are cap geometry, so the on-curve gizmo has no
+  // rib end to slide, and offering it would move the whole rib instead.
+  if (isBulbBallSegment(segment.provenance)) {
     return [false, false];
   }
   const startIndex = contour.points?.findIndex(
@@ -6475,20 +6412,13 @@ function untrimmedConstructionSegment(segmentPoints, provenance) {
   if (segmentPoints?.length !== 4) {
     return null;
   }
-  // A bulb's neck reads only its own snapshot, on its ball end, which is the
-  // neck as built before the designer's edits to the bulb's points. Its wall
-  // end is also the end of the wall piece the cap cut, and the snapshot there
-  // is that wall's.
   // A ball segment is drawn as built. Its entry end carries the outer wall's
   // snapshot, which is that wall's.
   if (isBulbBallSegment(provenance)) {
     return null;
   }
-  const neck = generatedSegmentCapCurvatureField(provenance) !== null;
   const carrier = provenance?.findIndex(
-    (item, index) =>
-      (!neck || item?.capCurvatureField) &&
-      storedConstructionSegment(item, index) !== null
+    (item, index) => storedConstructionSegment(item, index) !== null
   );
   if (carrier === undefined || carrier < 0) {
     return null;
@@ -6556,48 +6486,18 @@ export function generatedSegmentPinAddress(skeletonData, segment) {
   if (!address) {
     return null;
   }
-  return {
-    ...address,
-    side: segment.side,
-    capCurvatureField: generatedSegmentCapCurvatureField(segment.provenance),
-  };
+  return { ...address, side: segment.side };
 }
 
-// The cap field a segment's curvature is stored in, or null for the ordinary
-// case where it is a side's `segmentCurvature`. A bulb's neck is the one segment
-// with no skeleton segment behind it: both of its handles name the cap-owning
-// point and the field instead. Both must agree, or the segment is not a neck.
-export function generatedSegmentCapCurvatureField(provenance) {
-  const field = provenance?.[1]?.capCurvatureField;
-  if (!field || provenance?.[2]?.capCurvatureField !== field) {
-    return null;
-  }
-  return CAP_CURVATURE_FIELDS.has(field) ? field : null;
-}
-
-// One of the ball's own segments: all four points are the bulb's, and it is
-// not the neck. Its curvature gizmo writes the two handle lengths of the bulb's
-// edit block, because a ball segment has no pin of its own.
+// One of the ball's own segments: all four points belong to the ball's edited
+// points, E, B and C. Its curvature gizmo writes the two handle lengths of the
+// bulb's edit block, because a ball segment has no pin of its own. The fillet
+// and the curves either side of it are not ball segments.
 export function isBulbBallSegment(provenance) {
   return (
     provenance?.length === 4 &&
-    provenance.every((item) => item?.bulbRole) &&
-    generatedSegmentCapCurvatureField(provenance) === null
+    provenance.every((item) => CAP_BALL_EDIT_ROLES.includes(item?.bulbRole))
   );
-}
-
-export function getSkeletonCapCurvature(point, field) {
-  const value = point?.[field];
-  return Number.isFinite(value) ? value : null;
-}
-
-export function setSkeletonCapCurvature(point, field, tension) {
-  if (!CAP_CURVATURE_FIELDS.has(field)) {
-    return;
-  }
-  point[field] = Number.isFinite(tension)
-    ? Math.min(Math.max(tension, 0), MAX_STORED_SEGMENT_TENSION)
-    : null;
 }
 
 // What the curvature gizmo owns for one generated segment: the construction-space
@@ -6636,11 +6536,7 @@ export function getGeneratedSegmentCurvature(skeletonData, segment) {
     return { tension, pinned: false };
   }
   const address = generatedSegmentPinAddress(skeletonData, segment);
-  const pin = !address
-    ? null
-    : address.capCurvatureField
-      ? getSkeletonCapCurvature(address.point, address.capCurvatureField)
-      : getSkeletonSegmentCurvature(address.point, address.side);
+  const pin = address ? getSkeletonSegmentCurvature(address.point, address.side) : null;
   return { tension, pinned: pin !== null && pin !== undefined };
 }
 
