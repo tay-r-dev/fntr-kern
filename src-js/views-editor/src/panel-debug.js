@@ -7,7 +7,7 @@ import Panel from "./panel.js";
 // accordion switch in one card.
 export default class DebugPanel extends Panel {
   identifier = "debug";
-  iconPath = "/tabler-icons/bug.svg";
+  iconPath = "bug";
   tabLabel = "settings";
 
   constructor(editorController, accordion) {

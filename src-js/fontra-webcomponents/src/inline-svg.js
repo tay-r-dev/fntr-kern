@@ -1,6 +1,7 @@
 // This isn't really a web component, just a custom element.
 
 import { htmlToElement } from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 
 export class InlineSVG extends HTMLElement {
   constructor(src) {
@@ -33,7 +34,7 @@ export class InlineSVG extends HTMLElement {
   }
 
   async fetchSVG(svgSRC) {
-    const svgElement = htmlToElement(await cachedSVGData(svgSRC));
+    const svgElement = htmlToElement(await cachedSVGData(iconPath(svgSRC)));
     svgElement.removeAttribute("width");
     svgElement.removeAttribute("height");
     this.innerHTML = "";

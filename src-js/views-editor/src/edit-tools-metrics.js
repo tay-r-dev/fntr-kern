@@ -431,7 +431,7 @@ function _drawMiniSideBearings({
 }
 
 export class SidebearingTool extends MetricsBaseTool {
-  iconPath = "/images/tool-panel-spacing.svg";
+  iconPath = "tool-spacing";
   identifier = "sidebearing-tool";
 
   constructor(editor) {
@@ -1026,7 +1026,7 @@ registerVisualizationLayerDefinition({
 });
 
 export class KerningTool extends MetricsBaseTool {
-  iconPath = "/images/tool-panel-kerning.svg";
+  iconPath = "tool-kerning";
   identifier = "kerning-tool";
 
   constructor(editor) {

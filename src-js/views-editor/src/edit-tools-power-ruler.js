@@ -111,7 +111,7 @@ export function rulerExtraLinesFor(editor, sceneController) {
 }
 
 export class PowerRulerTool extends BaseTool {
-  iconPath = "/images/tool-panel-ruler.svg";
+  iconPath = "tool-ruler";
   identifier = "power-ruler-tool";
 
   constructor(editor) {

@@ -233,11 +233,11 @@ const BULK_SUBSETS = [
 
 export default class LetterspacerPanel extends Panel {
   identifier = "letterspacer";
-  iconPath = "/tabler-icons/spacing-horizontal.svg";
+  iconPath = "spacing-horizontal";
 
   constructor(editorController) {
     super(editorController);
-    this.card = html.div({ class: "card card--headed" });
+    this.card = html.div({ class: "card" });
     this.contentElement.appendChild(this.card);
     this._appendStyle(LETTERSPACER_CARD_STYLES);
     this.fontController = this.editorController.fontController;
@@ -614,7 +614,7 @@ export default class LetterspacerPanel extends Panel {
         this._heldMessageElement = html.div({ class: "field-label" }, []);
         this._renderHeldMessage();
         children.push(
-          html.div({ class: "metrics-stack ls-body" }, [
+          html.div({ class: "card-section" }, [
             ...this._buildAreaDepthOvershootFields(),
             this._labeled("reference glyph", this._buildReferenceField()),
             html.div({ class: "field-group" }, [
@@ -2038,17 +2038,6 @@ const LETTERSPACER_CARD_STYLES = `
     height: auto;
   }
 
-  /* The LETTERSPACER card (Figma 4108:2095): its parts 10px apart. */
-  .card {
-    gap: 10px;
-  }
-
-  .metrics-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
   .metrics-heading-icon {
     width: 16px;
     height: 16px;
@@ -2061,10 +2050,6 @@ const LETTERSPACER_CARD_STYLES = `
 
   .metrics-grow {
     flex: 1 1 auto;
-  }
-
-  .ls-body {
-    padding-bottom: 4px;
   }
 
   /* Three even columns; the row names in the lighter grey. */

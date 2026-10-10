@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper, enumerate } from "@fontra/core/utils.ts";
 
@@ -167,7 +168,7 @@ export class Accordion extends UnlitElement {
         [
           html.createDomElement("inline-svg", {
             class: "open-close-icon",
-            src: "/tabler-icons/chevron-up.svg",
+            src: "chevron-up",
           }),
           this._slotted(item.label, slotName("label")),
         ]
@@ -294,7 +295,7 @@ export function persistAccordionOpenState(accordion, prefix) {
   };
 }
 
-export function makeClickableIconHeader(iconPath, onClick) {
+export function makeClickableIconHeader(icon, onClick) {
   const focus = new FocusKeeper();
   return html.div(
     {
@@ -308,7 +309,7 @@ export function makeClickableIconHeader(iconPath, onClick) {
     },
     [
       html.createDomElement("inline-svg", {
-        src: iconPath,
+        src: iconPath(icon),
       }),
     ]
   );
@@ -327,10 +328,10 @@ export function groupAccordionHeaderButtons(buttons) {
 }
 
 export function makeAccordionHeaderButton(button) {
-  // button/icon at size S. `icon` is a full path, or a tabler icon's name.
+  // button/icon at size S. `icon` is a name from icons.js, a full path, or a tabler icon's name.
   let options = {
     size: "S",
-    src: button.icon.startsWith("/") ? button.icon : `/tabler-icons/${button.icon}.svg`,
+    src: iconPath(button.icon),
     onclick: button.onclick,
   };
 

@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -173,7 +174,7 @@ export class TextButton extends UnlitElement {
     }
     if (this.icon) {
       faceChildren.push(
-        html.createDomElement("inline-svg", { class: "icon", src: this.icon })
+        html.createDomElement("inline-svg", { class: "icon", src: iconPath(this.icon) })
       );
     }
     this._button = html.button({ type: "button", disabled: this.disabled }, [

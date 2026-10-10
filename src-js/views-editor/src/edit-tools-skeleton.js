@@ -49,7 +49,7 @@ import { SnappingSession } from "./snapping-interactions.js";
 const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
 
 export class SkeletonPenTool extends BaseTool {
-  iconPath = "/images/tool-panel-ribbon-pen.svg";
+  iconPath = "tool-ribbon-pen";
   identifier = "skeleton-pen-tool";
 
   constructor(...args) {

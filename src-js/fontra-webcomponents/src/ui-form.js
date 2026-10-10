@@ -101,23 +101,34 @@ export class Form extends SimpleElement {
     /* Heading levels by the Figma style names: h1 to h4 are uppercase, h5 is
        a small mixed-case section label. A header with no level is h4. h1 is
        a card's heading, as shared.css's card-heading draws it. */
+    /* The form spaces itself as shared.css's card does: 12px over the h1
+       (the card's 8px and 4 more), 10px under it, sections 10px apart, 8px
+       between a section's rows and 4px under its h2. The row gap is 8px. */
     .ui-form-label.header-h1 {
       font: var(--ui-text-heading-h1);
       letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
       color: var(--shared-heading, var(--text-base-basic-5));
+      margin-bottom: 2px;
     }
 
-    /* h2, as shared.css's card-subheading: text 3, 8px from what is above
-       it and 4px to what it heads. The row gap is the 8px above, so the
-       divider before it takes no room; the 4px under it takes back half the
-       row gap. */
+    .ui-form-label.header-h1:first-child {
+      margin-top: 4px;
+    }
+
+    /* h2, as shared.css's card-subheading, in text 3. A section starts at
+       its h2, so the divider before it takes no room. */
     .ui-form-label.header-h2 {
       font: var(--ui-text-heading-h2);
       letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
       color: var(--text-base-basic-3);
+      margin-top: 2px;
       margin-bottom: -4px;
+    }
+
+    :is(.header-h1 + .header-h2, .header-h1 + hr + .header-h2) {
+      margin-top: 0;
     }
 
     hr:has(+ .ui-form-label.header-h2) {

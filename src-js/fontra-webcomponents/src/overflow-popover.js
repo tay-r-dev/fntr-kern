@@ -9,7 +9,7 @@ import { IconButton } from "./icon-button.js";
 export class OverflowPopover extends IconButton {
   constructor() {
     super();
-    this.src = "/images/overflow.svg";
+    this.src = "overflow";
     this.overflow = true;
   }
 

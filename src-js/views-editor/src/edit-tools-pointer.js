@@ -180,7 +180,7 @@ export class PointerTools {
 }
 
 export class PointerTool extends BaseTool {
-  iconPath = "/images/tool-panel-pointer.svg";
+  iconPath = "tool-pointer";
   identifier = "pointer-tool";
 
   constructor(...args) {
@@ -2031,7 +2031,7 @@ registerVisualizationLayerDefinition({
 });
 
 export class PointerToolScale extends PointerTool {
-  iconPath = "/images/pointerscale.svg";
+  iconPath = "tool-pointer-scale";
   identifier = "pointer-tool-scale";
 
   get scalingEditBehavior() {

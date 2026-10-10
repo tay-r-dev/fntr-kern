@@ -9,7 +9,7 @@ import TransformationPanel from "./panel-transformation.js";
 // does not rebuild the transform fields and steal focus, or vice versa.
 export default class SelectionPanel extends Panel {
   identifier = "selection";
-  iconPath = "/tabler-icons/shape.svg";
+  iconPath = "shape";
   tabLabel = "transform";
 
   getContentElement() {

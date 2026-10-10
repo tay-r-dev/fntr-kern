@@ -83,7 +83,7 @@ export class PresetHeaderControl {
       return button;
     };
     this.addButton = iconButton(
-      "/images/plus.svg",
+      "add",
       "sidebar.skeleton-parameters.width-preset.add",
       () => {
         this._disarmUpdate();
@@ -91,40 +91,32 @@ export class PresetHeaderControl {
       }
     );
     this.updateButton = onUpdate
-      ? iconButton(
-          "/images/update.svg",
-          "sidebar.skeleton-parameters.width-preset.update",
-          () => {
-            if (this.lastPicked == null) {
-              return;
-            }
-            if (this._confirmUpdate && !this._updateArmed) {
-              this._updateArmed = true;
-              this.updateButton.on = true;
-              this.updateButton.setAttribute(
-                "data-tooltip",
-                translate("sidebar.skeleton-parameters.width-preset.update-confirm")
-              );
-              disarmOnClickAway(this.updateButton, () => this._disarmUpdate());
-              return;
-            }
-            this._disarmUpdate();
-            onUpdate(this.lastPicked);
+      ? iconButton("update", "sidebar.skeleton-parameters.width-preset.update", () => {
+          if (this.lastPicked == null) {
+            return;
           }
-        )
+          if (this._confirmUpdate && !this._updateArmed) {
+            this._updateArmed = true;
+            this.updateButton.on = true;
+            this.updateButton.setAttribute(
+              "data-tooltip",
+              translate("sidebar.skeleton-parameters.width-preset.update-confirm")
+            );
+            disarmOnClickAway(this.updateButton, () => this._disarmUpdate());
+            return;
+          }
+          this._disarmUpdate();
+          onUpdate(this.lastPicked);
+        })
       : null;
     this.lockButton = onLock
-      ? iconButton(
-          "/images/lock.svg",
-          "sidebar.skeleton-parameters.width-preset.lock",
-          () => onLock(this.lastPicked)
+      ? iconButton("lock", "sidebar.skeleton-parameters.width-preset.lock", () =>
+          onLock(this.lastPicked)
         )
       : null;
     this.refreshButton = onRefresh
-      ? iconButton(
-          "/images/refresh.svg",
-          "sidebar.skeleton-parameters.width-preset.refresh",
-          () => onRefresh()
+      ? iconButton("refresh", "sidebar.skeleton-parameters.width-preset.refresh", () =>
+          onRefresh()
         )
       : null;
     this.element = html.div(
@@ -200,8 +192,7 @@ export class PresetHeaderControl {
     this._resetDisabled = !bond?.resetEnabled;
     if (this.lockButton) {
       this.lockButton.on = bond?.locked === true;
-      this.lockButton.src =
-        bond?.locked === true ? "/images/lock.svg" : "/images/lock-open.svg";
+      this.lockButton.src = bond?.locked === true ? "lock" : "unlock";
       this.lockButton.mixed = bond?.locked === "mixed";
       this.lockButton.disabled = !bond?.lockEnabled;
     }

@@ -22,7 +22,7 @@ export class PenTool {
 }
 
 export class PenToolCubic extends BaseTool {
-  iconPath = "/images/tool-panel-pen.svg";
+  iconPath = "tool-pen";
   identifier = "pen-tool-cubic";
 
   handleHover(event) {
@@ -415,7 +415,7 @@ export class PenToolCubic extends BaseTool {
 }
 
 export class PenToolQuad extends PenToolCubic {
-  iconPath = "/images/pointeraddquad.svg";
+  iconPath = "tool-pointer-add-quad";
   identifier = "pen-tool-quad";
 
   get curveType() {

@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
@@ -434,11 +435,11 @@ export class IconButton extends UnlitElement {
     const children =
       this.label && !this.src
         ? [this.label]
-        : [html.createDomElement("inline-svg", { src: this.src })];
+        : [html.createDomElement("inline-svg", { src: iconPath(this.src) })];
     if (this.dropdown && !this.overflow) {
       children.push(
         html.createDomElement("inline-svg", {
-          src: "/tabler-icons/chevron-up.svg",
+          src: "chevron-up",
           class: "icon-button-chevron",
         })
       );

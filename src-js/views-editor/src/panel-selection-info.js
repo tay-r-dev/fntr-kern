@@ -46,7 +46,7 @@ import Panel from "./panel.js";
 
 export default class SelectionInfoPanel extends Panel {
   identifier = "selection-info";
-  iconPath = "/images/info.svg";
+  iconPath = "info";
   tabLabel = "metrics";
 
   constructor(editorController) {
@@ -108,8 +108,8 @@ export default class SelectionInfoPanel extends Panel {
   getContentElement() {
     this.infoForm = new Form();
     this.letterspacerHost = html.div({ class: "metrics-host", hidden: true });
-    this.spacingCard = html.div({ class: "card card--headed", hidden: true });
-    this.kerningCard = html.div({ class: "card card--headed", hidden: true });
+    this.spacingCard = html.div({ class: "card", hidden: true });
+    this.kerningCard = html.div({ class: "card", hidden: true });
     this.selectionCard = html.div({ class: "card metrics-card--form" }, [
       this.infoForm,
     ]);
@@ -266,7 +266,7 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.user-settings.glyph.background-image"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "src": "/images/refresh.svg",
+          "src": "refresh",
           "onclick": (event) => this._resetTransformationForBackgroundImage(),
           "data-tooltip": translate(
             "sidebar.selection-info.component.reset-transformation"
@@ -336,7 +336,7 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.selection-info.component.transformation"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "src": "/images/refresh.svg",
+          "src": "refresh",
           "onclick": (event) => this._resetTransformationForComponent(index),
           "data-tooltip": translate(
             "sidebar.selection-info.component.reset-transformation"
@@ -422,7 +422,7 @@ export default class SelectionInfoPanel extends Panel {
               [
                 html.createDomElement("icon-button", {
                   "id": "component-axis-options-button",
-                  "src": "/tabler-icons/menu-2.svg",
+                  "src": "menu-2",
                   "onclick": (event) => this.showComponentAxesOptionsMenu(event),
                   "data-tooltip": translate(
                     "sidebar.designspace-navigation.font-axes-view-options-button.tooltip"
@@ -430,7 +430,7 @@ export default class SelectionInfoPanel extends Panel {
                   "data-tooltipposition": "left",
                 }),
                 html.createDomElement("icon-button", {
-                  "src": "/images/refresh.svg",
+                  "src": "refresh",
                   "onclick": (event) => this._resetAxisValuesForComponent(index),
                   "data-tooltip": translate(
                     "sidebar.selection-info.component.reset-axis-values"
@@ -499,7 +499,7 @@ export default class SelectionInfoPanel extends Panel {
 
     this._lockButton = html.createDomElement("icon-button", {
       "class": "metrics-heading-icon",
-      "src": editLocked ? "/images/lock.svg" : "/images/lock-open.svg",
+      "src": editLocked ? "lock" : "unlock",
       "onclick": () => this._toggleGlyphLock(varGlyphController.glyph),
       "data-tooltip": translate(
         this.fontController.readOnly
@@ -583,7 +583,7 @@ export default class SelectionInfoPanel extends Panel {
           html.createDomElement("icon-button", {
             "slot": "end",
             "class": "metrics-update",
-            "src": "/images/refresh.svg",
+            "src": "refresh",
             "disabled": editLocked,
             "data-tooltip": translate(
               "sidebar.selection-info.metrics-key.stale.tooltip"
@@ -624,7 +624,7 @@ export default class SelectionInfoPanel extends Panel {
       const isConfirming = this._metricsUnlinkConfirm === side;
       const isOverridden = metricsKeyDisplay[side].level === "source";
       const unlinkButton = html.createDomElement("icon-button", {
-        "src": isConfirming ? "/images/cross.svg" : "/tabler-icons/unlink.svg",
+        "src": isConfirming ? "close" : "unlink",
         "disabled": editLocked,
         "data-tooltip": translate(
           isConfirming
@@ -660,9 +660,7 @@ export default class SelectionInfoPanel extends Panel {
         html.span({ class: "field-label" }, [side === "left" ? "L" : "R"]),
         unlinkButton,
         html.createDomElement("icon-button", {
-          "src": isOverridden
-            ? "/tabler-icons/link.svg"
-            : "/tabler-icons/link-plus.svg",
+          "src": isOverridden ? "link" : "link-plus",
           "on": isOverridden,
           "disabled": editLocked,
           "data-tooltip": translate(
@@ -687,7 +685,12 @@ export default class SelectionInfoPanel extends Panel {
     }
     rows.push(this.getBehaviorToggle());
 
-    this.spacingCard.replaceChildren(...rows);
+    // The heading, then the rest as the card's one section.
+    const [heading, ...body] = rows;
+    this.spacingCard.replaceChildren(
+      heading,
+      html.div({ class: "card-section" }, body)
+    );
   }
 
   // KERNING (Figma 4108:2941): the heading with the way to the kerning view,
@@ -834,9 +837,7 @@ export default class SelectionInfoPanel extends Panel {
     }
 
     const iconElement = this._lockButton;
-    iconElement.src = varGlyph.customData["fontra.glyph.locked"]
-      ? "/images/lock-open.svg"
-      : "/images/lock.svg";
+    iconElement.src = varGlyph.customData["fontra.glyph.locked"] ? "unlock" : "lock";
 
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
@@ -1771,12 +1772,6 @@ customElements.define("panel-selection-info", SelectionInfoPanel);
 // What the metrics panel has that no other panel does; the cards, headings,
 // captions and field pairs are shared.css's.
 const METRICS_PANEL_STYLES = `
-  /* SPACING and KERNING (Figma 4108:2200, 4108:2941): their parts 12px
-     apart. */
-  .card--headed {
-    gap: 12px;
-  }
-
   .card[hidden],
   .metrics-host[hidden] {
     display: none;

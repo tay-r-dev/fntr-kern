@@ -370,9 +370,9 @@ function percentOfRatio(summary) {
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 // The rib lock latches' icons, by lock kind.
 const LOCK_ICONS = {
-  handles: "/images/lock-handle.svg",
-  slide: "/images/lock-shift.svg",
-  width: "/images/lock-width.svg",
+  handles: "lock-handle",
+  slide: "lock-shift",
+  width: "lock-width",
 };
 
 export default class SkeletonParametersPanel {
@@ -599,7 +599,7 @@ export default class SkeletonParametersPanel {
     // from the centerline. The toggle sits on the width row it governs, and the
     // write converts the number so the letter does not move.
     this.insertionAbsoluteButton = toggleButton(
-      "/tabler-icons/ruler-measure.svg",
+      "ruler-measure",
       "insertion-absolute",
       (value) =>
         setSelectedInsertionWidthMode(
@@ -620,29 +620,26 @@ export default class SkeletonParametersPanel {
 
     // Tied ribs reflects the selection: greyed where no point has a straight
     // to tie across, and on, off or mixed over the points that do.
-    this.tiedButton = latchButton("/images/tie.svg", "tied", (value) =>
+    this.tiedButton = latchButton("tie", "tied", (value) =>
       this._onWidthChange("tied", value)
     );
     // Detach sits beside it: it frees the selected ribs' generated handles from
     // the construction, holding each where it stands.
-    this.detachButton = latchButton("/images/detach.svg", "detached", (value) =>
+    this.detachButton = latchButton("detach", "detached", (value) =>
       this._onRibChange("detached", value)
     );
     // Reset is three parts, and the selection sets their reach: a skeleton point
     // resets both of its sides, a rib that side alone, a generated handle that
     // handle alone, which greys the other two.
-    this.resetHandleButton = iconButton(
-      "/images/reset-handle.svg",
-      "reset-handle",
-      () =>
-        this._singleGeneratedHandle
-          ? this._resetSingleGeneratedHandle()
-          : this._resetRibs("handles")
+    this.resetHandleButton = iconButton("reset-handle", "reset-handle", () =>
+      this._singleGeneratedHandle
+        ? this._resetSingleGeneratedHandle()
+        : this._resetRibs("handles")
     );
-    this.resetSlideButton = iconButton("/images/reset-shift.svg", "reset-slide", () =>
+    this.resetSlideButton = iconButton("reset-shift", "reset-slide", () =>
       this._resetRibs("slide")
     );
-    this.resetAllButton = iconButton("/images/reset-all.svg", "reset-all", () =>
+    this.resetAllButton = iconButton("reset-all", "reset-all", () =>
       this._resetRibs("all")
     );
     // Each group's buttons sit in one tray, as in the design. The Rib group

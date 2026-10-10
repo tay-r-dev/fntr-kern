@@ -18,7 +18,7 @@ import {
 } from "./visualization-layer-definitions.js";
 
 export class KnifeTool extends BaseTool {
-  iconPath = "/images/tool-panel-knife.svg";
+  iconPath = "tool-knife";
   identifier = "knife-tool";
 
   setCursor() {

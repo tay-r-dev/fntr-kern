@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import {
   SCRUB_CANCELLED,
@@ -633,7 +634,7 @@ export class InputFieldLarge extends UnlitElement {
     this._iconElement = this._icon
       ? html.createDomElement("inline-svg", {
           "class": "apply-icon",
-          "src": this._icon,
+          "src": iconPath(this._icon),
           "data-tooltip": this._iconTooltip || "",
           "data-tooltipposition": "top",
         })
@@ -671,7 +672,7 @@ export class InputFieldLarge extends UnlitElement {
             ? [
                 html.createDomElement("inline-svg", {
                   class: "scrub-icon",
-                  src: "/images/scrub.svg",
+                  src: "scrub",
                 }),
               ]
             : []),

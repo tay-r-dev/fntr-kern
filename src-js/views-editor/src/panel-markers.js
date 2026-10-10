@@ -91,7 +91,7 @@ const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";
-  iconPath = "/tabler-icons/ruler-measure.svg";
+  iconPath = "ruler-measure";
   tabLabel = "measure";
 
   constructor(editorController) {
@@ -155,7 +155,7 @@ export default class MarkersPanel extends Panel {
     persistAccordionOpenState(this.accordion, ACCORDION_OPEN_STORAGE_PREFIX);
     this.contentElement.appendChild(
       html.div({ class: "card-column panel-section--flex" }, [
-        html.div({ class: "card card--headed" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading" }, [
             translate("sidebar.markers.measurements"),
           ]),
@@ -213,12 +213,12 @@ export default class MarkersPanel extends Panel {
   // when empty, and the table.
   _buildMarkerSection(kind, labelKey, columns) {
     const eye = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/eye.svg",
+      "src": "eye",
       "data-tooltipposition": "left",
     });
     eye.onclick = () => this.toggleSectionVisible(kind);
     const trash = html.createDomElement("icon-button", {
-      "src": "/images/bin.svg",
+      "src": "delete",
       "data-tooltip": translate("sidebar.markers.erase-section"),
       "data-tooltipposition": "left",
     });
@@ -347,9 +347,7 @@ export default class MarkersPanel extends Panel {
     // The eye says what pressing it does: hide while anything shows, show once
     // everything is hidden.
     const allHidden = markers.length > 0 && markers.every((marker) => marker.hidden);
-    section.eye.src = allHidden
-      ? "/tabler-icons/eye-closed.svg"
-      : "/tabler-icons/eye.svg";
+    section.eye.src = allHidden ? "eye-closed" : "eye";
     section.eye.setAttribute(
       "data-tooltip",
       translate(
@@ -432,7 +430,7 @@ export default class MarkersPanel extends Panel {
         const visible = group.visible !== false;
         // The eye is an on-state icon button: lit while the group shows.
         const eye = rowAction({
-          src: visible ? "/tabler-icons/eye.svg" : "/tabler-icons/eye-closed.svg",
+          src: visible ? "eye" : "eye-closed",
           tooltip: translate(
             visible ? "sidebar.markers.hide-group" : "sidebar.markers.show-group"
           ),
@@ -465,7 +463,7 @@ export default class MarkersPanel extends Panel {
           actionsCell([
             eye,
             rowAction({
-              src: "/images/bin.svg",
+              src: "delete",
               tooltip: translate("sidebar.markers.delete-group"),
               tooltipPosition: "left",
               onClick: () => this.deleteGroup(group.id),
@@ -535,7 +533,7 @@ export default class MarkersPanel extends Panel {
       ),
       actionsCell([
         rowAction({
-          src: marker.hidden ? "/tabler-icons/eye-closed.svg" : "/tabler-icons/eye.svg",
+          src: marker.hidden ? "eye-closed" : "eye",
           tooltip: translate(
             marker.hidden
               ? "sidebar.markers.show-marker"
@@ -547,7 +545,7 @@ export default class MarkersPanel extends Panel {
           onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
         }),
         rowAction({
-          src: "/images/bin.svg",
+          src: "delete",
           tooltip: translate("sidebar.markers.delete-marker"),
           tooltipPosition: "left",
           onClick: () => this.deleteMarker(marker.id),

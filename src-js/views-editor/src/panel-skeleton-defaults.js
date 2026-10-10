@@ -74,16 +74,9 @@ import {
 const TERMINAL_PRESET_KINDS = ["square", "round", "drop", "serif"];
 
 const SKELETON_SETTINGS_STYLES = `
-  /* Each section opens with an h2, 8px under what is above it and, with
-     the section's own gap, 4px over its table. */
-  .presets-card {
-    gap: 8px;
-  }
-
-  .preset-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  /* A table's add and delete keys sit 4px under it. */
+  .preset-section > .button-row {
+    margin-top: -4px;
   }
 
   /* Current sits 8px before the dropdowns. */
@@ -114,7 +107,7 @@ function textKey(label, onClick) {
 
 export default class SkeletonSettingsPanel extends Panel {
   identifier = "skeleton-settings";
-  iconPath = "/tabler-icons/bone.svg";
+  iconPath = "bone";
   tabLabel = "presets";
 
   constructor(editorController) {
@@ -178,7 +171,7 @@ export default class SkeletonSettingsPanel extends Panel {
       return table;
     };
     const presetSection = (title, filters, table, buttons) =>
-      html.div({ class: "preset-section" }, [
+      html.div({ class: "card-section preset-section" }, [
         html.div({ class: "preset-heading-row control-row" }, [
           html.div({ class: "card-subheading" }, [title]),
           filters,
@@ -297,7 +290,7 @@ export default class SkeletonSettingsPanel extends Panel {
     // grid presets are shown together.
     this.contentElement.appendChild(
       html.div({ class: "panel-section--flex card-column" }, [
-        html.div({ class: "card card--headed presets-card" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["presets"]),
           ]),
@@ -307,15 +300,17 @@ export default class SkeletonSettingsPanel extends Panel {
         ]),
         // The generator's settings; not in the presets design, so they keep
         // their own card.
-        html.div({ class: "card card--headed" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["settings"]),
           ]),
-          this.dropDeadPointsToggle,
-          this.dropDeadPointsWarning,
-          this.simplifyEasingToggle,
-          this.simplifyEasingWarning,
-          this.handTurnAngleOnlyToggle,
+          html.div({ class: "card-section" }, [
+            this.dropDeadPointsToggle,
+            this.dropDeadPointsWarning,
+            this.simplifyEasingToggle,
+            this.simplifyEasingWarning,
+            this.handTurnAngleOnlyToggle,
+          ]),
         ]),
       ])
     );
@@ -810,7 +805,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // it in the Selection tab does. With nothing selected it does nothing.
   _presetApplyAction(readOnly, onClick) {
     return rowAction({
-      src: "/tabler-icons/check.svg",
+      src: "check",
       tooltip: translate("sidebar.skeleton-settings.apply"),
       tooltipPosition: "left",
       disabled: readOnly,
@@ -821,7 +816,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // Update rewrites the row's values from the selection, keeping its name.
   _presetUpdateAction(disabled, onClick) {
     return rowAction({
-      src: "/images/update.svg",
+      src: "update",
       tooltip: translate("sidebar.skeleton-settings.update-from-selection"),
       tooltipPosition: "left",
       disabled,
@@ -903,7 +898,7 @@ export default class SkeletonSettingsPanel extends Panel {
   _presetDeleteAction(rowId, readOnly, onClick) {
     const confirming = this._customDeleteConfirm === rowId;
     const button = rowAction({
-      src: confirming ? "/images/cross.svg" : "/images/bin.svg",
+      src: confirming ? "close" : "delete",
       tooltip: translate(
         confirming
           ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
@@ -1006,13 +1001,13 @@ export default class SkeletonSettingsPanel extends Panel {
           ),
           actionsCell([
             rowAction({
-              src: "/tabler-icons/check.svg",
+              src: "check",
               tooltip: "Apply this grid",
               tooltipPosition: "left",
               onClick: () => applyGridPreset(model, preset),
             }),
             rowAction({
-              src: "/images/update.svg",
+              src: "update",
               tooltip: "Update from the current grid",
               tooltipPosition: "left",
               onClick: () =>
@@ -1426,7 +1421,7 @@ export default class SkeletonSettingsPanel extends Panel {
               ),
               // Ticket 74: the pencil opens the preset's fields in a dialog.
               rowAction({
-                src: "/tabler-icons/pencil.svg",
+                src: "pencil",
                 tooltip: translate("sidebar.skeleton-settings.edit"),
                 tooltipPosition: "left",
                 disabled: readOnly,

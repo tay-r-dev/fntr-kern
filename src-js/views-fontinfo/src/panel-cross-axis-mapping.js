@@ -385,7 +385,7 @@ class CrossAxisMappingBox extends HTMLElement {
       html.createDomElement("icon-button", {
         class: "fontra-ui-font-info-cross-axis-mapping-panel-icon open-close-icon",
         id: "open-close-icon",
-        src: "/tabler-icons/chevron-up.svg",
+        src: "chevron-up",
         open: false,
         onclick: (event) => this.toggleShowHide(event.altKey),
       })
@@ -425,7 +425,7 @@ class CrossAxisMappingBox extends HTMLElement {
           ),
           html.createDomElement("icon-button", {
             "class": "fontra-ui-font-info-cross-axis-mapping-panel-icon",
-            "src": "/images/bin.svg",
+            "src": "delete",
             "onclick": (event) => this.deleteCrossAxisMapping(),
             "data-tooltip": translate("cross-axis-mapping.delete"),
             "data-tooltipposition": "left",

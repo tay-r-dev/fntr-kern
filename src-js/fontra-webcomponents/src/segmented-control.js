@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -259,7 +260,7 @@ export class SegmentedControl extends UnlitElement {
             option.icon
               ? html.createDomElement("inline-svg", {
                   "class": "icon",
-                  "src": option.icon,
+                  "src": iconPath(option.icon),
                   "data-tooltip": option.label,
                   "data-tooltipposition": "top",
                 })

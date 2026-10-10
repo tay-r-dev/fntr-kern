@@ -106,19 +106,11 @@ const FEATURE_TABLES = ["GSUB", "GPOS-emulated", "GPOS"];
 
 export default class TextEntryPanel extends Panel {
   identifier = "text-entry";
-  iconPath = "/images/texttool.svg";
+  iconPath = "text-tool";
   tabLabel = "input";
 
   // Figma 4098:7786: INPUT TEXT and TEXT SHAPING cards.
   static styles = `
-    .text-input-card {
-      gap: 6px;
-    }
-
-    .text-shaping-card {
-      gap: 10px;
-    }
-
     .features-errors {
       display: flex;
       align-items: flex-start;
@@ -169,7 +161,7 @@ export default class TextEntryPanel extends Panel {
       options: ["left", "center", "right"].map((value) => ({
         value,
         label: `Align ${value}`,
-        icon: `/images/align${value}.svg`,
+        icon: `text-align-${value}`,
       })),
       value: this.editorController.sceneSettingsController.model.align,
     });
@@ -183,7 +175,7 @@ export default class TextEntryPanel extends Panel {
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section--flex card-column" }, [
-        html.div({ class: "card card--headed text-input-card" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["input text"]),
             align,
@@ -193,7 +185,7 @@ export default class TextEntryPanel extends Panel {
             multiline: true,
           }),
         ]),
-        html.div({ class: "card card--headed text-shaping-card" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["text shaping"]),
           ]),
@@ -305,10 +297,7 @@ export default class TextEntryPanel extends Panel {
         href: "", // will get filled in later
         target: `fontra.fontinfo.${this.editorController.projectIdentifier}`,
       },
-      [
-        html.createDomElement("inline-svg", { src: "/tabler-icons/bug.svg" }),
-        html.span({}, [""]),
-      ]
+      [html.createDomElement("inline-svg", { src: "bug" }), html.span({}, [""])]
     );
 
     const shapingToggle = html.createDomElement("labeled-toggle", {
@@ -323,7 +312,7 @@ export default class TextEntryPanel extends Panel {
     });
 
     const resetButton = html.createDomElement("icon-button", {
-      "src": "/images/refresh.svg",
+      "src": "refresh",
       "onclick": () => this.resetFeatures(),
       "data-tooltip": translate("sidebar.text-entry.reset-features", "all"),
       "data-tooltipposition": "left",
@@ -354,15 +343,17 @@ export default class TextEntryPanel extends Panel {
       },
     ];
 
-    this.contentElement
-      .querySelector("#text-shaping-placeholder")
-      .replaceWith(
+    this.contentElement.querySelector("#text-shaping-placeholder").replaceWith(
+      // The dropdowns are the card's first section, the shaping switch
+      // after it.
+      html.div({ class: "card-section" }, [
         direction.element,
         script.element,
         language.element,
         this.featuresErrorElement,
-        accordion
-      );
+      ]),
+      accordion
+    );
   }
 
   // A one-choice dropdown (select/dropdown, Figma 2004:29427) with its label

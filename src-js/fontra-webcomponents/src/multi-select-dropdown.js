@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import "./inline-svg.js";
@@ -629,13 +630,13 @@ export class MultiSelectDropdown extends UnlitElement {
         },
       },
       this._icon
-        ? [html.createDomElement("inline-svg", { src: this._icon })]
+        ? [html.createDomElement("inline-svg", { src: iconPath(this._icon) })]
         : [
             this._labelSpan,
             (this._tagSpan = html.span({ class: "tag" })),
             html.createDomElement("inline-svg", {
               class: "chevron",
-              src: "/images/chevron-down.svg",
+              src: "chevron-down",
             }),
           ]
     );

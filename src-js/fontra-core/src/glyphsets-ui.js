@@ -74,9 +74,7 @@ export class GlyphSetsUIController {
             continue;
           }
 
-          errorButton.src = isLoading
-            ? "/tabler-icons/loader-2.svg"
-            : "/tabler-icons/alert-triangle.svg";
+          errorButton.src = isLoading ? "loader-2" : "alert-triangle";
 
           errorButton.classList.toggle(
             "glyphset-error",
@@ -225,22 +223,22 @@ export class GlyphSetsUIController {
     return [
       this.makeGlyphSetErrorButton(glyphSet),
       rowAction({
-        src: "/tabler-icons/pencil.svg",
+        src: "pencil",
         tooltip: translate("action-topics.menu.edit"),
         onClick: (event) => this.editGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/arrow-big-right.svg",
+        src: "arrow-big-right",
         tooltip: translate("glyph-organizing.glyph-set.copy-to", this.copyToLabel),
         onClick: (event) => this.copyGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/images/refresh.svg",
+        src: "refresh",
         tooltip: translate("glyph-organizing.glyph-set.reload"),
         onClick: (event) => this.reloadGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/images/bin.svg",
+        src: "delete",
         tooltip: translate("action.delete"),
         onClick: (event) => this.deleteGlyphSet(event, glyphSet),
       }),
@@ -249,7 +247,7 @@ export class GlyphSetsUIController {
 
   makeGlyphSetErrorButton(glyphSet) {
     const errorButton = rowAction({
-      src: "/tabler-icons/alert-triangle.svg",
+      src: "alert-triangle",
       reveal: "always",
       className: "glyphset-error-button",
       onClick: () => {

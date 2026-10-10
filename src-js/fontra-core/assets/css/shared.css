@@ -105,13 +105,15 @@ theme marker until the design has a dark mode.
   background-color: var(--shared-surface);
 }
 
-/* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
-   rule is drawn outside the fill, over the grey, as Figma strokes it. */
+/* The white card: ruled, 14px corners, 8px in. The rule is drawn outside
+   the fill, over the grey, as Figma strokes it. Its parts are its h1 heading
+   and its sections, 10px apart; a card with a heading has 12px over it.
+   A section is everything under one h2 (card-section). */
 .card {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 8px;
   background-color: var(--shared-card);
   background-clip: padding-box;
@@ -309,8 +311,7 @@ input[type="checkbox"] + label {
 }
 
 /* A section heading inside a card (Figma 2004:29689): heading/h2,
-   text/base/basic/3. It stands 8px under what is above it and 4px over
-   what it heads; the panel's own gaps set that, as ui-form's do. */
+   text/base/basic/3. The card and its card-section space it. */
 .card-subheading {
   flex: 1;
   margin: 0;
@@ -768,9 +769,28 @@ glyph-cell-view .glyph-count {
   border-radius: 14px;
 }
 
-/* A card that opens with a heading: 12px over it, 8px under its last part. */
-.card.card--headed {
+.card:has(> .card-heading, > .card-heading-row) {
   padding-top: 12px;
+}
+
+/* A card's section: an h2 heading and what it heads, 8px between its parts
+   and 4px under the heading (the heading takes back half the gap). A
+   heading in a row with its controls gives that to the row. */
+.card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card-section > .card-subheading:first-child,
+.card-section > :first-child:has(> .card-subheading) {
+  margin-bottom: -4px;
+}
+
+/* Accordions in a card touch: no gap between two in a row. */
+.card > ui-accordion + ui-accordion {
+  margin-top: -10px;
 }
 
 /* A sub-section's own label (Figma 4128:2911): ui/heading/h5. */
