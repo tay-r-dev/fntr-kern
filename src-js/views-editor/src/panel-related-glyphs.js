@@ -35,8 +35,8 @@ import { Accordion } from "@fontra/web-components/ui-accordion.js";
 const COMPOSITION_ACTION_ICONS = {
   "composition.button.attach": "/tabler-icons/link.svg",
   "composition.button.detach": "/tabler-icons/unlink.svg",
-  "composition.button.update": "/tabler-icons/refresh.svg",
-  "composition.button.override": "/tabler-icons/lock.svg",
+  "composition.button.update": "/images/refresh.svg",
+  "composition.button.override": "/images/lock.svg",
 };
 
 export default class RelatedGlyphPanel extends Panel {
@@ -52,18 +52,22 @@ export default class RelatedGlyphPanel extends Panel {
       gap: 12px;
     }
 
+    /* Opens with an h2: 8px over it (the card's 12px less 4), 4px under
+       it (the section's 6px less 2). */
     .compose-section {
       display: flex;
       flex-direction: column;
       gap: 6px;
       min-height: 0;
       flex: 1;
+      margin-top: -4px;
     }
 
     .compose-heading-row {
       display: flex;
       align-items: center;
       gap: 2px;
+      margin-bottom: -2px;
     }
 
     .compose-heading-row > overflow-popover {
@@ -161,7 +165,7 @@ export default class RelatedGlyphPanel extends Panel {
 
     // The redraw icon shows only while the previews hold still.
     this.refreshButtonElement = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/refresh.svg",
+      "src": "/images/refresh.svg",
       "data-tooltip": translate("sidebar.related-glyphs.refresh"),
       "data-tooltipposition": "left",
       "onclick": () => {

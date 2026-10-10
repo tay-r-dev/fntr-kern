@@ -34,7 +34,7 @@ import {
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
-import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
+import { linkedPair } from "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
 import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 74
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
 import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
@@ -74,8 +74,10 @@ import {
 const TERMINAL_PRESET_KINDS = ["square", "round", "drop", "serif"];
 
 const SKELETON_SETTINGS_STYLES = `
+  /* Each section opens with an h2, 8px under what is above it and, with
+     the section's own gap, 4px over its table. */
   .presets-card {
-    gap: 12px;
+    gap: 8px;
   }
 
   .preset-section {
@@ -1306,7 +1308,7 @@ export default class SkeletonSettingsPanel extends Panel {
               right.value = right._toDisplay(working.left[halfField]);
             }
           });
-          return row([left, chain, right]);
+          return row([linkedPair(left, chain, right)]);
         })
       )
     );

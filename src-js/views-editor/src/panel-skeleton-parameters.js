@@ -3,6 +3,7 @@ import { recordChanges } from "@fontra/core/change-recorder.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { isScrubCancelled } from "@fontra/core/number-scrub.js";
+import { checkmark } from "@fontra/core/ui-utils.js";
 import { MAX_TIP_CUT_ANGLE } from "@fontra/core/serif-geometry.js";
 import { DEFAULT_CAP_BALL_EASE_CURVATURE } from "@fontra/core/skeleton-generator.js";
 import {
@@ -34,7 +35,7 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import { throttleCalls } from "@fontra/core/utils.ts";
 import { showMenu } from "@fontra/web-components/menu-panel.js";
-import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
+import { linkedPair } from "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 45
 import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 46
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 49
 import "@fontra/web-components/overflow-button.js"; // for <overflow-button>, ticket 48
@@ -472,9 +473,7 @@ export default class SkeletonParametersPanel {
       this.widthFields.distribution,
     ]);
     this.widthSidesRow = fieldRow([
-      this.widthFields.left,
-      this.widthChain,
-      this.widthFields.right,
+      linkedPair(this.widthFields.left, this.widthChain, this.widthFields.right),
     ]);
 
     // The Insertion section in the same layout: Left, chain, Right for the
@@ -549,14 +548,18 @@ export default class SkeletonParametersPanel {
       );
     }
     this.insertionWidthRow = fieldRow([
-      this.insertionFields.left,
-      this.insertionWidthChain,
-      this.insertionFields.right,
+      linkedPair(
+        this.insertionFields.left,
+        this.insertionWidthChain,
+        this.insertionFields.right
+      ),
     ]);
     this.insertionEasingRow = fieldRow([
-      this.insertionFields["easing-left"],
-      this.insertionEasingChain,
-      this.insertionFields["easing-right"],
+      linkedPair(
+        this.insertionFields["easing-left"],
+        this.insertionEasingChain,
+        this.insertionFields["easing-right"]
+      ),
     ]);
 
     // Ticket 47 (amended by 77, Figma 309:1617): under Generation, one row of
@@ -703,15 +706,18 @@ export default class SkeletonParametersPanel {
     this.ribAngleControl.addEventListener("change", (event) =>
       this._runOwnEdit(() => this._onWidthChange("ribanglelock", event.detail.value))
     );
-    this.ribFootprintCheck = html.input({ type: "checkbox" });
-    this.ribFootprintCheck.addEventListener("change", () =>
-      this._runOwnEdit(() =>
-        this._onWidthChange(
-          "ribanglelockmode",
-          this.ribFootprintCheck.checked ? "rib" : "stroke"
-        )
-      )
-    );
+    // Keep the footprint, as the shared checkmark.
+    const footprintCheckRow = () =>
+      checkmark(
+        false,
+        translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
+        (checked) =>
+          this._runOwnEdit(() =>
+            this._onWidthChange("ribanglelockmode", checked ? "rib" : "stroke")
+          )
+      );
+    const ribFootprintRow = footprintCheckRow();
+    this.ribFootprintCheck = ribFootprintRow.querySelector("input");
     // Flat's own copy of the two, shown outright under the kind chips. The
     // model holds one lock per point, so the two copies cannot drift: both read
     // it and both write it.
@@ -734,24 +740,11 @@ export default class SkeletonParametersPanel {
     this.flatAngleControl = forceAngleControl((value) =>
       this._onWidthChange("ribanglelock", value)
     );
-    this.flatFootprintCheck = html.input({ type: "checkbox" });
-    this.flatFootprintCheck.addEventListener("change", () =>
-      this._runOwnEdit(() =>
-        this._onWidthChange(
-          "ribanglelockmode",
-          this.flatFootprintCheck.checked ? "rib" : "stroke"
-        )
-      )
-    );
+    const flatFootprintRow = footprintCheckRow();
+    this.flatFootprintCheck = flatFootprintRow.querySelector("input");
     this.flatAngleRow = html.div(
       { style: "display: flex; gap: 0.75em; align-items: center; flex-wrap: wrap;" },
-      [
-        this.flatAngleControl,
-        html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
-          this.flatFootprintCheck,
-          translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
-        ]),
-      ]
+      [this.flatAngleControl, flatFootprintRow]
     );
     // A serif's own angle. It turns the serif and leaves the stroke alone, so
     // there is no footprint to keep. Free is the tilt mode, which at a tilt of
@@ -775,25 +768,20 @@ export default class SkeletonParametersPanel {
         { style: "display: flex; flex-direction: column; gap: 0.25em;" },
         children
       );
-    // Rib options: a 24px three-dot icon button whose card holds the rib angle
+    // Rib options: the overflow, whose card holds the rib angle
     // and the lock latches.
-    this.ribOverflow = html.createDomElement("icon-button", {
-      "src": "/images/overflow.svg",
+    this.ribOverflow = html.createDomElement("overflow-popover", {
       "data-tooltip": translate("sidebar.skeleton-parameters.rib-options"),
       "data-tooltipposition": "top",
     });
-    this.ribOverflow.style.width = this.ribOverflow.style.height = "24px";
-    this.ribOverflow.dropdown = html.div(
+    this.ribOverflow.content = html.div(
       {
         class: "selection-row-group-icons",
         style: "display: flex; flex-direction: column; align-items: start; gap: 0.9em;",
       },
       [
         cardColumn([cardTitle("rib-angle"), this.ribAngleControl]),
-        html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
-          this.ribFootprintCheck,
-          translate("sidebar.skeleton-parameters.rib-angle-lock-mode.rib"),
-        ]),
+        ribFootprintRow,
         cardColumn([
           cardTitle("group.lock"),
           html.div(
@@ -889,6 +877,20 @@ export default class SkeletonParametersPanel {
       this.capFields.balleasing,
       this.capFields.ballcurvature,
     ]);
+    // Which side the ball sits on, as the shared dropdown with its name above.
+    // Built once; each update sets its items from the selection.
+    this.ballSideDropdown = html.createDomElement("multi-select-dropdown", {
+      label: translate("sidebar.skeleton-parameters.cap-ball-side"),
+      labelAbove: true,
+      singleChoice: true,
+      stretch: true,
+    });
+    this.ballSideDropdown.addEventListener("change", (event) => {
+      const value = event.detail.item?.value;
+      if (value) {
+        this._runOwnEdit(() => this._onCapChange("ballside", value));
+      }
+    });
 
     // Ticket 61: Corner rounding as two chained rows, Distance and Curvature,
     // each left, chain, right. Both chains are `corner:linked`. Closed, the
@@ -916,14 +918,18 @@ export default class SkeletonParametersPanel {
     };
     this.cornerChains = [cornerChain(), cornerChain()];
     this.cornerDistanceRow = fieldRow([
-      this.cornerFields["left-distance"],
-      this.cornerChains[0],
-      this.cornerFields["right-distance"],
+      linkedPair(
+        this.cornerFields["left-distance"],
+        this.cornerChains[0],
+        this.cornerFields["right-distance"]
+      ),
     ]);
     this.cornerCurvatureRow = fieldRow([
-      this.cornerFields["left-curvature"],
-      this.cornerChains[1],
-      this.cornerFields["right-curvature"],
+      linkedPair(
+        this.cornerFields["left-curvature"],
+        this.cornerChains[1],
+        this.cornerFields["right-curvature"]
+      ),
     ]);
     this.cornerDistributionField = this._makeCompactField(
       "corner:distribution",
@@ -950,25 +956,20 @@ export default class SkeletonParametersPanel {
     this.serifFields = {};
     this.serifChains = {};
     // The serif rows follow the Transform rows: the name in a label column,
-    // the fields after it. The group title is bold, as in the design.
+    // ui/label/XS, the fields after it. The group title is ui/heading/h5.
     // A group is one grid, so its label column is as wide as its widest label.
     // A row adds its two cells to that grid rather than making its own.
     const labeledRow = (labelKey, children) =>
       html.div({ style: "display: contents;" }, [
-        html.span({ style: "white-space: nowrap;" }, [
+        html.span({ class: "row-label" }, [
           translate(`sidebar.skeleton-parameters.${labelKey}`),
         ]),
         fieldRow(children),
       ]);
     const groupTitle = (labelKey) =>
-      html.span(
-        {
-          // ui/heading/h5
-          style:
-            "font: var(--ui-text-heading-h5); letter-spacing: var(--ui-tracking); grid-column: 1 / -1; margin-top: 0.5em;",
-        },
-        [translate(`sidebar.skeleton-parameters.${labelKey}`)]
-      );
+      html.span({ class: "row-group-title" }, [
+        translate(`sidebar.skeleton-parameters.${labelKey}`),
+      ]);
     // A group adds its cells to the one serif grid below, so every serif label
     // shares one column, as wide as the widest of them.
     const groupBlock = (children) =>
@@ -996,9 +997,11 @@ export default class SkeletonParametersPanel {
           );
           this.serifChains[field] = chain;
           return labeledRow(`serif-field.${field}`, [
-            this.serifFields[`left-${field}`],
-            chain,
-            this.serifFields[`right-${field}`],
+            linkedPair(
+              this.serifFields[`left-${field}`],
+              chain,
+              this.serifFields[`right-${field}`]
+            ),
           ]);
         }),
       ])
@@ -1078,10 +1081,10 @@ export default class SkeletonParametersPanel {
     ]);
     // Projection sits in the Skeleton heading, with its options beside it.
     this.projectionControl.setAttribute("small", "");
-    this.projectionHeader = html.div(
-      { style: "display: flex; align-items: center; gap: 4px;" },
-      [this.projectionControl, this.projectionOverflow]
-    );
+    this.projectionHeader = html.div({ class: "control-group" }, [
+      this.projectionControl,
+      this.projectionOverflow,
+    ]);
   }
 
   // One compact scrub field that lives for the life of the panel. A drag runs
@@ -2034,7 +2037,7 @@ export default class SkeletonParametersPanel {
     const formContents = [
       {
         type: "header",
-        level: "h2",
+        level: "h1",
         label: translate("sidebar.skeleton-parameters.title"),
         auxiliaryElement: this.projectionHeader,
       },
@@ -2149,7 +2152,7 @@ export default class SkeletonParametersPanel {
     this._refreshWidthPresetControls();
     formContents.push({
       type: "header",
-      level: "h3",
+      level: "h2",
       label: translate("sidebar.skeleton-parameters.generation"),
       auxiliaryElement: this.widthPresetControl.element,
     });
@@ -2282,7 +2285,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
-      level: "h3",
+      level: "h2",
       label: translate("sidebar.skeleton-parameters.caps"),
       // The kind, as the small chips on the heading.
       auxiliaryElement: this.terminalKindControl,
@@ -2424,29 +2427,18 @@ export default class SkeletonParametersPanel {
         element: this.ballEaseRow,
         layoutKey: "ballEaseRow",
       });
+      // A mixed selection picks nothing, so the field reads empty.
+      const ballSide = cap.capBallSide.mixed ? null : (cap.capBallSide.value ?? "auto");
+      this.ballSideDropdown.items = ["auto", "left", "right"].map((value) => ({
+        value,
+        label: translate(`sidebar.skeleton-parameters.cap-ball-side.${value}`),
+        checked: value === ballSide,
+      }));
+      this.ballSideDropdown.disabled = !capStyle.canEdit || !!this._terminalBound;
       formContents.push({
-        type: "select",
-        key: "cap:ballside",
-        label: translate("sidebar.skeleton-parameters.cap-ball-side"),
-        value: cap.capBallSide.mixed ? "" : (cap.capBallSide.value ?? "auto"),
-        disabled: !capStyle.canEdit || !!this._terminalBound,
-        options: [
-          ...(cap.capBallSide.mixed
-            ? [{ value: "", label: "mixed", disabled: true }]
-            : []),
-          {
-            value: "auto",
-            label: translate("sidebar.skeleton-parameters.cap-ball-side.auto"),
-          },
-          {
-            value: "left",
-            label: translate("sidebar.skeleton-parameters.cap-ball-side.left"),
-          },
-          {
-            value: "right",
-            label: translate("sidebar.skeleton-parameters.cap-ball-side.right"),
-          },
-        ],
+        type: "single-icon",
+        element: this.ballSideDropdown,
+        layoutKey: "ballSideDropdown",
       });
     } else if (styleValue === "serif") {
       this._buildSerifSection(
@@ -2472,7 +2464,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
-      level: "h3",
+      level: "h2",
       label: translate("sidebar.skeleton-parameters.corner-rounding"),
     });
     const asPercent = (summary) => ({
@@ -2541,7 +2533,7 @@ export default class SkeletonParametersPanel {
     formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
-      level: "h3",
+      level: "h2",
       label: translate("sidebar.skeleton-parameters.insertion"),
     });
     // A closed link greys the right-hand fields, which follow the left, the

@@ -40,8 +40,8 @@ import "@fontra/web-components/ui-text-input.js";
 
 const ICON = "/tabler-icons/arrows-horizontal.svg";
 const ICON_2 = "/tabler-icons/eye.svg";
-const ICON_3 = "/tabler-icons/lock.svg";
-const ICON_4 = "/tabler-icons/trash.svg";
+const ICON_3 = "/images/lock.svg";
+const ICON_4 = "/images/bin.svg";
 
 // A new element with `props` set as properties (the components' own
 // convention: their states are JS properties, not attributes).

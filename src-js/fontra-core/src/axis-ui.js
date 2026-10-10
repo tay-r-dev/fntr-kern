@@ -52,7 +52,7 @@ export function makeFontAxisAccordionItems(
         onclick: (event) => editFontAxes(projectIdentifier),
       }),
       makeAccordionHeaderButton({
-        icon: "refresh",
+        icon: "/images/refresh.svg",
         id: "reset-font-axes-button",
         tooltip: translate("sidebar.designspace-navigation.font-axes.reset"),
         onclick: (event) => resetAxes(fontController.axes.axes, settings, false),
@@ -84,7 +84,7 @@ export function makeFontAxisAccordionItems(
         onclick: (event) => editFontAxes(projectIdentifier),
       }),
       makeAccordionHeaderButton({
-        icon: "refresh",
+        icon: "/images/refresh.svg",
         id: "reset-hidden-font-axes-button",
         tooltip: translate("sidebar.designspace-navigation.font-axes.reset"),
         onclick: (event) => resetAxes(fontController.axes.axes, settings, true),

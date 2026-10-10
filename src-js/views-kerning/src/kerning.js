@@ -5592,7 +5592,7 @@ export class KerningViewController extends ViewController {
         onClick: () => this.fillClass(entry.side, entry.name),
       }),
       rowAction({
-        src: "/tabler-icons/trash.svg",
+        src: "/images/bin.svg",
         tooltip: `Delete class "${entry.name}"`,
         tooltipPosition: "left",
         reveal: "hover",
@@ -6538,7 +6538,7 @@ export class KerningViewController extends ViewController {
         const removeButton = document.createElement("icon-button");
         removeButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
-        removeButton.src = "/tabler-icons/lock-open-2.svg";
+        removeButton.src = "/images/lock-open.svg";
         removeButton.setAttribute(
           "aria-label",
           `Remove pair exception for ${row.left} × ${row.right}`
@@ -6563,7 +6563,7 @@ export class KerningViewController extends ViewController {
         const lockButton = document.createElement("icon-button");
         lockButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-create";
-        lockButton.src = "/tabler-icons/lock.svg";
+        lockButton.src = "/images/lock.svg";
         lockButton.setAttribute(
           "aria-label",
           `Create a pair exception for ${row.left} × ${row.right}`

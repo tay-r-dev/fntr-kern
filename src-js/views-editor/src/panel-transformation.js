@@ -32,6 +32,7 @@ import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Sca
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
 import { Form } from "@fontra/web-components/ui-form.js";
+import { checkmark } from "@fontra/core/ui-utils.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
   applyGeneratedContourRemap,
@@ -71,21 +72,33 @@ export default class TransformationPanel {
     min-width: 0;
   }
 
-  /* 16px: the icons' 24px grid lands on whole pixels there. */
+  /* A row icon that opens a card is a button, 16px. */
   .row-icon {
     width: 16px;
     height: 16px;
   }
 
-  /* A static row icon is an inline-svg: fill its box. */
+  /* A static one is 12px, the size of a button's icon. */
+  inline-svg.row-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* A static row icon is an inline-svg, in icon 3 as a button icon at rest:
+     fill its box. */
+  inline-svg.row-icon {
+    color: var(--icon-base-basic-3);
+  }
+
   inline-svg.row-icon svg {
     display: block;
     width: 100%;
     height: 100%;
   }
 
-  /* The Origin row: the grid, the typed X and Y, then pick and clear. */
-  .origin-row {
+  /* Fields and the buttons after them in one line: the Origin row's typed
+     X and Y with pick and clear, the distribution spacing with clear. */
+  .field-row {
     display: flex;
     flex: 1 1 0;
     min-width: 0;
@@ -93,7 +106,7 @@ export default class TransformationPanel {
     gap: 4px;
   }
 
-  .origin-row > input-field-large {
+  .field-row > input-field-large {
     flex: 1 1 0;
     min-width: 0;
   }
@@ -102,12 +115,6 @@ export default class TransformationPanel {
     display: flex;
     gap: 6px;
     padding-left: 2px;
-    opacity: 0.3;
-  }
-
-  .origin-buttons:hover,
-  .origin-buttons:has(icon-button[on]) {
-    opacity: 1;
   }
 
   /* A 24px square: 3 x 6px dots and two 3px gaps. */
@@ -120,10 +127,12 @@ export default class TransformationPanel {
     flex: 0 0 auto;
   }
 
+  /* The dots take select/basic's fills: grey at rest, darker on hover, dark
+     when picked, lime when a picked dot is hovered. */
   .origin-radio-buttons > input[type="radio"] {
     appearance: none;
     box-sizing: border-box;
-    background-color: var(--editor-mini-console-background-color-light);
+    background-color: var(--sl-bsb-sr-rest);
     margin: 0;
     padding: 0;
     width: 100%;
@@ -133,14 +142,23 @@ export default class TransformationPanel {
     cursor: pointer;
   }
 
-  .origin-radio-buttons > input[type="radio"]:hover,
-  .origin-radio-buttons > input[type="radio"]:checked {
-    background-color: var(--text-input-background-color-dark);
+  .origin-radio-buttons > input[type="radio"]:hover {
+    background-color: var(--sl-bsb-sr-hover);
   }
 
+  .origin-radio-buttons > input[type="radio"]:checked {
+    background-color: var(--sl-bsb-sr-active);
+  }
+
+  .origin-radio-buttons > input[type="radio"]:checked:hover {
+    background-color: var(--sl-bsb-sr-active-hover);
+  }
+
+  /* ui/label/XS, as a card-note. */
   .harmonize-report {
-    font-size: 0.9em;
-    opacity: 0.7;
+    font: var(--ui-text-label-xs);
+    letter-spacing: var(--ui-tracking);
+    color: var(--text-base-basic-3);
   }
 
   /* Operations, Path, Harmonize: a small label over segmented rows, two
@@ -462,7 +480,7 @@ export default class TransformationPanel {
 
     formContents.push({
       type: "header",
-      level: "h2",
+      level: "h1",
       label: translate("sidebar.selection-transformation.title"),
     });
 
@@ -541,7 +559,7 @@ export default class TransformationPanel {
       field2: { type: "auxiliaryElement", auxiliaryElement: radioButtonOrigin },
       field3: {
         type: "auxiliaryElement",
-        auxiliaryElement: html.div({ class: "origin-row" }, [
+        auxiliaryElement: html.div({ class: "field-row" }, [
           this.originXField,
           this.originYField,
           html.div({ class: "origin-buttons" }, [pickButton, clearButton]),
@@ -812,8 +830,14 @@ export default class TransformationPanel {
       if (onclick) {
         button.onclick = onclick;
       }
+      // The dropdown is the design's settings card (shared.css): its parts
+      // stacked in the card's body.
       if (dropdown) {
-        button.dropdown = dropdown;
+        button.setAttribute("settings-card", "");
+        button.dropdown = html.div(
+          { class: "settings-card-body" },
+          [].concat(dropdown)
+        );
       }
       return button;
     };
@@ -825,24 +849,33 @@ export default class TransformationPanel {
     const labeledGroup = (key, element) =>
       html.div({ class: "row-group" }, [groupLabel(key), element]);
 
-    // The distribution spacing lives in each distribute button's dropdown;
-    // both write the one parameter.
-    const spacingCard = () =>
-      html.input({
-        type: "number",
-        value:
-          this.transformParameters.customDistributionSpacing == null
-            ? ""
-            : String(this.transformParameters.customDistributionSpacing),
-        placeholder: translate(
-          "sidebar.selection-transformation.distribute.distance-in-units"
-        ),
-        oninput: (event) => {
-          const raw = event.target.value;
-          this.transformParameters.customDistributionSpacing =
-            raw === "" ? null : Number(raw);
-        },
+    // The distribution spacing lives in each distribute button's dropdown,
+    // a plain number field named over it; both write the one parameter. Empty,
+    // the distribution spaces the objects evenly; the cross empties it.
+    const spacingCard = () => {
+      const field = html.createDomElement("input-field-large", {
+        value: this.transformParameters.customDistributionSpacing,
       });
+      field.type = "number";
+      field.addEventListener("change", (event) => {
+        this.transformParameters.customDistributionSpacing = Number(event.detail.value);
+      });
+      const clearButton = html.createDomElement("icon-button", {
+        "src": "/images/cross.svg",
+        "data-tooltip": translate("sidebar.selection-transformation.distribute.clear"),
+        "data-tooltipposition": "bottom",
+      });
+      clearButton.onclick = () => {
+        this.transformParameters.customDistributionSpacing = null;
+        field.value = null;
+      };
+      return html.div({ class: "field-group" }, [
+        html.span({ class: "field-label" }, [
+          translate("sidebar.selection-transformation.distribute.distance-in-units"),
+        ]),
+        html.div({ class: "field-row" }, [field, clearButton]),
+      ]);
+    };
 
     const K = "sidebar.selection-transformation";
     const operations = html.div({ class: "row-group" }, [
@@ -870,13 +903,13 @@ export default class TransformationPanel {
         ]),
         tray([
           segment(
-            "/images/transform-pane-ldistribute-vertically.svg",
+            "/images/transform-pane-ldistribute-horizontally.svg",
             `${K}.distribute.horizontally`,
             () => this.moveObjects(distributeHorizontally),
             spacingCard()
           ),
           segment(
-            "/images/transform-pane-ldistribute-horizontally.svg",
+            "/images/transform-pane-ldistribute-vertically.svg",
             `${K}.distribute.vertically`,
             () => this.moveObjects(distributeVertically),
             spacingCard()
@@ -947,26 +980,20 @@ export default class TransformationPanel {
     const settings = applicationSettingsController.model;
     this.harmonizeChecks = {};
     const optionCheck = (key, labelKey) => {
-      const check = html.input({ type: "checkbox" });
-      check.checked = !!settings[key];
-      check.addEventListener("change", () => (settings[key] = check.checked));
-      this.harmonizeChecks[key] = check;
-      return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
-        check,
+      const row = checkmark(
+        settings[key],
         translate(`${K}.harmonize.${labelKey}`),
-      ]);
+        (checked) => (settings[key] = checked)
+      );
+      this.harmonizeChecks[key] = row.querySelector("input");
+      return row;
     };
-    const harmonizeOptions = html.div(
-      {
-        style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
-      },
-      [
-        optionCheck("harmonizePreserveCurvature", "preserve-curvature"),
-        optionCheck("harmonizeMoveOnCurve", "move-on-curve"),
-        optionCheck("harmonizeEqualize", "equalize"),
-        optionCheck("harmonizeOtherSources", "other-sources"),
-      ]
-    );
+    const harmonizeOptions = [
+      optionCheck("harmonizePreserveCurvature", "preserve-curvature"),
+      optionCheck("harmonizeMoveOnCurve", "move-on-curve"),
+      optionCheck("harmonizeEqualize", "equalize"),
+      optionCheck("harmonizeOtherSources", "other-sources"),
+    ];
     const g3Button = segment(undefined, `${K}.harmonize.g3`, () =>
       this.doHarmonize(true)
     );

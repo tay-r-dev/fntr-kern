@@ -327,10 +327,10 @@ export function groupAccordionHeaderButtons(buttons) {
 }
 
 export function makeAccordionHeaderButton(button) {
-  // button/icon at size S.
+  // button/icon at size S. `icon` is a full path, or a tabler icon's name.
   let options = {
     size: "S",
-    src: `/tabler-icons/${button.icon}.svg`,
+    src: button.icon.startsWith("/") ? button.icon : `/tabler-icons/${button.icon}.svg`,
     onclick: button.onclick,
   };
 

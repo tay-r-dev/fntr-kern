@@ -266,7 +266,8 @@ export class InputScrub extends UnlitElement {
   }
 
   _makeField(side) {
-    const field = html.createDomElement("input-field-large", { side });
+    const field = html.createDomElement("input-field-large");
+    field.setAttribute("side", side);
 
     field.addEventListener("change", (event) => this._handleFieldChange(side, event));
     field.addEventListener("scrubstart", (event) => {

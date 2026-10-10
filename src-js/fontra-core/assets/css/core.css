@@ -246,7 +246,7 @@
   /* heading/h1 and h2 are TikTok Sans at width 150, uppercase, no
      tracking. */
   --ui-text-heading-h1: 520 extra-expanded 14px / 16px var(--ui-font-sans);
-  --ui-text-heading-h2: 520 extra-expanded 12px / 12px var(--ui-font-sans);
+  --ui-text-heading-h2: 520 extra-expanded 10px / 12px var(--ui-font-sans);
   --ui-text-heading-h3: 300 condensed 13px / 14px var(--ui-font-mono);
   --ui-text-heading-h4: 300 condensed 11px / 12px var(--ui-font-mono);
   /* Figma's weight 450 at the Regular static: 450 would take Medium. */

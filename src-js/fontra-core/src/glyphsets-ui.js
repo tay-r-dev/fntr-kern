@@ -235,12 +235,12 @@ export class GlyphSetsUIController {
         onClick: (event) => this.copyGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/refresh.svg",
+        src: "/images/refresh.svg",
         tooltip: translate("glyph-organizing.glyph-set.reload"),
         onClick: (event) => this.reloadGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/trash.svg",
+        src: "/images/bin.svg",
         tooltip: translate("action.delete"),
         onClick: (event) => this.deleteGlyphSet(event, glyphSet),
       }),

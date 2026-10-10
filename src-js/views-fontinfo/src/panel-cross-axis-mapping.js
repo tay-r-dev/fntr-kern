@@ -425,7 +425,7 @@ class CrossAxisMappingBox extends HTMLElement {
           ),
           html.createDomElement("icon-button", {
             "class": "fontra-ui-font-info-cross-axis-mapping-panel-icon",
-            "src": "/tabler-icons/trash.svg",
+            "src": "/images/bin.svg",
             "onclick": (event) => this.deleteCrossAxisMapping(),
             "data-tooltip": translate("cross-axis-mapping.delete"),
             "data-tooltipposition": "left",

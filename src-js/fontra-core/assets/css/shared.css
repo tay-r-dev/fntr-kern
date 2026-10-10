@@ -149,6 +149,24 @@ theme marker until the design has a dark mode.
   color: var(--shared-label);
 }
 
+/* A field row's name in a label column beside it: ui/label/XS, text 3. */
+.row-label {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
+  white-space: nowrap;
+}
+
+/* The title over a group of such rows, across the whole grid:
+   ui/heading/h5, text 3. */
+.row-group-title {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
+}
+
 /* Fields side by side, 4px apart, sharing the width. */
 .field-pair {
   display: flex;
@@ -156,6 +174,20 @@ theme marker until the design has a dark mode.
 }
 
 .field-pair > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Two fields joined by a chain-link (chain-link.js linkedPair): the fields
+   touch the strip, as in ui-input-scrub. */
+.linked-pair {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+}
+
+.linked-pair > input-field-large {
   flex: 1 1 0;
   min-width: 0;
 }
@@ -277,7 +309,8 @@ input[type="checkbox"] + label {
 }
 
 /* A section heading inside a card (Figma 2004:29689): heading/h2,
-   text/base/basic/3. */
+   text/base/basic/3. It stands 8px under what is above it and 4px over
+   what it heads; the panel's own gaps set that, as ui-form's do. */
 .card-subheading {
   flex: 1;
   margin: 0;
@@ -879,6 +912,13 @@ glyph-cell-view .glyph-count {
   gap: 4px 8px;
 }
 
+/* A dropdown in a control group asks for no room by its label: it takes
+   from 72px to 156px of what the line leaves, so picking a long name does
+   not push the group onto a line of its own. */
+.control-group > multi-select-dropdown {
+  contain: inline-size;
+}
+
 .control-row > :not(.control-group) {
   flex: none;
 }
@@ -1105,11 +1145,11 @@ glyph-cell-view .glyph-count {
   padding-bottom: 4px;
 }
 
-/* ui/heading/h5 */
+/* ui/heading/h5, as a field-label: it names the buttons below it. */
 .row-group > .selection-row-group-label {
   font: var(--ui-text-heading-h5);
   letter-spacing: var(--ui-tracking);
-  color: #8e8e8e;
+  color: var(--shared-label);
 }
 
 .row-pair {

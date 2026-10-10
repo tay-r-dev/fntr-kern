@@ -324,6 +324,9 @@ export class IconButton extends UnlitElement {
     badge: { type: Boolean },
     table: { type: Boolean },
     size: { type: String },
+    // An overflow (overflow-popover.js): its dots say there is more, so a
+    // dropdown draws no chevron.
+    overflow: { type: Boolean },
   };
 
   get disabled() {
@@ -432,7 +435,7 @@ export class IconButton extends UnlitElement {
       this.label && !this.src
         ? [this.label]
         : [html.createDomElement("inline-svg", { src: this.src })];
-    if (this.dropdown) {
+    if (this.dropdown && !this.overflow) {
       children.push(
         html.createDomElement("inline-svg", {
           src: "/tabler-icons/chevron-up.svg",

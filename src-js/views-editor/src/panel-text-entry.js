@@ -323,7 +323,7 @@ export default class TextEntryPanel extends Panel {
     });
 
     const resetButton = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/refresh.svg",
+      "src": "/images/refresh.svg",
       "onclick": () => this.resetFeatures(),
       "data-tooltip": translate("sidebar.text-entry.reset-features", "all"),
       "data-tooltipposition": "left",

@@ -169,6 +169,13 @@ export class SegmentedControl extends UnlitElement {
       height: var(--segmented-control-button-height, 100%);
     }
 
+    /* A heading's selector that has wrapped to a line of its own under the
+       heading fills that line. It only grows, so it wraps no sooner than it
+       would without it. */
+    :host([small][own-line]) {
+      flex-grow: 1;
+    }
+
     /* The heading's lit pill casts a paler shadow (Figma 2004:29331). */
     :host([small]:not([disabled])) .row:not(:hover) button.on {
       box-shadow: 0 1px 1px var(--shadow-base-1);
@@ -180,6 +187,21 @@ export class SegmentedControl extends UnlitElement {
     this._options = [];
     this._value = undefined;
     this._disabled = false;
+  }
+
+  // The small form sits on a heading: it watches whether it has wrapped.
+  connectedCallback() {
+    super.connectedCallback();
+    if (this.hasAttribute("small")) {
+      this._ownLineObserver?.disconnect();
+      this._ownLineObserver = html.watchOwnLine(this);
+    }
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this._ownLineObserver?.disconnect();
+    this._ownLineObserver = null;
   }
 
   // { value, label, disabled }[]. `disabled` on an individual option freezes

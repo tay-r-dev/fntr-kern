@@ -266,7 +266,7 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.user-settings.glyph.background-image"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "src": "/tabler-icons/refresh.svg",
+          "src": "/images/refresh.svg",
           "onclick": (event) => this._resetTransformationForBackgroundImage(),
           "data-tooltip": translate(
             "sidebar.selection-info.component.reset-transformation"
@@ -336,7 +336,7 @@ export default class SelectionInfoPanel extends Panel {
         type: "header",
         label: translate("sidebar.selection-info.component.transformation"),
         auxiliaryElement: html.createDomElement("icon-button", {
-          "src": "/tabler-icons/refresh.svg",
+          "src": "/images/refresh.svg",
           "onclick": (event) => this._resetTransformationForComponent(index),
           "data-tooltip": translate(
             "sidebar.selection-info.component.reset-transformation"
@@ -430,7 +430,7 @@ export default class SelectionInfoPanel extends Panel {
                   "data-tooltipposition": "left",
                 }),
                 html.createDomElement("icon-button", {
-                  "src": "/tabler-icons/refresh.svg",
+                  "src": "/images/refresh.svg",
                   "onclick": (event) => this._resetAxisValuesForComponent(index),
                   "data-tooltip": translate(
                     "sidebar.selection-info.component.reset-axis-values"
@@ -499,7 +499,7 @@ export default class SelectionInfoPanel extends Panel {
 
     this._lockButton = html.createDomElement("icon-button", {
       "class": "metrics-heading-icon",
-      "src": editLocked ? "/tabler-icons/lock.svg" : "/tabler-icons/lock-open-2.svg",
+      "src": editLocked ? "/images/lock.svg" : "/images/lock-open.svg",
       "onclick": () => this._toggleGlyphLock(varGlyphController.glyph),
       "data-tooltip": translate(
         this.fontController.readOnly
@@ -583,7 +583,7 @@ export default class SelectionInfoPanel extends Panel {
           html.createDomElement("icon-button", {
             "slot": "end",
             "class": "metrics-update",
-            "src": "/tabler-icons/refresh.svg",
+            "src": "/images/refresh.svg",
             "disabled": editLocked,
             "data-tooltip": translate(
               "sidebar.selection-info.metrics-key.stale.tooltip"
@@ -624,7 +624,7 @@ export default class SelectionInfoPanel extends Panel {
       const isConfirming = this._metricsUnlinkConfirm === side;
       const isOverridden = metricsKeyDisplay[side].level === "source";
       const unlinkButton = html.createDomElement("icon-button", {
-        "src": isConfirming ? "/tabler-icons/x.svg" : "/tabler-icons/unlink.svg",
+        "src": isConfirming ? "/images/cross.svg" : "/tabler-icons/unlink.svg",
         "disabled": editLocked,
         "data-tooltip": translate(
           isConfirming
@@ -835,8 +835,8 @@ export default class SelectionInfoPanel extends Panel {
 
     const iconElement = this._lockButton;
     iconElement.src = varGlyph.customData["fontra.glyph.locked"]
-      ? "/tabler-icons/lock-open-2.svg"
-      : "/tabler-icons/lock.svg";
+      ? "/images/lock-open.svg"
+      : "/images/lock.svg";
 
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {

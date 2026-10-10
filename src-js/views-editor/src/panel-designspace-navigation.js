@@ -572,8 +572,10 @@ export default class DesignspaceNavigationPanel extends Panel {
         gap: 6px;
       }
 
+      /* The card's 8px gap is all that stands between the heading and the
+         grid heading under it. */
       .ds-heading--spaced {
-        padding: 4px 0 12px;
+        padding: 4px 0 0;
       }
 
       .ds-label--dark {
@@ -587,8 +589,13 @@ export default class DesignspaceNavigationPanel extends Panel {
         gap: 8px;
       }
 
+      /* Each section opens with an h2: 8px over it, 4px under it. */
       .ds-stack--sections {
-        gap: 16px;
+        gap: 8px;
+      }
+
+      .ds-stack--sections > .ds-stack > :first-child {
+        margin-bottom: -4px;
       }
 
       .ds-stack--grid {
@@ -1136,7 +1143,7 @@ export default class DesignspaceNavigationPanel extends Panel {
               onclick: (event) => this.editGlyphAxes(),
             }),
             makeAccordionHeaderButton({
-              icon: "refresh",
+              icon: "/images/refresh.svg",
               id: "reset-glyph-axes-button",
               tooltip: translate("sidebar.designspace-navigation.glyph-axes.reset"),
               onclick: (event) => this.resetGlyphAxesToDefault(),

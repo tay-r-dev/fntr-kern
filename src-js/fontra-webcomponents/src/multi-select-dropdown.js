@@ -409,26 +409,54 @@ export class MultiSelectDropdown extends UnlitElement {
       height: 8px;
     }
 
-    /* Ticket 48: the icon mode, which is how the overflow button draws. */
-    button.icon-mode {
-      display: flex;
-      background-color: transparent;
-      border: none;
-      padding: 0;
-      width: 1.5em;
-      height: 1.5em;
-    }
-
-    button.icon-mode inline-svg {
-      width: 100%;
-      height: 100%;
-    }
-
     button:disabled,
     :host(:hover) button:disabled {
       background-color: var(--multi-select-dropdown-disabled-color);
       border-color: var(--multi-select-dropdown-disabled-border-color);
       color: var(--multi-select-dropdown-disabled-text-color);
+    }
+
+    /* Ticket 48: the icon mode, which is how the overflow button draws --
+       as button/icon (icon-button.js): a 24px box round a 12px icon, the
+       grey fill on hover, the press look while its list is open. */
+    button.icon-mode,
+    button.icon-mode:disabled {
+      display: flex;
+      justify-content: center;
+      background-color: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0;
+      width: var(--bt-sgb-height);
+      height: var(--bt-sgb-height);
+      color: var(--bt-sgc-ic-rest);
+      transition:
+        background-color 150ms,
+        color 150ms;
+    }
+
+    :host(:hover) button.icon-mode:not(:disabled) {
+      background-color: var(--bt-sgi-sr-hover);
+      border-color: var(--bt-sgi-ln-hover);
+      color: var(--bt-sgc-ic-hover);
+    }
+
+    button.icon-mode.open,
+    :host(:hover) button.icon-mode.open:not(:disabled) {
+      background-color: var(--bt-sgi-sr-focus);
+      border-color: var(--bt-sgi-ln-focus);
+      color: var(--bt-sgc-ic-focus);
+    }
+
+    button.icon-mode:disabled,
+    :host(:hover) button.icon-mode:disabled {
+      color: var(--bt-sgc-ic-disabled);
+    }
+
+    button.icon-mode inline-svg {
+      display: block;
+      width: 12px;
+      height: 12px;
     }
   `;
 
@@ -444,29 +472,12 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   // In a control group (shared.css), marks whether the group has wrapped to
-  // a line of its own under its heading: it is then lower in its row than
-  // half its own height.
+  // a line of its own under its heading.
   _watchOwnLine() {
-    let group = this.closest(".control-group");
-    while (group?.parentElement?.closest(".control-group")) {
-      group = group.parentElement.closest(".control-group");
-    }
-    const row = group?.parentElement;
-    if (!row) {
-      return;
-    }
-    const update = () => {
-      const groupBox = group.getBoundingClientRect();
-      const rowBox = row.getBoundingClientRect();
-      this.toggleAttribute(
-        "own-line",
-        groupBox.height > 0 && groupBox.top - rowBox.top > groupBox.height / 2
-      );
-    };
     this._ownLineObserver?.disconnect();
-    this._ownLineObserver = new ResizeObserver(update);
-    this._ownLineObserver.observe(row);
-    update();
+    this._ownLineObserver = this.closest(".control-group")
+      ? html.watchOwnLine(this)
+      : null;
   }
 
   constructor() {

@@ -218,7 +218,7 @@ export default class MarkersPanel extends Panel {
     });
     eye.onclick = () => this.toggleSectionVisible(kind);
     const trash = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/trash.svg",
+      "src": "/images/bin.svg",
       "data-tooltip": translate("sidebar.markers.erase-section"),
       "data-tooltipposition": "left",
     });
@@ -465,7 +465,7 @@ export default class MarkersPanel extends Panel {
           actionsCell([
             eye,
             rowAction({
-              src: "/tabler-icons/trash.svg",
+              src: "/images/bin.svg",
               tooltip: translate("sidebar.markers.delete-group"),
               tooltipPosition: "left",
               onClick: () => this.deleteGroup(group.id),
@@ -547,7 +547,7 @@ export default class MarkersPanel extends Panel {
           onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
         }),
         rowAction({
-          src: "/tabler-icons/trash.svg",
+          src: "/images/bin.svg",
           tooltip: translate("sidebar.markers.delete-marker"),
           tooltipPosition: "left",
           onClick: () => this.deleteMarker(marker.id),

@@ -281,6 +281,35 @@ export function naturalCellWidth(cell) {
   return width;
 }
 
+// Marks `element` with the own-line attribute while what it sits in has
+// wrapped to a line of its own under a heading: it is then lower in its row
+// than half its own height. What it sits in is its outermost control group
+// (shared.css), or the element itself outside one; the row is that one's
+// parent. Returns the observer, for the caller to disconnect.
+export function watchOwnLine(element) {
+  let group = element.closest(".control-group");
+  while (group?.parentElement?.closest(".control-group")) {
+    group = group.parentElement.closest(".control-group");
+  }
+  group = group || element;
+  const row = group.parentElement;
+  if (!row) {
+    return null;
+  }
+  const update = () => {
+    const groupBox = group.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    element.toggleAttribute(
+      "own-line",
+      groupBox.height > 0 && groupBox.top - rowBox.top > groupBox.height / 2
+    );
+  };
+  const observer = new ResizeObserver(update);
+  observer.observe(row);
+  update();
+  return observer;
+}
+
 // A popover its button opens and closes. It is a manual popover: an auto
 // popover closes itself on the press on its button, and the button's click
 // then opens it again, so the button could never close it. Here a press on

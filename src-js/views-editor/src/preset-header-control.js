@@ -200,6 +200,8 @@ export class PresetHeaderControl {
     this._resetDisabled = !bond?.resetEnabled;
     if (this.lockButton) {
       this.lockButton.on = bond?.locked === true;
+      this.lockButton.src =
+        bond?.locked === true ? "/images/lock.svg" : "/images/lock-open.svg";
       this.lockButton.mixed = bond?.locked === "mixed";
       this.lockButton.disabled = !bond?.lockEnabled;
     }

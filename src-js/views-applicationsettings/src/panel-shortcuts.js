@@ -438,7 +438,7 @@ class ShortCutElement extends HTMLElement {
     iconWrapper.append(
       html.createDomElement("icon-button", {
         "class": "fontra-ui-shortcuts-panel-icon",
-        "src": "/tabler-icons/refresh.svg",
+        "src": "/images/refresh.svg",
         "onclick": (event) => this.resetShortCut(id),
         "data-tooltip": translate("shortcuts.tooltip.reset-to-default"),
         "data-tooltipposition": "top",
@@ -448,7 +448,7 @@ class ShortCutElement extends HTMLElement {
     iconWrapper.append(
       html.createDomElement("icon-button", {
         "class": "fontra-ui-shortcuts-panel-icon",
-        "src": "/tabler-icons/x.svg",
+        "src": "/images/cross.svg",
         "onclick": (event) => this.deleteShortCut(id),
         "data-tooltip": translate("shortcuts.tooltip.clear"),
         "data-tooltipposition": "top",

@@ -98,12 +98,30 @@ export class Form extends SimpleElement {
       margin-left: auto;
     }
 
-    /* Heading levels by the Figma style names: h2 to h4 are uppercase, h5 is
-       a small mixed-case section label. A header with no level is h4. */
+    /* Heading levels by the Figma style names: h1 to h4 are uppercase, h5 is
+       a small mixed-case section label. A header with no level is h4. h1 is
+       a card's heading, as shared.css's card-heading draws it. */
+    .ui-form-label.header-h1 {
+      font: var(--ui-text-heading-h1);
+      letter-spacing: var(--ui-tracking-sans);
+      text-transform: uppercase;
+      color: var(--shared-heading, var(--text-base-basic-5));
+    }
+
+    /* h2, as shared.css's card-subheading: text 3, 8px from what is above
+       it and 4px to what it heads. The row gap is the 8px above, so the
+       divider before it takes no room; the 4px under it takes back half the
+       row gap. */
     .ui-form-label.header-h2 {
       font: var(--ui-text-heading-h2);
       letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
+      color: var(--text-base-basic-3);
+      margin-bottom: -4px;
+    }
+
+    hr:has(+ .ui-form-label.header-h2) {
+      display: none;
     }
 
     .ui-form-label.header-h3 {
