@@ -274,7 +274,7 @@ body {
 /* Over the bar it shows from --clip-top down, its ears' sides open. */
 .canvas-split-divider.over-bar {
   z-index: 3;
-  clip-path: inset(var(--clip-top) -20px 0 -20px);
+  clip-path: inset(var(--clip-top) -20px -1px -20px);
 }
 
 /* Its strip runs on over the card's top and bottom rules, which it breaks. */
