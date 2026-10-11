@@ -456,9 +456,11 @@ export class CanvasSplit {
   _applyRatio() {
     const width = this.root.getBoundingClientRect().width;
     const ratio = clampSplitRatio(this.ratio, width, MIN_PANE_WIDTH);
-    this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) auto minmax(0, ${
+    this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) minmax(0, ${
       1 - ratio
     }fr)`;
+    // The divider floats over the seam between the panes and takes no room.
+    this.divider.style.left = `calc(${ratio * 100}% - ${this.divider.offsetWidth / 2}px)`;
     this._placeDividerEars();
   }
 

@@ -219,7 +219,7 @@ body {
 }
 
 #canvas-split.split {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   /* The divider's ears draw over the card's own rule, where it turns into
      theirs, so the card lets them reach its 1px border. */
   overflow: clip;
@@ -256,7 +256,9 @@ body {
      edge, and the bar's rule and corner inside the divider are covered. */
   --rule-left-y: 0px;
   --rule-right-y: 0px;
-  position: relative;
+  position: absolute;
+  top: 0;
+  bottom: 0;
   z-index: 1;
   width: 6px;
   cursor: col-resize;
@@ -273,6 +275,15 @@ body {
 .canvas-split-divider.over-bar {
   z-index: 3;
   clip-path: inset(var(--clip-top) -20px 0 -20px);
+}
+
+/* Its strip runs on over the card's top and bottom rules, which it breaks. */
+.canvas-split-divider::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -1px 0;
+  background: inherit;
 }
 
 /* The divider takes a drag 2px out from each side. */
