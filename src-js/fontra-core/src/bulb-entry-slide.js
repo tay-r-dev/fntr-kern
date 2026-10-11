@@ -1,8 +1,8 @@
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import { makeSlideCandidate } from "./point-slide.js";
 
-// B's handle from E is at least this share of its handle toward C.
-const MIN_HANDLE_AT_B = 0.5;
+// A comb step under this share of the larger side counts as even.
+const EVEN_STEP = 0.01;
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const norm = (v) => Math.hypot(v.x, v.y);
@@ -67,22 +67,29 @@ export function matchCubicEndCurvatures(curve, incoming, outgoing, radius) {
   return null;
 }
 
+// The comb step at E, as a fraction of the larger side.
+const combStep = (wall, span) => {
+  const a = bulbEndCurvature(wall, true),
+    b = bulbEndCurvature(span);
+  const larger = Math.max(Math.abs(a), Math.abs(b));
+  return larger ? Math.abs(a - b) / larger : 0;
+};
+
+// If the comb jumps at E, V-slide E along the outer wall toward its centre,
+// exactly as the editor's V-slide does on a realized contour: the wall is cut
+// exactly and E-B is refit to keep drawing the same path. Stop at the first
+// position where the comb is even. If none is, stop where the step is
+// smallest. Nothing else is solved.
 export function slideBulbEntryForCurvature({
   wall,
   points,
-  radius,
   sourceWall = wall,
   sourceArc = null,
   entryParameter = 1,
 }) {
   const entry = points.slice(0, 4);
-  const target = bulbEndCurvature(points.slice(3, 7));
-  const mismatch =
-    Math.max(
-      Math.abs(bulbEndCurvature(wall, true) - bulbEndCurvature(entry)),
-      Math.abs(bulbEndCurvature(entry, true) - target)
-    ) * radius;
-  if (mismatch < 0.001) return null;
+  const start = combStep(wall, entry);
+  if (start < EVEN_STEP) return null;
   const sourceFirst = sourceArc ? sourceArc.map((p) => ({ ...p })) : entry;
   if (sourceArc) {
     sourceFirst[2].x += entry[3].x - sourceFirst[3].x;
@@ -90,40 +97,22 @@ export function slideBulbEntryForCurvature({
     sourceFirst[3] = entry[3];
   }
   const wallRun = { points: [...sourceWall, ...sourceFirst.slice(1)], isClosed: false };
-  // The wall piece E keeps is exact; only E-B's two lengths are solved, to
-  // meet the wall's curvature at E and B-C's at B. The first position where
-  // that is possible is the answer: no shape tolerance.
-  const fitAt = (keptWall, span, parameter, direction) => {
-    const fitted = matchCubicEndCurvatures(
-      span,
-      bulbEndCurvature(keptWall, true),
-      target,
-      radius
-    );
-    if (!fitted) return null;
-    // A fit at the very first position leaves B's handle near zero, and no
-    // whole-unit placement holds a handle that short.
-    const atB = norm(sub(fitted[3], fitted[2])),
-      pastB = norm(sub(points[4], points[3]));
-    if (atB < MIN_HANDLE_AT_B * pastB) return null;
-    return {
-      wall: keptWall,
-      points: [...fitted, ...points.slice(4)],
-      direction,
-      parameter,
-    };
-  };
-  // 1. E at the extreme, orthogonal, with the outer wall exact.
-  const atExtreme = fitAt(wall, entry, entryParameter, "stationary");
-  if (atExtreme) return atExtreme;
-  // 2. Otherwise V-slide E along the outer wall toward its centre, and stop
-  // at the first position that fits. Never past the centre.
+  let best = null;
   for (let t = Math.min(entryParameter, 1) - 0.01; t >= 0.5 - 1e-9; t -= 0.01) {
-    const candidate = makeSlideCandidate(wallRun, 3, "previous", t).points;
-    const slid = fitAt(candidate.slice(0, 4), candidate.slice(3), t, "previous");
-    if (slid) return slid;
+    const candidate = makeSlideCandidate(wallRun, 3, "previous", t)?.points;
+    if (!candidate) break;
+    const keptWall = candidate.slice(0, 4),
+      span = candidate.slice(3, 7);
+    const step = combStep(keptWall, span);
+    if (!best || step < best.step)
+      best = {
+        wall: keptWall,
+        points: [...span, ...points.slice(4)],
+        direction: "previous",
+        parameter: t,
+        step,
+      };
+    if (step < EVEN_STEP) break;
   }
-  // Nothing fits: E stays at the extreme, and the remaining jump
-  // is published through the bulb's harmonization error.
-  return null;
+  return best && best.step < start ? best : null;
 }

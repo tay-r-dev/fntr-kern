@@ -564,7 +564,6 @@ export function buildBulb({
   const entrySlide = slideBulbEntryForCurvature({
     wall: entry.wall,
     points,
-    radius,
     sourceWall: wall,
     sourceArc: first,
     entryParameter: entry.t,
@@ -578,7 +577,9 @@ export function buildBulb({
     // Then one harmonize of B, keeping curvature and equalizing handles.
     const path = VarPackedPath.fromUnpackedContours([
       {
-        points: points.slice(0, 7).map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
+        points: points
+          .slice(0, 7)
+          .map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
         isClosed: false,
       },
     ]);
