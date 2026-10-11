@@ -254,6 +254,9 @@ body {
   border-left: 1px solid var(--line-base-basic-1);
   border-right: 1px solid var(--line-base-basic-1);
   touch-action: none;
+  /* Nothing of it above the top ears: under the tool bar it stops at the
+     bar's lower edge. The sides stay open for the ears. */
+  clip-path: inset(var(--ear-top) -20px 0 -20px);
 }
 
 .canvas-split-ear {
