@@ -458,10 +458,11 @@ export class CanvasSplit {
   // The divider's top ears, by where the divider is against the tool bar
   // (which is drawn over it):
   // - under it: both ears at the bar's lower edge, each shrinking as the
-  //   divider nears the bar's side, gone where the sides line up;
-  // - across one of its sides: the ear under the bar at its lower edge at
-  //   full size, the outer one at the card's top in place of the bar's own
-  //   ear there;
+  //   divider nears where the bar's lower corner starts its round, gone
+  //   there;
+  // - across one of its sides: the divider drawn over the bar, the ear under
+  //   the bar at its lower edge at full size, the outer one at the card's
+  //   top in place of the bar's own ear there;
   // - beside it: both ears at the card's top, the one facing the bar gone,
   //   and the bar's ear on that side hidden while the divider is within it.
   _placeDividerEars() {
@@ -477,18 +478,21 @@ export class CanvasSplit {
       right: { top: 0, radius: EAR_RADIUS },
     };
     let hideToolbarEar = "";
+    let overBar = false;
     if (toolbar?.getClientRects().length) {
       const bar = toolbar.getBoundingClientRect();
       const under = Math.max(0, bar.bottom - card.top - this.root.clientTop);
       if (divider.left >= bar.left && divider.right <= bar.right) {
-        ears.left = { top: under, radius: clamp(divider.left - bar.left) };
-        ears.right = { top: under, radius: clamp(bar.right - divider.right) };
+        ears.left = { top: under, radius: clamp(divider.left - bar.left - EAR_RADIUS) };
+        ears.right = { top: under, radius: clamp(bar.right - divider.right - EAR_RADIUS) };
       } else if (divider.left < bar.left && divider.right > bar.left) {
         ears.right.top = under;
         hideToolbarEar = "left";
+        overBar = true;
       } else if (divider.left < bar.right && divider.right > bar.right) {
         ears.left.top = under;
         hideToolbarEar = "right";
+        overBar = true;
       } else if (divider.right <= bar.left) {
         ears.right.radius = 0;
         if (bar.left - divider.right < TOOLBAR_EAR) {
@@ -502,8 +506,10 @@ export class CanvasSplit {
       }
       toolbar.dataset.hideEar = hideToolbarEar;
     }
+    this.divider.classList.toggle("over-bar", overBar);
     for (const side of ["left", "right"]) {
       this.divider.style.setProperty(`--ear-top-${side}-y`, `${ears[side].top}px`);
+      this.divider.style.setProperty(`--rule-${side}-y`, `${ears[side].top}px`);
       this.divider.style.setProperty(`--ear-top-${side}`, ears[side].radius);
     }
   }
