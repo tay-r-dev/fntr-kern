@@ -35,6 +35,8 @@ glyph-cell-view {
   position: relative;
   display: grid;
   gap: 0;
+  /* The spare height must not stretch the hidden text entry's row. */
+  align-content: start;
   /* Fills its box, so a click under the last row is a click away. */
   min-height: 100%;
 }
