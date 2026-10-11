@@ -26,7 +26,13 @@
   letter-spacing: 0.01em;
   font-feature-settings: "case" 1;
   overflow-wrap: break-word;
-  filter: drop-shadow(0 0 3px var(--shadow-base-1));
+  /* The line 0 outline goes round the box and the arrow as one shape: four
+     1px shadows of the silhouette, then the soft shadow. */
+  filter: drop-shadow(1px 0 0 var(--line-base-basic-0))
+    drop-shadow(-1px 0 0 var(--line-base-basic-0))
+    drop-shadow(0 1px 0 var(--line-base-basic-0))
+    drop-shadow(0 -1px 0 var(--line-base-basic-0))
+    drop-shadow(0 0 3px var(--shadow-base-1));
   pointer-events: none;
 }
 

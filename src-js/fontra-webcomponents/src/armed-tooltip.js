@@ -69,6 +69,7 @@ export function showTooltipsEverywhere() {
 
   const hide = () => {
     clearTimeout(timer);
+    timer = null;
     tooltip?.remove();
     tooltip = null;
   };
@@ -83,8 +84,10 @@ export function showTooltipsEverywhere() {
     placeTooltip(tooltip, anchor, side);
   };
 
+  // pointermove, not pointerover: a panel drawn anew under a still pointer
+  // gets no "over", and the old anchor is gone.
   document.addEventListener(
-    "pointerover",
+    "pointermove",
     (event) => {
       const found =
         event
