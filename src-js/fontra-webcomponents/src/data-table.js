@@ -13,6 +13,7 @@ import {
   windowEnd,
 } from "./data-table-model.js";
 import { attachScrollbars } from "./scrollbars.js";
+import { smolDropdown, smolEntry, smolCSS } from "./smol.js";
 import "./icon-button.js";
 import { showMenu } from "./menu-panel.js";
 import { selectRange, selectRow } from "./table-selection.js";
@@ -121,30 +122,6 @@ const lookColors = {
     "var(--bt-sgt-ln-select-focus)",
     "#5a6e1a",
   ],
-  "data-table-look-field-hover-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
-  "data-table-look-field-hover-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
-  "data-table-look-field-focus-text-color": ["var(--text-base-basic-1)", "#ffffff"],
-  "data-table-look-focus-border-color": ["var(--line-base-basic-1)", "#4a4a4a"],
-  "data-table-look-field-selection-color": [
-    "var(--text-color-lime-basic-3)",
-    "#a9c915",
-  ],
-  "data-table-look-field-selection-hover-color": [
-    "var(--surface-base-basic-0)",
-    "#2c2c2c",
-  ],
-  "data-table-look-field-selection-hover-text-color": [
-    "var(--text-color-lime-basic-2)",
-    "#c4dc6a",
-  ],
-  "data-table-look-field-selection-focus-text-color": [
-    "var(--text-color-lime-basic-1)",
-    "#e2f38f",
-  ],
-  "data-table-look-selection-focus-border-color": [
-    "var(--line-color-lime-basic-1)",
-    "#5a6e1a",
-  ],
 };
 
 const DATA_TABLE_STYLES = `
@@ -197,70 +174,11 @@ const DATA_TABLE_STYLES = `
     gap: ${FIT_FIELD_GAP}px;
   }
 
-  /* The look is not weak: it has to beat a page's global input rule. */
-  .data-table .data-table-input,
-  .data-table .data-table-select {
-    box-sizing: border-box;
-    min-width: 0;
-    margin: 0;
-    padding: 0 0.15em;
-    border: 1px solid transparent;
-    border-radius: 0.15em;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    appearance: none;
-    -webkit-appearance: none;
-  }
-
-  .data-table .data-table-input[type="number"] {
-    text-align: right;
-    -moz-appearance: textfield;
-  }
-
-  .data-table-input::-webkit-outer-spin-button,
-  .data-table-input::-webkit-inner-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-  }
-
-  /* A select cell's field and its down arrow, in the field's colour. */
-  .data-table-select-field {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    max-width: 100%;
-  }
-
-  .data-table-select-field > .data-table-select {
-    color: inherit;
-  }
-
-  .data-table-select-field::after {
-    content: "";
-    position: absolute;
-    right: 4px;
-    width: 6px;
-    height: 6px;
-    background: currentColor;
-    mask: url("/images/arrow-down-s.svg") center / 4.2px 2.45px no-repeat;
-    pointer-events: none;
-  }
-
-  .data-table .data-table-select:not(:disabled) {
-    cursor: pointer;
-  }
-
-  .data-table tr:hover .data-table-input:not(:disabled),
-  .data-table tr:hover .data-table-select:not(:disabled) {
-    border-color: var(--horizontal-rule-color, #ccc);
-  }
-
-  .data-table .data-table-input:focus,
-  .data-table .data-table-select:focus {
-    border-color: var(--foreground-color);
-    outline: none;
-  }
+  /* The cells' entries and dropdowns are the smol box (smol.js). */
+  ${smolCSS({
+    hoverWithin: ".data-table tr",
+    selectedWithin: ".data-table .data-table-row-selected",
+  })}
 
   :where(.data-table-action) {
     display: inline-flex;
@@ -702,86 +620,6 @@ const DATA_TABLE_STYLES = `
     pointer-events: auto;
   }
 
-  /* The editable entry is the smol field (Figma 4102:1607): 16px, 4px in,
-     bare at rest; grey with darker text on the row's hover; ruled and
-     darkest while typing. On a selected row it is lime text, white on
-     hover, lime-ruled while typing. A dropdown field carries its 6px arrow
-     2px after the text. */
-  data-table[look] .data-table .data-table-input,
-  data-table[look] .data-table .data-table-select {
-    height: 16px;
-    padding: 2px 3px;
-    border: 1px solid transparent;
-    border-radius: 4px;
-  }
-
-  data-table[look] .data-table .data-table-select {
-    padding-right: 11px;
-  }
-
-  data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
-  data-table[look] .data-table tr:hover .data-table-select-field:has(:not(:disabled)) {
-    color: var(--data-table-look-field-hover-text-color);
-  }
-
-  data-table[look] .data-table tr:hover .data-table-input:not(:disabled),
-  data-table[look] .data-table tr:hover .data-table-select:not(:disabled) {
-    border-color: transparent;
-    background-color: var(--data-table-look-field-hover-color);
-  }
-
-  data-table[look] .data-table .data-table-input:focus,
-  data-table[look] .data-table .data-table-select:focus {
-    border-color: var(--data-table-look-focus-border-color);
-    background-color: var(--data-table-look-field-hover-color);
-  }
-
-  data-table[look] .data-table .data-table-input:focus,
-  data-table[look] .data-table .data-table-select-field:focus-within {
-    color: var(--data-table-look-field-focus-text-color);
-  }
-
-  data-table[look] .data-table .data-table-row-selected .data-table-input,
-  data-table[look] .data-table .data-table-row-selected .data-table-select-field {
-    color: var(--data-table-look-field-selection-color);
-  }
-
-  data-table[look]
-    .data-table
-    .data-table-row-selected:hover
-    .data-table-input:not(:disabled),
-  data-table[look]
-    .data-table
-    .data-table-row-selected:hover
-    .data-table-select-field:has(:not(:disabled)) {
-    color: var(--data-table-look-field-selection-hover-text-color);
-  }
-
-  data-table[look]
-    .data-table
-    .data-table-row-selected:hover
-    .data-table-input:not(:disabled),
-  data-table[look]
-    .data-table
-    .data-table-row-selected:hover
-    .data-table-select:not(:disabled) {
-    background-color: var(--data-table-look-field-selection-hover-color);
-  }
-
-  data-table[look] .data-table .data-table-row-selected .data-table-input:focus,
-  data-table[look] .data-table .data-table-row-selected .data-table-select:focus {
-    border-color: var(--data-table-look-selection-focus-border-color);
-    background-color: var(--data-table-look-field-selection-hover-color);
-  }
-
-  data-table[look] .data-table .data-table-row-selected .data-table-input:focus,
-  data-table[look]
-    .data-table
-    .data-table-row-selected
-    .data-table-select-field:focus-within {
-    color: var(--data-table-look-field-selection-focus-text-color);
-  }
-
   ${Array.from(
     { length: MAX_HIDEABLE_COLUMNS },
     (_, index) =>
@@ -863,19 +701,16 @@ export function editableCell({
   className,
   onCommit,
 }) {
-  const input = document.createElement("input");
-  input.type = type;
-  input.className = className ? `data-table-input ${className}` : "data-table-input";
+  const input = smolEntry({
+    type,
+    title,
+    placeholder,
+    disabled,
+    className: className ? `data-table-input ${className}` : "data-table-input",
+  });
   if (step != null) {
     input.step = String(step);
   }
-  if (title) {
-    input.title = title;
-  }
-  if (placeholder) {
-    input.placeholder = placeholder;
-  }
-  input.disabled = disabled;
   let committed = value ?? "";
   input.value = String(committed);
   input.addEventListener("keydown", (event) => {
@@ -924,22 +759,13 @@ export function editableCell({
 // A choice that reads as text until its row is hovered. `options` is
 // [{value, label}].
 export function selectCell({ value, options, disabled = false, className, onChange }) {
-  const select = document.createElement("select");
-  select.className = className ? `data-table-select ${className}` : "data-table-select";
-  select.disabled = disabled;
-  for (const option of options) {
-    const element = document.createElement("option");
-    element.value = option.value;
-    element.textContent = option.label ?? option.value;
-    element.selected = option.value === value;
-    select.appendChild(element);
-  }
-  select.addEventListener("change", () => onChange?.(select.value));
-  // Wrapped, so the field can draw its down arrow.
-  const field = document.createElement("span");
-  field.className = "data-table-select-field";
-  field.appendChild(select);
-  return field;
+  return smolDropdown({
+    value,
+    options,
+    disabled,
+    className: className ? `data-table-select ${className}` : "data-table-select",
+    onChange,
+  });
 }
 
 // A row's icon action. `reveal` is "hover" (hidden until the row is hovered),

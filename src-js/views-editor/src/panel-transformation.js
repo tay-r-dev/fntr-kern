@@ -31,6 +31,7 @@ import "@fontra/web-components/input-field-large.js"; // for <input-field-large>
 import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Scale row's linked pair
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
+import { smolCSS, smolDropdown } from "@fontra/web-components/smol.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import { checkmark } from "@fontra/core/ui-utils.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
@@ -46,6 +47,8 @@ import { balancePanelSkeletonPoints } from "./skeleton-panel-edits.js";
 // own sidebar panel (see ticket 05: merge into one "Selection" tab).
 export default class TransformationPanel {
   static stylesForm = `
+  ${smolCSS()}
+
   /* The label column is as wide as the widest label and no wider. */
   .ui-form {
     grid-template-columns: max-content minmax(0, 1fr);
@@ -230,6 +233,7 @@ export default class TransformationPanel {
         // this -- see the glyph-change listener below, which is guarded
         // against exactly that.
         this._resetRelativeTransformFields();
+        this._updateRotateMode();
       }
     );
     this.sceneController.addCurrentGlyphChangeListener((event) => {
@@ -251,6 +255,7 @@ export default class TransformationPanel {
           ?.transform;
         if (values) {
           this._setRelativeTransformValues(values);
+          this._updateRotateMode();
         }
       }
     );
@@ -327,6 +332,56 @@ export default class TransformationPanel {
       neutral[name] = value;
     }
     return neutral;
+  }
+
+  // The angle of the selection when it is one straight: two on-curve points
+  // next to each other on a contour. Degrees from 0 to 180, or undefined.
+  _selectedStraightAngle() {
+    const positionedGlyph =
+      this.sceneController.sceneModel.getSelectedPositionedGlyph();
+    const selection = parseSelection(this.sceneController.selection);
+    const pointIndices = selection.point || [];
+    if (!positionedGlyph || pointIndices.length !== 2 || selection.component) {
+      return undefined;
+    }
+    const path = positionedGlyph.glyph.path;
+    const [first, second] = [...pointIndices].sort((a, b) => a - b);
+    const [contourA, indexA] = path.getContourAndPointIndex(first);
+    const [contourB, indexB] = path.getContourAndPointIndex(second);
+    const p = path.getPoint(first);
+    const q = path.getPoint(second);
+    if (contourA !== contourB || p.type || q.type) {
+      return undefined;
+    }
+    const lastIndex = path.getNumPointsOfContour(contourA) - 1;
+    const wraps =
+      path.contourInfo[contourA].isClosed && indexA === 0 && indexB === lastIndex;
+    if (indexB - indexA !== 1 && !wraps) {
+      return undefined;
+    }
+    const angle = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI;
+    return Math.round((((angle % 180) + 180) % 180) * 10) / 10;
+  }
+
+  _rotateIsAngle() {
+    return this._rotateMode === "angle" && this._selectedStraightAngle() !== undefined;
+  }
+
+  // The dropdown shows the mode in force. In angle mode the field holds the
+  // straight's own angle; leaving it puts the field back to no turn.
+  _updateRotateMode() {
+    if (!this.rotateModeDropdown) {
+      return;
+    }
+    const isAngle = this._rotateIsAngle();
+    this.rotateModeDropdown.select.value = isAngle ? "angle" : "rotation";
+    if (isAngle) {
+      this.transformParameters.rotation = this._selectedStraightAngle();
+    } else if (this._rotateFieldShowsAngle) {
+      this.transformParameters.rotation = 0;
+    }
+    this._rotateFieldShowsAngle = isAngle;
+    this.rotateField.value = this.transformParameters.rotation;
   }
 
   registerActions() {
@@ -677,14 +732,36 @@ export default class TransformationPanel {
     };
 
     const rotateField = html.createDomElement("input-field-large", {
-      label: "Angle",
       value: this.transformParameters.rotation,
       step: 0.1,
     });
+    // The label is a smol dropdown: rotation turns by the number, angle turns a
+    // straight until it lies at the number. A selection that is not one
+    // straight is always rotated, and the choice is kept for the next one.
+    this.rotateModeDropdown = smolDropdown({
+      value: "rotation",
+      options: [
+        { value: "rotation", label: "rotation" },
+        { value: "angle", label: "angle" },
+      ],
+      onChange: (value) => {
+        this._rotateMode = value;
+        this._updateRotateMode();
+      },
+    });
+    this.rotateModeDropdown.slot = "label";
+    rotateField.appendChild(this.rotateModeDropdown);
+    // In angle mode the turn is what takes the straight to the number.
+    const rotateBy = (rotation) => {
+      const angle = this._rotateIsAngle() ? this._selectedStraightAngle() : undefined;
+      return angle === undefined ? rotation : rotation - angle;
+    };
     const applyRotate = () =>
       this.transformSelection(
         () =>
-          new Transform().rotate((this.transformParameters.rotation * Math.PI) / 180),
+          new Transform().rotate(
+            (rotateBy(this.transformParameters.rotation) * Math.PI) / 180
+          ),
         "rotate"
       );
     rotateField.addEventListener(
@@ -705,6 +782,7 @@ export default class TransformationPanel {
       )
     );
     this.rotateField = rotateField;
+    this._updateRotateMode();
     formContents.push({
       type: "universal-row",
       field1: this._rowIcon(

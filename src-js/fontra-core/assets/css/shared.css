@@ -724,30 +724,6 @@ glyph-cell-view .glyph-count {
   bottom: 0;
 }
 
-/* The small value box (Figma "smol", 4102:1602): a 16px input in
-   ui/label/XS, bare at rest, grey on hover and while typing. */
-.entry-field {
-  box-sizing: border-box;
-  width: 36px;
-  height: 16px;
-  padding: 3px 4px;
-  border: none;
-  border-radius: 4px;
-  outline: none;
-  background: transparent;
-  font: var(--ui-text-label-xs);
-  letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
-  color: var(--text-base-basic-3);
-  text-align: center;
-}
-
-.entry-field:hover,
-.entry-field:focus {
-  background-color: var(--surface-base-basic-2);
-  color: var(--text-base-basic-2);
-}
-
 /* A menu's control row (menu-panel.js's element items) heading a dropdown's
    list: the settings card's ruled heading, its control after the name, the
    name a pick of its own. */
