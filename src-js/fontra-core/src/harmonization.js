@@ -950,7 +950,7 @@ function bestJoinPlacement(placements, exact, farIn, farOut, current) {
     const kOut = endCurvature(onCurve, handleOut, farOut);
     const larger = Math.max(kIn, kOut);
     return {
-      bent: kink > gridKinkAllowance(handleIn, onCurve, handleOut) + 1e-9 ? kink : 0,
+      bent: kink,
       step: larger ? Math.abs(kIn - kOut) / larger : 0,
       travel: [handleIn, onCurve, handleOut].reduce(
         (sum, point, k) => sum + Math.hypot(point.x - exact[k].x, point.y - exact[k].y),
