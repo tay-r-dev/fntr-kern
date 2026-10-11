@@ -271,14 +271,6 @@ body {
   clip-path: inset(var(--clip-top) -20px 0 -20px);
 }
 
-.tools-overlay[data-square-corner="left"] {
-  border-bottom-left-radius: 0;
-}
-
-.tools-overlay[data-square-corner="right"] {
-  border-bottom-right-radius: 0;
-}
-
 /* The divider takes a drag 2px out from each side. */
 .canvas-split-divider::before {
   content: "";
