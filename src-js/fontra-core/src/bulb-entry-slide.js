@@ -1,20 +1,9 @@
-import { Bezier } from "bezier-js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
-import { cubicPointAt } from "./offset-contour.js";
 import { makeSlideCandidate } from "./point-slide.js";
 
-// The smallest shape tolerance, in units.
-const MIN_SHAPE_TOLERANCE = 2;
+// B's handle from E is at least this share of its handle toward C.
+const MIN_HANDLE_AT_B = 0.5;
 const cross = (a, b) => a.x * b.y - a.y * b.x;
-// One curve object per target: it caches its lookup table, which a fresh
-// object per projection rebuilds every time.
-const distanceTo = (curve) => {
-  const bezier = new Bezier(curve);
-  return (p) => {
-    const q = bezier.project(p);
-    return Math.hypot(p.x - q.x, p.y - q.y);
-  };
-};
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 const norm = (v) => Math.hypot(v.x, v.y);
 const unit = (v) => {
@@ -101,34 +90,9 @@ export function slideBulbEntryForCurvature({
     sourceFirst[3] = entry[3];
   }
   const wallRun = { points: [...sourceWall, ...sourceFirst.slice(1)], isClosed: false };
-  const toSourceFirst = distanceTo(sourceFirst),
-    toSourceWall = distanceTo(sourceWall);
-  // How far a curve set strays from the reference ball and the outer wall,
-  // both ways. The fit must reproduce both; this is a requirement, not a
-  // tie-break.
-  const departureOf = (span, keptWall) => {
-    const toSpan = distanceTo(span),
-      toKeptWall = distanceTo(keptWall);
-    let departure = 0;
-    for (const [curve, toA, toB] of [
-      [sourceFirst, toSpan, toKeptWall],
-      [span, toSourceFirst, toSourceWall],
-    ])
-      for (let k = 0; k <= 32; k++) {
-        const p = cubicPointAt(curve, k / 32);
-        departure = Math.max(departure, Math.min(toA(p), toB(p)));
-      }
-    return departure;
-  };
-  // Never finer than the grid: 2% of a small ball (0.92 units on skeletron
-  // `h`) refused every fit a hand V-slide makes, and left a 64% jump.
-  const tolerance = Math.max(
-    0.02 * radius,
-    MIN_SHAPE_TOLERANCE,
-    departureOf(entry, wall)
-  );
   // The wall piece E keeps is exact; only E-B's two lengths are solved, to
-  // meet the wall's curvature at E and B-C's at B.
+  // meet the wall's curvature at E and B-C's at B. The first position where
+  // that is possible is the answer: no shape tolerance.
   const fitAt = (keptWall, span, parameter, direction) => {
     const fitted = matchCubicEndCurvatures(
       span,
@@ -137,12 +101,14 @@ export function slideBulbEntryForCurvature({
       radius
     );
     if (!fitted) return null;
-    const departure = departureOf(fitted, keptWall);
-    if (departure > tolerance) return null;
+    // A fit at the very first position leaves B's handle near zero, and no
+    // whole-unit placement holds a handle that short.
+    const atB = norm(sub(fitted[3], fitted[2])),
+      pastB = norm(sub(points[4], points[3]));
+    if (atB < MIN_HANDLE_AT_B * pastB) return null;
     return {
       wall: keptWall,
       points: [...fitted, ...points.slice(4)],
-      departure,
       direction,
       parameter,
     };
@@ -157,7 +123,7 @@ export function slideBulbEntryForCurvature({
     const slid = fitAt(candidate.slice(0, 4), candidate.slice(3), t, "previous");
     if (slid) return slid;
   }
-  // Nothing fits both shapes: E stays at the extreme, and the remaining jump
+  // Nothing fits: E stays at the extreme, and the remaining jump
   // is published through the bulb's harmonization error.
   return null;
 }

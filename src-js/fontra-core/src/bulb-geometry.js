@@ -6,6 +6,8 @@ import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
 import { makeSlideCandidate } from "./point-slide.js";
+import { harmonizePathInPlace } from "./harmonization.js";
+import { VarPackedPath } from "./var-path.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
 // The forward half has radius R; Shape stretches only the rear half.
@@ -573,6 +575,23 @@ export function buildBulb({
     entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
     if (entrySlide.direction === "previous") entry.t = entrySlide.parameter;
     tangents[0] = unit(sub(points[1], points[0]));
+    // Then one harmonize of B, keeping curvature and equalizing handles.
+    const path = VarPackedPath.fromUnpackedContours([
+      {
+        points: points.slice(0, 7).map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
+        isClosed: false,
+      },
+    ]);
+    harmonizePathInPlace(path, [3], {
+      continuity: "G2",
+      preserveCurvature: true,
+      moveOnCurve: false,
+      equalizeHandles: true,
+    });
+    for (let i = 1; i < 6; i++) {
+      const { x, y } = path.getPoint(i);
+      points[i] = { ...points[i], x, y };
+    }
   }
   const errors = [
     Math.abs(bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))),

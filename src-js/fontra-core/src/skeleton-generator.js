@@ -218,10 +218,41 @@ function roundGeneratedPoints(contour) {
     point.x = Math.round(point.x) + 0;
     point.y = Math.round(point.y) + 0;
   }
-  // Twice: a join's step reads the next handle out, which belongs to the
-  // neighbouring join and may move when that join is placed.
-  for (let pass = 0; pass < 2; pass++)
-    for (const { index, exact } of joins) chooseBulbJoinGrid(points, index, exact);
+  // A join's step reads the next handle out, which belongs to the neighbouring
+  // join and may move when that join is placed. Neighbouring joins can trade
+  // that handle back and forth forever, so the passes stop when nothing moves
+  // and the outline keeps the pass with the smallest worst step.
+  const snapshot = () => points.map(({ x, y }) => ({ x, y }));
+  const worst = () => Math.max(0, ...joins.map(({ index }) => bulbJoinStep(points, index)));
+  let best = { at: snapshot(), step: worst() };
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const { index, exact } of joins)
+      moved = chooseBulbJoinGrid(points, index, exact) || moved;
+    const step = worst();
+    if (step < best.step) best = { at: snapshot(), step };
+    if (!moved) break;
+  }
+  best.at.forEach(({ x, y }, i) => {
+    points[i].x = x;
+    points[i].y = y;
+  });
+}
+
+// The comb step at a smooth join, as a fraction of the larger side.
+function bulbJoinStep(points, index) {
+  const count = points.length;
+  const at = (step) => points[(index + step + count) % count];
+  const end = (a, b, c) => {
+    const d1 = { x: b.x - a.x, y: b.y - a.y };
+    const d2 = { x: c.x - 2 * b.x + a.x, y: c.y - 2 * b.y + a.y };
+    const speed = Math.hypot(d1.x, d1.y);
+    return speed ? Math.abs((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / speed ** 3 : 0;
+  };
+  const kIn = end(at(0), at(-1), at(-2)),
+    kOut = end(at(0), at(1), at(2));
+  const larger = Math.max(kIn, kOut);
+  return larger ? Math.abs(kIn - kOut) / larger : 0;
 }
 
 // Rounding a join's three points each to its own nearest unit throws the
@@ -230,14 +261,17 @@ function roundGeneratedPoints(contour) {
 function chooseBulbJoinGrid(points, index, exact) {
   const count = points.length;
   const at = (step) => points[(index + step + count) % count];
-  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return;
+  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return false;
   const placed = [at(-1), at(0), at(1)];
   const best = gridJoinPlacement(exact, at(-2), at(2), placed);
-  if (!best) return;
+  if (!best) return false;
+  let moved = false;
   placed.forEach((point, k) => {
+    moved ||= point.x !== best.points[k].x || point.y !== best.points[k].y;
     point.x = best.points[k].x;
     point.y = best.points[k].y;
   });
+  return moved;
 }
 
 function stripPointProvenance(contour) {
