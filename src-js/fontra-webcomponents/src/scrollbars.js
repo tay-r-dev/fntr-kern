@@ -56,8 +56,9 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
   box.classList.add("drawn-scrollbars");
   const bars = [makeBar(box, "vertical"), makeBar(box, "horizontal")];
   let reserved = 0;
+  let positionedHolder = null;
 
-  const update = () => {
+  const updateNow = () => {
     const parent = box.parentNode;
     if (!parent || !box.isConnected) {
       return;
@@ -68,8 +69,11 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
       }
     }
     const holder = parent instanceof ShadowRoot ? parent.host : parent;
-    if (getComputedStyle(holder).position === "static") {
-      holder.style.position = "relative";
+    if (holder !== positionedHolder) {
+      positionedHolder = holder;
+      if (getComputedStyle(holder).position === "static") {
+        holder.style.position = "relative";
+      }
     }
     const [vertical, horizontal] = bars;
     const both =
@@ -77,6 +81,18 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
     // Where both show, each stops short of the other's corner.
     vertical.place(both ? reserved || RAIL : 0);
     horizontal.place(both ? RAIL : 0, reserved);
+  };
+
+  // Scrolls, resizes and new contents all ask for one placing per frame: the
+  // layout is read once, when the frame is drawn, not on every event.
+  let frame = 0;
+  const update = () => {
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        updateNow();
+      });
+    }
   };
 
   if (reveal === "hover") {
@@ -94,7 +110,14 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
     }
   };
   observeChildren();
-  new MutationObserver(() => {
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const child of record.removedNodes) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          resizeObserver.unobserve(child);
+        }
+      }
+    }
     observeChildren();
     update();
   }).observe(box, { childList: true });

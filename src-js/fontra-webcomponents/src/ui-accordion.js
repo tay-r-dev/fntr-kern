@@ -4,6 +4,11 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper, enumerate } from "@fontra/core/utils.ts";
 
 export class Accordion extends UnlitElement {
+  constructor() {
+    super();
+    this._appendStyleSheetLink("/css/tooltip.css");
+  }
+
   static styles = `
   .ui-accordion-contents {
     display: grid;
@@ -203,10 +208,7 @@ export class Accordion extends UnlitElement {
         child.remove();
       }
     }
-    return [
-      html.link({ href: "/css/tooltip.css", rel: "stylesheet" }),
-      html.div({ class: "ui-accordion-contents" }, itemElements),
-    ];
+    return html.div({ class: "ui-accordion-contents" }, itemElements);
   }
 
   // The caller's slotted parts first, then this accordion's own chrome.

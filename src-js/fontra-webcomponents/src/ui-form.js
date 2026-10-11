@@ -341,9 +341,7 @@ export class Form extends SimpleElement {
 
   constructor() {
     super();
-    this.shadowRoot.appendChild(
-      html.link({ href: "/css/tooltip.css", rel: "stylesheet" })
-    );
+    this._appendStyleSheetLink("/css/tooltip.css");
     this.contentElement = this.shadowRoot.appendChild(document.createElement("div"));
     this.contentElement.classList.add("ui-form");
   }

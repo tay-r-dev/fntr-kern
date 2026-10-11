@@ -34,24 +34,36 @@ export class InlineSVG extends HTMLElement {
   }
 
   async fetchSVG(svgSRC) {
-    const svgElement = htmlToElement(await cachedSVGData(iconPath(svgSRC)));
-    svgElement.removeAttribute("width");
-    svgElement.removeAttribute("height");
-    this.innerHTML = "";
-    this.appendChild(svgElement);
+    const svgElement = (await cachedSVGElement(iconPath(svgSRC))).cloneNode(true);
+    if (this.getAttribute("src") !== svgSRC) {
+      return; // The icon changed while this one loaded.
+    }
+    this.replaceChildren(svgElement);
   }
 }
 
-const svgDataCache = new Map();
+// One download and one parse per icon file: icons that appear together share
+// the pending download, and each one gets a copy of the parsed picture.
+const svgElementCache = new Map();
 
-async function cachedSVGData(svgSRC) {
-  let svgData = svgDataCache.get(svgSRC);
-  if (!svgData) {
-    const response = await fetch(svgSRC);
-    svgData = await response.text();
-    svgDataCache.set(svgSRC, svgData);
+function cachedSVGElement(svgSRC) {
+  let svgElement = svgElementCache.get(svgSRC);
+  if (!svgElement) {
+    svgElement = fetch(svgSRC)
+      .then((response) => response.text())
+      .then((svgData) => {
+        const element = htmlToElement(svgData);
+        element.removeAttribute("width");
+        element.removeAttribute("height");
+        return element;
+      })
+      .catch((error) => {
+        svgElementCache.delete(svgSRC); // A later icon tries again.
+        throw error;
+      });
+    svgElementCache.set(svgSRC, svgElement);
   }
-  return svgData;
+  return svgElement;
 }
 
 customElements.define("inline-svg", InlineSVG);
