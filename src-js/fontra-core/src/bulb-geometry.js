@@ -1,13 +1,13 @@
 import {
+  harmonizeCubicRun,
   matchCubicEndCurvatures,
   slideBulbEntryForCurvature,
+  solveCubicEndCurvatures,
 } from "./bulb-entry-slide.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
 import { makeSlideCandidate } from "./point-slide.js";
-import { harmonizePathInPlace } from "./harmonization.js";
-import { VarPackedPath } from "./var-path.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
 // The forward half has radius R; Shape stretches only the rear half.
@@ -241,18 +241,51 @@ function wallParameterAtDistance(points, from, distance) {
   return distance > 0 ? (lo + hi) / 2 : from;
 }
 
-// P -> E is a splice, not a copy of P's skeleton handle: both handles come
-// from exact subdivision. E is always on the outer wall, never on the ball. A
-// wall without an extreme keeps E at its end, and the entry slide moves it up
-// the wall from there.
+// E is the first vertical tangent along the outer run after P: on the wall if
+// the wall has one, otherwise on the ball's apex. The wall and the ball are the
+// reference. Of P -> E and E -> B, one is an exact split of it; the other holds
+// the rib and replaces the reference pieces it spans, refit as a V-slide refits
+// (`spans` names which). Its handle lengths are then solved for curvature at
+// both ends once the designer's edits are in (buildBulb).
 export function joinBulbEntry(wall, firstArc) {
-  const entry = bulbEntry(wall);
-  if (entry.orthogonal && entry.t < 1 - 1e-10) {
-    const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
-    const candidate = makeSlideCandidate(run, 3, "previous", entry.t).points;
-    return { ...entry, wall: candidate.slice(0, 4), firstArc: candidate.slice(3, 7) };
+  const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
+  const onWall = bulbEntry(wall);
+  if (onWall.orthogonal && onWall.t < 1 - 1e-10) {
+    const candidate = makeSlideCandidate(run, 3, "previous", onWall.t).points;
+    return {
+      ...onWall,
+      wall: candidate.slice(0, 4),
+      firstArc: candidate.slice(3, 7),
+      spans: "entry",
+    };
   }
-  return { ...entry, firstArc };
+  // E goes on the ball's apex only where some pair of P -> E lengths meets the
+  // wall's curvature at P and the ball's at E. Where none does, no amount of
+  // solving fixes it there, and E stays on the wall.
+  const onBall = bulbEntry(firstArc);
+  const candidate =
+    onBall.orthogonal &&
+    onBall.t > 1e-4 &&
+    onBall.t < 1 - 1e-4 &&
+    makeSlideCandidate(run, 3, "next", onBall.t).points;
+  if (
+    candidate &&
+    solveCubicEndCurvatures(
+      candidate.slice(0, 4),
+      bulbEndCurvature(wall),
+      bulbEndCurvature(candidate.slice(3, 7))
+    ).length
+  ) {
+    return {
+      wall: candidate.slice(0, 4),
+      firstArc: candidate.slice(3, 7),
+      t: 1,
+      orthogonal: true,
+      ballParameter: onBall.t,
+      spans: "wall",
+    };
+  }
+  return { ...onWall, firstArc, spans: null };
 }
 
 // How far back along the ball the fillet may reach from the corner, in radii.
@@ -559,39 +592,51 @@ export function buildBulb({
     if (arrived) points = [...points.slice(0, 12), ...arrived];
   }
 
-  // E at the extreme if the fit holds there, else V-slid toward the wall's
-  // centre (slideBulbEntryForCurvature).
-  const entrySlide = slideBulbEntryForCurvature({
-    wall: entry.wall,
-    points,
-    sourceWall: wall,
-    sourceArc: first,
-    entryParameter: entry.t,
-  });
-  if (entrySlide) {
-    points = entrySlide.points;
-    entry.wall = entrySlide.wall;
-    entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
-    if (entrySlide.direction === "previous") entry.t = entrySlide.parameter;
-    tangents[0] = unit(sub(points[1], points[0]));
-    // Then one harmonize of B, keeping curvature and equalizing handles.
-    const path = VarPackedPath.fromUnpackedContours([
-      {
-        points: points
-          .slice(0, 7)
-          .map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
-        isClosed: false,
-      },
-    ]);
-    harmonizePathInPlace(path, [3], {
-      continuity: "G2",
-      preserveCurvature: true,
-      moveOnCurve: false,
-      equalizeHandles: true,
+  // E with no vertical tangent to stand on, on the wall or on the ball, is
+  // V-slid along the wall until the comb at E is even, as the editor's V-slide
+  // does on a realized contour.
+  if (entry.spans === null) {
+    const entrySlide = slideBulbEntryForCurvature({
+      wall: entry.wall,
+      points,
+      sourceWall: wall,
+      sourceArc: first,
+      entryParameter: entry.t,
     });
-    for (let i = 1; i < 6; i++) {
-      const { x, y } = path.getPoint(i);
-      points[i] = { ...points[i], x, y };
+    if (entrySlide) {
+      points = entrySlide.points;
+      entry.wall = entrySlide.wall;
+      entry.t = entrySlide.parameter;
+      tangents[0] = unit(sub(points[1], points[0]));
+    }
+  }
+  // The outer run is made G2 at every join, from the exact wall to the fillet,
+  // by handle lengths alone: every on-curve stays on the reference and every
+  // handle keeps its direction. The change is the nearest one, spread over
+  // the run. Where E is on the ball, P -> E holds the rib and joins the run,
+  // and P keeps the curvature the wall has there. Where the run does not
+  // settle, the refit stands and the step is reported.
+  {
+    const ownsWall = entry.spans === "wall";
+    const run = [
+      ...(ownsWall ? [entry.wall] : []),
+      points.slice(0, 4),
+      points.slice(3, 7),
+      points.slice(6, 10),
+    ];
+    const solved = harmonizeCubicRun(run, {
+      start: ownsWall ? bulbEndCurvature(wall) : bulbEndCurvature(entry.wall, true),
+      end: built ? bulbEndCurvature(points.slice(9, 13)) : null,
+      radius,
+    });
+    if (solved) {
+      if (ownsWall) entry.wall = solved.shift();
+      points = [
+        ...solved[0],
+        ...solved[1].slice(1),
+        ...solved[2].slice(1),
+        ...points.slice(10),
+      ];
     }
   }
   const errors = [
@@ -616,7 +661,6 @@ export function buildBulb({
     fillet: { travel, reach },
     entryParameter: entry.t,
     orthogonalEntry: entry.orthogonal,
-    entrySlide,
     preview,
   };
 }
