@@ -71,19 +71,14 @@ describe("bulb entry V-slide fallback", () => {
     // No position between the extreme and the wall's centre meets the jump
     // while keeping the wall exact and the ball within tolerance. The shapes
     // win: nothing slides, the ball stays exact, and the jump is reported.
+    // The wall has no extreme, so E stays at its end: on the wall, never on
+    // the ball.
     expect(r.entrySlide).to.equal(null);
-    const oldBall = [
-      [590.1922866045394, 253.1458168659178],
-      [590.1922866045395, 202.8363421938656],
-      [549.4650356842409, 158.54328026048844],
-      [495.3596611760296, 158.54328026048844],
-      [443.00686947193435, 158.54328026048844],
-      [400.5603614173832, 200.98245227974303],
-      [400.5603614173832, 253.32619584429938],
-    ];
-    r.points.slice(0, 7).forEach((p, i) => {
-      expect(p.x).to.be.closeTo(oldBall[i][0], 1e-8);
-      expect(p.y).to.be.closeTo(oldBall[i][1], 1e-8);
+    expect(r.points[0].x).to.be.closeTo(585, 1e-8);
+    expect(r.points[0].y).to.be.closeTo(284, 1e-8);
+    r.wall.forEach((p, i) => {
+      expect(p.x).to.be.closeTo(wall[i].x, 1e-8);
+      expect(p.y).to.be.closeTo(wall[i].y, 1e-8);
     });
     expect(r.error).to.be.greaterThan(0);
   });

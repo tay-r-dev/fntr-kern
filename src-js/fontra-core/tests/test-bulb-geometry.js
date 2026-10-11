@@ -332,7 +332,7 @@ describe("bulb construction", () => {
     ).to.be.greaterThan(10);
   });
 
-  it("uses P's outgoing handle when E moves onto the first ball arc", () => {
+  it("keeps E on the outer wall when the wall has no extreme, never on the ball", () => {
     const wall = [
       { x: 0, y: 100 },
       { x: 30, y: 70, type: "cubic" },
@@ -351,11 +351,14 @@ describe("bulb construction", () => {
         { x: -30, y: 30 },
       ],
     });
-    expect(result.entryBallParameter).to.be.within(0, 1);
-    expect(result.wall[0]).to.deep.equal(wall[0]);
-    expect(result.wall[1]).to.not.deep.equal(wall[1]);
-    expect(result.wall[2].x).to.be.closeTo(result.points[0].x, 1e-8);
-    expect(result.points[1].x).to.be.closeTo(result.points[0].x, 1e-8);
+    // The wall up to E is the skeleton wall, cut exactly.
+    const kept = splitCubicAt(wall, result.entryParameter).first;
+    result.wall.forEach((p, i) => {
+      expect(p.x).to.be.closeTo(kept[i].x, 1e-8);
+      expect(p.y).to.be.closeTo(kept[i].y, 1e-8);
+    });
+    expect(result.points[0].x).to.be.closeTo(kept[3].x, 1e-8);
+    expect(result.points[0].y).to.be.closeTo(kept[3].y, 1e-8);
   });
 
   it("does not depend on the previous glyph or slider history", () => {

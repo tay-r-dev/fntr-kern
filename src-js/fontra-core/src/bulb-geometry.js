@@ -239,30 +239,16 @@ function wallParameterAtDistance(points, from, distance) {
   return distance > 0 ? (lo + hi) / 2 : from;
 }
 
-// P -> E is a splice, not a copy of P's skeleton handle. If E is on the wall,
-// both handles come from exact subdivision. If it is on the initial ball arc,
-// the shared V-slide refits P -> E, including P's outgoing handle, while the
-// kept ball piece is exact. No gesture history chooses between these cases.
+// P -> E is a splice, not a copy of P's skeleton handle: both handles come
+// from exact subdivision. E is always on the outer wall, never on the ball. A
+// wall without an extreme keeps E at its end, and the entry slide moves it up
+// the wall from there.
 export function joinBulbEntry(wall, firstArc) {
   const entry = bulbEntry(wall);
-  const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
-  if (entry.orthogonal) {
-    const candidate =
-      entry.t < 1 - 1e-10
-        ? makeSlideCandidate(run, 3, "previous", entry.t)?.points
-        : run.points;
+  if (entry.orthogonal && entry.t < 1 - 1e-10) {
+    const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
+    const candidate = makeSlideCandidate(run, 3, "previous", entry.t).points;
     return { ...entry, wall: candidate.slice(0, 4), firstArc: candidate.slice(3, 7) };
-  }
-  const onBall = bulbEntry(firstArc);
-  if (onBall.orthogonal && onBall.t > 1e-8 && onBall.t < 1 - 1e-8) {
-    const candidate = makeSlideCandidate(run, 3, "next", onBall.t).points;
-    return {
-      wall: candidate.slice(0, 4),
-      firstArc: candidate.slice(3, 7),
-      orthogonal: true,
-      t: 1,
-      ballParameter: onBall.t,
-    };
   }
   return { ...entry, firstArc };
 }
@@ -579,18 +565,13 @@ export function buildBulb({
     radius,
     sourceWall: wall,
     sourceArc: first,
-    entryParameter: entry.ballParameter === undefined ? entry.t : 1,
+    entryParameter: entry.t,
   });
   if (entrySlide) {
     points = entrySlide.points;
     entry.wall = entrySlide.wall;
     entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
-    if (entrySlide.direction === "previous") {
-      entry.t = entrySlide.parameter;
-      entry.ballParameter = undefined;
-    } else if (entrySlide.direction === "next") {
-      entry.ballParameter = entrySlide.parameter;
-    }
+    if (entrySlide.direction === "previous") entry.t = entrySlide.parameter;
     tangents[0] = unit(sub(points[1], points[0]));
   }
   const errors = [
@@ -614,7 +595,6 @@ export function buildBulb({
     tangents,
     fillet: { travel, reach },
     entryParameter: entry.t,
-    entryBallParameter: entry.ballParameter,
     orthogonalEntry: entry.orthogonal,
     entrySlide,
     preview,

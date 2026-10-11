@@ -6620,7 +6620,6 @@ function buildDropCap({
       ({ x, y }) => ({ x, y })
     ),
     bulbEntryParameter: result.entryParameter,
-    bulbEntryBallParameter: result.entryBallParameter,
     bulbEntryOrthogonal: result.orthogonalEntry,
     bulbHarmonizationError: result.error,
     // The editor fits the entry on release wherever it finds this mark.
