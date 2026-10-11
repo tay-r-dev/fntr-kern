@@ -220,6 +220,10 @@ body {
 
 #canvas-split.split {
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  /* The divider's ears draw over the card's own rule, where it turns into
+     theirs, so the card lets them reach its 1px border. */
+  overflow: clip;
+  overflow-clip-margin: 1px;
 }
 
 .canvas-slot {
