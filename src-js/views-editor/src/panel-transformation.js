@@ -1188,14 +1188,27 @@ export default class TransformationPanel {
       }
     }
 
+    // Generated contours take no part: the skeleton owns them, so they stay
+    // as they are and are only re-indexed around the result.
+    const generatedIndices = (layerGlyph) =>
+      new Set(
+        (getSkeletonData(layerGlyph)?.generated || []).map(
+          ({ pathContourIndex }) => pathContourIndex
+        )
+      );
+
     const layerPaths = await mapObjectValuesAsync(
       editLayerGlyphs,
       async (layerGlyph) => {
         const path = layerGlyph.path;
+        const generated = generatedIndices(layerGlyph);
         const selectedContoursPath = new VarPackedPath();
         const unselectedContoursPath = new VarPackedPath();
 
         for (const contourIndex of range(path.numContours)) {
+          if (generated.has(contourIndex)) {
+            continue;
+          }
           if (isContourSelected(contourIndex)) {
             selectedContoursPath.appendContour(path.getContour(contourIndex));
           } else {
@@ -1213,29 +1226,24 @@ export default class TransformationPanel {
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
         for (const [layerName, layerPath] of Object.entries(layerPaths)) {
-          if (doUnion && pointIndices.length) {
-            // Union of selected contours: the selected contours (never
-            // generated ones — those are unselectable) are deleted and the
-            // boolean result is appended, so the surviving generated contours
-            // only move; re-derive their indices via a marked dry run.
-            const layerGlyph = glyph.layers[layerName].glyph;
-            const structuralEdit = (path) => {
-              for (const contourIndex of reversed(selectedContourIndices)) {
-                path.deleteContour(contourIndex);
-              }
-              path.appendPath(layerPath);
-            };
-            const remap = computeGeneratedContourRemap(layerGlyph, structuralEdit);
-            structuralEdit(layerGlyph.path);
-            applyGeneratedContourRemap(layerGlyph, remap);
-          } else {
-            // Whole-path boolean ops (union-all, subtract/intersect/exclude)
-            // consume every contour, generated ones included: the result no
-            // longer corresponds to the skeleton's generated bookkeeping.
-            // Documented WS-9 limitation (Deviations): with an active skeleton
-            // these ops are destructive to the generated linkage.
-            glyph.layers[layerName].glyph.path = layerPath;
-          }
+          // The contours the operation consumed are deleted and its result
+          // appended, so the generated contours only move.
+          const layerGlyph = glyph.layers[layerName].glyph;
+          const generated = generatedIndices(layerGlyph);
+          const consumed = [...range(layerGlyph.path.numContours)].filter(
+            (contourIndex) =>
+              !generated.has(contourIndex) &&
+              (!doUnion || !pointIndices.length || isContourSelected(contourIndex))
+          );
+          const structuralEdit = (path) => {
+            for (const contourIndex of reversed(consumed)) {
+              path.deleteContour(contourIndex);
+            }
+            path.appendPath(layerPath);
+          };
+          const remap = computeGeneratedContourRemap(layerGlyph, structuralEdit);
+          structuralEdit(layerGlyph.path);
+          applyGeneratedContourRemap(layerGlyph, remap);
         }
         return undoLabel.toLowerCase();
       },

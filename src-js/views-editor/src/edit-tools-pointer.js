@@ -24,10 +24,7 @@ import {
   union,
 } from "@fontra/core/set-ops.js";
 import {
-  bulbSideOfRole,
   getSkeletonData,
-  makeEditableGeneratedPointKey,
-  makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
 import { dragSnapPolicy } from "@fontra/core/snapping.js";
@@ -342,9 +339,9 @@ export class PointerTool extends BaseTool {
     }
   }
 
-  // Pressing a skeleton or generated gizmo selects what it belongs to, so the
-  // panel shows that object: a skeleton segment's two points, or the ribs at
-  // the two ends of a generated segment.
+  // Pressing a skeleton gizmo selects what it belongs to, so the panel shows
+  // that object: a skeleton segment's two points. A generated gizmo selects
+  // nothing, so a drag on it leaves no ribs selected.
   _skeletonPointUnder(point, size) {
     return (
       this.sceneModel.skeletonPointAtPoint(
@@ -372,32 +369,6 @@ export class PointerTool extends BaseTool {
         if (pointId !== undefined) {
           keys.add(makeSkeletonPointKey(gizmo.contourId, pointId));
         }
-      }
-    } else if (gizmo.kind === "generated" && segment) {
-      for (const entry of [segment.provenance?.[0], segment.provenance?.at(-1)]) {
-        if (entry?.skeletonPointId === undefined || entry.insertion) {
-          continue;
-        }
-        // A ball segment belongs to no rib: its ends are the bulb's own points.
-        if (segment.bulb) {
-          if (entry.bulbRole) {
-            keys.add(
-              makeEditableGeneratedPointKey(
-                entry.skeletonContourId ?? segment.skeletonContourId,
-                entry.skeletonPointId,
-                bulbSideOfRole(entry.bulbRole)
-              )
-            );
-          }
-          continue;
-        }
-        keys.add(
-          makeSkeletonRibKey(
-            entry.skeletonContourId ?? segment.skeletonContourId,
-            entry.skeletonPointId,
-            segment.side
-          )
-        );
       }
     }
     if (keys.size) {
