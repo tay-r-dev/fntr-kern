@@ -1076,8 +1076,11 @@ glyph-cell-view .glyph-count {
   height: var(--bt-sgb-height);
   padding: 2px 1px;
   background: var(--bt-sgb-sr-rest);
-  border: 0 solid var(--bt-sgb-ln-rest);
-  border-bottom-width: 1px;
+  /* Longhands: the style must not hang on the colour's var(), or a var
+     the browser cannot resolve drops the whole border. */
+  border-style: solid;
+  border-width: 0 0 1px;
+  border-color: var(--bt-sgb-ln-rest);
   --icon-button-icon-size: 16px;
   --icon-button-inner-fill: var(--bt-sgc-sr-rest);
   --icon-button-inner-border: transparent;
