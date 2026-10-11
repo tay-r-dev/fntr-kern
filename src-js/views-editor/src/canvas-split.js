@@ -347,7 +347,11 @@ export class CanvasSplit {
     storePreviews(this.previews);
     this.layout = null;
     this.root.classList.remove("split");
-    delete document.querySelector(".tools-overlay")?.dataset.hideEar;
+    const toolbar = document.querySelector(".tools-overlay");
+    if (toolbar) {
+      delete toolbar.dataset.hideEar;
+      delete toolbar.dataset.squareCorner;
+    }
     this.root.style.gridTemplateColumns = "";
     this._render();
     this._keepLiveView(viewBox);
@@ -478,21 +482,32 @@ export class CanvasSplit {
       right: { top: 0, radius: EAR_RADIUS },
     };
     let hideToolbarEar = "";
-    let overBar = false;
+    let squareToolbarCorner = "";
+    let clipTop = null; // null: not over the bar
     if (toolbar?.getClientRects().length) {
       const bar = toolbar.getBoundingClientRect();
       const under = Math.max(0, bar.bottom - card.top - this.root.clientTop);
       if (divider.left >= bar.left && divider.right <= bar.right) {
-        ears.left = { top: under, radius: clamp(divider.left - bar.left - EAR_RADIUS) };
-        ears.right = { top: under, radius: clamp(bar.right - divider.right - EAR_RADIUS) };
+        // Over the bar's lower rule only, so that rule doesn't cross it.
+        clipTop = under - 1;
+        const left = divider.left - bar.left - EAR_RADIUS;
+        const right = bar.right - divider.right - EAR_RADIUS;
+        ears.left = { top: under, radius: clamp(left) };
+        ears.right = { top: under, radius: clamp(right) };
+        // Within the bar's lower corner round, that corner goes square.
+        if (left < 0) {
+          squareToolbarCorner = "left";
+        } else if (right < 0) {
+          squareToolbarCorner = "right";
+        }
       } else if (divider.left < bar.left && divider.right > bar.left) {
+        clipTop = 0;
         ears.right.top = under;
-        hideToolbarEar = "left";
-        overBar = true;
+        hideToolbarEar = squareToolbarCorner = "left";
       } else if (divider.left < bar.right && divider.right > bar.right) {
+        clipTop = 0;
         ears.left.top = under;
-        hideToolbarEar = "right";
-        overBar = true;
+        hideToolbarEar = squareToolbarCorner = "right";
       } else if (divider.right <= bar.left) {
         ears.right.radius = 0;
         if (bar.left - divider.right < TOOLBAR_EAR) {
@@ -505,8 +520,10 @@ export class CanvasSplit {
         }
       }
       toolbar.dataset.hideEar = hideToolbarEar;
+      toolbar.dataset.squareCorner = squareToolbarCorner;
     }
-    this.divider.classList.toggle("over-bar", overBar);
+    this.divider.classList.toggle("over-bar", clipTop !== null);
+    this.divider.style.setProperty("--clip-top", `${clipTop ?? 0}px`);
     for (const side of ["left", "right"]) {
       this.divider.style.setProperty(`--ear-top-${side}-y`, `${ears[side].top}px`);
       this.divider.style.setProperty(`--rule-${side}-y`, `${ears[side].top}px`);
