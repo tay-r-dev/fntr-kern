@@ -243,7 +243,8 @@ body {
    canvas-split.js sets where the top ears start (under the tool bar where
    the divider passes beneath it) and shrinks a top ear that has no room. */
 .canvas-split-divider {
-  --ear-top: 0px;
+  --ear-top-left-y: 0px;
+  --ear-top-right-y: 0px;
   --ear-top-left: 10;
   --ear-top-right: 10;
   position: relative;
@@ -254,9 +255,18 @@ body {
   border-left: 1px solid var(--line-base-basic-1);
   border-right: 1px solid var(--line-base-basic-1);
   touch-action: none;
-  /* Nothing of it above the top ears: under the tool bar it stops at the
-     bar's lower edge. The sides stay open for the ears. */
-  clip-path: inset(var(--ear-top) -20px 0 -20px);
+}
+
+/* The divider takes a drag 2px out from each side. */
+.canvas-split-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+
+.tools-overlay[data-hide-ear="left"]::before,
+.tools-overlay[data-hide-ear="right"]::after {
+  display: none;
 }
 
 .canvas-split-ear {
@@ -273,7 +283,7 @@ body {
 
 .canvas-split-ear.top-left {
   --r: var(--ear-top-left);
-  top: var(--ear-top);
+  top: var(--ear-top-left-y);
   right: 100%;
   background: radial-gradient(
     circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
@@ -283,7 +293,7 @@ body {
 
 .canvas-split-ear.top-right {
   --r: var(--ear-top-right);
-  top: var(--ear-top);
+  top: var(--ear-top-right-y);
   left: 100%;
   background: radial-gradient(
     circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
@@ -387,6 +397,8 @@ body {
    resizing a sidebar leaves it where it is. */
 .tools-overlay {
   position: fixed;
+  /* Over the split divider, which stops at its lower edge. */
+  z-index: 2;
   top: calc(var(--top-bar-height) + 8px);
   left: 50%;
   transform: translateX(-50%);

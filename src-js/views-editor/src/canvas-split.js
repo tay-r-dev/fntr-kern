@@ -347,6 +347,7 @@ export class CanvasSplit {
     storePreviews(this.previews);
     this.layout = null;
     this.root.classList.remove("split");
+    delete document.querySelector(".tools-overlay")?.dataset.hideEar;
     this.root.style.gridTemplateColumns = "";
     this._render();
     this._keepLiveView(viewBox);
@@ -454,10 +455,15 @@ export class CanvasSplit {
     this._placeDividerEars();
   }
 
-  // The divider's top ears start under the tool bar where the divider passes
-  // beneath it, else at the card's top rule. An ear that would reach past the
-  // tool bar's side (or into the tool bar's own ear, beside it) shrinks to
-  // the room there is, down to none.
+  // The divider's top ears, by where the divider is against the tool bar
+  // (which is drawn over it):
+  // - under it: both ears at the bar's lower edge, each shrinking as the
+  //   divider nears the bar's side, gone where the sides line up;
+  // - across one of its sides: the ear under the bar at its lower edge at
+  //   full size, the outer one at the card's top in place of the bar's own
+  //   ear there;
+  // - beside it: both ears at the card's top, the one facing the bar gone,
+  //   and the bar's ear on that side hidden while the divider is within it.
   _placeDividerEars() {
     if (!this.layout) {
       return;
@@ -465,25 +471,41 @@ export class CanvasSplit {
     const toolbar = document.querySelector(".tools-overlay");
     const divider = this.divider.getBoundingClientRect();
     const card = this.root.getBoundingClientRect();
-    let top = 0;
-    let left = EAR_RADIUS;
-    let right = EAR_RADIUS;
+    const clamp = (r) => Math.max(0, Math.min(EAR_RADIUS, r));
+    const ears = {
+      left: { top: 0, radius: EAR_RADIUS },
+      right: { top: 0, radius: EAR_RADIUS },
+    };
+    let hideToolbarEar = "";
     if (toolbar?.getClientRects().length) {
       const bar = toolbar.getBoundingClientRect();
-      if (divider.right > bar.left && divider.left < bar.right) {
-        top = Math.max(0, bar.bottom - card.top - this.root.clientTop);
-        left = divider.left - bar.left;
-        right = bar.right - divider.right;
+      const under = Math.max(0, bar.bottom - card.top - this.root.clientTop);
+      if (divider.left >= bar.left && divider.right <= bar.right) {
+        ears.left = { top: under, radius: clamp(divider.left - bar.left) };
+        ears.right = { top: under, radius: clamp(bar.right - divider.right) };
+      } else if (divider.left < bar.left && divider.right > bar.left) {
+        ears.right.top = under;
+        hideToolbarEar = "left";
+      } else if (divider.left < bar.right && divider.right > bar.right) {
+        ears.left.top = under;
+        hideToolbarEar = "right";
       } else if (divider.right <= bar.left) {
-        right = bar.left - TOOLBAR_EAR - divider.right;
+        ears.right.radius = 0;
+        if (bar.left - divider.right < TOOLBAR_EAR) {
+          hideToolbarEar = "left";
+        }
       } else {
-        left = divider.left - (bar.right + TOOLBAR_EAR);
+        ears.left.radius = 0;
+        if (divider.left - bar.right < TOOLBAR_EAR) {
+          hideToolbarEar = "right";
+        }
       }
+      toolbar.dataset.hideEar = hideToolbarEar;
     }
-    const clamp = (r) => Math.max(0, Math.min(EAR_RADIUS, r));
-    this.divider.style.setProperty("--ear-top", `${top}px`);
-    this.divider.style.setProperty("--ear-top-left", clamp(left));
-    this.divider.style.setProperty("--ear-top-right", clamp(right));
+    for (const side of ["left", "right"]) {
+      this.divider.style.setProperty(`--ear-top-${side}-y`, `${ears[side].top}px`);
+      this.divider.style.setProperty(`--ear-top-${side}`, ears[side].radius);
+    }
   }
 
   _setupDivider() {
