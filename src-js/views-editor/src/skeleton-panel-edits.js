@@ -432,9 +432,15 @@ async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabe
     const applyValue = (value) => {
       const allChanges = [];
       for (const [layerName, layerGlyph] of entries) {
-        const changes = editSkeleton(layerGlyph, (working) => {
-          mutate(working, referenceSkeletonData, value);
-        });
+        // A panel gesture shows the bulb's reference even with a bulb point
+        // selected; the transaction fits the entry on release.
+        const changes = editSkeleton(
+          layerGlyph,
+          (working) => {
+            mutate(working, referenceSkeletonData, value);
+          },
+          { bulbPreview: true }
+        );
         allChanges.push(changes.prefixed(["layers", layerName, "glyph"]));
       }
       return new ChangeCollector().concat(...allChanges);

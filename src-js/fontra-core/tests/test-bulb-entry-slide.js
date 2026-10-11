@@ -29,16 +29,15 @@ describe("bulb entry V-slide fallback", () => {
     ];
     const result = slideBulbEntryForCurvature({ wall, points, radius: 67.34 });
     expect(result).not.to.equal(null);
-    // The fit at the extreme does not hold on whole units, so E V-slides up
-    // the wall; the wall piece it keeps is exact.
-    expect(result.direction).to.equal("previous");
+    // The fit holds at the extreme. Whole units are a refining pass, not a
+    // condition, so E does not slide; the wall piece it keeps is exact.
+    expect(result.direction).to.equal("stationary");
     expect(result.points.slice(3)).to.deep.equal(points.slice(3));
     expect(result.points.length).to.equal(13);
     const retainedWall = splitCubicAt(wall, result.parameter).first;
     expect(result.wall.map(({ x, y }) => ({ x, y }))).to.deep.equal(
       retainedWall.map(({ x, y }) => ({ x, y }))
     );
-    expect(Math.abs(result.points[1].x - result.points[0].x)).to.be.greaterThan(0.01);
     expect(bulbEndCurvature(result.wall, true)).to.be.closeTo(
       bulbEndCurvature(result.points.slice(0, 4)),
       1e-8

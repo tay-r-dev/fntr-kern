@@ -163,6 +163,7 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       serifUnitsMode: options.serifUnitsMode ?? "absolute",
       removeCollapsedPoints: options.removeCollapsedPoints === true,
       simplifyEasing: options.simplifyEasing === true,
+      bulbPreview: options.bulbPreview === true,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -3159,6 +3160,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
         capBallEdits: firstOnCurvePoint.capBallEdits,
+        preview: options.bulbPreview,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3360,6 +3362,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
         capBallEdits: lastOnCurvePoint.capBallEdits,
+        preview: options.bulbPreview,
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -6565,6 +6568,7 @@ function buildDropCap({
   capBallShape,
   capBallEasing,
   capBallEdits = null,
+  preview = false,
 }) {
   if (!endpoint || !(capWidth > 0.001)) return null;
   const outer = outerSide === "left" ? leftSide : rightSide;
@@ -6603,6 +6607,7 @@ function buildDropCap({
     easing,
     edits: capBallEdits,
     beyond: beyondRun && [qHandleAnchor, ...beyondRun.slice(1)],
+    preview: preview === true,
   });
   if (!result) return null;
   const points = result.points;
@@ -6618,6 +6623,8 @@ function buildDropCap({
     bulbEntryBallParameter: result.entryBallParameter,
     bulbEntryOrthogonal: result.orthogonalEntry,
     bulbHarmonizationError: result.error,
+    // The editor fits the entry on release wherever it finds this mark.
+    ...(result.preview ? { bulbPreview: true } : {}),
   };
   result.wall[3] = entry;
   // The ball's three points belong to the cap and take the designer's edits.
@@ -6659,6 +6666,11 @@ function buildDropCap({
         bulbRole: role,
         bulbSlot: slot,
       };
+  // While an edit runs, E and its two handles are hidden: the fit on release
+  // moves them, and the jump is not to be seen under the cursor.
+  if (result.preview)
+    for (const p of [result.wall[2], points[0], points[1]])
+      p._provenance = { ...p._provenance, bulbPreview: true };
   // Q's handle on the bulb side is the bulb's as well: the wall from W to Q is
   // the cut the fillet leaves. It names the terminal and no side, so a drag on
   // Q's rib does not carry it.

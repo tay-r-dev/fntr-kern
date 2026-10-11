@@ -70,6 +70,18 @@ import {
   SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 
+// Scoped by the editor's edit transaction. While it is on, a bulb is built as
+// its reference -- the perfect ball, E on the rib end -- so nothing jumps under
+// the cursor. The transaction fits the entry once, on release.
+let bulbReferencePreview = false;
+let bulbReferencePreviewUsed = false;
+export function setBulbReferencePreview(enabled) {
+  const used = bulbReferencePreviewUsed;
+  bulbReferencePreview = enabled;
+  if (enabled) bulbReferencePreviewUsed = false;
+  return used;
+}
+
 export function makeSkeletonPointKey(contourId, pointId) {
   return `skeletonPoint/${contourId}/${pointId}`;
 }
@@ -337,7 +349,18 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
       working
     );
   }
-  const generated = generateFromSkeleton(working, readSkeletonGenerationOptions());
+  const preview = options.bulbPreview ?? bulbReferencePreview;
+  const generated = generateFromSkeleton(working, {
+    ...readSkeletonGenerationOptions(),
+    bulbPreview: preview,
+  });
+  if (
+    preview &&
+    generated.provenance.some((entry) =>
+      entry.pointMap.some((point) => point?.bulbPreview)
+    )
+  )
+    bulbReferencePreviewUsed = true;
   const replacedContours = replaceGeneratedSkeletonContours(
     layerGlyph,
     working,

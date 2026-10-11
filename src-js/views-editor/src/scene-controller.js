@@ -120,6 +120,7 @@ import {
   makeSkeletonTensionAwareTargetEntry,
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
+  setBulbReferencePreview,
 } from "./skeleton-editing.js";
 import {
   closePanelSkeletonContours,
@@ -2134,16 +2135,45 @@ export class SceneController {
     // so it undoes with the edit it was taken for.
     const markerChanges = doInstance ? null : recordMarkerAnchorRefresh(editSubject);
 
+    // While the edit runs, bulbs are built as their reference: the perfect ball,
+    // E on the rib end. On release the entry is fitted once, in the same undo
+    // record. Direct edits to a bulb's own points need the fitted entry they
+    // grabbed, so they skip the reference.
+    const previewBulbs = ![...this.selection].some((item) => item.includes("/bulb-"));
+    setBulbReferencePreview(previewBulbs);
     let result;
+    let fitChanges;
     try {
       result = await editFunc(sendIncrementalChange, editSubject);
+      if (setBulbReferencePreview(false)) {
+        fitChanges = recordChanges(editSubject, (subject) => {
+          const layers = doInstance
+            ? [subject]
+            : Object.values(subject.layers || {}).map((layer) => layer.glyph);
+          for (const layer of layers) {
+            const data = getSkeletonData(layer);
+            if (
+              data?.generated?.some((entry) =>
+                entry.pointMap?.some((point) => point?.bulbPreview)
+              )
+            ) {
+              applySkeletonEditInPlace(layer, () => {}, { replaceContours: true });
+            }
+          }
+        });
+      }
     } catch (error) {
       this.selection = initialSelection;
       editContext.editCancel();
       throw error;
+    } finally {
+      setBulbReferencePreview(false);
     }
 
     let { changes, undoLabel, broadcast, undoInfo: editUndoInfo } = result || {};
+    if (fitChanges?.hasChange) {
+      changes = changes ? changes.concat(fitChanges) : fitChanges;
+    }
     // An edit may carry its own state into the undo record: anything a panel
     // has to restore alongside the geometry, the way the selection and the
     // grid-snap flag already are. Undo and redo hand it back through

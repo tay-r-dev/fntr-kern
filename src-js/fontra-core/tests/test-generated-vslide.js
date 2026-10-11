@@ -254,7 +254,12 @@ describe("V-slide of generated points, through the editor's entry", () => {
       for (const role of ["fillet-ball", "fillet-wall"]) {
         const selection = new Set([`editableGeneratedPoint/1/8/bulb-${role}`]);
         expect(
-          getPointSlideBehaviorName({ pointSlideMode: true }, new Set(), selection, layer),
+          getPointSlideBehaviorName(
+            { pointSlideMode: true },
+            new Set(),
+            selection,
+            layer
+          ),
           role
         ).to.equal(null);
         expect(
