@@ -102,8 +102,36 @@ export class GlyphCell extends UnlitElement {
     --swatch-code: var(--text-color-lime-basic-5);
   }
 
+  /* The empty swatch (Figma 4271:1139, 4271:1152): a glyph the font does not
+     have. The face is ruled all round and has no status bar; the placeholder
+     is text 5, at half strength until the pointer is over it. Hover does not
+     change the face. */
+  #glyph-cell-container.missing:not(.selected) {
+    --swatch-surface: var(--surface-base-basic-0);
+    --swatch-line: var(--line-base-basic-0);
+    --swatch-name: var(--text-base-basic-4);
+    --swatch-code: var(--text-base-basic-5);
+  }
+
+  /* The face takes the bar's room too, so an empty swatch stands as tall as
+     the others: 4px of bar and 1px of gap, less its own lower rule. */
   #glyph-cell-container.missing #glyph-cell-content {
-    opacity: 0.4;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--swatch-line);
+    border-radius: var(--corner-outer-l);
+  }
+
+  #glyph-cell-container.missing .glyph-status-color {
+    display: none;
+  }
+
+  #glyph-cell-container.missing:not(.selected) .glyph-shape-placeholder {
+    color: var(--text-base-basic-5);
+    opacity: 0.5;
+  }
+
+  #glyph-cell-container.missing:not(.selected):hover .glyph-shape-placeholder {
+    opacity: 1;
   }
 
   /* The face: ruled at the sides and above, 6px in, the glyph 2px over its
