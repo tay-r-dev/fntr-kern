@@ -159,7 +159,8 @@ export class Sidebar {
         } else {
           width = initialWidth + (event.clientX - initialPointerCoordinateX);
         }
-        width = clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+        // Whole pixels, so the panel's edge lines do not land between pixels.
+        width = Math.round(clamp(width, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH));
         document.documentElement.style.setProperty(cssProperty, `${width}px`);
       }
     };

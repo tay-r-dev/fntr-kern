@@ -1,7 +1,7 @@
 // The design's scrollbars, drawn rather than native: browsers differ in what
 // they let a page style (Firefox: no thinner than its "thin", no hover
 // colour, no arrows), so a scroll box hides its own and these are drawn
-// beside it. A 2px thumb in line 4, line 2 under the pointer, an arrow
+// beside it. A 2px thumb in line 2, line 4 under the pointer, an arrow
 // triangle at each end in the same colours, no track and no fill
 // (shared.css's .scrollbar-rail). The box scrolls natively as before: wheel,
 // keys and touch are the browser's; only the bars are ours.

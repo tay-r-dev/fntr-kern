@@ -546,7 +546,7 @@ glyph-cell-view .glyph-count {
    its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs are
    24px icons, touching, 4px in from the edge. Resting on the tabs -- not
    the pane's empty length -- for 2s opens them to 60px tiles with their
-   names, 4px apart on a white card 4px round them and 8px in, and the pane
+   names, 4px apart on a white card ruled in line 1, 4px round them and 8px in, and the pane
    widens from 28px to 76px, moving its neighbour aside. Leaving closes them
    at once. Clicks and hover colours never wait. */
 .tab-pane {
@@ -597,6 +597,8 @@ glyph-cell-view .glyph-count {
     var(--surface-base-basic-0) calc(100% * var(--tab-open)),
     transparent
   );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--line-base-basic-1) calc(100% * var(--tab-open)), transparent);
   border-radius: 14px;
 }
 
@@ -816,12 +818,12 @@ glyph-cell-view .glyph-count {
    still scrolls with a thin bar in the drawn bars' colour. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--line-base-basic-4) transparent;
+  scrollbar-color: var(--line-base-basic-2) transparent;
 }
 
 /* The drawn scrollbars (scrollbars.js): the box's own are hidden; each bar
    is a rail beside it -- an 8px strip that takes the pointer -- holding a 2px
-   thumb in line 4, line 2 under the pointer or while dragged, with an arrow
+   thumb in line 2, line 4 under the pointer or while dragged, with an arrow
    triangle at each end in the same colours. No track, no fill. A rail with
    `reveal` shows only once the pointer has rested on it (a panel's column);
    `reserved` is the 16px strip kept under a table's rows. */
@@ -868,7 +870,7 @@ glyph-cell-view .glyph-count {
 .scrollbar-thumb {
   position: absolute;
   border-radius: 1px;
-  background-color: var(--line-base-basic-4);
+  background-color: var(--line-base-basic-2);
 }
 
 .scrollbar-rail.vertical .scrollbar-thumb {
@@ -886,7 +888,7 @@ glyph-cell-view .glyph-count {
   width: 8px;
   height: 8px;
   align-self: center;
-  background-color: var(--line-base-basic-4);
+  background-color: var(--line-base-basic-2);
   mask: url("/images/arrow-down.svg") center / 4px 4px no-repeat;
 }
 
@@ -934,7 +936,7 @@ glyph-cell-view .glyph-count {
 .scrollbar-thumb:hover,
 .scrollbar-thumb.dragging,
 .scrollbar-arrow:hover {
-  background-color: var(--line-base-basic-2);
+  background-color: var(--line-base-basic-4);
 }
 
 .scrollbar-rail.reveal:not(.shown) > * {
