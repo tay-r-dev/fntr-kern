@@ -11,24 +11,24 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 // move reports {dy} since the press in event.detail; "handle-drag-end"
 // follows the release.
 //
-// `size` is "M" (42x12, the default) or "S" (52x15, the one input/text
+// `size` is "M" (28x8, the default) or "S" (52x15, the one input/text
 // carries), a plain JS property like every UnlitElement component here.
 export class UIHandle extends UnlitElement {
-  // Drawn at twice the design's size, so it is easy to take hold of, with a
+  // Drawn at the design's size, with a
   // hairline round its top and sides and a soft shadow, so it reads as a tab
   // laid over the field's edge. It does not change on hover.
   static styles = `
     :host {
       display: block;
       z-index: 2;
-      width: 42px;
-      height: 12px;
+      width: 28px;
+      height: 8px;
       cursor: row-resize;
       touch-action: none;
       /* The SVG's tab stops half a unit above its box (the rest is shadow
          room), so it is drawn a pixel lower: the tab's flat bottom then lies
          on the owner's edge line and hides it, a bump on that edge. */
-      background: url("/images/handle-edge.svg") center bottom -0.75px / 42px 12.75px
+      background: url("/images/handle-edge.svg") center bottom -0.5px / 28px 8.5px
         no-repeat;
       /* The SVG's shadow sits above its box. */
       overflow: visible;

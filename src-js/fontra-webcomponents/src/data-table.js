@@ -252,7 +252,7 @@ const DATA_TABLE_STYLES = `
   }
 
   :where(data-table.data-table-resizable tbody tr:last-child td) {
-    padding-bottom: calc(0.15em + 10px);
+    padding-bottom: calc(0.15em + 6px);
   }
 
   /* Column resize (columnWidthsStorageKey): a handle on each head cell's

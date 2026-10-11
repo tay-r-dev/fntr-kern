@@ -201,7 +201,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border-right: 1px solid var(--line-base-basic-1);
+  border-right: var(--hairline) solid var(--line-base-basic-1);
   overflow-y: auto;
 }
 
@@ -412,7 +412,7 @@
    under, 12px over the rule. */
 #kerning-filters-accordion {
   margin: 0 -8px;
-  border-bottom: 1px solid var(--grey-deprecated-7);
+  border-bottom: var(--hairline) solid var(--grey-deprecated-7);
 }
 
 /* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
@@ -428,7 +428,7 @@
 }
 
 .kerning-derive-proposal {
-  border: 1px solid var(--horizontal-rule-color, #ccc);
+  border: var(--hairline) solid var(--horizontal-rule-color, #ccc);
   padding: 0.35em 0.5em;
   display: flex;
   flex-wrap: wrap;
@@ -450,7 +450,7 @@
 .kerning-pairtable-table td {
   text-align: left;
   padding: 0.15em 0.4em;
-  border-bottom: 1px solid var(--horizontal-rule-color, #ccc);
+  border-bottom: var(--hairline) solid var(--horizontal-rule-color, #ccc);
 }
 
 /* Workstream 16 (spec §6): a row click selects that pair for the left
@@ -783,7 +783,7 @@ kerning-handle.negative {
   align-items: center;
   gap: 0.5em;
   padding: 0.3em 0.6em;
-  border: 1px solid var(--horizontal-rule-color, #ccc);
+  border: var(--hairline) solid var(--horizontal-rule-color, #ccc);
   border-radius: 1em;
   background-color: var(--editor-mini-console-background-color, rgb(0 0 0 / 6%));
   font-size: 1em;

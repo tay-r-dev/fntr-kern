@@ -141,7 +141,7 @@ body {
 .main-overlay-container {
   position: absolute;
   display: grid;
-  inset: 8px 1px; /* the notch's top on the canvas card's rule */
+  inset: 8px var(--hairline); /* the notch's top on the canvas card's rule */
   pointer-events: none;
 }
 
@@ -221,9 +221,9 @@ body {
 #canvas-split.split {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   /* The divider's ears draw over the card's own rule, where it turns into
-     theirs, so the card lets them reach its 1px border. */
+     theirs, so the card lets them reach its border. */
   overflow: clip;
-  overflow-clip-margin: 1px;
+  overflow-clip-margin: var(--hairline);
 }
 
 .canvas-slot {
@@ -264,9 +264,9 @@ body {
   cursor: col-resize;
   background:
     linear-gradient(var(--line-base-basic-1), var(--line-base-basic-1)) left bottom /
-      1px calc(100% - var(--rule-left-y)) no-repeat,
+      var(--hairline) calc(100% - var(--rule-left-y)) no-repeat,
     linear-gradient(var(--line-base-basic-1), var(--line-base-basic-1)) right bottom /
-      1px calc(100% - var(--rule-right-y)) no-repeat,
+      var(--hairline) calc(100% - var(--rule-right-y)) no-repeat,
     var(--surface-base-basic-1);
   touch-action: none;
 }
@@ -274,7 +274,7 @@ body {
 /* Over the bar it shows from --clip-top down, its ears' sides open. */
 .canvas-split-divider.over-bar {
   z-index: 3;
-  clip-path: inset(var(--clip-top) -20px -1px -20px);
+  clip-path: inset(var(--clip-top) -20px calc(-1 * var(--hairline)) -20px);
 }
 
 /* Its strip runs on over the card's top and bottom rules, which it breaks. */
@@ -282,7 +282,7 @@ body {
   content: "";
   position: absolute;
   z-index: -1;
-  inset: -1px 0;
+  inset: calc(-1 * var(--hairline)) 0;
   background: inherit;
 }
 
@@ -296,21 +296,23 @@ body {
 .canvas-split-ear {
   --r: 10;
   position: absolute;
-  width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
-  height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  width: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
   pointer-events: none;
-  --ear-fill: transparent calc(var(--r) * 1px - 0.5px),
-    var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
-    var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
-    var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
+  --ear-fill:
+    transparent calc(var(--r) * 1px - var(--hairline) / 2),
+    var(--line-base-basic-1) calc(var(--r) * 1px - var(--hairline) / 2),
+    var(--line-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2);
 }
 
 .canvas-split-ear.top-left {
   --r: var(--ear-top-left);
   top: var(--ear-top-left-y);
-  right: calc(100% - 1px);
+  right: calc(100% - var(--hairline));
   background: radial-gradient(
-    circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 0
+      calc(var(--r) * 1px + var(--hairline) / 2),
     var(--ear-fill)
   );
 }
@@ -318,9 +320,10 @@ body {
 .canvas-split-ear.top-right {
   --r: var(--ear-top-right);
   top: var(--ear-top-right-y);
-  left: calc(100% - 1px);
+  left: calc(100% - var(--hairline));
   background: radial-gradient(
-    circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 100%
+      calc(var(--r) * 1px + var(--hairline) / 2),
     var(--ear-fill)
   );
 }
@@ -328,16 +331,19 @@ body {
 /* On the card's lower rule, which the card clips, so the ear's rule runs into
    it. */
 .canvas-split-ear.bottom-left {
-  bottom: -1px;
-  right: calc(100% - 1px);
-  background: radial-gradient(circle calc(var(--r) * 1px + 0.5px) at 0 0, var(--ear-fill));
+  bottom: calc(-1 * var(--hairline));
+  right: calc(100% - var(--hairline));
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 0 0,
+    var(--ear-fill)
+  );
 }
 
 .canvas-split-ear.bottom-right {
-  bottom: -1px;
-  left: calc(100% - 1px);
+  bottom: calc(-1 * var(--hairline));
+  left: calc(100% - var(--hairline));
   background: radial-gradient(
-    circle calc(var(--r) * 1px + 0.5px) at 100% 0,
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 100% 0,
     var(--ear-fill)
   );
 }

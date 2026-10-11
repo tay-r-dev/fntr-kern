@@ -7946,11 +7946,12 @@ export class KerningViewController extends ViewController {
         },
         { title: "-" },
         {
-          title: "Use as proof text",
-          callback: () => this.useGlyphsAsProofText(glyphNames),
+          title: "Use as input",
+          callback: () => this.useGlyphsAsInput(glyphNames),
         },
         {
-          title: "Show their pairs",
+          title: "Show pairs",
+          enabled: () => glyphNames.length > 1,
           callback: () => this.showPairsOfGlyphs(glyphNames),
         },
       ],
@@ -7958,22 +7959,22 @@ export class KerningViewController extends ViewController {
     );
   }
 
-  // The proof text becomes the glyphs, and the pane shows it.
-  useGlyphsAsProofText(glyphNames) {
-    const phraseInput = this.phraseInputElement;
-    phraseInput.value = glyphNames.map((glyphName) => `/${glyphName}`).join(" ");
-    // The input event saves the text and sends it to the scene.
-    phraseInput.dispatchEvent(new Event("input"));
-    this.setChipMode("phrase");
-  }
-
-  // The pair table's glyph field becomes the glyphs: one glyph lists all its
+  // The results table's glyph field becomes the glyphs: one glyph lists all its
   // pairs, several list the pairs between them.
-  showPairsOfGlyphs(glyphNames) {
+  useGlyphsAsInput(glyphNames) {
     const glyphInput = this._glyphInputElement;
     glyphInput.value = glyphNames.join(", ");
     this.autokernFiltersController.setItem("glyphName", glyphInput.value);
     this.renderPairTable();
+  }
+
+  // The pane shows every ordered pair of the glyphs, in pair mode.
+  showPairsOfGlyphs(glyphNames) {
+    const pairs = glyphNames.flatMap((left) =>
+      glyphNames.filter((right) => right !== left).map((right) => [left, right])
+    );
+    this.setPreviewPairs(pairs);
+    this.setChipMode("pair");
   }
 
   // Minimal picker: side (1st/2nd/both -- §1.2's own New class convention)

@@ -226,6 +226,8 @@
 }
 
 :root {
+  /* One screen pixel: theme-settings.js sets it for the zoom in use. */
+  --hairline: 1px;
   /* https://css-tricks.com/the-css-custom-property-toggle-trick/ */
   --fontra-theme-marker: ; /* a space, which is valid */
   --top-bar-height: 35px;

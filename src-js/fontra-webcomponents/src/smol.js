@@ -65,6 +65,11 @@ export function smolCSS({ hoverWithin, selectedWithin } = {}) {
     text-align: center;
     appearance: none;
     -webkit-appearance: none;
+  }
+
+  /* Firefox draws a number entry's steppers unless it reads as a text field.
+     Only there: on a select the same rule brings the native arrow back. */
+  input.smol[type="number"] {
     -moz-appearance: textfield;
   }
 
