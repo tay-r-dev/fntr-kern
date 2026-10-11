@@ -7,11 +7,18 @@ const GAP = 6; // between the anchor and the tooltip, the arrow's 4px included
 const MARGIN = 4; // from the window edge
 const OPPOSITE = { top: "bottom", bottom: "top", left: "right", right: "left" };
 
-function makeTooltip(message) {
+// `title`, when given, is a heading line above the message.
+function makeTooltip(message, title) {
   const tooltip = document.createElement("div");
   tooltip.className = "fontra-tooltip";
   tooltip.popover = "manual";
-  tooltip.textContent = message;
+  if (title) {
+    const heading = document.createElement("div");
+    heading.className = "fontra-tooltip-title";
+    heading.textContent = title;
+    tooltip.append(heading);
+  }
+  tooltip.append(message);
   document.body.appendChild(tooltip);
   tooltip.showPopover();
   return tooltip;
@@ -52,7 +59,8 @@ function placeTooltip(tooltip, anchor, side) {
 }
 
 // Shows every `data-tooltip` on the page, after the pointer rests on its
-// element for TOOLTIP_DELAY. `data-tooltipposition` names the side; its
+// element for TOOLTIP_DELAY. `data-tooltiptitle` adds a heading line.
+// `data-tooltipposition` names the side; its
 // corner forms ("top-left", ...) take the side. Call once per page.
 export function showTooltipsEverywhere() {
   let anchor = null;
@@ -70,7 +78,7 @@ export function showTooltipsEverywhere() {
     if (!message) {
       return;
     }
-    tooltip = makeTooltip(message);
+    tooltip = makeTooltip(message, anchor.getAttribute("data-tooltiptitle"));
     const side = (anchor.getAttribute("data-tooltipposition") || "bottom").split("-")[0];
     placeTooltip(tooltip, anchor, side);
   };

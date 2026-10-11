@@ -1,5 +1,6 @@
 /* The tooltip (Figma 4283:6057). An element names its text with
-   `data-tooltip` and its side with `data-tooltipposition`. One tooltip for
+   `data-tooltip`, an optional heading line with
+   `data-tooltiptitle`, and its side with `data-tooltipposition`. One tooltip for
    the whole page shows it (armed-tooltip.js): a popover in the top layer, so
    no panel edge clips it and nothing draws over it. */
 
@@ -27,6 +28,14 @@
   overflow-wrap: break-word;
   filter: drop-shadow(0 0 3px var(--shadow-base-1));
   pointer-events: none;
+}
+
+/* The optional heading line, 3px over the text. */
+.fontra-tooltip-title {
+  margin-bottom: 3px;
+  font: 500 extra-expanded 9px / 10px var(--ui-font-sans);
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 /* The arrow: 8 by 4, on the side that faces the element. */
