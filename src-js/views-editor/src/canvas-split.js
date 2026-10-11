@@ -525,7 +525,10 @@ export class CanvasSplit {
     this.divider.classList.toggle("over-bar", clipTop !== null);
     this.divider.style.setProperty("--clip-top", `${clipTop ?? 0}px`);
     for (const side of ["left", "right"]) {
-      this.divider.style.setProperty(`--ear-top-${side}-y`, `${ears[side].top}px`);
+      // Under the bar, an ear starts on the bar's lower rule, so its own rule
+      // runs into that one rather than alongside it.
+      const earTop = ears[side].top ? ears[side].top - 1 : 0;
+      this.divider.style.setProperty(`--ear-top-${side}-y`, `${earTop}px`);
       this.divider.style.setProperty(`--rule-${side}-y`, `${ears[side].top}px`);
       this.divider.style.setProperty(`--ear-top-${side}`, ears[side].radius);
     }
