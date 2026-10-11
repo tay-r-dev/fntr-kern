@@ -417,29 +417,30 @@ glyph-cell-view .glyph-count {
   content: "";
   position: absolute;
   top: 0;
-  width: 11px;
-  height: 11px;
+  width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  --ear-fill: transparent calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
 }
 
+/* A view may shrink an ear (--toolbar-ear-left / -right, a radius in px). */
 .toolbar::before {
-  left: -11px;
+  --r: var(--toolbar-ear-left, 10);
+  right: 100%;
   background: radial-gradient(
-    circle 10.5px at 0 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
+    circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
   );
 }
 
 .toolbar::after {
-  right: -11px;
+  --r: var(--toolbar-ear-right, 10);
+  left: 100%;
   background: radial-gradient(
-    circle 10.5px at 100% 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
+    circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
   );
 }
 

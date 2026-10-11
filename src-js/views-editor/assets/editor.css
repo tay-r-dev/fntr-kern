@@ -278,16 +278,11 @@ body {
   inset: 0 -2px;
 }
 
-.tools-overlay[data-hide-ear="left"]::before,
-.tools-overlay[data-hide-ear="right"]::after {
-  display: none;
-}
-
 .canvas-split-ear {
   --r: 10;
   position: absolute;
-  width: calc(var(--r) * 1px + 1px);
-  height: calc(var(--r) * 1px + 1px);
+  width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
   pointer-events: none;
   --ear-fill: transparent calc(var(--r) * 1px - 0.5px),
     var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
