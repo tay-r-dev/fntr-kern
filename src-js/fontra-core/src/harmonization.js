@@ -2378,7 +2378,7 @@ export function harmonizePathInPlace(path, pointIndices, options = {}) {
 // treats all three alike. Each entry names the segment by the on-curve it
 // starts at.
 //
-export function balancePathInPlace(path, pointIndices, { roundCoordinates = true } = {}) {
+export function balancePathInPlace(path, pointIndices) {
   const report = [];
   const seen = new Set();
   const touched = new Set();
@@ -2480,11 +2480,12 @@ export function balancePathInPlace(path, pointIndices, { roundCoordinates = true
           end: handleTension(settled, "end"),
         };
         const balanced = balanceSegmentPreservingTension(settled, tensions);
-        // Without rounding, one balance is exact and final.
-        const place = roundCoordinates
-          ? (p) => ({ x: Math.round(p.x), y: Math.round(p.y) })
-          : (p) => ({ x: p.x, y: p.y });
-        const rounded = [settled[0], place(balanced[1]), place(balanced[2]), settled[3]];
+        const rounded = [
+          settled[0],
+          { x: Math.round(balanced[1].x), y: Math.round(balanced[1].y) },
+          { x: Math.round(balanced[2].x), y: Math.round(balanced[2].y) },
+          settled[3],
+        ];
         const still =
           rounded[1].x === settled[1].x &&
           rounded[1].y === settled[1].y &&

@@ -6,11 +6,7 @@ import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
 import { makeSlideCandidate } from "./point-slide.js";
-import {
-  balancePathInPlace,
-  HARMONIZE_DEFAULTS,
-  harmonizeNearestInPlace,
-} from "./harmonization.js";
+import { harmonizePathInPlace } from "./harmonization.js";
 import { VarPackedPath } from "./var-path.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
@@ -579,19 +575,19 @@ export function buildBulb({
     entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
     if (entrySlide.direction === "previous") entry.t = entrySlide.parameter;
     tangents[0] = unit(sub(points[1], points[0]));
-    // Then harmonize B: G2, keep curvature, equalize handles. These are the
-    // press's own steps, one balance and one repair, on exact coordinates.
-    // The press itself would keep B as it is, because B is already exact.
+    // Then one harmonize of B, keeping curvature and equalizing handles.
     const path = VarPackedPath.fromUnpackedContours([
       {
-        points: points
-          .slice(0, 7)
-          .map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
+        points: points.slice(0, 7).map((p, i) => ({ ...p, ...(i === 3 ? { smooth: true } : {}) })),
         isClosed: false,
       },
     ]);
-    balancePathInPlace(path, [3], { roundCoordinates: false });
-    harmonizeNearestInPlace(path, [3], { ...HARMONIZE_DEFAULTS, continuity: "G2" });
+    harmonizePathInPlace(path, [3], {
+      continuity: "G2",
+      preserveCurvature: true,
+      moveOnCurve: false,
+      equalizeHandles: true,
+    });
     for (let i = 1; i < 6; i++) {
       const { x, y } = path.getPoint(i);
       points[i] = { ...points[i], x, y };
