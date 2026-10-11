@@ -179,19 +179,20 @@ body {
 
 /* sidebar content styling */
 
+/* The resize strip: over the panel's edge rule and 5px out onto the canvas. */
 .sidebar-resize-gutter {
   height: 100%;
-  width: 4px;
+  width: 7px;
   cursor: var(--resize-cursor);
   position: absolute;
 }
 
 .sidebar-container.left .sidebar-resize-gutter {
-  right: -2px;
+  right: -5px;
 }
 
 .sidebar-container.right .sidebar-resize-gutter {
-  left: -2px;
+  left: -5px;
 }
 
 .glyphs-navigation {
@@ -237,11 +238,69 @@ body {
   display: block;
 }
 
+/* The divider: a 4px strip of the panel grey, ruled at its sides, that
+   meets the rule above and below it on a round, as the tool bar's ears do.
+   canvas-split.js sets where the top ears start (under the tool bar where
+   the divider passes beneath it) and shrinks a top ear that has no room. */
 .canvas-split-divider {
-  width: 5px;
+  --ear-top: 0px;
+  --ear-top-left: 10;
+  --ear-top-right: 10;
+  position: relative;
+  z-index: 1;
+  width: 4px;
   cursor: col-resize;
-  background-color: var(--horizontal-rule-color);
+  background-color: var(--surface-base-basic-1);
+  border-left: 1px solid var(--line-base-basic-1);
+  border-right: 1px solid var(--line-base-basic-1);
   touch-action: none;
+}
+
+.canvas-split-ear {
+  --r: 10;
+  position: absolute;
+  width: calc(var(--r) * 1px + 1px);
+  height: calc(var(--r) * 1px + 1px);
+  pointer-events: none;
+  --ear-fill: transparent calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
+}
+
+.canvas-split-ear.top-left {
+  --r: var(--ear-top-left);
+  top: var(--ear-top);
+  right: 100%;
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
+  );
+}
+
+.canvas-split-ear.top-right {
+  --r: var(--ear-top-right);
+  top: var(--ear-top);
+  left: 100%;
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
+  );
+}
+
+.canvas-split-ear.bottom-left {
+  bottom: 0;
+  right: 100%;
+  background: radial-gradient(circle calc(var(--r) * 1px + 0.5px) at 0 0, var(--ear-fill));
+}
+
+.canvas-split-ear.bottom-right {
+  bottom: 0;
+  left: 100%;
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + 0.5px) at 100% 0,
+    var(--ear-fill)
+  );
 }
 
 .canvas-pane {

@@ -577,7 +577,7 @@ glyph-cell-view .glyph-count {
   padding: calc(4px * var(--tab-open));
   padding-left: calc(4px + 8px * var(--tab-open));
   pointer-events: auto;
-  transition: --tab-open 300ms;
+  transition: --tab-open 400ms;
 }
 
 .tab-pane.right > .tab-pane-tabs {

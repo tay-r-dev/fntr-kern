@@ -64,6 +64,11 @@ const SHARED_SCENE_KEYS = [
 // one: the panels and tools act on it. The other pane shows its glyphs filled,
 // kept current as the font is edited, and takes the live canvas when clicked.
 // Either pane can show the font overview instead, to pick its glyph.
+// The round where the divider meets a rule, as the tool bar's ears
+// (shared.css's .toolbar), and the width of the tool bar's own ear.
+const EAR_RADIUS = 10;
+const TOOLBAR_EAR = 11;
+
 export class CanvasSplit {
   constructor(editor) {
     this.editor = editor;
@@ -446,9 +451,55 @@ export class CanvasSplit {
     this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) auto minmax(0, ${
       1 - ratio
     }fr)`;
+    this._placeDividerEars();
+  }
+
+  // The divider's top ears start under the tool bar where the divider passes
+  // beneath it, else at the card's top rule. An ear that would reach past the
+  // tool bar's side (or into the tool bar's own ear, beside it) shrinks to
+  // the room there is, down to none.
+  _placeDividerEars() {
+    if (!this.layout) {
+      return;
+    }
+    const toolbar = document.querySelector(".tools-overlay");
+    const divider = this.divider.getBoundingClientRect();
+    const card = this.root.getBoundingClientRect();
+    let top = 0;
+    let left = EAR_RADIUS;
+    let right = EAR_RADIUS;
+    if (toolbar && toolbar.offsetParent !== null) {
+      const bar = toolbar.getBoundingClientRect();
+      if (divider.right > bar.left && divider.left < bar.right) {
+        top = Math.max(0, bar.bottom - card.top - this.root.clientTop);
+        left = divider.left - bar.left;
+        right = bar.right - divider.right;
+      } else if (divider.right <= bar.left) {
+        right = bar.left - TOOLBAR_EAR - divider.right;
+      } else {
+        left = divider.left - (bar.right + TOOLBAR_EAR);
+      }
+    }
+    const clamp = (r) => Math.max(0, Math.min(EAR_RADIUS, r));
+    this.divider.style.setProperty("--ear-top", `${top}px`);
+    this.divider.style.setProperty("--ear-top-left", clamp(left));
+    this.divider.style.setProperty("--ear-top-right", clamp(right));
   }
 
   _setupDivider() {
+    for (const corner of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
+      this.divider.appendChild(
+        Object.assign(document.createElement("div"), {
+          className: `canvas-split-ear ${corner}`,
+        })
+      );
+    }
+    const observer = new ResizeObserver(() => this._placeDividerEars());
+    observer.observe(this.root);
+    const toolbar = document.querySelector(".tools-overlay");
+    if (toolbar) {
+      observer.observe(toolbar);
+    }
     this.divider.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) {
         return;
