@@ -403,7 +403,7 @@ glyph-cell-view .glyph-count {
   gap: 4px;
   padding: 0 2px 2px;
   background-color: var(--surface-base-basic-1);
-  border: var(--hairline) solid var(--line-base-basic-1);
+  border: 1px solid var(--line-base-basic-1);
   border-top: none;
   border-radius: 0 0 10px 10px;
   pointer-events: auto;
@@ -417,13 +417,13 @@ glyph-cell-view .glyph-count {
   content: "";
   position: absolute;
   top: 0;
-  width: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
-  height: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
+  width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
   --ear-fill:
-    transparent calc(var(--r) * 1px - var(--hairline) / 2),
-    var(--line-base-basic-1) calc(var(--r) * 1px - var(--hairline) / 2),
-    var(--line-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2),
-    var(--surface-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2);
+    transparent calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
 }
 
 /* A view may shrink an ear (--toolbar-ear-left / -right, a radius in px). */
@@ -431,8 +431,7 @@ glyph-cell-view .glyph-count {
   --r: var(--toolbar-ear-left, 10);
   right: 100%;
   background: radial-gradient(
-    circle calc(var(--r) * 1px + var(--hairline) / 2) at 0
-      calc(var(--r) * 1px + var(--hairline) / 2),
+    circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
     var(--ear-fill)
   );
 }
@@ -441,8 +440,7 @@ glyph-cell-view .glyph-count {
   --r: var(--toolbar-ear-right, 10);
   left: 100%;
   background: radial-gradient(
-    circle calc(var(--r) * 1px + var(--hairline) / 2) at 100%
-      calc(var(--r) * 1px + var(--hairline) / 2),
+    circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
     var(--ear-fill)
   );
 }
@@ -599,7 +597,7 @@ glyph-cell-view .glyph-count {
     var(--surface-base-basic-0) calc(100% * var(--tab-open)),
     transparent
   );
-  box-shadow: inset 0 0 0 var(--hairline)
+  box-shadow: inset 0 0 0 1px
     color-mix(
       in srgb,
       var(--line-base-basic-1) calc(100% * var(--tab-open)),
@@ -974,7 +972,7 @@ glyph-cell-view .glyph-count {
    24px rows, each but the last ruled under; ui/label/XS. */
 .static-table {
   width: 100%;
-  border: var(--hairline) solid var(--line-base-basic-1);
+  border: 1px solid var(--line-base-basic-1);
   border-radius: 6px;
   border-spacing: 0;
   font: var(--ui-text-label-xs);
@@ -1001,7 +999,7 @@ glyph-cell-view .glyph-count {
 }
 
 .static-table tr:not(:last-child) > * {
-  border-bottom: var(--hairline) solid var(--line-base-basic-1);
+  border-bottom: 1px solid var(--line-base-basic-1);
 }
 
 /* A row of small labeled icon groups and the segmented icon tray (Flip,
@@ -1151,7 +1149,7 @@ glyph-cell-view .glyph-count {
   display: flex;
   align-items: center;
   padding: 0 0.15em;
-  border-left: var(--hairline) solid #0002;
+  border-left: 1px solid #0002;
 }
 
 /* Every tile in a tray is one height: icon buttons, segments and the

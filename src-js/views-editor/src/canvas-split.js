@@ -502,14 +502,15 @@ export class CanvasSplit {
     const barEars = { left: EAR_RADIUS, right: EAR_RADIUS };
     const barCorners = { left: EAR_RADIUS, right: EAR_RADIUS };
     let clipTop = null; // null: not over the bar
-    // A rule is one screen pixel (core.css's --hairline), whatever the zoom.
+    // The card's rule is one screen pixel (core.css's --hairline), whatever
+    // the zoom; the tool bar's is 1px.
     const hairline = 1 / (window.devicePixelRatio || 1);
     if (toolbar?.getClientRects().length) {
       const bar = toolbar.getBoundingClientRect();
       const under = Math.max(0, bar.bottom - card.top - this.root.clientTop);
       if (divider.left >= bar.left && divider.right <= bar.right) {
         // Over the bar's lower rule only, so that rule doesn't cross it.
-        clipTop = under - hairline;
+        clipTop = under - 1;
         const left = shared(divider.left - bar.left);
         const right = shared(bar.right - divider.right);
         ears.left = { top: under, radius: left };
@@ -542,7 +543,7 @@ export class CanvasSplit {
       // alongside it. The card clips the row of its own rule.
       this.divider.style.setProperty(
         `--ear-top-${side}-y`,
-        `${ears[side].top - hairline}px`
+        `${ears[side].top - (ears[side].top ? 1 : hairline)}px`
       );
       this.divider.style.setProperty(`--rule-${side}-y`, `${ears[side].top}px`);
       this.divider.style.setProperty(`--ear-top-${side}`, ears[side].radius);
