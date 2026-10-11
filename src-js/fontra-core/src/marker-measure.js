@@ -426,6 +426,27 @@ export const DIMENSION_WITNESS_GAP = 40;
 // A font unit and not a screen length, for the same reason as the witness gap above.
 export const AIM_FALLBACK_LENGTH = 60;
 
+// A ray's aim handle stands this many screen pixels past its arrowhead, on the line
+// the ray runs along.
+export const RAY_AIM_HANDLE_OFFSET = 12;
+
+// Where a ray's aim handle stands, or null for a stale ray or one with no tip.
+// `pixel` is one screen pixel in glyph units.
+export function rayAimHandlePoint(geometry, pixel) {
+  if (!geometry?.isRay || geometry.stale || !geometry.farPoint) {
+    return null;
+  }
+  const along = vector.subVectors(geometry.farPoint, geometry.anchorPoint);
+  const length = Math.hypot(along.x, along.y);
+  if (length < 1e-9) {
+    return null;
+  }
+  return vector.addVectors(
+    geometry.farPoint,
+    vector.mulVectorScalar(along, (RAY_AIM_HANDLE_OFFSET * pixel) / length)
+  );
+}
+
 // A plain ray the normal cannot measure, turned into an aimed one. This is the corner
 // under 90 degrees, where the normal of either arm points outside the black and the ray
 // leaves the outline where it starts. The anchor stays where it was put, and the ray is

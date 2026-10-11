@@ -401,7 +401,8 @@ export class TunniGizmoReveal {
 
   // `hot`: the cursor is within the key's click catch. An on-curve gizmo is
   // shown by its contour, so here it only takes the hover emphasis.
-  hover(key, { hot = false } = {}) {
+  // `delay` replaces the reveal delay for this key, in milliseconds.
+  hover(key, { hot = false, delay = TUNNI_GIZMO_TUNING.revealDelay } = {}) {
     if (key && isOnCurveGizmoKey(key)) {
       this.hover(null);
       this._setHot(hot && this.isArmed(key) ? key : null);
@@ -441,7 +442,7 @@ export class TunniGizmoReveal {
           this._armedKey = key;
           this._tweenTo("alpha", key, 1);
           this._setHot(this._lastHot ? key : null);
-        }, TUNNI_GIZMO_TUNING.revealDelay);
+        }, delay);
       }
     }
     this._setHot(hot && key === this._armedKey ? key : null);

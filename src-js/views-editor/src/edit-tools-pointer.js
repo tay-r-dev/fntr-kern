@@ -56,6 +56,7 @@ import {
 } from "./handle-length-editing.js";
 import { rulerExtraLinesFor } from "./edit-tools-power-ruler.js";
 import { deleteMarkers, handleMarkerDrag, unaimMarker } from "./marker-editing.js";
+
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import {
@@ -123,6 +124,9 @@ import {
   handleSkeletonTunniDrag,
   handleTunniDrag,
 } from "./tunni-interactions.js";
+
+// How long the arrowhead of a ray is rested on before its aim handle shows.
+const MARKER_AIM_REVEAL_MS = 500;
 
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
@@ -206,7 +210,19 @@ export class PointerTool extends BaseTool {
     return this.sceneModel.tunniGizmoReveal;
   }
 
+  // A Tunni gizmo, or a ray's aim handle, whichever is nearer.
   _findTunniGizmo(point, radius, positionedGlyph) {
+    const tunni = this._findTunniGizmoOnly(point, radius, positionedGlyph);
+    const aim = this.sceneModel.markerAimGizmoAtPoint(
+      point,
+      radius,
+      positionedGlyph,
+      this.sceneController.onePixelUnit
+    );
+    return aim && (!tunni || aim.distance < tunni.distance) ? aim : tunni;
+  }
+
+  _findTunniGizmoOnly(point, radius, positionedGlyph) {
     return findTunniGizmo(
       { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y },
       radius,
@@ -306,7 +322,11 @@ export class PointerTool extends BaseTool {
         )
       : null;
     const hot = !!gizmo && gizmo.distance <= TUNNI_GIZMO_TUNING.clickRadius * pixel;
-    this.tunniGizmoReveal.hover(gizmo?.key ?? null, { hot });
+    this.tunniGizmoReveal.hover(gizmo?.key ?? null, {
+      hot,
+      // A ray's aim handle shows after the arrowhead has been rested on.
+      ...(gizmo?.kind === "marker-aim" ? { delay: MARKER_AIM_REVEAL_MS } : {}),
+    });
     this.tunniGizmoReveal.hoverContour(this._hoveredTunniContour(point, size, gizmo));
     if (
       hot &&
@@ -383,6 +403,22 @@ export class PointerTool extends BaseTool {
     { dragConfirmed = false } = {}
   ) {
     const sceneController = this.sceneController;
+    if (gizmo.kind === "marker-aim") {
+      this.tunniGizmoReveal.setDragged(gizmo.key);
+      try {
+        await handleMarkerDrag({
+          sceneController,
+          eventStream,
+          initialEvent,
+          markerId: gizmo.markerId,
+          endIndex: gizmo.endIndex,
+          aimNow: true,
+        });
+      } finally {
+        this.tunniGizmoReveal.setDragged(null);
+      }
+      return;
+    }
     this._selectTunniGizmoOwner(gizmo);
     const equalize = initialEvent.ctrlKey && initialEvent.shiftKey;
     if (gizmo.kind === "generated" && initialEvent.detail >= 2) {

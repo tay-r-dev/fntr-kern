@@ -12,7 +12,7 @@ import {
   guessDirectionFromCodePoints,
 } from "@fontra/core/glyph-data.js";
 import { loaderSpinner } from "@fontra/core/loader-spinner.js";
-import { markerGeometry } from "@fontra/core/marker-measure.js";
+import { markerGeometry, rayAimHandlePoint } from "@fontra/core/marker-measure.js";
 import {
   centeredRect,
   insetRect,
@@ -62,7 +62,7 @@ import {
 import { normalizeLocation, unnormalizeLocation } from "@fontra/core/var-model.js";
 import * as vector from "@fontra/core/vector.js";
 import { BASE_EXPAND_BEHAVIOR_NAME } from "./base-expand-editing.js";
-import { getVisibleMarkers } from "./marker-editing.js";
+import { getVisibleMarkers, markerAimGizmoKey } from "./marker-editing.js";
 import {
   GENERATED_HANDLE_TURN_BEHAVIOR_NAME,
   generatedHandleConstructionAxis,
@@ -985,6 +985,35 @@ export class SceneModel {
       }
     }
     return grips;
+  }
+
+  // The nearest ray aim handle within `radius`, as a gizmo the pointer reveals and
+  // presses. Dragging it aims the ray: it moves the cast end, whose index it names.
+  markerAimGizmoAtPoint(point, radius, positionedGlyph, pixel) {
+    const layerGlyph = this._getEditLayerGlyph(positionedGlyph);
+    const skeletonData = this._getEditLayerSkeletonData(positionedGlyph);
+    const local = { x: point.x - positionedGlyph.x, y: point.y - positionedGlyph.y };
+    let best = null;
+    for (const marker of getVisibleMarkers(layerGlyph)) {
+      const geometry = markerGeometry(positionedGlyph.glyph, marker, skeletonData);
+      const gizmoPoint = rayAimHandlePoint(geometry, pixel);
+      if (!gizmoPoint) {
+        continue;
+      }
+      const distance = Math.hypot(gizmoPoint.x - local.x, gizmoPoint.y - local.y);
+      if (distance <= radius && (!best || distance < best.distance)) {
+        best = {
+          key: markerAimGizmoKey(marker.id),
+          kind: "marker-aim",
+          type: "marker-aim",
+          distance,
+          gizmoPoint,
+          markerId: marker.id,
+          endIndex: marker.ends.findIndex((end) => end.kind === "cast"),
+        };
+      }
+    }
+    return best;
   }
 
   // Markers lose the click to skeleton and generated geometry: see _selectionAtPoint.

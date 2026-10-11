@@ -343,6 +343,11 @@ export function getVisibleMarkers(layerGlyph) {
 // Every frame is recorded against the state captured at mouse-down, never against the
 // live glyph, so a rollback is a statement about the whole gesture rather than about its
 // last frame.
+// The reveal key of a ray's aim handle.
+export function markerAimGizmoKey(markerId) {
+  return `marker:aim:${markerId}`;
+}
+
 export async function handleMarkerDrag({
   sceneController,
   eventStream,
@@ -350,6 +355,9 @@ export async function handleMarkerDrag({
   markerId,
   endIndex,
   extraLines = undefined,
+  // The aim handle aims at once: it is shown only after the hover, so the hold
+  // that keeps a grab of the arrow from turning it has already happened.
+  aimNow = false,
 }) {
   const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
   if (!positionedGlyph) {
@@ -443,7 +451,7 @@ export async function handleMarkerDrag({
     if (aiming) {
       // The arrow holds still until the button has been down for the hold time, so a
       // grab that only meant to select the marker does not turn it.
-      if (!aimHoldElapsed(initialEvent, event)) {
+      if (!aimNow && !aimHoldElapsed(initialEvent, event)) {
         return undefined;
       }
       const direction = aimTowards(anchorPoint, local, {
