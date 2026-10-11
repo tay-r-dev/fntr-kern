@@ -109,7 +109,7 @@ export function solveCubicEndCurvatures(curve, k0, k1) {
       const a = startLength(c);
       return Number.isFinite(a) && a <= max ? k1 * c * c - (2 / 3) * (Z - a * Y) : NaN;
     };
-    const STEPS = 400;
+    const STEPS = 120;
     let previous = { c: 0, v: f(1e-9) };
     for (let i = 1; i <= STEPS; i++) {
       const c = (max * i) / STEPS,

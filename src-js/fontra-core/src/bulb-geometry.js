@@ -219,26 +219,38 @@ function innerBallCut(ball, inner, sideTheta) {
   return cut;
 }
 
-function arcLength(points, from, to) {
-  let total = 0,
-    p = cubicPointAt(points, from);
-  for (let i = 1; i <= 32; i++) {
-    const q = cubicPointAt(points, from + ((to - from) * i) / 32);
-    total += vector.distance(p, q);
+// Length along a cubic from `from` to its end, tabled once: the search for the
+// fillet's limit asks for a parameter at a length dozens of times. Linear
+// between rows, so it moves continuously.
+const WALL_TABLE_STEPS = 256;
+function wallLengthTable(points, from) {
+  const parameters = [from],
+    lengths = [0];
+  let p = cubicPointAt(points, from);
+  for (let i = 1; i <= WALL_TABLE_STEPS; i++) {
+    const t = from + ((1 - from) * i) / WALL_TABLE_STEPS,
+      q = cubicPointAt(points, t);
+    parameters.push(t);
+    lengths.push(lengths[i - 1] + vector.distance(p, q));
     p = q;
   }
-  return total;
-}
-
-function wallParameterAtDistance(points, from, distance) {
-  let lo = from,
-    hi = 1;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (arcLength(points, from, mid) < distance) lo = mid;
-    else hi = mid;
-  }
-  return distance > 0 ? (lo + hi) / 2 : from;
+  const total = lengths[WALL_TABLE_STEPS];
+  return {
+    total,
+    parameterAt(distance) {
+      if (distance <= 0) return from;
+      if (distance >= total) return 1;
+      let lo = 0,
+        hi = WALL_TABLE_STEPS;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (lengths[mid] < distance) lo = mid;
+        else hi = mid;
+      }
+      const s = (distance - lengths[lo]) / (lengths[hi] - lengths[lo] || 1);
+      return parameters[lo] + (parameters[hi] - parameters[lo]) * s;
+    },
+  };
 }
 
 // E is the first vertical tangent along the outer run after P: on the wall if
@@ -300,7 +312,7 @@ const FILLET_MIN_RETURN = 0.25;
 const FILLET_MIN_BALL_HANDLE = 0.2;
 // How finely the wall is scanned for the fillet's limit, then bisected.
 const FILLET_SCAN_STEPS = 32;
-const FILLET_BISECT_STEPS = 20;
+const FILLET_BISECT_STEPS = 10;
 
 // Signed curvature of a cubic at t, in traversal order. Unlike reading the
 // start of a split, it holds at t = 1.
@@ -382,56 +394,32 @@ function ballThetaBackTable(ball, lowest, to) {
 // The fillet: one cubic from A on the ball to W on the wall, leaving the ball
 // with the ball's curvature and arriving with the wall's, so the comb runs on
 // through both ends. Its two handle lengths are the two unknowns, and there can
-// be more than one pair. The search starts from both handles reaching most of
-// the way to where the two tangents cross, which is the fillet's own shape,
-// then from a fixed grid. The first pair that the caller accepts wins, so the
+// be more than one pair: every pair is found in one pass, nearest first to both
+// handles reaching most of the way to where the two tangents cross, which is
+// the fillet's own shape. The first pair that the caller accepts wins, so the
 // same input always gives the same fillet.
-function solveFillet(A, tA, kA, W, tW, kW, radius, accept) {
+function solveFillet(A, tA, kA, W, tW, kW, accept) {
   const chord = vector.distance(A, W);
   if (!(chord > 1e-6)) return null;
-  const make = (a, b) => [
+  const d = sub(W, A),
+    determinant = cross(tA, tW);
+  let a = chord / 3,
+    b = chord / 3;
+  if (Math.abs(determinant) > 1e-12) {
+    const reachA = cross(d, tW) / determinant,
+      reachW = -cross(d, tA) / determinant;
+    if (reachA > 0 && reachW > 0) [a, b] = [0.9 * reachA, 0.9 * reachW];
+  }
+  const seed = [
     { ...A },
     { ...offset(A, tA, a), type: "cubic" },
     { ...offset(W, tW, -b), type: "cubic" },
     { ...W },
   ];
-  const d = sub(W, A),
-    determinant = cross(tA, tW);
-  const starts = [];
-  if (Math.abs(determinant) > 1e-12) {
-    const reachA = cross(d, tW) / determinant,
-      reachW = -cross(d, tA) / determinant;
-    if (reachA > 0 && reachW > 0) starts.push([0.9 * reachA, 0.9 * reachW]);
-  }
-  for (const [i, j] of FILLET_STARTS) starts.push([(chord * i) / 6, (chord * j) / 6]);
-  // Most starts arrive at the same pair. A pair already judged is not judged
-  // again.
-  const judged = [];
-  for (const [a, b] of starts) {
-    const solved = matchCubicEndCurvatures(make(a, b), kA, kW, radius);
-    if (!solved) continue;
-    const lengths = [
-      vector.distance(solved[0], solved[1]),
-      vector.distance(solved[3], solved[2]),
-    ];
-    if (
-      judged.some(
-        ([p, q]) => Math.abs(p - lengths[0]) + Math.abs(q - lengths[1]) < 1e-6 * chord
-      )
-    )
-      continue;
-    if (accept(solved)) return solved;
-    judged.push(lengths);
-  }
+  for (const fillet of solveCubicEndCurvatures(seed, kA, kW))
+    if (accept(fillet)) return fillet;
   return null;
 }
-const FILLET_STARTS = (() => {
-  const steps = [1, 2, 4, 6, 9, 12];
-  const starts = [[2, 2]];
-  for (const i of steps)
-    for (const j of steps) if (i !== 2 || j !== 2) starts.push([i, j]);
-  return starts;
-})();
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 
 // The bulb: E, B and C on the ball, A where the ball gives way to the easing
@@ -450,7 +438,43 @@ const cross = (a, b) => a.x * b.y - a.y * b.x;
 // `preview` says an edit is in progress. The geometry is the same; the caller
 // hides E and its handles until release, because the entry fit can move E far
 // along the wall in one step and that jump is not to be seen under the cursor.
-export function buildBulb({
+// A drag regenerates every terminal on every frame, and most of them have not
+// changed. The bulb depends on nothing but its inputs, so the last few are
+// kept by their coordinates. Callers stamp and edit the returned points, so
+// every hit hands back fresh copies.
+const BULB_CACHE_SIZE = 16;
+const bulbCache = new Map();
+export function buildBulb(options) {
+  const xy = (points) => points?.map((p) => [p.x, p.y, p.type ?? 0]);
+  const key = JSON.stringify([
+    xy(options.wall),
+    xy(options.inner),
+    xy(options.beyond),
+    options.radius,
+    options.shape,
+    options.easing,
+    options.edits ?? null,
+    options.preview ?? false,
+  ]);
+  let result = bulbCache.get(key);
+  if (result === undefined) {
+    result = solveBulb(options);
+    if (bulbCache.size >= BULB_CACHE_SIZE)
+      bulbCache.delete(bulbCache.keys().next().value);
+  } else bulbCache.delete(key);
+  bulbCache.set(key, result);
+  if (!result) return null;
+  const copy = (points) => points.map((p) => ({ ...p }));
+  return {
+    ...result,
+    points: copy(result.points),
+    wall: copy(result.wall),
+    keptInner: copy(result.keptInner),
+    tangents: result.tangents.map((t) => ({ ...t })),
+  };
+}
+
+function solveBulb({
   wall,
   inner,
   radius,
@@ -496,7 +520,8 @@ export function buildBulb({
     FILLET_BALL_STOP * radius,
     Math.max(0, ballArcLength(ball, side.theta, thetaCut) - FILLET_MIN_RETURN * radius)
   );
-  const wallLength = arcLength(inner, cut, 1);
+  const wallTable = wallLengthTable(inner, cut);
+  const wallLength = wallTable.total;
 
   // E, B and C with the designer's edits, and the arc from C to A.
   const tangents = [];
@@ -519,13 +544,15 @@ export function buildBulb({
 
   const counter = counterSideOf(inner, cut, ball.at(side.theta));
   const thetaBack = ballThetaBackTable(ball, thetaLowest, thetaCut);
+  const fillets = new Map();
   const filletAt = (travel) => {
+    if (fillets.has(travel)) return fillets.get(travel);
     const thetaA = thetaBack(Math.min(travel, ballStop));
     const points = body(thetaA);
     const A = points[9];
     const tA = unit(sub(A, points[8]));
     const kA = bulbEndCurvature(points.slice(6, 10), true);
-    const t = travel >= wallLength ? 1 : wallParameterAtDistance(inner, cut, travel);
+    const t = wallTable.parameterAt(travel);
     const rest = splitCubicAt(inner, t).second.map((p, i) => ({ ...inner[i], ...p }));
     const W = rest[0];
     const fillet = solveFillet(
@@ -535,14 +562,14 @@ export function buildBulb({
       W,
       cubicTangentAt(inner, t),
       cubicCurvatureAt(inner, t),
-      radius,
       (fillet) =>
         vector.distance(fillet[0], fillet[1]) >=
           FILLET_MIN_BALL_HANDLE * vector.distance(A, W) &&
         fillsCorner(fillet, ball, counter)
     );
-    if (!fillet) return null;
-    return { points, fillet, rest };
+    const result = fillet ? { points, fillet, rest } : null;
+    fillets.set(travel, result);
+    return result;
   };
 
   // How far the wall end can climb: scan, then bisect the first failure.
@@ -763,5 +790,6 @@ function fillsCorner(fillet, ball, counter) {
     const { u, v } = ball.localOf(p);
     if ((1 - Math.hypot(u, v)) * ball.radius > BALL_TOLERANCE) return false;
   }
-  return samples.every((p) => counter(p) >= -0.01);
+  // The stroke side at every other sample: the fillet is one smooth curve.
+  return samples.every((p, i) => i % 2 === 1 || counter(p) >= -0.01);
 }
