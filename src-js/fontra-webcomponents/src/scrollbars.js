@@ -53,6 +53,15 @@ export function scrollForThumbOffset(offset, scrollSize, clientSize, trackLength
 // under the content for the sideways bar, scrolling or not, so it never
 // covers a row.
 export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
+  // A box has one pair of bars: a second call hands back the first pair,
+  // hidden until rested on if this call asks for that.
+  const attached = attachedScrollbars.get(box);
+  if (attached) {
+    if (reveal === "hover") {
+      attached.revealOnRest();
+    }
+    return attached;
+  }
   box.classList.add("drawn-scrollbars");
   const bars = [makeBar(box, "vertical"), makeBar(box, "horizontal")];
   let reserved = 0;
@@ -95,10 +104,17 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
     }
   };
 
-  if (reveal === "hover") {
-    for (const bar of bars) {
-      bar.revealOnRest();
+  let revealing = false;
+  const revealOnRest = () => {
+    if (!revealing) {
+      revealing = true;
+      for (const bar of bars) {
+        bar.revealOnRest();
+      }
     }
+  };
+  if (reveal === "hover") {
+    revealOnRest();
   }
 
   box.addEventListener("scroll", update, { passive: true });
@@ -130,7 +146,100 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
   };
   setReserve(reserve);
 
-  return { update, setReserve };
+  const handle = { update, setReserve, revealOnRest };
+  attachedScrollbars.set(box, handle);
+  return handle;
+}
+
+const attachedScrollbars = new WeakMap();
+
+// Every box that scrolls gets the drawn bars, in the page and in every open
+// shadow root, including boxes added later. A view calls this once at start.
+// The boxes are found by their computed overflow, so no box has to ask.
+export function drawScrollbarsEverywhere(root = document) {
+  const pending = new Set();
+  let frame = 0;
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      // The bars restyle themselves on every scroll; that says nothing new.
+      if (record.target.closest?.(".scrollbar-rail")) {
+        continue;
+      }
+      if (record.type === "attributes") {
+        pending.add(record.target);
+      }
+      for (const node of record.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          pending.add(node);
+        }
+      }
+    }
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const nodes = [...pending];
+        pending.clear();
+        for (const node of nodes) {
+          if (node.isConnected) {
+            walk(node);
+          }
+        }
+      });
+    }
+  });
+  const observed = new WeakSet();
+  const observe = (target) => {
+    if (!observed.has(target)) {
+      observed.add(target);
+      // A class or style change can make a box scroll.
+      observer.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
+    }
+  };
+  const walk = (node) => {
+    const stack = [node];
+    while (stack.length) {
+      const element = stack.pop();
+      if (element.nodeType === Node.ELEMENT_NODE) {
+        if (scrolls(element)) {
+          attachScrollbars(element);
+        }
+        if (element.shadowRoot) {
+          observe(element.shadowRoot);
+          stack.push(...element.shadowRoot.children);
+        }
+      }
+      stack.push(...element.children);
+    }
+  };
+  observe(root);
+  walk(root.documentElement ?? root);
+}
+
+// Not the page itself, which has no parent to hold the bars, and not a
+// control that draws its own. The bars are rails beside the box, so a box
+// whose own children are rails (a rail holder) is left alone too.
+const NO_DRAWN_BARS = new Set(["HTML", "BODY", "INPUT", "SELECT", "TEXTAREA"]);
+
+function scrolls(element) {
+  if (
+    NO_DRAWN_BARS.has(element.tagName) ||
+    element.classList.contains("scrollbar-rail") ||
+    attachedScrollbars.has(element)
+  ) {
+    return false;
+  }
+  const style = getComputedStyle(element);
+  // A box that hides its bars on purpose (a header scrolled by its rows) keeps
+  // them hidden.
+  if (style.scrollbarWidth === "none") {
+    return false;
+  }
+  return /(auto|scroll)/.test(style.overflowY + " " + style.overflowX);
 }
 
 function makeBar(box, axis) {

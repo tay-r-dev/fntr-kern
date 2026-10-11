@@ -419,7 +419,8 @@ glyph-cell-view .glyph-count {
   top: 0;
   width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
   height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
-  --ear-fill: transparent calc(var(--r) * 1px - 0.5px),
+  --ear-fill:
+    transparent calc(var(--r) * 1px - 0.5px),
     var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
     var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
     var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
@@ -809,6 +810,13 @@ glyph-cell-view .glyph-count {
   height: 3px;
   border-radius: 50%;
   background: var(--text-base-basic-4);
+}
+
+/* Any box the drawn bars cannot reach (a text area, a closed shadow root)
+   still scrolls with a thin bar in the drawn bars' colour. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-base-basic-4) transparent;
 }
 
 /* The drawn scrollbars (scrollbars.js): the box's own are hidden; each bar
