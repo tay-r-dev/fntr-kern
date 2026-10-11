@@ -14,9 +14,9 @@ import { markerKind } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { parseSelection, round } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
+import { drawGizmo } from "./gizmo.js";
 import { getVisibleMarkers, markerAimGizmoKey } from "./marker-editing.js";
 import {
-  drawRevealedTunniGizmo,
   fillCircle,
   glyphSelector,
   registerVisualizationLayerDefinition,
@@ -198,7 +198,7 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
     // shown once the arrowhead has been rested on.
     const aimPoint = rayAimHandlePoint(geometry, controller.onePixelUnit);
     if (aimPoint) {
-      drawRevealedTunniGizmo(context, model, markerAimGizmoKey(marker.id), aimPoint, {
+      drawGizmo(context, model.gizmoReveal, markerAimGizmoKey(marker.id), aimPoint, {
         ...parameters,
         gizmoColor: color,
       });

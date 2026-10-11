@@ -14,6 +14,7 @@ import {
 } from "@fontra/core/tunni-calculations.js";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { distance } from "@fontra/core/vector.js";
+import { GIZMO_TUNING, GIZMO_TUNING_DEFAULTS, GizmoReveal } from "./gizmo.js";
 
 // The Tunni gizmos on all three kinds of curve, in one place: which setting
 // switches each one, where each one sits, and whether the cursor has rested on
@@ -107,7 +108,7 @@ export function coupleGeneratedGizmoSettings(settings) {
 export function tunniLabelAlpha(model, key) {
   return applicationSettingsController.model.tunniLabelsAlwaysVisible
     ? 1
-    : (model.tunniGizmoReveal?.alpha(key) ?? 0);
+    : (model.gizmoReveal?.alpha(key) ?? 0);
 }
 
 export function tunniGizmoKey(kind, type, id) {
@@ -294,69 +295,38 @@ export function findTunniGizmo(point, radius, { path, skeletonData, settingsMode
   return best;
 }
 
-// How the reveal behaves, in screen pixels and milliseconds. Live numbers the
-// Visual panel's debug section edits, read at the moment they are needed.
-// How long after a gizmo is dropped it still comes back without its reveal.
-const RECENT_REARM_MS = 500;
-
+// The on-curve gizmos' own timings, added to the shared gizmo tuning: one live
+// object, which the Visual panel's debug section edits.
 export const TUNNI_GIZMO_TUNING_DEFAULTS = {
-  revealRadius: 28,
-  clickRadius: 10,
-  revealDelay: 200,
-  fadeDuration: 180,
-  hoverDuration: 140,
+  ...GIZMO_TUNING_DEFAULTS,
   onCurveRevealDelay: 450,
   onCurveHideDelay: 600,
   onCurveFadeDuration: 400,
 };
-export const TUNNI_GIZMO_TUNING = { ...TUNNI_GIZMO_TUNING_DEFAULTS };
+export const TUNNI_GIZMO_TUNING = Object.assign(
+  GIZMO_TUNING,
+  TUNNI_GIZMO_TUNING_DEFAULTS
+);
 
-// Ease out on the way in and ease in on the way out, so a gizmo arrives softly
-// and leaves without lingering.
-function ease(progress, rising) {
-  return rising ? 1 - (1 - progress) ** 3 : progress ** 3;
-}
-
-//
-// A gizmo shows only after the cursor has rested near it, and fades in and out.
-//
-// One gizmo is armed at a time. Hovering near a different one starts that one's
-// delay and lets the armed one go; leaving every gizmo lets it go too. An armed
-// gizmo is the only one a click reaches, and the hot one is the armed gizmo the
-// cursor is close enough to click. Both states are eased, as two channels per
-// key: `alpha` for showing and `hot` for the hover emphasis.
-//
-// Every hover event runs as a pass. A tool that answers the pointer without
-// looking for gizmos, as the skeleton pen does while editing, never calls
-// hover(), and the pass then lets the armed gizmo go.
-//
-export class TunniGizmoReveal {
+// Tunni's on-curve gizmos reveal a contour at a time, on slower timings than
+// the shared ones: the cursor on any segment of a contour shows every on-curve
+// gizmo on it. Everything else is the shared gizmo reveal.
+export class TunniGizmoReveal extends GizmoReveal {
   constructor(requestUpdate) {
-    this._requestUpdate = requestUpdate;
-    this._armedKey = null;
+    super(requestUpdate);
     this._armedContour = null;
     this._pendingContour = null;
     this._contourTimer = null;
     this._contourHoveredThisPass = false;
-    this._hotKey = null;
-    this._draggedKey = null;
-    this._pendingKey = null;
-    this._timer = null;
-    this._tweens = new Map();
-    this._frame = null;
-    this._hoveredThisPass = false;
-    this._lastHot = false;
   }
 
   beginHoverPass() {
-    this._hoveredThisPass = false;
+    super.beginHoverPass();
     this._contourHoveredThisPass = false;
   }
 
   endHoverPass() {
-    if (!this._hoveredThisPass) {
-      this.hover(null);
-    }
+    super.endHoverPass();
     if (!this._contourHoveredThisPass) {
       this.hoverContour(null);
     }
@@ -399,195 +369,38 @@ export class TunniGizmoReveal {
     this._pendingContour = null;
   }
 
-  // `hot`: the cursor is within the key's click catch. An on-curve gizmo is
-  // shown by its contour, so here it only takes the hover emphasis.
-  // `delay` replaces the reveal delay for this key, in milliseconds.
-  hover(key, { hot = false, delay = TUNNI_GIZMO_TUNING.revealDelay } = {}) {
+  // An on-curve gizmo is shown by its contour, so here it only takes the hover
+  // emphasis.
+  hover(key, options = {}) {
     if (key && isOnCurveGizmoKey(key)) {
-      this.hover(null);
-      this._setHot(hot && this.isArmed(key) ? key : null);
+      super.hover(null);
+      this._setHot(options.hot && this.isArmed(key) ? key : null);
       return;
     }
-    this._hoveredThisPass = true;
-    this._lastHot = hot;
-    if (key === this._armedKey) {
-      this._cancelPending();
-    } else if (!key || key !== this._pendingKey) {
-      // No key never matches a pending one: with nothing pending both are
-      // empty, and treating that as "still pending" kept a shown gizmo up for
-      // as long as the cursor stayed away from every gizmo.
-      this._cancelPending();
-      if (this._armedKey) {
-        this._tweenTo("alpha", this._armedKey, 0);
-        this._recentKey = this._armedKey;
-        this._recentAt = performance.now();
-        this._armedKey = null;
-      }
-      // A gizmo that was armed a moment ago comes straight back, with no delay
-      // and no fade: an edit rebuilding the glyph can drop it from one hover
-      // pass, and making the designer wait out the reveal again to grab the
-      // gizmo they were just holding read as the drag lagging.
-      if (
-        key &&
-        key === this._recentKey &&
-        performance.now() - this._recentAt < RECENT_REARM_MS
-      ) {
-        this._armedKey = key;
-        this._setNow("alpha", key, 1);
-      } else if (key) {
-        this._pendingKey = key;
-        this._timer = setTimeout(() => {
-          this._pendingKey = null;
-          this._timer = null;
-          this._armedKey = key;
-          this._tweenTo("alpha", key, 1);
-          this._setHot(this._lastHot ? key : null);
-        }, delay);
-      }
-    }
-    this._setHot(hot && key === this._armedKey ? key : null);
+    super.hover(key, options);
   }
 
   isArmed(key) {
     if (key && isOnCurveGizmoKey(key)) {
       return this.isContourArmed(tunniGizmoContourKey(key));
     }
-    return !!key && key === this._armedKey;
+    return super.isArmed(key);
   }
 
   alpha(key, now = performance.now()) {
     return isOnCurveGizmoKey(key)
       ? this._value("contour", tunniGizmoContourKey(key), now)
-      : this._value("alpha", key, now);
+      : super.alpha(key, now);
   }
 
-  // 0 to 1: how far the hover emphasis has grown in.
-  hotness(key, now = performance.now()) {
-    return this._value("hot", key, now);
-  }
-
-  // The gizmo a drag holds, or none. Its handles show through the drag and fade after.
-  setDragged(key) {
-    if (key === this._draggedKey) {
-      return;
-    }
-    if (this._draggedKey) {
-      this._tweenTo("drag", this._draggedKey, 0);
-    }
-    this._draggedKey = key;
-    if (key) {
-      // At full strength from the first frame: a fade-in on the handles the
-      // drag is moving made the start of every drag look slow.
-      this._setNow("drag", key, 1);
-    }
-  }
-
-  // Every key a drag shows, growing in or fading out, with its opacity.
-  draggedKeys(now = performance.now()) {
-    const keys = [];
-    for (const tween of this._tweens.values()) {
-      if (tween.channel !== "drag") {
-        continue;
-      }
-      const alpha = this._value("drag", tween.key, now);
-      if (alpha > 0) {
-        keys.push({ key: tween.key, alpha });
-      }
-    }
-    return keys;
-  }
-
-  _setHot(key) {
-    if (key === this._hotKey) {
-      return;
-    }
-    if (this._hotKey) {
-      this._tweenTo("hot", this._hotKey, 0);
-    }
-    this._hotKey = key;
-    if (key) {
-      this._tweenTo("hot", key, 1);
-    }
-  }
-
+  // An on-curve gizmo (`slow`) fades on its own timing and lingers first.
   _duration(channel, slow = false) {
-    return Math.max(
-      channel === "hot"
-        ? TUNNI_GIZMO_TUNING.hoverDuration
-        : slow
-          ? TUNNI_GIZMO_TUNING.onCurveFadeDuration
-          : TUNNI_GIZMO_TUNING.fadeDuration,
-      1
-    );
+    return slow && channel !== "hot"
+      ? Math.max(TUNNI_GIZMO_TUNING.onCurveFadeDuration, 1)
+      : super._duration(channel, slow);
   }
 
-  _value(channel, key, now) {
-    const tween = this._tweens.get(`${channel}:${key}`);
-    if (!tween) {
-      return 0;
-    }
-    // A tween that starts later, an on-curve gizmo lingering, holds its value.
-    const progress = Math.min(
-      Math.max((now - tween.start) / this._duration(channel, tween.slow), 0),
-      1
-    );
-    const rising = tween.to > tween.from;
-    return tween.from + (tween.to - tween.from) * ease(progress, rising);
-  }
-
-  _cancelPending() {
-    clearTimeout(this._timer);
-    this._timer = null;
-    this._pendingKey = null;
-  }
-
-  // Jump straight to `value`, with no tween.
-  _setNow(channel, key, value) {
-    this._tweens.set(`${channel}:${key}`, {
-      channel,
-      key,
-      slow: false,
-      from: value,
-      to: value,
-      start: performance.now(),
-    });
-    this._animate();
-  }
-
-  // An on-curve gizmo (`slow`) lingers before it fades out.
-  _tweenTo(channel, key, to, slow = false) {
-    const now = performance.now();
-    const linger = slow && to === 0 ? TUNNI_GIZMO_TUNING.onCurveHideDelay : 0;
-    this._tweens.set(`${channel}:${key}`, {
-      channel,
-      key,
-      slow,
-      from: this._value(channel, key, now),
-      to,
-      start: now + linger,
-    });
-    this._animate();
-  }
-
-  _animate() {
-    if (this._frame !== null) {
-      return;
-    }
-    this._frame = requestAnimationFrame(() => {
-      this._frame = null;
-      const now = performance.now();
-      let moving = false;
-      for (const [id, tween] of this._tweens) {
-        if (now - tween.start < this._duration(tween.channel, tween.slow)) {
-          moving = true;
-        } else if (tween.to === 0) {
-          this._tweens.delete(id);
-        }
-      }
-      this._requestUpdate();
-      if (moving) {
-        this._animate();
-      }
-    });
+  _linger(slow) {
+    return slow ? TUNNI_GIZMO_TUNING.onCurveHideDelay : 0;
   }
 }

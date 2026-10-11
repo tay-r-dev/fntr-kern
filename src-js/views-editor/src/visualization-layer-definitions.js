@@ -75,6 +75,7 @@ import {
   tunniCurvatureSegmentPoints,
   tunniGizmoKey,
 } from "./tunni-gizmos.js";
+import { drawGizmo } from "./gizmo.js";
 
 export const visualizationLayerDefinitions = [];
 
@@ -2456,82 +2457,6 @@ function getTunniSkeletonData(positionedGlyph, model) {
 export const TUNNI_GIZMO_COLORS = { gizmoColor: "#2E4FBA" };
 export const TUNNI_GIZMO_COLORS_DARK = { gizmoColor: "#7B97F2" };
 
-// Draw one gizmo at its reveal's current opacity, as a filled circle or diamond.
-// Nothing is drawn while the gizmo is fully hidden. The gizmo a click would take
-// grows and gains a soft outline, both eased in and out by the reveal. The
-// on-curve gizmos reveal the same way, on their own timings. `before` draws under
-// the gizmo at the same opacity. `parameters.pixel` is one screen pixel in glyph
-// units.
-const TUNNI_HOVER_GROWTH = 0.45;
-const TUNNI_HINT_ALPHA = 0.35;
-const TUNNI_HINT_GAP = 2;
-const TUNNI_HOVER_OUTLINE_WIDTH = 2.5;
-const TUNNI_HOVER_OUTLINE_ALPHA = 0.4;
-
-export function drawRevealedTunniGizmo(
-  context,
-  model,
-  key,
-  point,
-  parameters,
-  { shape = "circle", before = null, hint = false } = {}
-) {
-  const reveal = model.tunniGizmoReveal;
-  const alpha = reveal?.alpha(key) ?? 0;
-  // A hidden gizmo leaves a faint ring where it sits, so the place to hover
-  // for it can be found. The ring gives way as it shows.
-  if (hint && alpha < 1) {
-    const pixel = parameters.pixel ?? 1;
-    context.save();
-    context.globalAlpha = TUNNI_HINT_ALPHA * (1 - alpha);
-    context.strokeStyle = parameters.gizmoColor;
-    context.lineWidth = pixel;
-    context.beginPath();
-    context.arc(
-      point.x,
-      point.y,
-      parameters.gizmoSize / 2 + TUNNI_HINT_GAP * pixel,
-      0,
-      2 * Math.PI
-    );
-    context.stroke();
-    context.restore();
-  }
-  if (!(alpha > 0)) {
-    return;
-  }
-  const hot = reveal?.hotness(key) ?? 0;
-  const size = parameters.gizmoSize * (1 + TUNNI_HOVER_GROWTH * hot);
-  const tracePath = (traceSize) => {
-    context.beginPath();
-    if (shape === "diamond") {
-      const half = traceSize / 2;
-      context.moveTo(point.x, point.y - half);
-      context.lineTo(point.x + half, point.y);
-      context.lineTo(point.x, point.y + half);
-      context.lineTo(point.x - half, point.y);
-      context.closePath();
-    } else {
-      context.arc(point.x, point.y, traceSize / 2, 0, 2 * Math.PI);
-    }
-  };
-  context.save();
-  context.globalAlpha = alpha;
-  before?.();
-  context.fillStyle = parameters.gizmoColor;
-  tracePath(size);
-  context.fill();
-  if (hot > 0) {
-    const outline = TUNNI_HOVER_OUTLINE_WIDTH * parameters.pixel;
-    context.globalAlpha = alpha * TUNNI_HOVER_OUTLINE_ALPHA * hot;
-    context.strokeStyle = parameters.gizmoColor;
-    context.lineWidth = outline;
-    tracePath(size + outline * (shape === "diamond" ? 2.8 : 2));
-    context.stroke();
-  }
-  context.restore();
-}
-
 registerVisualizationLayerDefinition({
   identifier: TUNNI_SETTINGS.basicCurvature,
   name: "Tunni curvature gizmos",
@@ -2549,9 +2474,9 @@ registerVisualizationLayerDefinition({
       getTunniSkeletonData(positionedGlyph, model)
     )) {
       const point = calculateCurvatureGizmoPoint(segment.points);
-      drawRevealedTunniGizmo(
+      drawGizmo(
         context,
-        model,
+        model.gizmoReveal,
         tunniGizmoKey("basic", "curvature", id),
         point,
         parameters,
@@ -2588,9 +2513,9 @@ registerVisualizationLayerDefinition({
       if (!tunniPoint) {
         continue;
       }
-      drawRevealedTunniGizmo(
+      drawGizmo(
         context,
-        model,
+        model.gizmoReveal,
         tunniGizmoKey("basic", "on-curve", id),
         tunniPoint,
         parameters,
@@ -2644,7 +2569,7 @@ registerVisualizationLayerDefinition({
   colors: TUNNI_GIZMO_COLORS,
   colorsDarkMode: TUNNI_GIZMO_COLORS_DARK,
   draw: ({ context, positionedGlyph, parameters, model, controller }) => {
-    const dragged = model.tunniGizmoReveal?.draggedKeys() || [];
+    const dragged = model.gizmoReveal?.draggedKeys() || [];
     for (const { key, alpha } of dragged) {
       if (key.split(":")[1] !== "curvature") {
         continue;

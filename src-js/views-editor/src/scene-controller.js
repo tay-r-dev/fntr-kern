@@ -1804,8 +1804,8 @@ export class SceneController {
   handleHover(event) {
     if (this.selectedTool) {
       // A pass, so a tool that does not look for Tunni gizmos lets a shown one
-      // go (TunniGizmoReveal).
-      const reveal = this.sceneModel.tunniGizmoReveal;
+      // go (GizmoReveal).
+      const reveal = this.sceneModel.gizmoReveal;
       reveal?.beginHoverPass();
       this.selectedTool.handleHover(event);
       reveal?.endHoverPass();
