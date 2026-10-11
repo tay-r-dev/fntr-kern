@@ -3,10 +3,7 @@ import {
   setShowEffectiveLocationDefaults,
 } from "@fontra/core/axis-ui.js";
 import { groupByKeys, groupByProperties } from "@fontra/core/glyph-organizer.js";
-import {
-  CheckboxGroup,
-  getGlyphSetsUIControllers,
-} from "@fontra/core/glyphsets-ui.js";
+import { CheckboxGroup, getGlyphSetsUIControllers } from "@fontra/core/glyphsets-ui.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { ObservableController } from "@fontra/core/observable-object.ts";
@@ -38,11 +35,15 @@ export class FontOverviewNavigation extends HTMLElement {
 
   async _setupUI() {
     setShowEffectiveLocationDefaults(this.fontController, this.fontOverviewSettings);
+    // The editor sidebar's look: a column of cards on the panel grey.
+    this.classList.add("card-column");
     this.appendChild(
-      new GlyphSearchField({
-        settingsController: this.fontOverviewSettingsController,
-        searchStringKey: "searchString",
-      })
+      html.div({ class: "card" }, [
+        new GlyphSearchField({
+          settingsController: this.fontOverviewSettingsController,
+          searchStringKey: "searchString",
+        }),
+      ])
     );
 
     this.groupByCheckboxGroup = new CheckboxGroup(
@@ -59,7 +60,6 @@ export class FontOverviewNavigation extends HTMLElement {
     this.accordion = accordion;
 
     accordion.id = "panel-navigation-accordion";
-
 
     accordion.onItemOpenClose = (item, openClose) => {
       const setOp = openClose ? difference : union;
@@ -117,8 +117,12 @@ export class FontOverviewNavigation extends HTMLElement {
 
     accordion.items = accordionItems;
 
+    accordion.setAttribute("switch", "");
     this.appendChild(
-      html.div({ class: "font-overview-navigation-section" }, [accordion])
+      html.div({ class: "card" }, [
+        html.div({ class: "card-heading" }, ["font"]),
+        accordion,
+      ])
     );
 
     await sleepAsync(0);
