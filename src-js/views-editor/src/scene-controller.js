@@ -450,7 +450,7 @@ export class SceneController {
     );
 
     this.sceneSettingsController.addKeyListener(
-      ["projectGlyphSetSelection", "myGlyphSetSelection"],
+      ["projectGlyphSetSelection", "myGlyphSetSelection", "createdGlyphsOnly"],
       updateCombinedGlyphAndCharacterMapping
     );
 
@@ -3047,6 +3047,7 @@ const persistentSceneSettings = [
   { key: "selection", waitKeyBefore: "positionedLines" },
   { key: "projectGlyphSetSelection" },
   { key: "myGlyphSetSelection" },
+  { key: "createdGlyphsOnly" },
 ];
 
 export const persistentSceneSettingsKeys = persistentSceneSettings.map(
@@ -3095,6 +3096,7 @@ export function getSceneSettingsDefaults() {
     myGlyphSets: {},
     projectGlyphSetSelection: [],
     myGlyphSetSelection: [],
+    createdGlyphsOnly: false,
     combinedGlyphMap: {},
     combinedCharacterMap: {},
   };

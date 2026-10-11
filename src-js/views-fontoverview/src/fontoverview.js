@@ -70,6 +70,7 @@ const persistentSettings = [
   { key: "groupByKeys" },
   { key: "projectGlyphSetSelection" },
   { key: "myGlyphSetSelection" },
+  { key: "createdGlyphsOnly" },
   { key: "cellMagnification" },
 ];
 
@@ -91,6 +92,7 @@ function getDefaultFontOverviewSettings() {
     myGlyphSets: {},
     projectGlyphSetSelection: [],
     myGlyphSetSelection: [],
+    createdGlyphsOnly: false,
     glyphSetErrors: {},
     cellMagnification: 1,
   };
@@ -212,6 +214,7 @@ export class FontOverviewController extends ViewController {
         "myGlyphSets",
         "projectGlyphSetSelection",
         "myGlyphSetSelection",
+        "createdGlyphsOnly",
       ],
       (event) => {
         this.updateGlyphSelection();

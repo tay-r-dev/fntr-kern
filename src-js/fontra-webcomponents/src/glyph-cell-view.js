@@ -98,6 +98,20 @@ export class GlyphCellView extends HTMLElement {
 
     this._setupHiddenTextEntry();
 
+    // A click away from the cells and the section headers clears the
+    // selection. Both the press and the click must be away, so a drag
+    // selection that ends between cells keeps what it selected.
+    const isAway = (event) =>
+      !event.target.closest("glyph-cell, .ui-accordion-item-header");
+    this.addEventListener("pointerdown", (event) => {
+      this._pressedAway = isAway(event);
+    });
+    this.addEventListener("click", (event) => {
+      if (this._pressedAway && isAway(event) && this.glyphSelection.size) {
+        this.glyphSelection = new Set();
+      }
+    });
+
     this.appendChild(this.getContentElement());
 
     this.addEventListener("keydown", (event) => this.handleKeyDown(event));

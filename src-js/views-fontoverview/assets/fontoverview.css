@@ -35,6 +35,8 @@ glyph-cell-view {
   position: relative;
   display: grid;
   gap: 0;
+  /* Fills its box, so a click under the last row is a click away. */
+  min-height: 100%;
 }
 
 .font-source-selector {

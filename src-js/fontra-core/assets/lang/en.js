@@ -351,6 +351,7 @@ export const strings = {
   "font-overview.dialog.replace-existing-glyphs": "Replace existing glyphs?",
   "font-overview.popup.source": "Source",
   "font-overview.title": "Font overview",
+  "glyph-organizing.created-only": "Created only",
   "glyph-organizing.glyph-set.add-custom-glyph-set": "Add custom glyph set",
   "glyph-organizing.glyph-set.add-custom-glyph-set.menu-title":
     "Add custom glyph set...",

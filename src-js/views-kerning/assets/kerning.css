@@ -629,6 +629,8 @@ tr[data-kind="pair-exception"] > td:first-child {
   position: relative;
   display: grid;
   gap: 0;
+  /* Fills its box, so a click under the last row is a click away. */
+  min-height: 100%;
 }
 
 /* The side1/side2 class-colour edge bars on a glyph tile are drawn by
