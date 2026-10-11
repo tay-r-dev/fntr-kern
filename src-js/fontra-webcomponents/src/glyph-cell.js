@@ -137,6 +137,25 @@ export class GlyphCell extends UnlitElement {
     opacity: 1;
   }
 
+  /* The selected empty swatch (Figma 4271:1178): lime 1 under the base rule,
+     the placeholder lime text 3 at 30%, the name lime text 5 and the code
+     the same at half strength. */
+  #glyph-cell-container.missing.selected {
+    --swatch-surface: var(--surface-color-lime-basic-1);
+    --swatch-line: var(--line-base-basic-0);
+    --swatch-name: var(--text-color-lime-basic-5);
+    --swatch-code: var(--text-color-lime-basic-5);
+  }
+
+  #glyph-cell-container.missing.selected .glyph-shape-placeholder {
+    color: var(--text-color-lime-basic-3);
+    opacity: 0.3;
+  }
+
+  #glyph-cell-container.missing.selected .glyph-code {
+    opacity: 0.5;
+  }
+
   /* The face: ruled at the sides and above, 6px in, the glyph 2px over its
      label. */
   #glyph-cell-content {
