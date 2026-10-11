@@ -453,9 +453,19 @@ export class CanvasSplit {
     }
   }
 
+  // The ratio places the divider across the window, as the tool bar is
+  // placed: opening, closing or resizing a sidebar leaves it where it is, and
+  // the panes take what is on either side of it.
   _applyRatio() {
-    const width = this.root.getBoundingClientRect().width;
-    const ratio = clampSplitRatio(this.ratio, width, MIN_PANE_WIDTH);
+    if (!this.layout) {
+      return;
+    }
+    const rect = this.root.getBoundingClientRect();
+    const ratio = clampSplitRatio(
+      (this.ratio * window.innerWidth - rect.left) / rect.width,
+      rect.width,
+      MIN_PANE_WIDTH
+    );
     this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) minmax(0, ${
       1 - ratio
     }fr)`;
@@ -542,7 +552,7 @@ export class CanvasSplit {
         })
       );
     }
-    const observer = new ResizeObserver(() => this._placeDividerEars());
+    const observer = new ResizeObserver(() => this._applyRatio());
     observer.observe(this.root);
     const toolbar = document.querySelector(".tools-overlay");
     if (toolbar) {
@@ -555,12 +565,7 @@ export class CanvasSplit {
       event.preventDefault();
       this.divider.setPointerCapture(event.pointerId);
       const move = (event) => {
-        const rect = this.root.getBoundingClientRect();
-        this.ratio = clampSplitRatio(
-          (event.clientX - rect.left) / rect.width,
-          rect.width,
-          MIN_PANE_WIDTH
-        );
+        this.ratio = event.clientX / window.innerWidth;
         this._applyRatio();
       };
       const up = () => {
