@@ -15,9 +15,8 @@ import { themeColorCSS } from "./theme-support.js";
 // borders -- 1px at the bottom at rest, a hairline all around on hover, and
 // the weight moved to the top while pressed or latched -- and the inner
 // container draws its own grey fill over it on hover, or lets the face
-// through otherwise. The icon is grey at rest, dark on hover, lime while
-// pressed and dark lime while its dropdown is open; a latched button
-// keeps the grey icon and puts its indicator in the badge instead.
+// through otherwise. The icon is grey at rest and dark on hover, pressed,
+// latched and while its dropdown is open (Figma 2004:29187).
 //
 // With `dropdown` content a click opens the card (and the button takes the
 // dropdown look while it is open); without it a click is the caller's -- it
@@ -31,7 +30,7 @@ const colors = {
   "latch-button-face-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
   "latch-button-face-hover-background-color": ["var(--bt-sgb-sr-hover)", "#4a4a4a"],
   "latch-button-face-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
-  "latch-button-face-on-background-color": ["var(--bt-sgb-sr-active-rest)", "#505050"],
+  "latch-button-face-on-background-color": ["var(--surface-base-basic-2)", "#505050"],
   "latch-button-face-disabled-background-color": ["var(--bt-sgb-sr-disabled)", "#333"],
   "latch-button-container-background-color": ["var(--bt-sgc-sr-rest)", "#3a3a3a"],
   "latch-button-container-hover-background-color": ["var(--bt-sgc-sr-hover)", "#444"],
@@ -44,9 +43,9 @@ const colors = {
   "latch-button-disabled-border-color": ["var(--bt-sgb-ln-disabled)", "#444"],
   "latch-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
   "latch-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "latch-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#d5ed57"],
-  "latch-button-icon-open-color": ["var(--bt-sgc-ic-active-hover)", "#8eac10"],
-  "latch-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
+  "latch-button-icon-press-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "latch-button-icon-open-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "latch-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
   "latch-button-card-background-color": ["#fff", "#2a2a2a"],
   "latch-button-card-shadow-color": ["#0003", "#0008"],
 };
@@ -114,10 +113,10 @@ export class LatchButton extends UnlitElement {
       aspect-ratio: 1;
     }
 
-    /* The design's chevron: an 8px box. */
+    /* The design's chevron: a 6px box. */
     inline-svg.latch-button-chevron {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       flex: none;
       transform: rotate(180deg);
     }
@@ -151,8 +150,8 @@ export class LatchButton extends UnlitElement {
       color: var(--latch-button-icon-press-color);
     }
 
-    /* On, and open while its dropdown shows: the darker face with the
-       weight at the top. Open also turns the icon dark lime. */
+    /* On, and open while its dropdown shows: the grey face with the
+       weight at the top, and the dark icon. */
     button.on,
     button.open {
       background: var(--latch-button-face-on-background-color);
@@ -166,6 +165,7 @@ export class LatchButton extends UnlitElement {
       padding: 2px;
     }
 
+    button.on .container,
     button.open .container {
       color: var(--latch-button-icon-open-color);
     }

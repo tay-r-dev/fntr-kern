@@ -23,10 +23,10 @@ const colors = {
   // hand-picked until the design has a dark mode.
   "icon-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
   "icon-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "icon-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#a9c915"],
-  "icon-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
-  "icon-button-icon-active-color": ["var(--bt-sgi-ic-active)", "#e0e0e0"],
-  "icon-button-icon-active-hover-color": ["var(--bt-sgc-ic-active-hover)", "#a9c915"],
+  "icon-button-icon-press-color": ["var(--icon-color-lime-basic-4)", "#a9c915"],
+  "icon-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
+  "icon-button-icon-active-color": ["var(--icon-base-basic-3)", "#e0e0e0"],
+  "icon-button-icon-active-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "icon-button-hover-background-color": ["var(--bt-sgi-sr-hover)", "#464646"],
   "icon-button-hover-border-color": [
     "var(--bt-sgi-ln-hover)",
@@ -40,7 +40,7 @@ const colors = {
   // button/table (Figma 4054:1391): the same states in a table row, but a
   // paler icon at rest, and hover lifts the face to white with a pale border
   // (the row under it may be the light grey).
-  "icon-button-table-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
+  "icon-button-table-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
   "icon-button-table-hover-background-color": ["var(--bt-sgt-sr-hover)", "#2c2c2c"],
   "icon-button-table-hover-border-color": [
     "var(--bt-sgt-ln-hover)",
@@ -53,7 +53,7 @@ const colors = {
   "icon-button-latch-hover-background-color": ["var(--bt-sgb-sr-hover)", "#444"],
   "icon-button-latch-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
   "icon-button-latch-active-background-color": [
-    "var(--bt-sgb-sr-active-rest)",
+    "var(--surface-base-basic-2)",
     "#505050",
   ],
   "icon-button-latch-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
@@ -240,10 +240,10 @@ export class IconButton extends UnlitElement {
       border-radius: 6px;
     }
 
-    /* segment's chevron (Figma 2004:29126): an 8px box. */
+    /* segment's chevron (Figma 2004:29126): a 6px box. */
     inline-svg.icon-button-chevron {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       flex: none;
       transform: rotate(180deg);
     }

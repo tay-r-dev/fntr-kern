@@ -257,7 +257,7 @@
   --ui-text-label-s: 200 condensed 10px / 12px var(--ui-font-mono);
   --ui-text-label-m: 200 condensed 11px / 12px var(--ui-font-mono);
   /* table/heading is uppercase. */
-  --ui-text-table-heading: 400 semi-condensed 9px / 10px var(--ui-font-mono);
+  --ui-text-table-heading: 400 semi-condensed 8px / 10px var(--ui-font-mono);
   --ui-tracking: -0.03em; /* every style but these below */
   --ui-tracking-sans: 0; /* heading/h1 and h2 */
   --ui-tracking-label-m: -0.01em;

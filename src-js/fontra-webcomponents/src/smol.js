@@ -121,6 +121,8 @@ export function smolCSS({ hoverWithin, selectedWithin } = {}) {
     ${fill("var(--surface-base-basic-2)", "var(--line-base-basic-1)")}
   }
 
+  ${rule([".smol:disabled"], text("var(--text-base-basic-4)"))}
+
   ${rule(box("rest", { select: true }), text("var(--text-color-lime-basic-3)"))}
 
   ${rule(box("hover", { select: true }), text("var(--text-color-lime-basic-2)"))}

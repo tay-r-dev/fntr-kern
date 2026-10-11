@@ -53,7 +53,7 @@ const FIT_FIELD_GAP = 2;
 const lookColors = {
   "data-table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
   "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
-  "data-table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
+  "data-table-look-rule-color": ["var(--line-base-basic-0)", "rgba(255, 255, 255, 0.1)"],
   "data-table-look-divider-color": [
     "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.1)",
@@ -62,7 +62,7 @@ const lookColors = {
     "var(--line-base-basic-3)",
     "rgba(255, 255, 255, 0.2)",
   ],
-  "data-table-look-heading-color": ["var(--grey-deprecated-5)", "#8e8e8e"],
+  "data-table-look-heading-color": ["var(--text-base-basic-4)", "#8e8e8e"],
   "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
   "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
   "data-table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
@@ -72,46 +72,60 @@ const lookColors = {
     "var(--tbl-lb-sec-disabled)",
     "#5a5a5a",
   ],
-  "data-table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],
-  "data-table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
-  "data-table-look-selection-entry-color": [
-    "var(--tbl-lb-prim-rest-selection)",
-    "#c4dc6a",
+  // A selected row in a table that does not have the focus: grey
+  // (Figma 2004:29827, select=true focus=false).
+  "data-table-look-selection-color": ["var(--surface-base-basic-1)", "#333333"],
+  "data-table-look-selection-rule-color": ["var(--line-base-basic-1)", "#444444"],
+  "data-table-look-selection-entry-color": ["var(--text-base-basic-3)", "#a8a8a8"],
+  "data-table-look-selection-entry-hover-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "data-table-look-selection-additional-color": ["var(--text-base-basic-4)", "#8e8e8e"],
+  "data-table-look-selection-additional-hover-color": [
+    "var(--text-base-basic-3)",
+    "#b4b4b4",
   ],
+  "data-table-look-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
+  "data-table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "data-table-look-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
+};
+
+
+// A selected row in the table that has the focus: lime (Figma 2004:29827,
+// select=true focus=true). These replace the grey selection colours above.
+const focusedSelectionColors = {
+  "data-table-look-selection-color": ["var(--surface-color-lime-basic-1)", "#3a4220"],
+  "data-table-look-selection-rule-color": ["var(--line-color-lime-basic-1)", "#5a6e1a"],
+  "data-table-look-selection-entry-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
   "data-table-look-selection-entry-hover-color": [
-    "var(--tbl-lb-prim-hover-selection)",
+    "var(--text-color-lime-basic-1)",
     "#e2f38f",
   ],
   "data-table-look-selection-additional-color": [
-    "var(--tbl-lb-sec-rest-selection)",
+    "color-mix(in srgb, var(--text-color-lime-basic-4) 50%, transparent)",
     "#8a9a5a",
   ],
   "data-table-look-selection-additional-hover-color": [
-    "var(--tbl-lb-sec-hover-selection)",
+    "var(--text-color-lime-basic-3)",
     "#a9b97a",
   ],
-  "data-table-look-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
-  "data-table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "data-table-look-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
-  "data-table-look-selection-icon-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
+  "data-table-look-selection-icon-color": ["var(--icon-color-lime-basic-3)", "#a9c915"],
   "data-table-look-selection-icon-hover-color": [
-    "var(--bt-sgt-ic-select-hover)",
+    "var(--icon-color-lime-basic-1)",
     "#a9c915",
   ],
   "data-table-look-selection-icon-active-color": [
-    "var(--bt-sgt-ic-select-active)",
+    "var(--text-color-lime-basic-3)",
     "#c4dc6a",
   ],
   "data-table-look-selection-icon-press-color": [
-    "var(--bt-sgt-ic-select-focus)",
+    "var(--icon-color-lime-basic-2)",
     "#c4dc6a",
   ],
   "data-table-look-selection-icon-disabled-color": [
-    "var(--bt-sgt-ic-select-disabled)",
+    "color-mix(in srgb, var(--icon-color-lime-basic-4) 50%, transparent)",
     "#5a6e1a",
   ],
   "data-table-look-selection-icon-hover-border-color": [
-    "var(--bt-sgt-ln-select-hover)",
+    "var(--line-color-lime-basic-1)",
     "#5a6e1a",
   ],
   "data-table-look-selection-icon-press-fill": [
@@ -177,8 +191,14 @@ const DATA_TABLE_STYLES = `
   /* The cells' entries and dropdowns are the smol box (smol.js). */
   ${smolCSS({
     hoverWithin: ".data-table tr",
-    selectedWithin: ".data-table .data-table-row-selected",
+    selectedWithin: "data-table:focus-within .data-table-row-selected",
   })}
+
+  /* The box on a selected row of a table without the focus fills
+     surface/base/basic/3 on hover (Figma 2004:29827). */
+  .data-table .data-table-row-selected:hover .smol:not(:disabled):not(:focus) {
+    background-color: var(--surface-base-basic-3);
+  }
 
   :where(.data-table-action) {
     display: inline-flex;
@@ -328,6 +348,8 @@ const DATA_TABLE_STYLES = `
 
   ${themeColorCSS(lookColors, "data-table")}
 
+  ${themeColorCSS(focusedSelectionColors, "data-table:focus-within")}
+
   /* The looks (table, Figma 2004:29827): a white box, ruled and rounded; a
      24px head of small uppercase light grey labels over a rule; 24px rows of
      thin grey entries. "select" rules every row, "data" only the selected
@@ -346,6 +368,10 @@ const DATA_TABLE_STYLES = `
   /* A table without a height of its own scrolls only sideways, with a
      strip kept under its rows for that bar (_updateScrollReserve); one
      whose height is set scrolls both ways inside it. */
+  data-table[look] > .data-table-scroll:focus {
+    outline: none;
+  }
+
   data-table[look]:not(.data-table-scrollable) > .data-table-scroll {
     overflow-y: hidden;
   }
@@ -505,7 +531,7 @@ const DATA_TABLE_STYLES = `
 
   /* button/table's "select" variant on a selected row: lime icons, a lime
      edge on hover, a lime face while pressed. */
-  data-table[look] tr.data-table-row-selected icon-button {
+  data-table[look]:focus-within tr.data-table-row-selected icon-button {
     --icon-button-icon-color: var(--data-table-look-selection-icon-color);
     --icon-button-icon-hover-color: var(--data-table-look-selection-icon-hover-color);
     --icon-button-icon-active-color: var(
@@ -567,13 +593,13 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-icon-hover-color);
   }
 
-  data-table[look] tbody tr.data-table-row-selected td > inline-svg,
-  data-table[look] tbody tr.data-table-row-selected td > span > inline-svg {
+  data-table[look]:focus-within tbody tr.data-table-row-selected td > inline-svg,
+  data-table[look]:focus-within tbody tr.data-table-row-selected td > span > inline-svg {
     color: var(--data-table-look-selection-icon-color);
   }
 
-  data-table[look] tbody tr.data-table-row-selected td > inline-svg:hover,
-  data-table[look] tbody tr.data-table-row-selected td > span > inline-svg:hover {
+  data-table[look]:focus-within tbody tr.data-table-row-selected td > inline-svg:hover,
+  data-table[look]:focus-within tbody tr.data-table-row-selected td > span > inline-svg:hover {
     color: var(--data-table-look-selection-icon-hover-color);
   }
 
@@ -1595,7 +1621,9 @@ export class DataTable extends HTMLElement {
     this._tbody = tbody;
     table.classList.toggle("data-table-clickable", this._isClickable());
 
-    this._scroll = html.div({ class: "data-table-scroll" }, [table]);
+    // Focusable by a click, so the table knows it has the focus: its
+    // selection is lime then, grey otherwise.
+    this._scroll = html.div({ class: "data-table-scroll", tabindex: "-1" }, [table]);
     // The design's scrollbars, drawn (scrollbars.js).
     this._scrollbars = attachScrollbars(this._scroll);
     this._updateScrollReserve();

@@ -1044,7 +1044,7 @@ glyph-cell-view .glyph-count {
   gap: 1px;
   padding: 0;
   border-radius: var(--bt-sgb-corner);
-  background: #e0e0e0;
+  background: var(--line-base-basic-2);
 }
 
 .selection-row-group-icons.tray:has(icon-button[disabled]):not(
@@ -1063,7 +1063,7 @@ glyph-cell-view .glyph-count {
    hover    face white, lines above and under;  container grey, 4px pad
    press    face white, line above and at the   container grey, 2px pad
             outer side(s), none under;
-   on       face darker grey, lines as press;   container clear, 2px pad
+   on       face grey, lines as press;          container clear, 2px pad
    disabled face pale, line under;              container pale, 4px pad
 
    A left segment rounds its left corners and takes the left side line, a
@@ -1088,6 +1088,11 @@ glyph-cell-view .glyph-count {
   --icon-button-inner-press-fill: var(--bt-sgc-sr-focus);
   --icon-button-inner-press-border: transparent;
   --icon-button-on-background-color: transparent;
+  /* The segment's icon: grey at rest, dark pressed and open, pale disabled
+     (Figma 2004:29126). */
+  --icon-button-icon-press-color: var(--icon-base-basic-2);
+  --icon-button-icon-active-color: var(--icon-base-basic-2);
+  --icon-button-icon-active-hover-color: var(--icon-base-basic-2);
 }
 
 .selection-row-group-icons.tray icon-button:first-child {
@@ -1120,7 +1125,7 @@ glyph-cell-view .glyph-count {
 }
 
 .selection-row-group-icons.tray icon-button[on] {
-  background: var(--bt-sgb-sr-active-hover);
+  background: var(--surface-base-basic-2);
   border-color: var(--bt-sgb-ln-active-hover);
   --icon-button-inner-fill: var(--bt-sgc-sr-dropdown);
 }

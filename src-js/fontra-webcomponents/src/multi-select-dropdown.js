@@ -446,12 +446,12 @@ export class MultiSelectDropdown extends UnlitElement {
     :host(:hover) button.icon-mode.open:not(:disabled) {
       background-color: var(--bt-sgi-sr-focus);
       border-color: var(--bt-sgi-ln-focus);
-      color: var(--bt-sgc-ic-focus);
+      color: var(--icon-color-lime-basic-4);
     }
 
     button.icon-mode:disabled,
     :host(:hover) button.icon-mode:disabled {
-      color: var(--bt-sgc-ic-disabled);
+      color: var(--icon-base-basic-4);
     }
 
     button.icon-mode inline-svg {

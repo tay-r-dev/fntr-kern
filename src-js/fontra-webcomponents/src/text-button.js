@@ -102,7 +102,7 @@ export class TextButton extends UnlitElement {
 
     /* hover: white, ruled all round; the face keeps the grey. */
     :host(:hover) button {
-      padding: 3px calc(var(--bt-sgb-padding) - 1px) 3px;
+      padding: 3px calc(var(--bt-sgb-padding) - 1px) 4px;
       border-color: var(--text-button-hover-border-color);
       border-width: 1px;
       background-color: var(--text-button-hover-background-color);
