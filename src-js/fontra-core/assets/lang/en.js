@@ -84,8 +84,6 @@ export const strings = {
   "action.select-none": "Select None",
   "action.set-contour-start": "Set Start Point",
   "action.simplify-contour": "Simplify Contour",
-  "action.simplify-contour.nothing-to-simplify":
-    "These contours are already as simple as they can be without changing their shape.",
   "action.simplify-contour.title": "Simplify Contour",
   "action.simplify-contour.masters-together": "Simplify all masters together",
   "action.toggle-snap-diagonals": "Toggle Diagonal Snapping",

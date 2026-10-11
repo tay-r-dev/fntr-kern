@@ -2406,11 +2406,6 @@ export class SceneController {
       if (changed) {
         // Removed points take their selection keys with them.
         this.selection = new Set();
-      } else {
-        message(
-          translate("action.simplify-contour.title"),
-          translate("action.simplify-contour.nothing-to-simplify")
-        );
       }
       return;
     }
@@ -2422,7 +2417,6 @@ export class SceneController {
       return;
     }
 
-    let simplifiedAny = false;
     await this.editLayersAndRecordChanges((layerGlyphs) => {
       const layers = this.simplifyLayers(layerGlyphs);
       const rewritten = [];
@@ -2481,16 +2475,8 @@ export class SceneController {
             `point/${layers[0].path.getAbsolutePointIndex(contourIndex, 0)}`
         )
       );
-      simplifiedAny = true;
       return translate("action.simplify-contour");
     });
-
-    if (!simplifiedAny) {
-      message(
-        translate("action.simplify-contour.title"),
-        translate("action.simplify-contour.nothing-to-simplify")
-      );
-    }
   }
 
   // Reverse, for a skeleton. It flips the flag the generator already reads, so

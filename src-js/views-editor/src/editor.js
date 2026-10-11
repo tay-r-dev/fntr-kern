@@ -51,6 +51,7 @@ import { labeledCheckbox, labeledTextInput, pickFile } from "@fontra/core/ui-uti
 import {
   commandKeyProperty,
   deepCopyObject,
+  dumpURLFragment,
   enumerate,
   eventIsCausedByWritingURLFragment,
   fetchJSON,
@@ -1586,42 +1587,38 @@ export class EditorController extends ViewController {
     this.cleanGlyphsLayers.scaleFactor = 1 / magnification;
   }
 
+  // A double-clicked component opens its glyph for editing in a new editor tab.
   async doubleClickedComponentsCallback(event) {
     const glyphController = await this.sceneModel.getSelectedStaticGlyphController();
     const instance = glyphController.instance;
-
-    const compoStrings = this.sceneController.doubleClickedComponentIndices.map(
-      (componentIndex) =>
-        `${instance.components[componentIndex].name} (#${componentIndex})`
+    const glyphNames = this.sceneController.doubleClickedComponentIndices.map(
+      (componentIndex) => instance.components[componentIndex].name
     );
-    const result = await dialog(
-      `Would you like to add the selected component${
-        compoStrings.length != 1 ? "s" : ""
-      } to the text string?`,
-      compoStrings.join("\n"),
-      [
-        { title: "Cancel", isCancelButton: true },
-        { title: "Add", isDefaultButton: true },
-      ]
-    );
-    if (!result) {
-      // User cancelled
+    if (!glyphNames.length) {
       return;
     }
 
-    const glyphLocations = {};
-    const glyphInfos = [];
-
-    for (const componentIndex of this.sceneController.doubleClickedComponentIndices) {
-      const glyphName = instance.components[componentIndex].name;
-      const location = instance.components[componentIndex].location;
-      if (location) {
-        glyphLocations[glyphName] = location;
-      }
-      glyphInfos.push(this.sceneController.glyphInfoFromGlyphName(glyphName));
+    const viewInfo = this.sceneController.getViewInfoFromSceneSettings();
+    for (const key of [
+      "viewBox",
+      "selection",
+      "substituteGlyphName",
+      "editLayerName",
+      "editingLayers",
+    ]) {
+      delete viewInfo[key];
     }
-    this.sceneController.updateGlyphLocations(glyphLocations);
-    this.insertGlyphInfos(glyphInfos, 1, true);
+    viewInfo.text = glyphNames
+      .map((glyphName) => {
+        const { character } = this.sceneController.glyphInfoFromGlyphName(glyphName);
+        return character ? (character === "/" ? "//" : character) : `/${glyphName} `;
+      })
+      .join("");
+    viewInfo.selectedGlyph = { lineIndex: 0, glyphIndex: 0, isEditing: true };
+
+    const url = new URL(window.location);
+    url.hash = dumpURLFragment(viewInfo);
+    window.open(url.toString());
   }
 
   async insertGlyphInfos(glyphInfos, where = 0, select = false) {
