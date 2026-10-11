@@ -29,7 +29,6 @@ font-overview-navigation {
   position: relative;
   overflow: auto;
   margin: 8px 8px 8px 0;
-  padding: 1em;
 }
 
 glyph-cell-view {

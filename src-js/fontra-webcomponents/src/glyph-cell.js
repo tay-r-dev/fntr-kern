@@ -7,7 +7,8 @@ import { Transform } from "@fontra/core/transform.js";
 import { assert, rgbaToCSS, throttleCalls } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
 
-const UNSCALED_CELL_HEIGHT = 75;
+// The swatch's glyph area is 78px square (Figma 4269:1045).
+const UNSCALED_CELL_HEIGHT = 78;
 
 // A tab in the background still hears its glyphs change, but nobody sees the
 // tiles: each would refetch its glyph (for a skeleton glyph, regenerate its
@@ -73,15 +74,17 @@ export class GlyphCell extends UnlitElement {
     opacity: 0.4;
   }
 
+  /* The swatch: the face, then the status bar 1px under it, clipped
+     together to 6px corners. */
   #glyph-cell-container {
     --swatch-surface: var(--surface-base-basic-0);
     --swatch-line: var(--line-base-basic-0);
-    --swatch-name: var(--text-base-basic-3);
+    --swatch-name: var(--text-base-basic-1);
     --swatch-code: var(--text-base-basic-4);
     display: inline-flex;
     flex-direction: column;
     gap: 1px;
-    margin: 1px;
+    margin: 4px;
     border-radius: var(--corner-outer-l);
     overflow: hidden;
     cursor: pointer;
@@ -95,7 +98,7 @@ export class GlyphCell extends UnlitElement {
   #glyph-cell-container.selected {
     --swatch-surface: var(--surface-color-lime-basic-2);
     --swatch-line: var(--line-color-lime-basic-2);
-    --swatch-name: var(--text-color-lime-basic-3);
+    --swatch-name: var(--text-color-lime-basic-1);
     --swatch-code: var(--text-color-lime-basic-5);
   }
 
@@ -103,10 +106,12 @@ export class GlyphCell extends UnlitElement {
     opacity: 0.4;
   }
 
+  /* The face: ruled at the sides and above, 6px in, the glyph 2px over its
+     label. */
   #glyph-cell-content {
-    display: grid;
-    grid-template-rows: calc(${UNSCALED_CELL_HEIGHT}px * var(--glyph-cell-scale-factor, 1)) auto;
-    justify-items: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
     gap: 2px;
     padding: 6px;
     background-color: var(--swatch-surface);
@@ -119,7 +124,13 @@ export class GlyphCell extends UnlitElement {
     -webkit-user-select: none;
   }
 
+  #glyph-cell-content > svg {
+    display: block;
+    height: calc(${UNSCALED_CELL_HEIGHT}px * var(--glyph-cell-scale-factor, 1));
+  }
+
   .glyph-shape-placeholder {
+    height: calc(${UNSCALED_CELL_HEIGHT}px * var(--glyph-cell-scale-factor, 1));
     display: grid;  /* for vertical text centering */
     place-items: center;
     text-align: center;
@@ -153,6 +164,7 @@ export class GlyphCell extends UnlitElement {
        states class membership and nothing else -- turns it off by setting
        --glyph-cell-status-display: none on the cell. Default unchanged. */
     display: var(--glyph-cell-status-display, block);
+    flex: none;
     height: 4px;
     box-sizing: border-box;
     border: 1px solid var(--line-base-inverted-1);
@@ -176,7 +188,7 @@ export class GlyphCell extends UnlitElement {
     this.marginTop = 0.2;
     this.marginBottom = 0.05;
     this.marginSide = 0;
-    this.size = 60;
+    this.size = 62.4;
     this.height = (1 + this.marginTop + this.marginBottom) * this.size;
     assert(this.height === UNSCALED_CELL_HEIGHT, "manual size dependency incorrect");
     this.width = this.height;
@@ -326,7 +338,6 @@ export class GlyphCell extends UnlitElement {
         html.div(
           {
             id: "glyph-cell-content",
-            style: `width: calc(${this.width}px * var(--glyph-cell-scale-factor));`,
           },
           [
             this._glyphSVG
@@ -353,12 +364,12 @@ export class GlyphCell extends UnlitElement {
                 html.span({ class: "glyph-code" }, [this._codeLabel()]),
               ]
             ),
-            html.div({
-              class: "glyph-status-color",
-              style: `background-color: ${this._glyphStatusColor};`,
-            }),
           ]
         ),
+        html.div({
+          class: "glyph-status-color",
+          style: `background-color: ${this._glyphStatusColor};`,
+        }),
       ]
     );
 

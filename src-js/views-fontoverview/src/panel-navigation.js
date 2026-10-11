@@ -37,14 +37,10 @@ export class FontOverviewNavigation extends HTMLElement {
     setShowEffectiveLocationDefaults(this.fontController, this.fontOverviewSettings);
     // The editor sidebar's look: a column of cards on the panel grey.
     this.classList.add("card-column");
-    this.appendChild(
-      html.div({ class: "card" }, [
-        new GlyphSearchField({
-          settingsController: this.fontOverviewSettingsController,
-          searchStringKey: "searchString",
-        }),
-      ])
-    );
+    const searchField = new GlyphSearchField({
+      settingsController: this.fontOverviewSettingsController,
+      searchStringKey: "searchString",
+    });
 
     this.groupByCheckboxGroup = new CheckboxGroup(
       this.fontOverviewSettingsController,
@@ -121,6 +117,7 @@ export class FontOverviewNavigation extends HTMLElement {
     this.appendChild(
       html.div({ class: "card" }, [
         html.div({ class: "card-heading" }, ["font"]),
+        searchField,
         accordion,
       ])
     );

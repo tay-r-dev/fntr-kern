@@ -370,9 +370,9 @@ function makeBar(box, axis) {
       const unit =
         event.deltaMode === 1 ? WHEEL_LINE : event.deltaMode === 2 ? clientSize() : 1;
       if (vertical) {
-        box.scrollBy({ left: event.deltaX * unit, top: event.deltaY * unit });
+        smoothScrollBy(box, event.deltaX * unit, event.deltaY * unit);
       } else {
-        box.scrollBy({ left: (event.deltaX || event.deltaY) * unit });
+        smoothScrollBy(box, (event.deltaX || event.deltaY) * unit, 0);
       }
     },
     { passive: false }
@@ -416,4 +416,47 @@ function makeBar(box, axis) {
   }
 
   return bar;
+}
+
+// The wheel over a bar eases the box toward where the wheel has sent it, as
+// the browser does over the box itself. Each notch adds to one target, so a
+// fast wheel loses nothing to an animation it interrupts.
+const SMOOTH_SCROLL_EASE = 0.3;
+const smoothScrolls = new WeakMap();
+
+function smoothScrollBy(box, dx, dy) {
+  let state = smoothScrolls.get(box);
+  if (!state) {
+    state = { x: box.scrollLeft, y: box.scrollTop, frame: 0 };
+    smoothScrolls.set(box, state);
+  }
+  if (!state.frame) {
+    // A scroll from elsewhere since the last run moves the start.
+    state.x = box.scrollLeft;
+    state.y = box.scrollTop;
+  }
+  const clamp = (value, max) => Math.min(Math.max(value, 0), Math.max(max, 0));
+  state.x = clamp(state.x + dx, box.scrollWidth - box.clientWidth);
+  state.y = clamp(state.y + dy, box.scrollHeight - box.clientHeight);
+  if (state.frame) {
+    return;
+  }
+  // A share of what is left, but at least a whole pixel: the box may round
+  // its scroll to pixels, and a smaller step would never arrive.
+  const toward = (from, to) => {
+    const left = to - from;
+    const move = left * SMOOTH_SCROLL_EASE;
+    return Math.abs(move) >= 1
+      ? from + move
+      : from + Math.sign(left) * Math.min(Math.abs(left), 1);
+  };
+  const step = () => {
+    const left = toward(box.scrollLeft, state.x);
+    const top = toward(box.scrollTop, state.y);
+    box.scrollTo({ left, top, behavior: "instant" });
+    const done =
+      Math.abs(state.x - box.scrollLeft) < 1 && Math.abs(state.y - box.scrollTop) < 1;
+    state.frame = done ? 0 : requestAnimationFrame(step);
+  };
+  state.frame = requestAnimationFrame(step);
 }

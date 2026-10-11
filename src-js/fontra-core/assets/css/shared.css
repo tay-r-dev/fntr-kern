@@ -902,6 +902,35 @@ glyph-cell-view .glyph-count {
   transform: rotate(-90deg);
 }
 
+/* The hit areas reach past what is drawn, as overlay scrollbars do: the
+   thumb and the arrows take the pointer across the whole rail, 4px past it
+   into the content, and 4px beyond their ends along it. Nothing drawn grows. */
+.scrollbar-thumb::before,
+.scrollbar-arrow::before {
+  content: "";
+  position: absolute;
+}
+
+.scrollbar-arrow {
+  position: relative;
+}
+
+.scrollbar-rail.vertical .scrollbar-thumb::before {
+  inset: -4px -3px -4px -7px;
+}
+
+.scrollbar-rail.horizontal .scrollbar-thumb::before {
+  inset: -7px -4px -3px -4px;
+}
+
+.scrollbar-rail.vertical .scrollbar-arrow::before {
+  inset: -2px 0 -2px -4px;
+}
+
+.scrollbar-rail.horizontal .scrollbar-arrow::before {
+  inset: -4px -2px 0 -2px;
+}
+
 .scrollbar-thumb:hover,
 .scrollbar-thumb.dragging,
 .scrollbar-arrow:hover {
