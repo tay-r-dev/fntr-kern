@@ -31,8 +31,7 @@ import { themeColorCSS } from "./theme-support.js";
 // `scrubOnly` keeps a dragging type from being typed in. A double-click on the
 // scrub area puts back `defaultValue`, as a typed value would; a field with no
 // default ignores it. An element with slot="end" sits after the value, for one
-// icon. An element with slot="label" stands where the label is, for a smol
-// dropdown; a press on it does not scrub.
+// icon.
 //
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
 // ones ui-form.js's own label-drag scrub uses.
@@ -234,15 +233,6 @@ export class InputFieldLarge extends UnlitElement {
 
     .name:empty {
       display: none;
-    }
-
-    .label-slot {
-      display: contents;
-    }
-
-    ::slotted([slot="label"]) {
-      flex: 0 1 auto;
-      min-width: 0;
     }
 
     .apply-icon {
@@ -686,20 +676,7 @@ export class InputFieldLarge extends UnlitElement {
                 }),
               ]
             : []),
-          html.createDomElement(
-            "slot",
-            {
-              name: "label",
-              class: "label-slot",
-              // A press on the slotted control is its own, not a scrub.
-              onpointerdown: (event) => {
-                if (event.target !== this._nameElement) {
-                  event.stopPropagation();
-                }
-              },
-            },
-            [this._nameElement]
-          ),
+          this._nameElement,
           this._valueElement,
           ...(this._note ? [html.span({ class: "note" }, [`(${this._note})`])] : []),
           html.createDomElement("slot", { name: "end" }),
