@@ -310,14 +310,16 @@ body {
   );
 }
 
+/* On the card's lower rule, which the card clips, so the ear's rule runs into
+   it. */
 .canvas-split-ear.bottom-left {
-  bottom: 0;
+  bottom: -1px;
   right: calc(100% - 1px);
   background: radial-gradient(circle calc(var(--r) * 1px + 0.5px) at 0 0, var(--ear-fill));
 }
 
 .canvas-split-ear.bottom-right {
-  bottom: 0;
+  bottom: -1px;
   left: calc(100% - 1px);
   background: radial-gradient(
     circle calc(var(--r) * 1px + 0.5px) at 100% 0,
