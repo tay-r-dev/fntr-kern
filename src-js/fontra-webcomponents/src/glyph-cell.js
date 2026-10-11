@@ -66,6 +66,9 @@ export class GlyphCell extends UnlitElement {
   static styles = `
   :host {
     display: inline-block;
+    /* Swatches line up by their tops, not by their text: an empty swatch's
+       placeholder letter would set its baseline apart from a drawn one's. */
+    vertical-align: top;
     --glyph-cell-scale-factor: calc(var(--glyph-cell-scale-factor-override, 1));
   }
 
