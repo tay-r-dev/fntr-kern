@@ -69,6 +69,12 @@ export class LatchButton extends UnlitElement {
       cursor: default;
     }
 
+    /* With a dropdown it is 40px wide: the icon and the chevron (Figma
+       2004:29187). */
+    :host([has-dropdown]) {
+      width: 40px;
+    }
+
     /* The face: at rest, the grey face with the 1px bottom edge. */
     button {
       display: flex;
@@ -190,19 +196,34 @@ export class LatchButton extends UnlitElement {
       color: var(--latch-button-icon-disabled-color);
     }
 
-    /* The design's 6px indication-badge at the button's top-right corner. */
+    /* The design's 6px indication-badge at the button's top-right corner,
+       in every state (Figma 2004:29187): grey (rest status) at rest, on
+       hover and disabled; lime while pressed, latched on or open. It sits
+       4px down and 3px in at rest and disabled, 3px down on hover, and 3px
+       down and 2px in while pressed, latched on or open. */
     indication-badge {
       position: absolute;
-      top: 3px;
-      right: 2px;
-      display: none;
+      top: 4px;
+      right: 3px;
       pointer-events: none;
     }
 
-    /* Shown while latched on (render sets .shown), and through the press. */
+    :host(:hover:not([disabled])) indication-badge {
+      top: 3px;
+    }
+
     indication-badge.shown,
     :host(:active:not([disabled])) indication-badge {
-      display: inline-block;
+      top: 3px;
+      right: 2px;
+    }
+
+    /* The lime look: the badge's own active colours, over the rest status
+       render gives it. */
+    indication-badge.shown,
+    :host(:active:not([disabled])) indication-badge {
+      --indication-badge-rest-fill: var(--ind-bdg-sr-active);
+      --indication-badge-rest-rim: var(--ind-bdg-ln-inside);
     }
 
     /* The chevron flips while the card is open. */
@@ -390,13 +411,17 @@ export class LatchButton extends UnlitElement {
       },
       [html.div({ class: "container" }, children)]
     );
-    // The badge is always there: a press shows it too.
+    // The badge is always there, grey; latched on, open or flagged it is
+    // lime (a press turns it lime too, in CSS). Read here, at render: the
+    // element base defines `on` per instance, over this class's setter, so
+    // no attribute follows it.
+    const lime = this.badge || this.on || this._card?.matches(":popover-open");
     const badge = html.createDomElement("indication-badge", {
-      // Latched shows it too. Read here, at render: the element base defines
-      // `on` per instance, over this class's setter, so no attribute follows it.
-      class: this.badge || this.on ? "shown" : "",
+      class: lime ? "shown" : "",
     });
     badge.size = "M";
+    badge.status = "rest";
+    this.toggleAttribute("has-dropdown", !!this.dropdown);
     return this.dropdown ? [this._button, this._card, badge] : [this._button, badge];
   }
 }

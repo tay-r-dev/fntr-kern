@@ -292,6 +292,14 @@ function badgesAndHandles() {
   return row(
     cell("badge M inside", make("indication-badge", { size: "M", state: "inside" })),
     cell("badge M outside", make("indication-badge", { size: "M", state: "outside" })),
+    cell(
+      "badge M inside rest",
+      make("indication-badge", { size: "M", state: "inside", status: "rest" })
+    ),
+    cell(
+      "badge M outside rest",
+      make("indication-badge", { size: "M", state: "outside", status: "rest" })
+    ),
     cell("badge S inside", make("indication-badge", { size: "S", state: "inside" })),
     cell("badge S outside", make("indication-badge", { size: "S", state: "outside" })),
     cell("handle M", make("ui-handle", { size: "M" })),
