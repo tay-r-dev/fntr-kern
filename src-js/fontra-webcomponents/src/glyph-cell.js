@@ -6,16 +6,6 @@ import * as svg from "@fontra/core/svg-utils.js";
 import { Transform } from "@fontra/core/transform.js";
 import { assert, rgbaToCSS, throttleCalls } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
-import { themeColorCSS } from "./theme-support.js";
-
-const colors = {
-  "cell-background-color": ["#ECECEC", "#585858"],
-  "cell-missing-color": ["#0000", "#0000"],
-  "cell-hover-color": ["#E5E5E5", "#606060"],
-  "cell-active-color": ["#D8D8D8", "#6F6F6F"],
-  "cell-selected-color": ["#C8C8C8", "#8F8F8F"],
-  "glyph-shape-placeholder-color": ["#AAA", "#AAA"],
-};
 
 const UNSCALED_CELL_HEIGHT = 75;
 
@@ -70,9 +60,9 @@ const cellObserver = new IntersectionObserver(
 );
 
 export class GlyphCell extends UnlitElement {
+  // The swatch (Figma 4269:1045): a card face over the development-status
+  // bar. The glyph takes its name's colour; the selected swatch is lime.
   static styles = `
-    ${themeColorCSS(colors)}
-
   :host {
     display: inline-block;
     --glyph-cell-scale-factor: calc(var(--glyph-cell-scale-factor-override, 1));
@@ -84,43 +74,47 @@ export class GlyphCell extends UnlitElement {
   }
 
   #glyph-cell-container {
-    --this-background-color: var(--cell-background-color);
-    background-color: var(--this-background-color);
-    display: inline-block;
+    --swatch-surface: var(--surface-base-basic-0);
+    --swatch-line: var(--line-base-basic-0);
+    --swatch-name: var(--text-base-basic-3);
+    --swatch-code: var(--text-base-basic-4);
+    display: inline-flex;
+    flex-direction: column;
+    gap: 1px;
     margin: 1px;
-    border-radius: 0.3rem;
+    border-radius: var(--corner-outer-l);
     overflow: hidden;
-    transition: 100ms;
     cursor: pointer;
   }
 
   #glyph-cell-container:hover {
-    --this-background-color: var(--cell-hover-color);
-  }
-
-  #glyph-cell-container:active:not(.dragging) {
-    --this-background-color: var(--cell-active-color);
+    --swatch-surface: var(--surface-base-basic-1);
+    --swatch-line: var(--line-base-basic-1);
   }
 
   #glyph-cell-container.selected {
-    --this-background-color: var(--cell-selected-color);
+    --swatch-surface: var(--surface-color-lime-basic-2);
+    --swatch-line: var(--line-color-lime-basic-2);
+    --swatch-name: var(--text-color-lime-basic-3);
+    --swatch-code: var(--text-color-lime-basic-5);
   }
 
-  #glyph-cell-container.missing {
-    background-color: rgb(from var(--this-background-color) r g b / 25%);
-  }
-
-  #glyph-cell-container.missing:hover,
-  #glyph-cell-container.missing:active,
-  #glyph-cell-container.missing.selected {
-    background-color: rgb(from var(--this-background-color) r g b / 80%);
+  #glyph-cell-container.missing #glyph-cell-content {
+    opacity: 0.4;
   }
 
   #glyph-cell-content {
     display: grid;
-    grid-template-rows: calc(${UNSCALED_CELL_HEIGHT}px * var(--glyph-cell-scale-factor, 1)) auto auto;
+    grid-template-rows: calc(${UNSCALED_CELL_HEIGHT}px * var(--glyph-cell-scale-factor, 1)) auto;
     justify-items: center;
-    gap: 0;
+    gap: 2px;
+    padding: 6px;
+    background-color: var(--swatch-surface);
+    border: 1px solid var(--swatch-line);
+    border-bottom: none;
+    border-radius: var(--corner-outer-l) var(--corner-outer-l) 0 0;
+    color: var(--swatch-name);
+    fill: var(--swatch-name);
     user-select: none;
     -webkit-user-select: none;
   }
@@ -128,18 +122,29 @@ export class GlyphCell extends UnlitElement {
   .glyph-shape-placeholder {
     display: grid;  /* for vertical text centering */
     place-items: center;
-    color: var(--glyph-shape-placeholder-color);
     text-align: center;
+    opacity: 0.5;
   }
 
   .glyph-name-label {
-    font-size: 0.85em;
-    overflow-x: hidden;
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    font: var(--ui-text-label-xs);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
+    white-space: nowrap;
+  }
+
+  .glyph-name {
+    overflow: hidden;
     text-overflow: ellipsis;
-    text-overflow: ellipsis;
-    text-wrap: nowrap;
-    text-align: center;
-    word-break: keep-all;
+    color: var(--swatch-name);
+  }
+
+  .glyph-code {
+    flex: none;
+    color: var(--swatch-code);
   }
 
   .glyph-status-color {
@@ -148,8 +153,15 @@ export class GlyphCell extends UnlitElement {
        states class membership and nothing else -- turns it off by setting
        --glyph-cell-status-display: none on the cell. Default unchanged. */
     display: var(--glyph-cell-status-display, block);
-    height: 0.3rem;
-    justify-self: stretch;
+    height: 4px;
+    box-sizing: border-box;
+    border: 1px solid var(--line-base-inverted-1);
+    border-radius: var(--corner-outer-xs);
+  }
+
+  #glyph-cell-container.selected .glyph-status-color {
+    border: none;
+    border-radius: 0;
   }
   `;
 
@@ -336,7 +348,10 @@ export class GlyphCell extends UnlitElement {
                 class: "glyph-name-label",
                 style: `width: calc(${this.width}px * var(--glyph-cell-scale-factor));`,
               },
-              [this.glyphName]
+              [
+                html.span({ class: "glyph-name" }, [this.glyphName]),
+                html.span({ class: "glyph-code" }, [this._codeLabel()]),
+              ]
             ),
             html.div({
               class: "glyph-status-color",
@@ -351,6 +366,14 @@ export class GlyphCell extends UnlitElement {
     this._updateSelectedState();
 
     return this._glyphCellContent;
+  }
+
+  // The first code point, as hex digits; nothing for an unencoded glyph.
+  _codeLabel() {
+    const codePoint = this.codePoints?.[0];
+    return codePoint === undefined
+      ? ""
+      : codePoint.toString(16).toUpperCase().padStart(4, "0");
   }
 
   get selected() {
@@ -380,7 +403,7 @@ export class GlyphCell extends UnlitElement {
 }
 
 function getStatusColor(statusFieldDefinitions, varGlyph, sourceIndex) {
-  let statusColor = "var(--cell-background-color)";
+  let statusColor = "var(--line-base-basic-1)";
   if (!statusFieldDefinitions || sourceIndex === undefined) {
     return statusColor;
   }

@@ -876,17 +876,8 @@ class PaneOverview {
       searchStringKey: "searchString",
     });
     this.cellView = new GlyphCellView(this.fontController, this.settingsController);
+    // A double click (or Enter) on a cell picks its glyph; a click selects it.
     this.cellView.onOpenSelectedGlyphs = () => this._pickSelected();
-    // A plain click on a cell picks its glyph. The cell has selected it by the
-    // time the click reaches the view.
-    this.cellView.addEventListener("click", (event) => {
-      if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      if (event.composedPath().some((node) => node.localName === "glyph-cell")) {
-        this._pickSelected();
-      }
-    });
 
     this.element = html.div({ class: "canvas-pane-overview" }, [
       html.div({ class: "canvas-pane-overview-search" }, [this.searchField]),
