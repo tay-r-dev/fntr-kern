@@ -468,7 +468,7 @@ export class CanvasSplit {
     let top = 0;
     let left = EAR_RADIUS;
     let right = EAR_RADIUS;
-    if (toolbar && toolbar.offsetParent !== null) {
+    if (toolbar?.getClientRects().length) {
       const bar = toolbar.getBoundingClientRect();
       if (divider.right > bar.left && divider.left < bar.right) {
         top = Math.max(0, bar.bottom - card.top - this.root.clientTop);
