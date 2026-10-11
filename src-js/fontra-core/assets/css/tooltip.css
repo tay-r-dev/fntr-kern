@@ -22,7 +22,7 @@
   overflow: visible;
   background: var(--surface-base-basic-0);
   color: var(--text-base-basic-3);
-  font: 400 semi-condensed 9px / 12px var(--ui-font-sans);
+  font: 400 semi-condensed 10px / 12px var(--ui-font-sans);
   letter-spacing: 0.01em;
   font-feature-settings: "case" 1;
   overflow-wrap: break-word;
@@ -39,7 +39,7 @@
 /* The optional heading line, 3px over the text. */
 .fontra-tooltip-title {
   margin-bottom: 3px;
-  font: 500 extra-expanded 9px / 10px var(--ui-font-sans);
+  font: 500 extra-expanded 10px / 10px var(--ui-font-sans);
   letter-spacing: 0;
   white-space: nowrap;
 }
