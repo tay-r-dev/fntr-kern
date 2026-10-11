@@ -7944,9 +7944,36 @@ export class KerningViewController extends ViewController {
           title: "Add to…",
           callback: () => this.showFontModeAddToDialog(glyphNames),
         },
+        { title: "-" },
+        {
+          title: "Use as proof text",
+          callback: () => this.useGlyphsAsProofText(glyphNames),
+        },
+        {
+          title: "Show their pairs",
+          callback: () => this.showPairsOfGlyphs(glyphNames),
+        },
       ],
       { x: event.clientX, y: event.clientY }
     );
+  }
+
+  // The proof text becomes the glyphs, and the pane shows it.
+  useGlyphsAsProofText(glyphNames) {
+    const phraseInput = this.phraseInputElement;
+    phraseInput.value = glyphNames.map((glyphName) => `/${glyphName}`).join(" ");
+    // The input event saves the text and sends it to the scene.
+    phraseInput.dispatchEvent(new Event("input"));
+    this.setChipMode("phrase");
+  }
+
+  // The pair table's glyph field becomes the glyphs: one glyph lists all its
+  // pairs, several list the pairs between them.
+  showPairsOfGlyphs(glyphNames) {
+    const glyphInput = this._glyphInputElement;
+    glyphInput.value = glyphNames.join(", ");
+    this.autokernFiltersController.setItem("glyphName", glyphInput.value);
+    this.renderPairTable();
   }
 
   // Minimal picker: side (1st/2nd/both -- §1.2's own New class convention)
