@@ -123,14 +123,22 @@ export function calculateCurvatureForQuadraticSegment(p1, p2, p3, steps = 20) {
 
 /* ---------- color helpers ---------- */
 
-// convert "#rrggbb" to [r,g,b]
+// convert "#rrggbb" to [r,g,b]. A comb asks this twice per quad of the same few
+// stops, so each stop is parsed once.
+const _rgbOfHex = new Map();
+
 function _hexToRgb(hex) {
-  const h = (hex || "#000000").replace("#", "");
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ];
+  let rgb = _rgbOfHex.get(hex);
+  if (!rgb) {
+    const h = (hex || "#000000").replace("#", "");
+    rgb = [
+      parseInt(h.slice(0, 2), 16),
+      parseInt(h.slice(2, 4), 16),
+      parseInt(h.slice(4, 6), 16),
+    ];
+    _rgbOfHex.set(hex, rgb);
+  }
+  return rgb;
 }
 
 function interpolateColor(color1, color2, t) {
