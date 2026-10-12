@@ -4,6 +4,8 @@ import { bulbEntry, buildBulb, makeBulbBall } from "../src/bulb-geometry.js";
 import { bulbEndCurvature } from "../src/bulb-harmonization.js";
 import { cubicPointAt, splitCubicAt } from "../src/offset-contour.js";
 import { generateFromSkeleton } from "../src/skeleton-generator.js";
+import { normalizeSkeletonData } from "../src/skeleton-model.js";
+import reportedS from "./data/bulb-S.json" with { type: "json" };
 
 function specimen({ cap = {}, start = false, mirror = false, single = true } = {}) {
   let points = [
@@ -493,8 +495,8 @@ describe("bulb easing fillet", () => {
         const ballTravel = alongBall(r.ball, r.ball.thetaOf(r.points[9]), cornerTheta);
         const wallTravel = project(DRAWN[name].inner, r.points[12]).t - corner;
         expect(ballTravel, `easing ${easing}`).to.be.greaterThan(0);
-        // The ball end stops 0.75 of a radius back from the corner.
-        expect(ballTravel, `easing ${easing}`).to.be.at.most(0.75 * 51 + 1e-6);
+        // The ball end stops 1.5 radii back from the corner.
+        expect(ballTravel, `easing ${easing}`).to.be.at.most(1.5 * 51 + 1e-6);
         if (previous) {
           expect(ballTravel, `easing ${easing}`).to.be.at.least(
             previous.ballTravel - 1e-9
@@ -503,7 +505,9 @@ describe("bulb easing fillet", () => {
         }
         previous = { ballTravel, wallTravel };
       }
-      expect(previous.ballTravel).to.be.closeTo(0.75 * 51, 1e-6);
+      // The test sums chords along the ball, which falls short by a few
+      // millionths over this arc.
+      expect(previous.ballTravel).to.be.closeTo(1.5 * 51, 1e-3);
     });
 
   for (const name of Object.keys(DRAWN))
@@ -538,6 +542,36 @@ describe("bulb easing fillet", () => {
         previous = points;
       }
     });
+
+  // The S of skeletron-test as reported: its terminal nudged a quarter of a
+  // unit at a time, each way. The fillet once jumped 44 units for one unit.
+  // The skeleton point lands on whole units, so every fourth nudge is a whole
+  // unit's move, and the corner where the ball meets the wall moves further.
+  it("moves a little when the reported S's terminal is nudged", () => {
+    for (const easing of [0.5, 1])
+      for (const [dx, dy] of [
+        [1, 0],
+        [0, 1],
+        [-1, 0],
+        [0, -1],
+      ]) {
+        let previous = null;
+        for (let i = 0; i <= 24; i++) {
+          const data = normalizeSkeletonData(structuredClone(reportedS));
+          const terminal = data.contours[0].points[0];
+          terminal.x += (dx * i) / 4;
+          terminal.y += (dy * i) / 4;
+          terminal.capBallEasing = easing;
+          const neck = bulb(generateFromSkeleton(data)).run.slice(9);
+          if (previous)
+            expect(
+              curveMovement(neck, previous),
+              `easing ${easing}, nudge ${(dx * i) / 4}, ${(dy * i) / 4}`
+            ).to.be.below(5);
+          previous = neck;
+        }
+      }
+  });
 
   it("draws about the same fillet for the same easing on all three glyphs", () => {
     for (const easing of [0.25, 0.5, 0.75, 1]) {

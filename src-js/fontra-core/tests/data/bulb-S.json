@@ -1,0 +1,256 @@
+{
+ "contours": [
+  {
+   "capStyle": "butt",
+   "closed": false,
+   "defaultWidth": 60,
+   "id": 1,
+   "insertions": [],
+   "points": [
+    {
+     "capBallEasing": 1,
+     "capBallEdits": {
+      "bottom": {
+       "carry": 0,
+       "in": 0,
+       "out": 0,
+       "slide": 0
+      },
+      "entry": {
+       "carry": 0,
+       "in": 0,
+       "out": 0,
+       "slide": 0
+      },
+      "side": {
+       "carry": 0,
+       "in": 0,
+       "out": 0,
+       "slide": 0
+      }
+     },
+     "capBallRatio": 1.7,
+     "capBallShape": 0,
+     "capBallSide": null,
+     "capStyle": "drop",
+     "corner": {
+      "distance": 0,
+      "distribution": 0,
+      "left": {
+       "curvature": 0.55,
+       "distance": 0
+      },
+      "linked": true,
+      "right": {
+       "curvature": 0.55,
+       "distance": 0
+      }
+     },
+     "handleNudge": {
+      "left": 0,
+      "right": 0
+     },
+     "handleOffsets": {},
+     "id": 2,
+     "locked": {
+      "left": {
+       "handles": false,
+       "slide": false,
+       "width": false
+      },
+      "right": {
+       "handles": false,
+       "slide": false,
+       "width": false
+      }
+     },
+     "nudge": {
+      "left": 0,
+      "right": 0
+     },
+     "ribAngleLock": null,
+     "ribAngleLockMode": "stroke",
+     "segmentCurvature": {
+      "left": null,
+      "right": null
+     },
+     "serif": {
+      "axisAngle": 0,
+      "axisMode": "perpendicular",
+      "axisTilt": 0,
+      "left": {
+       "concavity": 0,
+       "easeCurvature": 0,
+       "easeDistance": 0,
+       "reach": 0,
+       "tension": 0,
+       "tipCutAngle": 0,
+       "tipThickness": 0,
+       "wingLength": 0,
+       "wingSlope": 0
+      },
+      "links": {
+       "concavity": true,
+       "easeCurvature": true,
+       "easeDistance": true,
+       "reach": true,
+       "tension": true,
+       "tipCutAngle": true,
+       "tipThickness": true,
+       "wingLength": true,
+       "wingSlope": true
+      },
+      "right": {
+       "concavity": 0,
+       "easeCurvature": 0,
+       "easeDistance": 0,
+       "reach": 0,
+       "tension": 0,
+       "tipCutAngle": 0,
+       "tipThickness": 0,
+       "wingLength": 0,
+       "wingSlope": 0
+      },
+      "sides": "both",
+      "undersideCup": 0,
+      "undersideCupBalance": 0,
+      "undersideCupTension": 0.6666666666666666
+     },
+     "smooth": false,
+     "type": null,
+     "vSlide": {
+      "left": 0,
+      "right": 0
+     },
+     "width": {
+      "left": 30,
+      "linked": true,
+      "right": 30,
+      "tied": true
+     },
+     "x": 292,
+     "y": 403
+    },
+    {
+     "id": 3,
+     "smooth": false,
+     "type": "cubic",
+     "x": 250,
+     "y": 455
+    },
+    {
+     "id": 4,
+     "smooth": false,
+     "type": "cubic",
+     "x": 141,
+     "y": 477
+    },
+    {
+     "capBallSide": null,
+     "capStyle": null,
+     "corner": {
+      "distance": 0,
+      "distribution": 0,
+      "left": {
+       "curvature": 0.55,
+       "distance": 0
+      },
+      "linked": true,
+      "right": {
+       "curvature": 0.55,
+       "distance": 0
+      }
+     },
+     "handleNudge": {
+      "left": 0,
+      "right": 0
+     },
+     "handleOffsets": {},
+     "id": 5,
+     "locked": {
+      "left": {
+       "handles": false,
+       "slide": false,
+       "width": false
+      },
+      "right": {
+       "handles": false,
+       "slide": false,
+       "width": false
+      }
+     },
+     "nudge": {
+      "left": 0,
+      "right": 0
+     },
+     "ribAngleLock": null,
+     "ribAngleLockMode": "stroke",
+     "segmentCurvature": {
+      "left": null,
+      "right": null
+     },
+     "serif": {
+      "axisAngle": 0,
+      "axisMode": "perpendicular",
+      "axisTilt": 0,
+      "left": {
+       "concavity": 0,
+       "easeCurvature": 0,
+       "easeDistance": 0,
+       "reach": 0,
+       "tension": 0,
+       "tipCutAngle": 0,
+       "tipThickness": 0,
+       "wingLength": 0,
+       "wingSlope": 0
+      },
+      "links": {
+       "concavity": true,
+       "easeCurvature": true,
+       "easeDistance": true,
+       "reach": true,
+       "tension": true,
+       "tipCutAngle": true,
+       "tipThickness": true,
+       "wingLength": true,
+       "wingSlope": true
+      },
+      "right": {
+       "concavity": 0,
+       "easeCurvature": 0,
+       "easeDistance": 0,
+       "reach": 0,
+       "tension": 0,
+       "tipCutAngle": 0,
+       "tipThickness": 0,
+       "wingLength": 0,
+       "wingSlope": 0
+      },
+      "sides": "both",
+      "undersideCup": 0,
+      "undersideCupBalance": 0,
+      "undersideCupTension": 0.6666666666666666
+     },
+     "smooth": false,
+     "type": null,
+     "vSlide": {
+      "left": 0,
+      "right": 0
+     },
+     "width": {
+      "left": 19.5,
+      "linked": true,
+      "right": 19.5,
+      "tied": true
+     },
+     "x": 24,
+     "y": 477
+    }
+   ],
+   "reversed": false,
+   "singleSided": "right"
+  }
+ ],
+ "nextId": 6,
+ "version": 1
+}

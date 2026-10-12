@@ -301,18 +301,22 @@ export function joinBulbEntry(wall, firstArc) {
 }
 
 // How far back along the ball the fillet may reach from the corner, in radii.
-const FILLET_BALL_STOP = 0.75;
+// At 0.75 the ball end stopped while the wall end climbed on, and the fillet's
+// ball handle shrank to nothing before full easing: past that point no curve
+// meets both curvatures. At 1.5 every easing on the skeletron-test glyphs
+// meets both, with handles near half the chord.
+const FILLET_BALL_STOP = 1.5;
 // The arc from the side apex C to the fillet keeps at least this much of the
 // ball, in radii. A stub shorter than that has handles of a few units, and
 // whole-unit rounding turns its curvature over: a step of 32 times the ball's
 // own curvature at C where the corner stood one radius from it.
 const FILLET_MIN_RETURN = 0.25;
-// The fillet's handle on the ball side may not fall under this share of its
-// chord. Where it would, the fillet has gone as far up the wall as it can.
-const FILLET_MIN_BALL_HANDLE = 0.2;
-// How finely the wall is scanned for the fillet's limit, then bisected.
-const FILLET_SCAN_STEPS = 32;
-const FILLET_BISECT_STEPS = 10;
+// How far up the wall the fillet's wall end climbs at full easing, in radii,
+// and as a share of the wall from the corner to the next wall point. A fixed
+// length, never a searched limit: a limit found by testing positions moves
+// whenever a test changes its answer, and the fillet jumped with it.
+const FILLET_WALL_REACH = 2;
+const FILLET_WALL_SHARE = 0.75;
 
 // Signed curvature of a cubic at t, in traversal order. Unlike reading the
 // start of a split, it holds at t = 1.
@@ -393,32 +397,84 @@ function ballThetaBackTable(ball, lowest, to) {
 
 // The fillet: one cubic from A on the ball to W on the wall, leaving the ball
 // with the ball's curvature and arriving with the wall's, so the comb runs on
-// through both ends. Its two handle lengths are the two unknowns, and there can
-// be more than one pair: every pair is found in one pass, nearest first to both
-// handles reaching most of the way to where the two tangents cross, which is
-// the fillet's own shape. The first pair that the caller accepts wins, so the
-// same input always gives the same fillet.
-function solveFillet(A, tA, kA, W, tW, kW, accept) {
-  const chord = vector.distance(A, W);
-  if (!(chord > 1e-6)) return null;
+// through both ends. Its two handle lengths are the unknowns, solved by one
+// damped Gauss-Newton walk in their logarithms from a fixed start: both handles
+// most of the way to where the two tangents cross, the fillet's own shape.
+// Where the two curvatures can be met the walk lands on them exactly; where
+// they cannot, it lands on the nearest pair, which continues smoothly from the
+// last exact one. No answer is tested and refused, so nothing can jump.
+// Both lengths stay between a thousandth of the chord and twice the chord. The
+// tangent crossing is no bound here: the fillet leaves the ball bending the
+// ball's way and turns the other way to reach the wall, and that inflection
+// needs the wall handle past the crossing.
+function solveFillet(A, tA, kA, W, tW, kW) {
   const d = sub(W, A),
-    determinant = cross(tA, tW);
-  let a = chord / 3,
-    b = chord / 3;
-  if (Math.abs(determinant) > 1e-12) {
-    const reachA = cross(d, tW) / determinant,
-      reachW = -cross(d, tA) / determinant;
-    if (reachA > 0 && reachW > 0) [a, b] = [0.9 * reachA, 0.9 * reachW];
+    chord = Math.hypot(d.x, d.y);
+  if (!(chord > 1e-6)) return null;
+  const X = cross(tA, d),
+    Y = cross(tA, tW),
+    Z = cross(d, tW);
+  const max = 2 * chord,
+    floor = 1e-3 * chord;
+  const bound = (u) => clamp(u, Math.log(floor), Math.log(max));
+  const seed = (reach) => Math.log(0.9 * (reach > 0 ? Math.min(reach, max) : max / 6));
+  let u = bound(seed(Math.abs(Y) > 1e-12 ? Z / Y : Infinity)),
+    v = bound(seed(Math.abs(Y) > 1e-12 ? X / Y : Infinity));
+  // Residuals in curvature times the chord, so the walk reads the same at
+  // every size.
+  const residual = (u, v) => {
+    const a = Math.exp(u),
+      c = Math.exp(v);
+    const k0 = ((2 / 3) * (X - c * Y)) / (a * a),
+      k1 = ((2 / 3) * (Z - a * Y)) / (c * c);
+    return { a, c, k0, k1, r: [(k0 - kA) * chord, (k1 - kW) * chord] };
+  };
+  let lambda = 1e-3;
+  let state = residual(u, v);
+  for (let i = 0; i < 100; i++) {
+    const { a, c, k0, k1, r } = state;
+    const cost = r[0] * r[0] + r[1] * r[1];
+    if (cost < 1e-24) break;
+    // Derivatives in the log lengths.
+    const J = [
+      [-2 * k0 * chord, ((-(2 / 3) * Y * c) / (a * a)) * chord],
+      [((-(2 / 3) * Y * a) / (c * c)) * chord, -2 * k1 * chord],
+    ];
+    const g = [J[0][0] * r[0] + J[1][0] * r[1], J[0][1] * r[0] + J[1][1] * r[1]];
+    const H = [
+      [J[0][0] ** 2 + J[1][0] ** 2, J[0][0] * J[0][1] + J[1][0] * J[1][1]],
+      [0, J[0][1] ** 2 + J[1][1] ** 2],
+    ];
+    H[1][0] = H[0][1];
+    let moved = false;
+    for (let attempt = 0; attempt < 30 && !moved; attempt++) {
+      const h00 = H[0][0] * (1 + lambda) + 1e-12,
+        h11 = H[1][1] * (1 + lambda) + 1e-12,
+        det = h00 * h11 - H[0][1] * H[1][0];
+      let du = (-g[0] * h11 + g[1] * H[0][1]) / det,
+        dv = (-g[1] * h00 + g[0] * H[1][0]) / det;
+      const largest = Math.max(Math.abs(du), Math.abs(dv));
+      if (largest > Math.log(1.4)) {
+        du *= Math.log(1.4) / largest;
+        dv *= Math.log(1.4) / largest;
+      }
+      const next = residual(bound(u + du), bound(v + dv));
+      if (next.r[0] ** 2 + next.r[1] ** 2 < cost) {
+        u = Math.log(next.a);
+        v = Math.log(next.c);
+        state = next;
+        lambda = Math.max(lambda / 3, 1e-9);
+        moved = true;
+      } else lambda *= 4;
+    }
+    if (!moved) break;
   }
-  const seed = [
+  return [
     { ...A },
-    { ...offset(A, tA, a), type: "cubic" },
-    { ...offset(W, tW, -b), type: "cubic" },
+    { ...offset(A, tA, state.a), type: "cubic" },
+    { ...offset(W, tW, -state.c), type: "cubic" },
     { ...W },
   ];
-  for (const fillet of solveCubicEndCurvatures(seed, kA, kW))
-    if (accept(fillet)) return fillet;
-  return null;
 }
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 
@@ -430,10 +486,10 @@ const cross = (a, b) => a.x * b.y - a.y * b.x;
 // Easing fills that corner the way solder fills the corner between a part and
 // its pad. It adds material and never removes any: the ball stays whole under
 // the fillet, and the stroke stays whole beside it. The fillet's ball end goes
-// back from the corner as far as its wall end climbs, up to 0.75 of a radius,
-// then stops. Its wall end climbs on. Full easing is the furthest the wall end
-// can climb while one curve still fills the corner, with matching curvature at
-// both ends, outside the ball and outside the stroke.
+// back from the corner as far as its wall end climbs, up to 1.5 radii,
+// then stops, and C slides down the ball ahead of it. Its wall end climbs on.
+// Full easing puts the wall end two radii up the wall, or three quarters of the
+// way to the next wall point where the wall is shorter.
 //
 // `preview` says an edit is in progress. The geometry is the same; the caller
 // hides E and its handles until release, because the entry fit can move E far
@@ -521,7 +577,10 @@ function solveBulb({
   const thetaFloor = bottom.theta + 0.02;
   const ballStop = Math.min(
     FILLET_BALL_STOP * radius,
-    Math.max(0, ballArcLength(ball, bottom.theta, thetaCut) - 2 * FILLET_MIN_RETURN * radius)
+    Math.max(
+      0,
+      ballArcLength(ball, bottom.theta, thetaCut) - 2 * FILLET_MIN_RETURN * radius
+    )
   );
   const wallTable = wallLengthTable(inner, cut);
   const wallLength = wallTable.total;
@@ -534,10 +593,7 @@ function solveBulb({
     const points = [...entry.firstArc, ...bodyArc.slice(1), ...returnArc.slice(1)].map(
       (p) => ({ ...p })
     );
-    for (const [i, axis] of [
-      [3, "y"],
-      ...(thetaC === side.theta ? [[6, "x"]] : []),
-    ]) {
+    for (const [i, axis] of [[3, "y"], ...(thetaC === side.theta ? [[6, "x"]] : [])]) {
       points[i - 1][axis] = points[i][axis];
       points[i + 1][axis] = points[i][axis];
     }
@@ -546,11 +602,8 @@ function solveBulb({
     return points;
   };
 
-  const counter = counterSideOf(inner, cut, ball.at(side.theta));
   const thetaBack = ballThetaBackTable(ball, thetaFloor, thetaCut);
-  const fillets = new Map();
   const filletAt = (travel) => {
-    if (fillets.has(travel)) return fillets.get(travel);
     const back = Math.min(travel, ballStop);
     const thetaA = thetaBack(back);
     const thetaC = Math.min(side.theta, thetaBack(back + FILLET_MIN_RETURN * radius));
@@ -567,32 +620,12 @@ function solveBulb({
       kA,
       W,
       cubicTangentAt(inner, t),
-      cubicCurvatureAt(inner, t),
-      (fillet) =>
-        vector.distance(fillet[0], fillet[1]) >=
-          FILLET_MIN_BALL_HANDLE * vector.distance(A, W) &&
-        fillsCorner(fillet, ball, counter)
+      cubicCurvatureAt(inner, t)
     );
-    const result = fillet ? { points, fillet, rest, sideOnApex: thetaC === side.theta } : null;
-    fillets.set(travel, result);
-    return result;
+    return fillet ? { points, fillet, rest, sideOnApex: thetaC === side.theta } : null;
   };
 
-  // How far the wall end can climb: scan, then bisect the first failure.
-  let reach = wallLength;
-  for (let i = 1; i <= FILLET_SCAN_STEPS; i++) {
-    if (filletAt((wallLength * i) / FILLET_SCAN_STEPS)) continue;
-    let lo = (wallLength * (i - 1)) / FILLET_SCAN_STEPS,
-      hi = (wallLength * i) / FILLET_SCAN_STEPS;
-    for (let j = 0; j < FILLET_BISECT_STEPS; j++) {
-      const mid = (lo + hi) / 2;
-      if (filletAt(mid)) lo = mid;
-      else hi = mid;
-    }
-    reach = lo;
-    break;
-  }
-
+  const reach = Math.min(FILLET_WALL_REACH * radius, FILLET_WALL_SHARE * wallLength);
   const travel = clamp(easing, 0, 1) * reach;
   let built = travel > 0 ? filletAt(travel) : null;
   let points;
@@ -735,75 +768,4 @@ function applyBulbEdits(points, edits, tangents, radius) {
       points[h] = handle(points[i], tangent, sign * length);
     }
   });
-}
-
-// Signed distance from the inner wall past the corner, positive on the counter
-// side: the side the ball's side apex stands on. The wall is sampled once per
-// bulb, finely enough that the chords stand off the curve by far less than the
-// check's own tolerance, and each point is measured to the nearest chord.
-const WALL_SAMPLES = 256;
-function counterSideOf(inner, cut, reference) {
-  const wall = Array.from({ length: WALL_SAMPLES + 1 }, (_, i) =>
-    cubicPointAt(inner, cut + ((1 - cut) * i) / WALL_SAMPLES)
-  );
-  // The nearest sample out of every eighth, then the chords around it.
-  const STRIDE = 8;
-  const signed = (p) => {
-    let nearest = 0,
-      nearestDistance = Infinity;
-    for (let i = 0; i <= WALL_SAMPLES; i += STRIDE) {
-      const d = vector.distance(p, wall[i]);
-      if (d < nearestDistance) {
-        nearestDistance = d;
-        nearest = i;
-      }
-    }
-    let best = Infinity,
-      side = 0;
-    const from = Math.max(0, nearest - STRIDE),
-      to = Math.min(WALL_SAMPLES, nearest + STRIDE);
-    for (let i = from; i < to; i++) {
-      const a = wall[i],
-        b = wall[i + 1];
-      const dx = b.x - a.x,
-        dy = b.y - a.y;
-      const lengthSquared = dx * dx + dy * dy;
-      const s =
-        lengthSquared > 0
-          ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared, 0, 1)
-          : 0;
-      const qx = a.x + s * dx,
-        qy = a.y + s * dy;
-      const d = Math.hypot(p.x - qx, p.y - qy);
-      if (d < best) {
-        best = d;
-        side = dx * (p.y - qy) - dy * (p.x - qx);
-      }
-    }
-    return Math.sign(side) * best;
-  };
-  const sign = Math.sign(signed(reference)) || 1;
-  return (p) => sign * signed(p);
-}
-
-// The fillet leaves the ball with the ball's curvature but not with the rate it
-// changes at, so it can graze the ball just after A: 0.06 units at most on the
-// skeletron-test glyphs, and 0.31 on the S of skeletron-test just before the
-// ball end stops. Half a unit is what whole-unit rounding moves a point by, so
-// a dip under it cannot be drawn. A tighter bound opened gaps in the search
-// for the fillet's limit, and the reach jumped from 77 to 34 units.
-const BALL_TOLERANCE = 0.5;
-
-// The fillet fills the corner: no point of it lies inside the ball, and none
-// lies on the stroke's side of the wall. The ball, the cheaper test, goes first.
-function fillsCorner(fillet, ball, counter) {
-  const samples = Array.from({ length: 31 }, (_, i) =>
-    cubicPointAt(fillet, (i + 1) / 32)
-  );
-  for (const p of samples) {
-    const { u, v } = ball.localOf(p);
-    if ((1 - Math.hypot(u, v)) * ball.radius > BALL_TOLERANCE) return false;
-  }
-  // The stroke side at every other sample: the fillet is one smooth curve.
-  return samples.every((p, i) => i % 2 === 1 || counter(p) >= -0.01);
 }

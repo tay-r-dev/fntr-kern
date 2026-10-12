@@ -3243,3 +3243,37 @@ flattens from -32 to -10.6 in a 40-unit span, so C's step went from 6 to 18
 per cent. **Open**: the step at Q under the stroke itself, -27.6 against an
 offset of about -9 on a smooth skeleton, is the offset construction's, and
 contradicts feature model §9's 1.7 per cent figure for generated joints.
+
+### The fillet's extent was a searched limit (2026-10-12)
+
+Reported on the `S` of skeletron-test, twice: a one-unit nudge of the terminal
+moved the fillet's wall end 44 units. Easing was a share of the furthest W
+could climb, and that limit was the first position a scan refused. Three gates
+refused positions: the fillet dipping into the ball by more than a quarter of
+a unit, its ball handle under 0.2 of the chord, and no exact root accepted.
+Each is a threshold, so the limit jumped whenever a gate changed its answer,
+and the gates did not refuse one interval: the ball dip peaked at 0.31 units
+just before A stopped, opened a gap 4 units wide, and the scan stopped there
+or not depending on where its samples fell. Raising the dip tolerance to half
+a unit moved the gap rather than closing it. The ball-handle limit was smooth
+and still moved 10 units for a 0.01 change of shape, because the handle share
+falls about 0.001 per unit of wall.
+
+- **The extent is a fixed length now**: two radii up the wall, or three
+  quarters of the wall where it is shorter. No search and no gates.
+- **The fillet is one damped solve from a fixed start**, in the logarithms of
+  its two handle lengths. It lands on the exact curvatures where they can be
+  met and on the nearest pair where they cannot, which continues from the last
+  exact one.
+- **The tangent crossing is no bound on the fillet.** It leaves the ball
+  bending the ball's way and turns the other way to the wall, so the wall
+  handle has to pass the crossing. Bounded there, the ball-side curvature was
+  unreachable everywhere.
+- **The ball end goes back 1.5 radii, not 0.75.** Held at 0.75 while W climbed,
+  the ball handle shrank to nothing before full easing, and past that no curve
+  meets both curvatures: on R from easing 0.7. At 1.5 all three test glyphs
+  meet both at every easing, with handles of 44 to 47 units at A and 67 to 74
+  at W at full easing. C slides down the ball ahead of A, above easing 0.75.
+- **One whole unit of terminal moves the neck up to 3 units** on the `S`. The
+  skeleton point lands on whole units, and the corner where the ball meets the
+  wall moves further than the rib does.
