@@ -517,6 +517,8 @@ function solveBulb({
     corner: built ? null : { s: sA },
     sRib,
     pins,
+    // A preview frame takes the quick fit; the refit runs on release.
+    quick: preview,
   });
   if (!built) {
     let rest = splitCubicAt(inner, cut).second;
@@ -689,10 +691,12 @@ const FIT_MIN_HANDLE = 0.01;
 // a point in the final build.
 const FIT_APEX_ROOM = 0.5;
 const FIT_LENGTH_PULL = 2;
+// A step that improves the fit by less than this share has settled it.
+const FIT_SETTLED = 1e-6;
 function fitToReference(
   reference,
   start,
-  { kP, kQ, radius, corner, sRib, pins = [null, null] }
+  { kP, kQ, radius, corner, sRib, pins = [null, null], quick = false }
 ) {
   const gap = 0.1 * radius;
   const total = reference.total;
@@ -715,21 +719,79 @@ function fitToReference(
       (pins[0] !== null ? pins[0] + (sA - pins[0]) / 2 : sRib + (2 * (sA - sRib)) / 3);
     return [0, z[0], sX, sB, sA, sW, total];
   };
-  const build = (z) => {
-    const s = places(z);
-    const logs = z.slice(placeCount);
-    return Array.from({ length: 6 }, (_, k) => {
-      const a = reference.point(s[k]),
-        b = reference.point(s[k + 1]);
-      if (fixedCorner && k === 4) return [a, { ...a }, { ...b }, b];
-      const ta = reference.tangent(s[k], true),
-        tb = reference.tangent(s[k + 1]);
-      const chord = Math.max(vector.distance(a, b), 1e-6);
-      const h0 = Math.min(Math.exp(logs[2 * k]), 3 * chord),
-        h1 = Math.min(Math.exp(logs[2 * k + 1]), 3 * chord);
-      return [a, offset(a, ta, h0), offset(b, tb, -h1), b];
-    });
+  const fitted = (k) => !(fixedCorner && k >= 4);
+  // The ends of curve k: places, points and directions along the reference.
+  const ends = (s, k) => ({
+    a: reference.point(s[k]),
+    b: reference.point(s[k + 1]),
+    ta: reference.tangent(s[k], true),
+    tb: reference.tangent(s[k + 1]),
+  });
+  const curveAt = (s, k, h0, h1) => {
+    const { a, b, ta, tb } = ends(s, k);
+    if (!fitted(k)) return [a, { ...a }, { ...b }, b];
+    const chord = Math.max(vector.distance(a, b), 1e-6);
+    return [
+      a,
+      offset(a, ta, Math.min(h0, 3 * chord)),
+      offset(b, tb, -Math.min(h1, 3 * chord)),
+      b,
+    ];
   };
+  // The reference's own points under curve k, at the sample fractions.
+  const targets = (s, k) =>
+    FIT_SAMPLES.map((u) => reference.point(s[k] + (s[k + 1] - s[k]) * u));
+  const floorOf = (s, k) => FIT_MIN_HANDLE * Math.max(s[k + 1] - s[k], 1e-3);
+
+  // The quick fit: the places as given, and each curve's two handle lengths
+  // by plain least squares against the reference. A curve is linear in its two
+  // lengths, so this is one two-by-two solve per curve. No curvature
+  // condition: a preview frame shows this, and the refit starts from it.
+  const quickLengths = (s) =>
+    Array.from({ length: 6 }, (_, k) => {
+      if (!fitted(k)) return [1, 1];
+      const { a, b, ta, tb } = ends(s, k);
+      const r = targets(s, k);
+      let m00 = 0,
+        m01 = 0,
+        m11 = 0,
+        v0 = 0,
+        v1 = 0;
+      FIT_SAMPLES.forEach((t, j) => {
+        const mt = 1 - t;
+        const b0 = mt * mt * mt,
+          b1 = 3 * mt * mt * t,
+          b2 = 3 * mt * t * t,
+          b3 = t * t * t;
+        const base = {
+          x: (b0 + b1) * a.x + (b2 + b3) * b.x - r[j].x,
+          y: (b0 + b1) * a.y + (b2 + b3) * b.y - r[j].y,
+        };
+        const p = { x: b1 * ta.x, y: b1 * ta.y },
+          q = { x: -b2 * tb.x, y: -b2 * tb.y };
+        m00 += p.x * p.x + p.y * p.y;
+        m01 += p.x * q.x + p.y * q.y;
+        m11 += q.x * q.x + q.y * q.y;
+        v0 -= p.x * base.x + p.y * base.y;
+        v1 -= q.x * base.x + q.y * base.y;
+      });
+      const det = m00 * m11 - m01 * m01;
+      const span = s[k + 1] - s[k];
+      const fallback = span / 3;
+      const h0 = det > 1e-12 ? (v0 * m11 - v1 * m01) / det : fallback,
+        h1 = det > 1e-12 ? (m00 * v1 - m01 * v0) / det : fallback;
+      const floor = floorOf(s, k);
+      return [Math.max(h0, floor), Math.max(h1, floor)];
+    });
+
+  const free = fixedCorner ? [start[0]] : [start[0], start[3], start[4]];
+  if (quick) {
+    const s = places(free);
+    const lengths = quickLengths(s);
+    const curves = lengths.map(([h0, h1], k) => curveAt(s, k, h0, h1));
+    return { curves, places: s, curvatureError: 0 };
+  }
+
   const curvatureRows = (curves) => {
     const rows = [bulbEndCurvature(curves[0]) - kP];
     for (let k = 0; k < (fixedCorner ? 3 : 5); k++)
@@ -737,33 +799,59 @@ function fitToReference(
     if (!fixedCorner) rows.push(bulbEndCurvature(curves[5], true) - kQ);
     return rows;
   };
+  // Each curve's shape rows: both curves at the same fractions of their own
+  // length, compared in full. Measured across the reference only, a point
+  // could slide along it unseen.
+  const shapeRows = (curve, s, k) => {
+    if (!fitted(k)) return [];
+    const at = atLengthFractions(curve, FIT_SAMPLES);
+    const r = targets(s, k);
+    return at.flatMap((p, j) => [p.x - r[j].x, p.y - r[j].y]);
+  };
   let weight = 0,
     anchor = null;
-  const residuals = (z) => {
+  // The state of one point in the search: its places, curves, and the rows
+  // of every curve, kept apart so that a change to one unknown recomputes only
+  // the curves it touches.
+  const evaluate = (z, previous = null, touched = null) => {
     const s = places(z);
-    const curves = build(z);
-    const rows = [];
-    curves.forEach((curve, k) => {
-      if (fixedCorner && k >= 4) return;
-      // Both curves at the same fractions of their own length, compared in
-      // full. Measured across the reference only, a point could slide along
-      // it unseen.
-      const at = atLengthFractions(curve, FIT_SAMPLES);
-      FIT_SAMPLES.forEach((u, j) => {
-        const r = reference.point(s[k] + (s[k + 1] - s[k]) * u);
-        rows.push(at[j].x - r.x, at[j].y - r.y);
-      });
-    });
+    const curves = [],
+      blocks = [];
+    for (let k = 0; k < 6; k++) {
+      if (previous && !touched.includes(k)) {
+        curves.push(previous.curves[k]);
+        blocks.push(previous.blocks[k]);
+        continue;
+      }
+      const curve = curveAt(
+        s,
+        k,
+        Math.exp(z[placeCount + 2 * k]),
+        Math.exp(z[placeCount + 2 * k + 1])
+      );
+      curves.push(curve);
+      blocks.push(shapeRows(curve, s, k));
+    }
+    const rows = blocks.flat();
     for (const row of curvatureRows(curves)) rows.push(row * radius * weight);
     // A gentle pull of every handle length toward its start, in logarithms:
     // it gives the fit one answer where the shape alone leaves a length loose.
-    if (anchor)
-      for (let i = placeCount; i < z.length; i++)
-        rows.push(FIT_LENGTH_PULL * (z[i] - anchor[i]));
-    return rows;
+    for (let i = placeCount; i < z.length; i++)
+      rows.push(FIT_LENGTH_PULL * (z[i] - anchor[i]));
+    return { curves, blocks, rows };
   };
-  // The places stay in order, a tenth of a radius apart; the lengths stay
-  // finite.
+  // Which curves an unknown moves: a handle length its own curve; E the two
+  // curves either side of it; A everything from X on, because X and B split
+  // the ball up to A; W the two curves either side of it.
+  const touchedBy = (j) => {
+    if (j >= placeCount) return [Math.floor((j - placeCount) / 2)];
+    if (j === 0) return [0, 1];
+    if (j === 1) return [1, 2, 3, 4];
+    return [4, 5];
+  };
+  // The places stay in order, a tenth of a radius apart; no handle falls
+  // under a hundredth of its span, where a collapsed handle meets any
+  // curvature with any shape.
   const project = (z) => {
     const out = [...z];
     if (!fixedCorner) {
@@ -775,49 +863,38 @@ function fitToReference(
       out[2] = clamp(out[2], out[1] + gap, total - gap);
     }
     out[0] = clamp(out[0], gap, places(out)[2] - gap);
-    // No handle under a twentieth of its span: a collapsed handle meets any
-    // curvature with any shape.
     const s = places(out);
     for (let i = placeCount; i < out.length; i++) {
       const k = Math.floor((i - placeCount) / 2);
-      const span = Math.max(s[k + 1] - s[k], 1e-3);
-      out[i] = clamp(out[i], Math.log(FIT_MIN_HANDLE * span), Math.log(4 * total));
+      out[i] = clamp(out[i], Math.log(floorOf(s, k)), Math.log(4 * total));
     }
     return out;
   };
-  // Start: each handle as the reference has it where a span lies on one
-  // piece, else a third of the span along the reference.
-  const free = fixedCorner ? [start[0]] : [start[0], start[3], start[4]];
-  const s0 = places(free);
-  let z = project([
-    ...free,
-    ...Array.from({ length: 12 }, (_, i) => {
-      const k = Math.floor(i / 2);
-      const own = reference.handles(s0[k], s0[k + 1]);
-      return Math.log(Math.max(own ? own[i % 2] : (s0[k + 1] - s0[k]) / 3, 1e-3));
-    }),
-  ]);
+  // Start from the quick fit.
+  let z = project([...free, ...quickLengths(places(free)).flat().map(Math.log)]);
   anchor = [...z];
-  const cost = (r) => r.reduce((a, v) => a + v * v, 0);
+  const cost = (rows) => rows.reduce((a, v) => a + v * v, 0);
   for (const w of FIT_CURVATURE_WEIGHTS) {
     weight = w;
-    let r = residuals(z),
-      current = cost(r),
+    let state = evaluate(z),
+      current = cost(state.rows),
       lambda = 1e-2;
     for (let step = 0; step < FIT_STEPS; step++) {
+      const r = state.rows;
       const J = z.map((_, j) => {
         const h = j < placeCount ? 1e-3 : 1e-5;
         const zj = [...z];
         zj[j] += h;
-        const rj = residuals(zj);
+        const rj = evaluate(zj, state, touchedBy(j)).rows;
         return rj.map((v, i) => (v - r[i]) / h);
       });
       const n = z.length;
       const A = Array.from({ length: n }, (_, a) =>
         Array.from({ length: n }, (_, b) =>
-          J[a].reduce((sum, v, i) => sum + v * J[b][i], 0)
+          b < a ? 0 : J[a].reduce((sum, v, i) => sum + v * J[b][i], 0)
         )
       );
+      for (let a = 0; a < n; a++) for (let b = 0; b < a; b++) A[a][b] = A[b][a];
       const g = Array.from({ length: n }, (_, a) =>
         J[a].reduce((sum, v, i) => sum + v * r[i], 0)
       );
@@ -832,12 +909,12 @@ function fitToReference(
         );
         if (delta) {
           const candidate = project(z.map((v, i) => v + delta[i]));
-          const rc = residuals(candidate);
-          const c = cost(rc);
+          const next = evaluate(candidate);
+          const c = cost(next.rows);
           if (c < current) {
-            improved = current - c > 1e-12 * current;
+            improved = current - c > FIT_SETTLED * current;
             z = candidate;
-            r = rc;
+            state = next;
             current = c;
             lambda = Math.max(lambda / 3, 1e-7);
             break;
@@ -848,7 +925,7 @@ function fitToReference(
       if (!improved) break;
     }
   }
-  const curves = build(z);
+  const curves = evaluate(z).curves;
   return {
     curves,
     places: places(z),
