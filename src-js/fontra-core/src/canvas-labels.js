@@ -18,6 +18,8 @@
 // font string at every zoom step, and the browser resolves, shapes and rasterises each
 // new font afresh -- the lag on the first pass through a range of zooms.
 
+import { iconPath } from "./icons.js";
+
 const LABEL_FONT_FAMILY = "fontra-ui-mono, fontra-ui-regular, monospace";
 // The canvas labels' weights: pills, plaques and readouts in Narrow Light, the
 // handle and gizmo measurements a step lighter in Narrow ExtraLight. No page
@@ -473,11 +475,11 @@ export function setLabelFont(
 // The frame's 6px plaque icons, in icon/base/basic/2, served from /images. The width
 // row draws the distance icon.
 const PLAQUE_ICONS = {
-  distance: { src: "/images/plaque-distance.svg", width: 6, height: 6 },
-  tension: { src: "/images/plaque-curvature.svg", width: 6, height: 6 },
-  angle: { src: "/images/plaque-angle.svg", width: 6, height: 6 },
-  width: { src: "/images/plaque-distance.svg", width: 6, height: 6 },
-  tangentialShift: { src: "/images/plaque-shift.svg", width: 6, height: 6 },
+  distance: { src: iconPath("plaque-distance"), width: 6, height: 6 },
+  tension: { src: iconPath("plaque-curvature"), width: 6, height: 6 },
+  angle: { src: iconPath("plaque-angle"), width: 6, height: 6 },
+  width: { src: iconPath("plaque-distance"), width: 6, height: 6 },
+  tangentialShift: { src: iconPath("plaque-shift"), width: 6, height: 6 },
 };
 
 const iconImages = new Map();

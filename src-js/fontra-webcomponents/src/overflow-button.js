@@ -8,7 +8,7 @@ import { MultiSelectDropdown } from "./multi-select-dropdown.js";
 export class OverflowButton extends MultiSelectDropdown {
   constructor() {
     super();
-    this.icon = "/tabler-icons/dots-vertical.svg";
+    this.icon = "overflow";
   }
 }
 

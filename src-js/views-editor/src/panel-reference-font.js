@@ -179,11 +179,12 @@ async function writeFontFileToOPFS(fileName, file) {
 
 export default class ReferenceFontPanel extends Panel {
   identifier = "reference-font";
-  iconPath = "/images/reference.svg";
+  iconPath = "reference";
   tabLabel = "reference";
 
   static styles = `
-    .reference-font-card {
+    .reference-font-card,
+    .reference-font-card > .card-section {
       flex: 1 1 auto;
       min-height: 0;
     }
@@ -672,22 +673,24 @@ export default class ReferenceFontPanel extends Panel {
 
     return div({ class: "panel" }, [
       div({ class: "panel-section--flex card-column" }, [
-        div({ class: "card card--headed reference-font-card" }, [
+        div({ class: "card reference-font-card" }, [
           div({ class: "card-heading-row" }, [
             div({ class: "card-heading" }, [translate("sidebar.reference-font")]),
           ]),
-          div({ class: "field-label" }, [translate("sidebar.reference-font.info")]),
-          this.filesUIList,
-          addRemoveButtons,
-          form({ enctype: "multipart/form-data", hidden: true }, [fileInput]),
-          div({ class: "field-group" }, [
-            span({ class: "field-label" }, [
-              translate("sidebar.reference-font.custom-character"),
+          div({ class: "card-section" }, [
+            div({ class: "field-label" }, [translate("sidebar.reference-font.info")]),
+            this.filesUIList,
+            addRemoveButtons,
+            form({ enctype: "multipart/form-data", hidden: true }, [fileInput]),
+            div({ class: "field-group" }, [
+              span({ class: "field-label" }, [
+                translate("sidebar.reference-font.custom-character"),
+              ]),
+              charOverride,
             ]),
-            charOverride,
+            this.languageCodeInput,
+            div({ class: "reference-font-preview" }, []),
           ]),
-          this.languageCodeInput,
-          div({ class: "reference-font-preview" }, []),
         ]),
       ]),
     ]);

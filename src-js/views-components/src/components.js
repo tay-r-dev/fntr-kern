@@ -33,15 +33,18 @@ import "@fontra/web-components/multi-select-dropdown.js";
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/radio-buttons.js";
 import "@fontra/web-components/slot-slider.js";
+import { smolCSS, smolDropdown, smolEntry } from "@fontra/web-components/smol.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/ui-handle.js";
 import "@fontra/web-components/ui-list.js";
 import "@fontra/web-components/ui-text-input.js";
 
-const ICON = "/tabler-icons/arrows-horizontal.svg";
-const ICON_2 = "/tabler-icons/eye.svg";
-const ICON_3 = "/tabler-icons/lock.svg";
-const ICON_4 = "/tabler-icons/trash.svg";
+html.addStyleSheet(smolCSS());
+
+const ICON = "arrows-horizontal";
+const ICON_2 = "eye";
+const ICON_3 = "lock";
+const ICON_4 = "delete";
 
 // A new element with `props` set as properties (the components' own
 // convention: their states are JS properties, not attributes).
@@ -225,6 +228,22 @@ function scrubFields() {
   ];
 }
 
+// smol (Figma 4102:1607): the entry and the dropdown, plain and selected.
+// Hover and focus show on the pointer and the keyboard.
+function smols() {
+  const options = [
+    { value: "entry", label: "entry" },
+    { value: "other", label: "other" },
+  ];
+  const dropdown = (className) => smolDropdown({ value: "entry", options, className });
+  return row(
+    cell("entry", smolEntry({ value: "entry" })),
+    cell("entry, select", smolEntry({ value: "entry", className: "select" })),
+    cell("dropdown", dropdown()),
+    cell("dropdown, select", dropdown("select"))
+  );
+}
+
 function scrubPairs() {
   const pair = (props) => {
     const p = make("ui-input-scrub", {
@@ -273,6 +292,14 @@ function badgesAndHandles() {
   return row(
     cell("badge M inside", make("indication-badge", { size: "M", state: "inside" })),
     cell("badge M outside", make("indication-badge", { size: "M", state: "outside" })),
+    cell(
+      "badge M inside rest",
+      make("indication-badge", { size: "M", state: "inside", status: "rest" })
+    ),
+    cell(
+      "badge M outside rest",
+      make("indication-badge", { size: "M", state: "outside", status: "rest" })
+    ),
     cell("badge S inside", make("indication-badge", { size: "S", state: "inside" })),
     cell("badge S outside", make("indication-badge", { size: "S", state: "outside" })),
     cell("handle M", make("ui-handle", { size: "M" })),
@@ -417,6 +444,7 @@ export function buildComponentsGallery(container) {
       "Figma 2004:29576, 2004:29534, 2004:29608",
       ...scrubFields()
     ),
+    section("input/smol", "Figma 4102:1607 (smol.js)", smols()),
     section("input/scrub pair", "input-scrub", scrubPairs()),
     section("link, chain", "link-button, chain-link", links()),
     section("slot slider", "Figma 421:15034, 421:15066", slotSliders()),

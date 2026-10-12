@@ -265,7 +265,7 @@ export class MenuPanel extends SimpleElement {
                     class: "submenu-icon",
                     style: "transform: translate(0, 0.15em)",
                   },
-                  [new InlineSVG(`/tabler-icons/chevron-right.svg`)]
+                  [new InlineSVG("chevron-right")]
                 )
               : html.span({}, [
                   getShortCutRepresentationFromActionIdentifier(item.actionIdentifier),

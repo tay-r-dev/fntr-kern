@@ -141,7 +141,7 @@ body {
 .main-overlay-container {
   position: absolute;
   display: grid;
-  inset: 8px 1px; /* the notch's top on the canvas card's rule */
+  inset: 8px var(--hairline); /* the notch's top on the canvas card's rule */
   pointer-events: none;
 }
 
@@ -179,19 +179,20 @@ body {
 
 /* sidebar content styling */
 
+/* The resize strip: over the panel's edge rule and 5px out onto the canvas. */
 .sidebar-resize-gutter {
   height: 100%;
-  width: 4px;
+  width: 7px;
   cursor: var(--resize-cursor);
   position: absolute;
 }
 
 .sidebar-container.left .sidebar-resize-gutter {
-  right: -2px;
+  right: -5px;
 }
 
 .sidebar-container.right .sidebar-resize-gutter {
-  left: -2px;
+  left: -5px;
 }
 
 .glyphs-navigation {
@@ -218,7 +219,11 @@ body {
 }
 
 #canvas-split.split {
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* The divider's ears draw over the card's own rule, where it turns into
+     theirs, so the card lets them reach its border. */
+  overflow: clip;
+  overflow-clip-margin: var(--hairline);
 }
 
 .canvas-slot {
@@ -237,11 +242,110 @@ body {
   display: block;
 }
 
+/* The divider: a 4px strip of the panel grey, ruled at its sides, that
+   meets the rule above and below it on a round, as the tool bar's ears do.
+   canvas-split.js sets where the top ears start (under the tool bar where
+   the divider passes beneath it) and shrinks a top ear that has no room. */
 .canvas-split-divider {
-  width: 5px;
+  --ear-top-left-y: 0px;
+  --ear-top-right-y: 0px;
+  --ear-top-left: 10;
+  --ear-top-right: 10;
+  /* Where each side's rule starts. Across the tool bar's side, the divider is
+     drawn over the bar: its rule under the bar starts at the bar's lower
+     edge, and the bar's rule and corner inside the divider are covered. */
+  --rule-left-y: 0px;
+  --rule-right-y: 0px;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  width: 6px;
   cursor: col-resize;
-  background-color: var(--horizontal-rule-color);
+  background:
+    linear-gradient(var(--line-base-basic-1), var(--line-base-basic-1)) left bottom /
+      var(--hairline) calc(100% - var(--rule-left-y)) no-repeat,
+    linear-gradient(var(--line-base-basic-1), var(--line-base-basic-1)) right bottom /
+      var(--hairline) calc(100% - var(--rule-right-y)) no-repeat,
+    var(--surface-base-basic-1);
   touch-action: none;
+}
+
+/* Over the bar it shows from --clip-top down, its ears' sides open. */
+.canvas-split-divider.over-bar {
+  z-index: 3;
+  clip-path: inset(var(--clip-top) -20px calc(-1 * var(--hairline)) -20px);
+}
+
+/* Its strip runs on over the card's top and bottom rules, which it breaks. */
+.canvas-split-divider::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: calc(-1 * var(--hairline)) 0;
+  background: inherit;
+}
+
+/* The divider takes a drag 2px out from each side. */
+.canvas-split-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -2px;
+}
+
+.canvas-split-ear {
+  --r: 10;
+  position: absolute;
+  width: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(var(--hairline), var(--r) * 1px));
+  pointer-events: none;
+  --ear-fill:
+    transparent calc(var(--r) * 1px - var(--hairline) / 2),
+    var(--line-base-basic-1) calc(var(--r) * 1px - var(--hairline) / 2),
+    var(--line-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + var(--hairline) / 2);
+}
+
+.canvas-split-ear.top-left {
+  --r: var(--ear-top-left);
+  top: var(--ear-top-left-y);
+  right: calc(100% - var(--hairline));
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 0
+      calc(var(--r) * 1px + var(--hairline) / 2),
+    var(--ear-fill)
+  );
+}
+
+.canvas-split-ear.top-right {
+  --r: var(--ear-top-right);
+  top: var(--ear-top-right-y);
+  left: calc(100% - var(--hairline));
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 100%
+      calc(var(--r) * 1px + var(--hairline) / 2),
+    var(--ear-fill)
+  );
+}
+
+/* On the card's lower rule, which the card clips, so the ear's rule runs into
+   it. */
+.canvas-split-ear.bottom-left {
+  bottom: calc(-1 * var(--hairline));
+  right: calc(100% - var(--hairline));
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 0 0,
+    var(--ear-fill)
+  );
+}
+
+.canvas-split-ear.bottom-right {
+  bottom: calc(-1 * var(--hairline));
+  left: calc(100% - var(--hairline));
+  background: radial-gradient(
+    circle calc(var(--r) * 1px + var(--hairline) / 2) at 100% 0,
+    var(--ear-fill)
+  );
 }
 
 .canvas-pane {
@@ -255,50 +359,43 @@ body {
   visibility: hidden;
 }
 
-/* The live pane of a split: a bar along its top edge. */
-#canvas-split.split .canvas-slot.live:not(.shows-overview)::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background-color: var(--foreground-color);
-  opacity: 0.35;
-  pointer-events: none;
-}
-
 .canvas-pane-overview {
   position: absolute;
   inset: 0;
   display: none;
   flex-direction: column;
-  background-color: var(--background-color);
+  background-color: var(--surface-base-basic-0);
 }
 
 .canvas-slot.shows-overview > .canvas-pane-overview {
   display: flex;
 }
 
-/* Clear of the tool bar above and the sidebar tabs along the outer edges. */
-.canvas-slot:first-child > .canvas-pane-overview {
-  padding-left: 3.5em;
-}
-
-#canvas-split.split .canvas-slot:last-child > .canvas-pane-overview {
-  padding-right: 3.5em;
-}
-
+/* The search keeps clear of the tool bar above and the sidebar tabs along
+   the outer edges. The accordion runs the pane's full width. */
 .canvas-pane-overview-search {
   flex: none;
   padding: 3.5em 1em 0.5em 1em;
+}
+
+.canvas-slot:first-child .canvas-pane-overview-search {
+  padding-left: 3.5em;
+}
+
+#canvas-split.split .canvas-slot:last-child .canvas-pane-overview-search {
+  padding-right: 3.5em;
 }
 
 .canvas-pane-overview-cells {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 1em 1em 1em;
+  padding: 0;
+}
+
+.canvas-pane-overview-cells > glyph-cell-view {
+  display: block;
+  min-height: 100%;
 }
 
 .canvas-split-passive,
@@ -325,6 +422,8 @@ body {
    resizing a sidebar leaves it where it is. */
 .tools-overlay {
   position: fixed;
+  /* Over the split divider, which stops at its lower edge. */
+  z-index: 2;
   top: calc(var(--top-bar-height) + 8px);
   left: 50%;
   transform: translateX(-50%);

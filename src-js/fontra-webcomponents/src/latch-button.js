@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
@@ -14,9 +15,8 @@ import { themeColorCSS } from "./theme-support.js";
 // borders -- 1px at the bottom at rest, a hairline all around on hover, and
 // the weight moved to the top while pressed or latched -- and the inner
 // container draws its own grey fill over it on hover, or lets the face
-// through otherwise. The icon is grey at rest, dark on hover, lime while
-// pressed and dark lime while its dropdown is open; a latched button
-// keeps the grey icon and puts its indicator in the badge instead.
+// through otherwise. The icon is grey at rest and dark on hover, pressed,
+// latched and while its dropdown is open (Figma 2004:29187).
 //
 // With `dropdown` content a click opens the card (and the button takes the
 // dropdown look while it is open); without it a click is the caller's -- it
@@ -30,7 +30,7 @@ const colors = {
   "latch-button-face-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
   "latch-button-face-hover-background-color": ["var(--bt-sgb-sr-hover)", "#4a4a4a"],
   "latch-button-face-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
-  "latch-button-face-on-background-color": ["var(--bt-sgb-sr-active-rest)", "#505050"],
+  "latch-button-face-on-background-color": ["var(--surface-base-basic-2)", "#505050"],
   "latch-button-face-disabled-background-color": ["var(--bt-sgb-sr-disabled)", "#333"],
   "latch-button-container-background-color": ["var(--bt-sgc-sr-rest)", "#3a3a3a"],
   "latch-button-container-hover-background-color": ["var(--bt-sgc-sr-hover)", "#444"],
@@ -43,9 +43,9 @@ const colors = {
   "latch-button-disabled-border-color": ["var(--bt-sgb-ln-disabled)", "#444"],
   "latch-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
   "latch-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "latch-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#d5ed57"],
-  "latch-button-icon-open-color": ["var(--bt-sgc-ic-active-hover)", "#8eac10"],
-  "latch-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
+  "latch-button-icon-press-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "latch-button-icon-open-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "latch-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
   "latch-button-card-background-color": ["#fff", "#2a2a2a"],
   "latch-button-card-shadow-color": ["#0003", "#0008"],
 };
@@ -67,6 +67,12 @@ export class LatchButton extends UnlitElement {
 
     :host([disabled]) {
       cursor: default;
+    }
+
+    /* With a dropdown it is 40px wide: the icon and the chevron (Figma
+       2004:29187). */
+    :host([has-dropdown]) {
+      width: 40px;
     }
 
     /* The face: at rest, the grey face with the 1px bottom edge. */
@@ -113,10 +119,10 @@ export class LatchButton extends UnlitElement {
       aspect-ratio: 1;
     }
 
-    /* The design's chevron: an 8px box. */
+    /* The design's chevron: a 6px box. */
     inline-svg.latch-button-chevron {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       flex: none;
       transform: rotate(180deg);
     }
@@ -150,8 +156,8 @@ export class LatchButton extends UnlitElement {
       color: var(--latch-button-icon-press-color);
     }
 
-    /* On, and open while its dropdown shows: the darker face with the
-       weight at the top. Open also turns the icon dark lime. */
+    /* On, and open while its dropdown shows: the grey face with the
+       weight at the top, and the dark icon. */
     button.on,
     button.open {
       background: var(--latch-button-face-on-background-color);
@@ -165,6 +171,7 @@ export class LatchButton extends UnlitElement {
       padding: 2px;
     }
 
+    button.on .container,
     button.open .container {
       color: var(--latch-button-icon-open-color);
     }
@@ -189,19 +196,34 @@ export class LatchButton extends UnlitElement {
       color: var(--latch-button-icon-disabled-color);
     }
 
-    /* The design's 6px indication-badge at the button's top-right corner. */
+    /* The design's 6px indication-badge at the button's top-right corner,
+       in every state (Figma 2004:29187): grey (rest status) at rest, on
+       hover and disabled; lime while pressed, latched on or open. It sits
+       4px down and 3px in at rest and disabled, 3px down on hover, and 3px
+       down and 2px in while pressed, latched on or open. */
     indication-badge {
       position: absolute;
-      top: 3px;
-      right: 2px;
-      display: none;
+      top: 4px;
+      right: 3px;
       pointer-events: none;
     }
 
-    /* Shown while latched on (render sets .shown), and through the press. */
+    :host(:hover:not([disabled])) indication-badge {
+      top: 3px;
+    }
+
     indication-badge.shown,
     :host(:active:not([disabled])) indication-badge {
-      display: inline-block;
+      top: 3px;
+      right: 2px;
+    }
+
+    /* The lime look: the badge's own active colours, over the rest status
+       render gives it. */
+    indication-badge.shown,
+    :host(:active:not([disabled])) indication-badge {
+      --indication-badge-rest-fill: var(--ind-bdg-sr-active);
+      --indication-badge-rest-rim: var(--ind-bdg-ln-inside);
     }
 
     /* The chevron flips while the card is open. */
@@ -220,11 +242,9 @@ export class LatchButton extends UnlitElement {
       border-radius: 0.8em;
       background: var(--latch-button-card-background-color);
       color: inherit;
-      /* ui/label/S's size in the old UI font, for the checks and toggles a
-         card holds. */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
-      font-family: var(--ui-font-old);
+      /* ui/label/XS, for the checks and toggles a card holds. */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       box-shadow: 0 0.2em 1em var(--latch-button-card-shadow-color);
     }
   `;
@@ -241,17 +261,13 @@ export class LatchButton extends UnlitElement {
         this._focusKeeper.save();
       }
     });
-    this.addEventListener("pointerdown", (event) => {
-      if (own(event)) {
-        this._wasOpen = this._card?.matches(":popover-open") ?? false;
-      }
-    });
-    // The right button opens the dropdown at once.
+    // The right button opens the dropdown at once, and a second right press
+    // closes it.
     this.addEventListener("contextmenu", (event) => {
       if (own(event) && this.dropdown) {
         event.preventDefault();
         event.stopPropagation();
-        this._openDropdown();
+        this._cardPopover.toggle();
       }
     });
     // A keyboard press on the focused inner button bubbles here as a click too.
@@ -261,8 +277,8 @@ export class LatchButton extends UnlitElement {
       }
       if (this._buttonOnClick) {
         this._buttonOnClick(event);
-      } else if (this.dropdown && !this._wasOpen) {
-        this._openDropdown();
+      } else if (this.dropdown) {
+        this._cardPopover.toggle();
       }
       event.stopImmediatePropagation();
       this._focusKeeper.restore();
@@ -286,8 +302,8 @@ export class LatchButton extends UnlitElement {
     if (this._button) {
       this._button.disabled = value;
     }
-    if (value && this._card?.matches(":popover-open")) {
-      this._card.hidePopover();
+    if (value) {
+      this._cardPopover?.close();
     }
   }
 
@@ -335,7 +351,9 @@ export class LatchButton extends UnlitElement {
   set dropdown(element) {
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "popover-card", popover: "auto" }, []);
+      // Opened and closed by this button (html-utils.js's ButtonPopover).
+      this._card = html.div({ class: "popover-card" }, []);
+      this._cardPopover = new html.ButtonPopover(this._card, this);
       // Placed under the button's right edge, and kept on screen -- the
       // placement icon-button.js uses.
       this._card.addEventListener("beforetoggle", (event) => {
@@ -359,10 +377,9 @@ export class LatchButton extends UnlitElement {
     this.requestUpdate();
   }
 
-  _openDropdown() {
-    if (this._card && !this._card.matches(":popover-open")) {
-      this._card.showPopover();
-    }
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this._cardPopover?.close();
   }
 
   click() {
@@ -371,12 +388,12 @@ export class LatchButton extends UnlitElement {
 
   render() {
     const children = this.src
-      ? [html.createDomElement("inline-svg", { src: this.src })]
+      ? [html.createDomElement("inline-svg", { src: iconPath(this.src) })]
       : [];
     if (this.dropdown) {
       children.push(
         html.createDomElement("inline-svg", {
-          src: "/tabler-icons/chevron-up.svg",
+          src: "chevron-up",
           class: "latch-button-chevron",
         })
       );
@@ -394,13 +411,17 @@ export class LatchButton extends UnlitElement {
       },
       [html.div({ class: "container" }, children)]
     );
-    // The badge is always there: a press shows it too.
+    // The badge is always there, grey; latched on, open or flagged it is
+    // lime (a press turns it lime too, in CSS). Read here, at render: the
+    // element base defines `on` per instance, over this class's setter, so
+    // no attribute follows it.
+    const lime = this.badge || this.on || this._card?.matches(":popover-open");
     const badge = html.createDomElement("indication-badge", {
-      // Latched shows it too. Read here, at render: the element base defines
-      // `on` per instance, over this class's setter, so no attribute follows it.
-      class: this.badge || this.on ? "shown" : "",
+      class: lime ? "shown" : "",
     });
     badge.size = "M";
+    badge.status = "rest";
+    this.toggleAttribute("has-dropdown", !!this.dropdown);
     return this.dropdown ? [this._button, this._card, badge] : [this._button, badge];
   }
 }

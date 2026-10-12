@@ -432,6 +432,8 @@ async function streamOntoSkeleton(sceneController, valueStream, mutate, undoLabe
     const applyValue = (value) => {
       const allChanges = [];
       for (const [layerName, layerGlyph] of entries) {
+        // A panel gesture shows the bulb's reference even with a bulb point
+        // selected; the transaction fits the entry on release.
         const changes = editSkeleton(
           layerGlyph,
           (working) => {
@@ -1099,7 +1101,12 @@ export async function simplifyPanelSkeletonContours(
   let changedCount = 0;
   await sceneController.editGlyph(async (sendIncrementalChange, glyph) => {
     const editingLayers = sceneController.getEditingLayerFromGlyphLayers(glyph.layers);
-    const entries = Object.entries(editingLayers);
+    // Every master being edited, or only the edit layer when Simplify is set
+    // to leave the other masters alone.
+    const kept = new Set(sceneController.simplifyLayers(editingLayers));
+    const entries = Object.entries(editingLayers).filter(([, layerGlyph]) =>
+      kept.has(layerGlyph)
+    );
     if (!entries.length) {
       return;
     }
@@ -1233,7 +1240,7 @@ export async function setPanelCapStyle(
       : capStyle === "square"
         ? ["capAngle", "capDistance"]
         : capStyle === "drop"
-          ? ["capBallRatio", "capBallShape", "capBallEasing", "capBallEaseCurvature"]
+          ? ["capBallRatio", "capBallShape", "capBallEasing"]
           : [];
   return editSelectedSkeletonPoints(
     sceneController,

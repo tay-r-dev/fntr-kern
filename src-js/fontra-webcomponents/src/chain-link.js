@@ -1,10 +1,10 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
-import "./icon-button.js";
+import "./link-button.js";
 
 // Ticket 45 (UI-REFACTOR.md §5.8, UI-NOMENCLATURE.md §14): the chain -- the
-// link between a left field and a right field, drawn as a small icon button
-// between them. Closed says the two are typed as one; open says each is typed
+// link between a left field and a right field, drawn as the design's link
+// strip (link-button.js) between them, as in ui-input-scrub. Closed says the two are typed as one; open says each is typed
 // on its own. It stores nothing and knows nothing about widths, corners or
 // serifs: the caller reads `linked`, writes its own flag on "change", and
 // greys its own right field. Tickets 46, 57 and 61 reuse it.
@@ -17,13 +17,22 @@ import "./icon-button.js";
 // attributes, the convention every UnlitElement component in this tree uses.
 export class ChainLink extends UnlitElement {
   static styles = `
+    /* The strip's size in ui-input-scrub: as wide as the fields' gap, as
+       tall as a field. */
     :host {
       display: inline-flex;
       align-items: center;
-      flex: 0 0 auto;
+      flex: 0 0 8px;
+      width: 8px;
+      height: 24px;
     }
 
-    icon-button.mixed {
+    ui-link-button {
+      width: 100%;
+      height: 100%;
+    }
+
+    ui-link-button.mixed {
       opacity: 0.45;
     }
   `;
@@ -63,27 +72,34 @@ export class ChainLink extends UnlitElement {
   }
 
   render() {
-    const closed = this._linked === true;
-    const button = html.createDomElement("icon-button", {
-      "class": this._linked == null ? "mixed" : "",
-      "src": closed ? "/tabler-icons/link.svg" : "/tabler-icons/unlink.svg",
-      "data-tooltip": this._tooltip,
-      "data-tooltipposition": "top",
+    const button = html.createDomElement("ui-link-button", {
+      class: this._linked == null ? "mixed" : "",
     });
+    button.state = this._linked === true ? "on" : "off";
     button.disabled = this._disabled;
-    button.onclick = () => {
-      if (this._disabled) {
-        return;
-      }
+    button.tooltip = this._tooltip;
+    button.addEventListener("link-changed", (event) => {
+      // The chain speaks for itself with "change"; the strip's own event
+      // stays inside.
+      event.stopPropagation();
       // Mixed closes, so one click states the same thing about every member.
       this._linked = this._linked !== true;
       this.requestUpdate();
       this.dispatchEvent(
         new CustomEvent("change", { detail: { linked: this._linked } })
       );
-    };
+    });
     return button;
   }
+}
+
+// Two fields with a chain between them, laid out as ui-input-scrub lays out
+// its pair: the fields touch the strip, and each field's focus line draws on
+// its outer edge only.
+export function linkedPair(left, chain, right) {
+  left.setAttribute("side", "left");
+  right.setAttribute("side", "right");
+  return html.div({ class: "linked-pair" }, [left, chain, right]);
 }
 
 customElements.define("chain-link", ChainLink);

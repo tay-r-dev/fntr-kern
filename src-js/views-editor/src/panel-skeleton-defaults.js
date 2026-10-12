@@ -34,9 +34,10 @@ import {
 import "@fontra/web-components/labeled-toggle.js"; // for <labeled-toggle>, ticket 67
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/multi-select-dropdown.js"; // for <multi-select-dropdown>, ticket 69
-import "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
+import { linkedPair } from "@fontra/web-components/chain-link.js"; // for <chain-link>, ticket 74
 import "@fontra/web-components/input-field-large.js"; // for <input-field-large>, ticket 74
 import "@fontra/web-components/segmented-control.js"; // for <segmented-control>, ticket 74
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import { dialog, dialogSetup } from "@fontra/web-components/modal-dialog.js";
 import {
   CAP_ANGLE_MAX,
@@ -73,14 +74,9 @@ import {
 const TERMINAL_PRESET_KINDS = ["square", "round", "drop", "serif"];
 
 const SKELETON_SETTINGS_STYLES = `
-  .presets-card {
-    gap: 12px;
-  }
-
-  .preset-section {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
+  /* A table's add and delete keys sit 4px under it. */
+  .preset-section > .button-row {
+    margin-top: -4px;
   }
 
   /* Current sits 8px before the dropdowns. */
@@ -111,7 +107,7 @@ function textKey(label, onClick) {
 
 export default class SkeletonSettingsPanel extends Panel {
   identifier = "skeleton-settings";
-  iconPath = "/tabler-icons/bone.svg";
+  iconPath = "bone";
   tabLabel = "presets";
 
   constructor(editorController) {
@@ -175,7 +171,7 @@ export default class SkeletonSettingsPanel extends Panel {
       return table;
     };
     const presetSection = (title, filters, table, buttons) =>
-      html.div({ class: "preset-section" }, [
+      html.div({ class: "card-section preset-section" }, [
         html.div({ class: "preset-heading-row control-row" }, [
           html.div({ class: "card-subheading" }, [title]),
           filters,
@@ -294,7 +290,7 @@ export default class SkeletonSettingsPanel extends Panel {
     // grid presets are shown together.
     this.contentElement.appendChild(
       html.div({ class: "panel-section--flex card-column" }, [
-        html.div({ class: "card card--headed presets-card" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["presets"]),
           ]),
@@ -304,15 +300,17 @@ export default class SkeletonSettingsPanel extends Panel {
         ]),
         // The generator's settings; not in the presets design, so they keep
         // their own card.
-        html.div({ class: "card card--headed" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["settings"]),
           ]),
-          this.dropDeadPointsToggle,
-          this.dropDeadPointsWarning,
-          this.simplifyEasingToggle,
-          this.simplifyEasingWarning,
-          this.handTurnAngleOnlyToggle,
+          html.div({ class: "card-section" }, [
+            this.dropDeadPointsToggle,
+            this.dropDeadPointsWarning,
+            this.simplifyEasingToggle,
+            this.simplifyEasingWarning,
+            this.handTurnAngleOnlyToggle,
+          ]),
         ]),
       ])
     );
@@ -586,8 +584,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteWidthPreset(sourceId, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderWidthPresetRows();
+      this._armDelete(rowId, () => this._renderWidthPresetRows());
       return;
     }
     const next = this._sourcePresetList(
@@ -630,7 +627,11 @@ export default class SkeletonSettingsPanel extends Panel {
       master: this._getEffectiveSource().sourceId ?? null,
       case: getSkeletonGlyphCase(this.sceneController.sceneSettings?.selectedGlyphName),
     });
-    const currentToggle = html.createDomElement("labeled-toggle");
+    // Its name is the toggle's own label, before the pill.
+    const currentToggle = html.createDomElement("labeled-toggle", {
+      label: translate("sidebar.skeleton-settings.filter.current"),
+    });
+    currentToggle.setAttribute("mirror", "");
     currentToggle.addEventListener("change", () => {
       const target = currentToggle.checked
         ? currentFilter()
@@ -642,12 +643,7 @@ export default class SkeletonSettingsPanel extends Panel {
       }
       onChange();
     });
-    const current = html.div({ class: "button-row" }, [
-      html.span({ class: "field-label" }, [
-        translate("sidebar.skeleton-settings.filter.current"),
-      ]),
-      currentToggle,
-    ]);
+    const current = html.div({ class: "button-row" }, [currentToggle]);
     // "All" leaves the dropdown reading as its field name (Master, Case, Type).
     const option = (value, label, picked) => ({
       value,
@@ -809,7 +805,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // it in the Selection tab does. With nothing selected it does nothing.
   _presetApplyAction(readOnly, onClick) {
     return rowAction({
-      src: "/tabler-icons/check.svg",
+      src: "check",
       tooltip: translate("sidebar.skeleton-settings.apply"),
       tooltipPosition: "left",
       disabled: readOnly,
@@ -820,7 +816,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // Update rewrites the row's values from the selection, keeping its name.
   _presetUpdateAction(disabled, onClick) {
     return rowAction({
-      src: "/images/update.svg",
+      src: "update",
       tooltip: translate("sidebar.skeleton-settings.update-from-selection"),
       tooltipPosition: "left",
       disabled,
@@ -882,11 +878,27 @@ export default class SkeletonSettingsPanel extends Panel {
     )}`;
   }
 
+  // The first press on a row's trash arms it; a press anywhere but on the
+  // armed trash disarms it.
+  _armDelete(rowId, render) {
+    this._customDeleteConfirm = rowId;
+    render();
+    disarmOnClickAway(
+      () => this._armedTrash,
+      () => {
+        if (this._customDeleteConfirm === rowId) {
+          this._customDeleteConfirm = null;
+          render();
+        }
+      }
+    );
+  }
+
   // The trash takes two presses; the armed trash stays visible as a cross.
   _presetDeleteAction(rowId, readOnly, onClick) {
     const confirming = this._customDeleteConfirm === rowId;
-    return rowAction({
-      src: confirming ? "/images/cross.svg" : "/images/bin.svg",
+    const button = rowAction({
+      src: confirming ? "close" : "delete",
       tooltip: translate(
         confirming
           ? "sidebar.skeleton-parameters.custom-widths.confirm-delete"
@@ -897,6 +909,10 @@ export default class SkeletonSettingsPanel extends Panel {
       disabled: readOnly,
       onClick,
     });
+    if (confirming) {
+      this._armedTrash = button;
+    }
+    return button;
   }
 
   // ---- Grid presets table ---------------------------------------------------
@@ -938,8 +954,7 @@ export default class SkeletonSettingsPanel extends Panel {
 
   _deleteGridPreset(index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderGridPresetRows();
+      this._armDelete(rowId, () => this._renderGridPresetRows());
       return;
     }
     const list = this._gridPresets();
@@ -986,13 +1001,13 @@ export default class SkeletonSettingsPanel extends Panel {
           ),
           actionsCell([
             rowAction({
-              src: "/tabler-icons/check.svg",
+              src: "check",
               tooltip: "Apply this grid",
               tooltipPosition: "left",
               onClick: () => applyGridPreset(model, preset),
             }),
             rowAction({
-              src: "/images/update.svg",
+              src: "update",
               tooltip: "Update from the current grid",
               tooltipPosition: "left",
               onClick: () =>
@@ -1230,13 +1245,6 @@ export default class SkeletonSettingsPanel extends Panel {
             set("capBallEasing"),
             percent
           ),
-          field(
-            "cap-ball-ease-curvature",
-            working.capBallEaseCurvature,
-            { minValue: 0, maxValue: 100 },
-            set("capBallEaseCurvature"),
-            percent
-          ),
         ]),
       ]);
     }
@@ -1288,7 +1296,7 @@ export default class SkeletonSettingsPanel extends Panel {
               right.value = right._toDisplay(working.left[halfField]);
             }
           });
-          return row([left, chain, right]);
+          return row([linkedPair(left, chain, right)]);
         })
       )
     );
@@ -1351,8 +1359,7 @@ export default class SkeletonSettingsPanel extends Panel {
   // The trash takes two presses: the first arms it, the second deletes.
   async _deleteTerminalPreset(sourceId, type, index, rowId) {
     if (this._customDeleteConfirm !== rowId) {
-      this._customDeleteConfirm = rowId;
-      this._renderTerminalPresetRows();
+      this._armDelete(rowId, () => this._renderTerminalPresetRows());
       return;
     }
     const next = this._terminalPresetList(sourceId, type);
@@ -1407,7 +1414,7 @@ export default class SkeletonSettingsPanel extends Panel {
               ),
               // Ticket 74: the pencil opens the preset's fields in a dialog.
               rowAction({
-                src: "/tabler-icons/pencil.svg",
+                src: "pencil",
                 tooltip: translate("sidebar.skeleton-settings.edit"),
                 tooltipPosition: "left",
                 disabled: readOnly,

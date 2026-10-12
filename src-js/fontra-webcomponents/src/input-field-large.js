@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import {
   SCRUB_CANCELLED,
@@ -45,7 +46,7 @@ const colors = {
   "input-field-large-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
   "input-field-large-tray-active-color": ["var(--in-bsr-focus)", "#333"],
   "input-field-large-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
-  "input-field-large-tray-disabled-color": ["var(--in-bsr-disabled)", "#3a3a3a"],
+  "input-field-large-tray-disabled-color": ["var(--surface-base-basic-1)", "#3a3a3a"],
   "input-field-large-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
   "input-field-large-rest-background-color": ["var(--in-csr-rest)", "#3a3a3a"],
   "input-field-large-rest-border-color": ["var(--in-sln-rest)", "transparent"],
@@ -56,7 +57,7 @@ const colors = {
   ],
   "input-field-large-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
   "input-field-large-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
-  "input-field-large-disabled-background-color": ["var(--in-csr-disabled)", "#3a3a3a"],
+  "input-field-large-disabled-background-color": ["transparent", "#3a3a3a"],
   "input-field-large-disabled-border-color": ["var(--in-sln-disabled)", "transparent"],
   // The label.
   "input-field-large-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
@@ -64,7 +65,7 @@ const colors = {
   "input-field-large-focus-text-color": ["var(--in-lbl-focus)", "#e0e0e0"],
   "input-field-large-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
   // The value.
-  "input-field-large-value-rest-text-color": ["var(--in-vl-rest)", "#b0b0b0"],
+  "input-field-large-value-rest-text-color": ["var(--text-base-basic-3)", "#b0b0b0"],
   "input-field-large-value-hover-text-color": ["var(--in-vl-hover)", "#e0e0e0"],
   "input-field-large-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
   "input-field-large-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
@@ -114,8 +115,8 @@ export class InputFieldLarge extends UnlitElement {
       cursor: ew-resize;
       user-select: none;
       touch-action: none;
-      /* ui/label/S */
-      font: var(--ui-text-label-s);
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
     }
@@ -633,7 +634,7 @@ export class InputFieldLarge extends UnlitElement {
     this._iconElement = this._icon
       ? html.createDomElement("inline-svg", {
           "class": "apply-icon",
-          "src": this._icon,
+          "src": iconPath(this._icon),
           "data-tooltip": this._iconTooltip || "",
           "data-tooltipposition": "top",
         })
@@ -671,7 +672,7 @@ export class InputFieldLarge extends UnlitElement {
             ? [
                 html.createDomElement("inline-svg", {
                   class: "scrub-icon",
-                  src: "/images/scrub.svg",
+                  src: "scrub",
                 }),
               ]
             : []),

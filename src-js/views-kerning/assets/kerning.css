@@ -201,7 +201,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 16px;
-  border-right: 1px solid var(--line-base-basic-1);
+  border-right: var(--hairline) solid var(--line-base-basic-1);
   overflow-y: auto;
 }
 
@@ -412,7 +412,7 @@
    under, 12px over the rule. */
 #kerning-filters-accordion {
   margin: 0 -8px;
-  border-bottom: 1px solid var(--grey-deprecated-7);
+  border-bottom: var(--hairline) solid var(--grey-deprecated-7);
 }
 
 /* Task 8: a class-summary row is the same kind of row as a pair row (F32) --
@@ -629,6 +629,8 @@ tr[data-kind="pair-exception"] > td:first-child {
   position: relative;
   display: grid;
   gap: 0;
+  /* Fills its box, so a click under the last row is a click away. */
+  min-height: 100%;
 }
 
 /* The side1/side2 class-colour edge bars on a glyph tile are drawn by

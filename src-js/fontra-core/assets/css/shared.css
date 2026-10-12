@@ -105,17 +105,19 @@ theme marker until the design has a dark mode.
   background-color: var(--shared-surface);
 }
 
-/* The white card: ruled, 14px corners, 8px in, 8px between its parts. The
-   rule is drawn outside the fill, over the grey, as Figma strokes it. */
+/* The white card: ruled, 14px corners, 8px in. The rule is drawn outside
+   the fill, over the grey, as Figma strokes it. Its parts are its h1 heading
+   and its sections, 10px apart; a card with a heading has 12px over it.
+   A section is everything under one h2 (card-section). */
 .card {
   flex: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   padding: 8px;
   background-color: var(--shared-card);
   background-clip: padding-box;
-  border: 1px solid var(--shared-line);
+  border: var(--hairline) solid var(--shared-line);
   border-radius: 14px;
 }
 
@@ -126,16 +128,16 @@ theme marker until the design has a dark mode.
   gap: 8px;
 }
 
-/* ./heading (Figma 2004:29687): ui/heading/h2, text/base/basic/5. */
+/* ./heading (Figma 2004:29687): heading/h1, text/base/basic/5. */
 .card-heading {
   margin: 0;
-  font: var(--ui-text-heading-h2);
-  letter-spacing: var(--ui-tracking);
+  font: var(--ui-text-heading-h1);
+  letter-spacing: var(--ui-tracking-sans);
   text-transform: uppercase;
   color: var(--shared-heading);
 }
 
-/* A caption over its field: ui/label/XS, 4px above it. */
+/* A caption over its field: ui/heading/h5, 4px above it. */
 .field-group {
   display: flex;
   flex-direction: column;
@@ -144,10 +146,27 @@ theme marker until the design has a dark mode.
 }
 
 .field-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: var(--shared-label);
+}
+
+/* A field row's name in a label column beside it: ui/label/XS, text 3. */
+.row-label {
   font: var(--ui-text-label-xs);
   letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
-  color: var(--shared-label);
+  color: var(--text-base-basic-3);
+  white-space: nowrap;
+}
+
+/* The title over a group of such rows, across the whole grid:
+   ui/heading/h5, text 3. */
+.row-group-title {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+  color: var(--text-base-basic-3);
 }
 
 /* Fields side by side, 4px apart, sharing the width. */
@@ -161,8 +180,22 @@ theme marker until the design has a dark mode.
   min-width: 0;
 }
 
+/* Two fields joined by a chain-link (chain-link.js linkedPair): the fields
+   touch the strip, as in ui-input-scrub. */
+.linked-pair {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+}
+
+.linked-pair > input-field-large {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 /* checkmark (Figma 2004:29411): a native checkbox with our checkbox assets
-   and its name, ui/label/S -- a label.checkmark-row holding an
+   and its name, ui/label/XS -- a label.checkmark-row holding an
    input.checkmark. At rest a checked box is the grey check and an empty one
    the light box, both with grey names; hover lights the check lime or
    darkens the box, and darkens the name. */
@@ -177,7 +210,7 @@ theme marker until the design has a dark mode.
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-label-xs);
   letter-spacing: var(--ui-tracking);
   font-feature-settings: "case" 1;
   color: var(--shared-label);
@@ -195,6 +228,14 @@ theme marker until the design has a dark mode.
   border-radius: var(--corner-outer-xs);
   background: var(--shared-check) center / contain no-repeat;
   cursor: pointer;
+}
+
+/* Any other checkbox's name, the label after it, is inside its control
+   too: ui/label/XS. */
+input[type="checkbox"] + label {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
 }
 
 .checkmark-row:hover .checkmark {
@@ -237,7 +278,7 @@ theme marker until the design has a dark mode.
 
 .settings-card-heading {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--line-base-basic-1);
+  border-bottom: var(--hairline) solid var(--line-base-basic-1);
   font: var(--ui-text-heading-h4);
   letter-spacing: var(--ui-tracking);
   text-transform: uppercase;
@@ -252,14 +293,13 @@ theme marker until the design has a dark mode.
 }
 
 /* A name beside its segmented control: a three-state choice (automatic, on,
-   off) standing among checkmarks, in their ui/label/S. */
+   off) standing among checkmarks. The name is outside the control: h5. */
 .segmented-row {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-heading-h5);
   letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
   color: var(--text-base-basic-3);
   white-space: nowrap;
 }
@@ -270,13 +310,13 @@ theme marker until the design has a dark mode.
   margin: 0 -8px;
 }
 
-/* A section heading inside a card (Figma 2004:29689): ui/heading/h3,
-   text/base/basic/3. */
+/* A section heading inside a card (Figma 2004:29689): heading/h2,
+   text/base/basic/3. The card and its card-section space it. */
 .card-subheading {
   flex: 1;
   margin: 0;
-  font: var(--ui-text-heading-h3);
-  letter-spacing: var(--ui-tracking);
+  font: var(--ui-text-heading-h2);
+  letter-spacing: var(--ui-tracking-sans);
   text-transform: uppercase;
   color: var(--text-base-basic-3);
 }
@@ -377,29 +417,31 @@ glyph-cell-view .glyph-count {
   content: "";
   position: absolute;
   top: 0;
-  width: 11px;
-  height: 11px;
+  width: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  height: calc(var(--r) * 1px + min(1px, var(--r) * 1px));
+  --ear-fill:
+    transparent calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px - 0.5px),
+    var(--line-base-basic-1) calc(var(--r) * 1px + 0.5px),
+    var(--surface-base-basic-1) calc(var(--r) * 1px + 0.5px);
 }
 
+/* A view may shrink an ear (--toolbar-ear-left / -right, a radius in px). */
 .toolbar::before {
-  left: -11px;
+  --r: var(--toolbar-ear-left, 10);
+  right: 100%;
   background: radial-gradient(
-    circle 10.5px at 0 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
+    circle calc(var(--r) * 1px + 0.5px) at 0 calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
   );
 }
 
 .toolbar::after {
-  right: -11px;
+  --r: var(--toolbar-ear-right, 10);
+  left: 100%;
   background: radial-gradient(
-    circle 10.5px at 100% 10.5px,
-    transparent 9.5px,
-    var(--line-base-basic-1) 9.5px,
-    var(--line-base-basic-1) 10.5px,
-    var(--surface-base-basic-1) 10.5px
+    circle calc(var(--r) * 1px + 0.5px) at 100% calc(var(--r) * 1px + 0.5px),
+    var(--ear-fill)
   );
 }
 
@@ -504,7 +546,7 @@ glyph-cell-view .glyph-count {
    its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs are
    24px icons, touching, 4px in from the edge. Resting on the tabs -- not
    the pane's empty length -- for 2s opens them to 60px tiles with their
-   names, 4px apart on a white card 4px round them and 8px in, and the pane
+   names, 4px apart on a white card ruled in line 1, 4px round them and 8px in, and the pane
    widens from 28px to 76px, moving its neighbour aside. Leaving closes them
    at once. Clicks and hover colours never wait. */
 .tab-pane {
@@ -537,7 +579,7 @@ glyph-cell-view .glyph-count {
   padding: calc(4px * var(--tab-open));
   padding-left: calc(4px + 8px * var(--tab-open));
   pointer-events: auto;
-  transition: --tab-open 150ms;
+  transition: --tab-open 400ms;
 }
 
 .tab-pane.right > .tab-pane-tabs {
@@ -555,6 +597,12 @@ glyph-cell-view .glyph-count {
     var(--surface-base-basic-0) calc(100% * var(--tab-open)),
     transparent
   );
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--line-base-basic-1) calc(100% * var(--tab-open)),
+      transparent
+    );
   border-radius: 14px;
 }
 
@@ -680,30 +728,6 @@ glyph-cell-view .glyph-count {
   bottom: 0;
 }
 
-/* The small value box (Figma "smol", 4102:1602): a 16px input in
-   ui/table/entry, bare at rest, grey on hover and while typing. */
-.entry-field {
-  box-sizing: border-box;
-  width: 36px;
-  height: 16px;
-  padding: 3px 4px;
-  border: none;
-  border-radius: 4px;
-  outline: none;
-  background: transparent;
-  font: var(--ui-text-label-xs);
-  letter-spacing: var(--ui-tracking);
-  font-feature-settings: "case" 1;
-  color: var(--text-base-basic-3);
-  text-align: center;
-}
-
-.entry-field:hover,
-.entry-field:focus {
-  background-color: var(--surface-base-basic-2);
-  color: var(--text-base-basic-2);
-}
-
 /* A menu's control row (menu-panel.js's element items) heading a dropdown's
    list: the settings card's ruled heading, its control after the name, the
    name a pick of its own. */
@@ -725,13 +749,32 @@ glyph-cell-view .glyph-count {
 .canvas-card {
   overflow: hidden;
   background-color: #fff;
-  border: 1px solid var(--line-base-basic-1);
+  border: var(--hairline) solid var(--line-base-basic-1);
   border-radius: 14px;
 }
 
-/* A card that opens with a heading: 12px over it, 8px under its last part. */
-.card.card--headed {
+.card:has(> .card-heading, > .card-heading-row) {
   padding-top: 12px;
+}
+
+/* A card's section: an h2 heading and what it heads, 8px between its parts
+   and 4px under the heading (the heading takes back half the gap). A
+   heading in a row with its controls gives that to the row. */
+.card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card-section > .card-subheading:first-child,
+.card-section > :first-child:has(> .card-subheading) {
+  margin-bottom: -4px;
+}
+
+/* Accordions in a card touch: no gap between two in a row. */
+.card > ui-accordion + ui-accordion {
+  margin-top: -10px;
 }
 
 /* A sub-section's own label (Figma 4128:2911): ui/heading/h5. */
@@ -751,9 +794,16 @@ glyph-cell-view .glyph-count {
   background: var(--text-base-basic-4);
 }
 
+/* Any box the drawn bars cannot reach (a text area, a closed shadow root)
+   still scrolls with a thin bar in the drawn bars' colour. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-base-basic-2) transparent;
+}
+
 /* The drawn scrollbars (scrollbars.js): the box's own are hidden; each bar
    is a rail beside it -- an 8px strip that takes the pointer -- holding a 2px
-   thumb in line 4, line 2 under the pointer or while dragged, with an arrow
+   thumb in line 2, line 4 under the pointer or while dragged, with an arrow
    triangle at each end in the same colours. No track, no fill. A rail with
    `reveal` shows only once the pointer has rested on it (a panel's column);
    `reserved` is the 16px strip kept under a table's rows. */
@@ -800,7 +850,7 @@ glyph-cell-view .glyph-count {
 .scrollbar-thumb {
   position: absolute;
   border-radius: 1px;
-  background-color: var(--line-base-basic-4);
+  background-color: var(--line-base-basic-2);
 }
 
 .scrollbar-rail.vertical .scrollbar-thumb {
@@ -818,7 +868,7 @@ glyph-cell-view .glyph-count {
   width: 8px;
   height: 8px;
   align-self: center;
-  background-color: var(--line-base-basic-4);
+  background-color: var(--line-base-basic-2);
   mask: url("/images/arrow-down.svg") center / 4px 4px no-repeat;
 }
 
@@ -834,10 +884,39 @@ glyph-cell-view .glyph-count {
   transform: rotate(-90deg);
 }
 
+/* The hit areas reach past what is drawn, as overlay scrollbars do: the
+   thumb and the arrows take the pointer across the whole rail, 4px past it
+   into the content, and 4px beyond their ends along it. Nothing drawn grows. */
+.scrollbar-thumb::before,
+.scrollbar-arrow::before {
+  content: "";
+  position: absolute;
+}
+
+.scrollbar-arrow {
+  position: relative;
+}
+
+.scrollbar-rail.vertical .scrollbar-thumb::before {
+  inset: -4px -3px -4px -7px;
+}
+
+.scrollbar-rail.horizontal .scrollbar-thumb::before {
+  inset: -7px -4px -3px -4px;
+}
+
+.scrollbar-rail.vertical .scrollbar-arrow::before {
+  inset: -2px 0 -2px -4px;
+}
+
+.scrollbar-rail.horizontal .scrollbar-arrow::before {
+  inset: -4px -2px 0 -2px;
+}
+
 .scrollbar-thumb:hover,
 .scrollbar-thumb.dragging,
 .scrollbar-arrow:hover {
-  background-color: var(--line-base-basic-2);
+  background-color: var(--line-base-basic-4);
 }
 
 .scrollbar-rail.reveal:not(.shown) > * {
@@ -873,6 +952,13 @@ glyph-cell-view .glyph-count {
   gap: 4px 8px;
 }
 
+/* A dropdown in a control group asks for no room by its label: it takes
+   from 72px to 156px of what the line leaves, so picking a long name does
+   not push the group onto a line of its own. */
+.control-group > multi-select-dropdown {
+  contain: inline-size;
+}
+
 .control-row > :not(.control-group) {
   flex: none;
 }
@@ -883,13 +969,13 @@ glyph-cell-view .glyph-count {
 }
 
 /* A small static table (Figma 4108:2787, 4128:2937): bordered, 6px corners,
-   24px rows, each but the last ruled under; ui/label/S. */
+   24px rows, each but the last ruled under; ui/label/XS. */
 .static-table {
   width: 100%;
   border: 1px solid var(--line-base-basic-1);
   border-radius: 6px;
   border-spacing: 0;
-  font: var(--ui-text-label-s);
+  font: var(--ui-text-label-xs);
   letter-spacing: var(--ui-tracking);
   font-feature-settings: "case" 1;
   color: var(--text-base-basic-2);
@@ -904,9 +990,10 @@ glyph-cell-view .glyph-count {
   white-space: nowrap;
 }
 
-/* Its head (Figma 4156:3209): ui/heading/h4, uppercase, text/base/basic/3. */
+/* Its head (Figma 4156:3209): ui/table/heading, text/base/basic/3. */
 .static-table th {
-  font: var(--ui-text-heading-h4);
+  font: var(--ui-text-table-heading);
+  letter-spacing: var(--ui-tracking-table-heading);
   text-transform: uppercase;
   color: var(--text-base-basic-3);
 }
@@ -957,7 +1044,7 @@ glyph-cell-view .glyph-count {
   gap: 1px;
   padding: 0;
   border-radius: var(--bt-sgb-corner);
-  background: #e0e0e0;
+  background: var(--line-base-basic-2);
 }
 
 .selection-row-group-icons.tray:has(icon-button[disabled]):not(
@@ -976,7 +1063,7 @@ glyph-cell-view .glyph-count {
    hover    face white, lines above and under;  container grey, 4px pad
    press    face white, line above and at the   container grey, 2px pad
             outer side(s), none under;
-   on       face darker grey, lines as press;   container clear, 2px pad
+   on       face grey, lines as press;          container clear, 2px pad
    disabled face pale, line under;              container pale, 4px pad
 
    A left segment rounds its left corners and takes the left side line, a
@@ -989,8 +1076,11 @@ glyph-cell-view .glyph-count {
   height: var(--bt-sgb-height);
   padding: 2px 1px;
   background: var(--bt-sgb-sr-rest);
-  border: 0 solid var(--bt-sgb-ln-rest);
-  border-bottom-width: 1px;
+  /* Longhands: the style must not hang on the colour's var(), or a var
+     the browser cannot resolve drops the whole border. */
+  border-style: solid;
+  border-width: 0 0 1px;
+  border-color: var(--bt-sgb-ln-rest);
   --icon-button-icon-size: 16px;
   --icon-button-inner-fill: var(--bt-sgc-sr-rest);
   --icon-button-inner-border: transparent;
@@ -1001,6 +1091,11 @@ glyph-cell-view .glyph-count {
   --icon-button-inner-press-fill: var(--bt-sgc-sr-focus);
   --icon-button-inner-press-border: transparent;
   --icon-button-on-background-color: transparent;
+  /* The segment's icon: grey at rest, dark pressed and open, pale disabled
+     (Figma 2004:29126). */
+  --icon-button-icon-press-color: var(--icon-base-basic-2);
+  --icon-button-icon-active-color: var(--icon-base-basic-2);
+  --icon-button-icon-active-hover-color: var(--icon-base-basic-2);
 }
 
 .selection-row-group-icons.tray icon-button:first-child {
@@ -1033,7 +1128,7 @@ glyph-cell-view .glyph-count {
 }
 
 .selection-row-group-icons.tray icon-button[on] {
-  background: var(--bt-sgb-sr-active-hover);
+  background: var(--surface-base-basic-2);
   border-color: var(--bt-sgb-ln-active-hover);
   --icon-button-inner-fill: var(--bt-sgc-sr-dropdown);
 }
@@ -1098,11 +1193,11 @@ glyph-cell-view .glyph-count {
   padding-bottom: 4px;
 }
 
-/* ui/heading/h5 */
+/* ui/heading/h5, as a field-label: it names the buttons below it. */
 .row-group > .selection-row-group-label {
   font: var(--ui-text-heading-h5);
   letter-spacing: var(--ui-tracking);
-  color: #8e8e8e;
+  color: var(--shared-label);
 }
 
 .row-pair {
@@ -1119,10 +1214,14 @@ glyph-cell-view .glyph-count {
   justify-self: stretch;
 }
 
-/* The redesigned panels' plain text takes the design's sizes in the old
-   UI font: label/XS for row labels, values and whole-width rows, label/S
-   for checks. The new components and headings bring Martian Mono. */
-.ui-form-label,
+/* A row's label is outside its control: h5. */
+.ui-form-label {
+  font: var(--ui-text-heading-h5);
+  letter-spacing: var(--ui-tracking);
+}
+
+/* The redesigned panels' other plain text takes the design's size in the
+   old UI font. The new components and headings bring Martian Mono. */
 .ui-form-value,
 .ui-form-full-width {
   font: var(--ui-text-label-s);
@@ -1130,9 +1229,9 @@ glyph-cell-view .glyph-count {
   font-family: var(--ui-font-old);
 }
 
+/* A check's name is inside its control: label/XS. */
 .ui-form-label.checkbox,
 .ui-form-value.checkbox {
-  font: var(--ui-text-label-m);
-  letter-spacing: var(--ui-tracking-label-m);
-  font-family: var(--ui-font-old);
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
 }

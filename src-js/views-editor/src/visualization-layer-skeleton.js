@@ -44,7 +44,6 @@ import {
 } from "./tunni-gizmos.js";
 import {
   drawDiamondNode,
-  drawRevealedTunniGizmo,
   drawGizmoLabel,
   drawTunniTensionLabel,
   fillRoundNode,
@@ -54,6 +53,7 @@ import {
   TUNNI_GIZMO_COLORS,
   TUNNI_GIZMO_COLORS_DARK,
 } from "./visualization-layer-definitions.js";
+import { drawGizmo } from "./gizmo.js";
 
 // The layer the skeleton is being edited on. Its skeleton section and its path
 // have to come off the same glyph: the generator addresses its own points by
@@ -845,9 +845,9 @@ registerVisualizationLayerDefinition({
         if (!point) {
           continue;
         }
-        drawRevealedTunniGizmo(
+        drawGizmo(
           context,
-          model,
+          model.gizmoReveal,
           tunniGizmoKey(
             "skeleton",
             "curvature",
@@ -891,9 +891,9 @@ registerVisualizationLayerDefinition({
         if (!point) {
           continue;
         }
-        drawRevealedTunniGizmo(
+        drawGizmo(
           context,
-          model,
+          model.gizmoReveal,
           tunniGizmoKey(
             "skeleton",
             "on-curve",
@@ -1015,9 +1015,9 @@ registerVisualizationLayerDefinition({
         segment.points,
         generatedSegmentHandleAxes(segment.provenance)
       );
-      drawRevealedTunniGizmo(
+      drawGizmo(
         context,
-        model,
+        model.gizmoReveal,
         tunniGizmoKey("generated", "curvature", generatedTunniSegmentId(segment)),
         anchor,
         parameters,
@@ -1079,9 +1079,9 @@ registerVisualizationLayerDefinition({
       if (!gizmoPoint) {
         continue;
       }
-      drawRevealedTunniGizmo(
+      drawGizmo(
         context,
-        model,
+        model.gizmoReveal,
         tunniGizmoKey("generated", "on-curve", generatedTunniSegmentId(segment)),
         gizmoPoint,
         parameters,

@@ -64,6 +64,12 @@ const SHARED_SCENE_KEYS = [
 // one: the panels and tools act on it. The other pane shows its glyphs filled,
 // kept current as the font is edited, and takes the live canvas when clicked.
 // Either pane can show the font overview instead, to pick its glyph.
+// The round where the divider meets a rule, as the tool bar's ears
+// (shared.css's .toolbar).
+const EAR_RADIUS = 10;
+// The narrowest gap beside the tool bar that still shows the two ears.
+const MIN_EAR_GAP = 4;
+
 export class CanvasSplit {
   constructor(editor) {
     this.editor = editor;
@@ -342,6 +348,13 @@ export class CanvasSplit {
     storePreviews(this.previews);
     this.layout = null;
     this.root.classList.remove("split");
+    const toolbar = document.querySelector(".tools-overlay");
+    if (toolbar) {
+      toolbar.style.removeProperty("--toolbar-ear-left");
+      toolbar.style.removeProperty("--toolbar-ear-right");
+      toolbar.style.borderBottomLeftRadius = "";
+      toolbar.style.borderBottomRightRadius = "";
+    }
     this.root.style.gridTemplateColumns = "";
     this._render();
     this._keepLiveView(viewBox);
@@ -440,15 +453,117 @@ export class CanvasSplit {
     }
   }
 
+  // The ratio places the divider across the window, as the tool bar is
+  // placed: opening, closing or resizing a sidebar leaves it where it is, and
+  // the panes take what is on either side of it.
   _applyRatio() {
-    const width = this.root.getBoundingClientRect().width;
-    const ratio = clampSplitRatio(this.ratio, width, MIN_PANE_WIDTH);
-    this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) auto minmax(0, ${
+    if (!this.layout) {
+      return;
+    }
+    const rect = this.root.getBoundingClientRect();
+    const ratio = clampSplitRatio(
+      (this.ratio * window.innerWidth - rect.left) / rect.width,
+      rect.width,
+      MIN_PANE_WIDTH
+    );
+    this.root.style.gridTemplateColumns = `minmax(0, ${ratio}fr) minmax(0, ${
       1 - ratio
     }fr)`;
+    // The divider floats over the seam between the panes and takes no room.
+    this.divider.style.left = `calc(${ratio * 100}% - ${this.divider.offsetWidth / 2}px)`;
+    this._placeDividerEars();
+  }
+
+  // The divider's top ears, by where the divider is against the tool bar
+  // (which is drawn over it). Where two rounds share the room between the
+  // divider's side and the bar's side, they shrink together to half of it:
+  // - under the bar: both ears at the bar's lower edge; near the bar's side,
+  //   the ear on that side and the bar's lower corner share the room;
+  // - across the bar's side: the divider covers the bar there, the ear under
+  //   the bar is whole at its lower edge, the outer one whole at the card's
+  //   top in place of the bar's ear, and the bar's lower corner is square;
+  // - beside the bar: both ears at the card's top; the ear facing the bar
+  //   and the bar's ear share the gap, and both are gone while it is under
+  //   MIN_EAR_GAP.
+  _placeDividerEars() {
+    if (!this.layout) {
+      return;
+    }
+    const toolbar = document.querySelector(".tools-overlay");
+    const divider = this.divider.getBoundingClientRect();
+    const card = this.root.getBoundingClientRect();
+    const clamp = (r) => Math.max(0, Math.min(EAR_RADIUS, r));
+    const shared = (room) => clamp(room / 2);
+    const sharedGap = (gap) => (gap < MIN_EAR_GAP ? 0 : clamp((gap - 2) / 2));
+    const ears = {
+      left: { top: 0, radius: EAR_RADIUS },
+      right: { top: 0, radius: EAR_RADIUS },
+    };
+    const barEars = { left: EAR_RADIUS, right: EAR_RADIUS };
+    const barCorners = { left: EAR_RADIUS, right: EAR_RADIUS };
+    let clipTop = null; // null: not over the bar
+    // The card's rule is one screen pixel (core.css's --hairline), whatever
+    // the zoom; the tool bar's is 1px.
+    const hairline = 1 / (window.devicePixelRatio || 1);
+    if (toolbar?.getClientRects().length) {
+      const bar = toolbar.getBoundingClientRect();
+      const under = Math.max(0, bar.bottom - card.top - this.root.clientTop);
+      if (divider.left >= bar.left && divider.right <= bar.right) {
+        // Over the bar's lower rule only, so that rule doesn't cross it.
+        clipTop = under - 1;
+        const left = shared(divider.left - bar.left);
+        const right = shared(bar.right - divider.right);
+        ears.left = { top: under, radius: left };
+        ears.right = { top: under, radius: right };
+        barCorners.left = left;
+        barCorners.right = right;
+      } else if (divider.left < bar.left && divider.right > bar.left) {
+        clipTop = 0;
+        ears.right.top = under;
+        barEars.left = barCorners.left = 0;
+      } else if (divider.left < bar.right && divider.right > bar.right) {
+        clipTop = 0;
+        ears.left.top = under;
+        barEars.right = barCorners.right = 0;
+      } else if (divider.right <= bar.left) {
+        ears.right.radius = barEars.left = sharedGap(bar.left - divider.right);
+      } else {
+        ears.left.radius = barEars.right = sharedGap(divider.left - bar.right);
+      }
+      toolbar.style.setProperty("--toolbar-ear-left", barEars.left);
+      toolbar.style.setProperty("--toolbar-ear-right", barEars.right);
+      toolbar.style.borderBottomLeftRadius = `${barCorners.left}px`;
+      toolbar.style.borderBottomRightRadius = `${barCorners.right}px`;
+    }
+    this.divider.classList.toggle("over-bar", clipTop !== null);
+    this.divider.style.setProperty("--clip-top", `${clipTop ?? 0}px`);
+    for (const side of ["left", "right"]) {
+      // An ear starts on the rule it leaves (the card's top rule, or the
+      // bar's lower one), so its own rule runs into that one rather than
+      // alongside it. The card clips the row of its own rule.
+      this.divider.style.setProperty(
+        `--ear-top-${side}-y`,
+        `${ears[side].top - (ears[side].top ? 1 : hairline)}px`
+      );
+      this.divider.style.setProperty(`--rule-${side}-y`, `${ears[side].top}px`);
+      this.divider.style.setProperty(`--ear-top-${side}`, ears[side].radius);
+    }
   }
 
   _setupDivider() {
+    for (const corner of ["top-left", "top-right", "bottom-left", "bottom-right"]) {
+      this.divider.appendChild(
+        Object.assign(document.createElement("div"), {
+          className: `canvas-split-ear ${corner}`,
+        })
+      );
+    }
+    const observer = new ResizeObserver(() => this._applyRatio());
+    observer.observe(this.root);
+    const toolbar = document.querySelector(".tools-overlay");
+    if (toolbar) {
+      observer.observe(toolbar);
+    }
     this.divider.addEventListener("pointerdown", (event) => {
       if (event.button !== 0) {
         return;
@@ -456,12 +571,7 @@ export class CanvasSplit {
       event.preventDefault();
       this.divider.setPointerCapture(event.pointerId);
       const move = (event) => {
-        const rect = this.root.getBoundingClientRect();
-        this.ratio = clampSplitRatio(
-          (event.clientX - rect.left) / rect.width,
-          rect.width,
-          MIN_PANE_WIDTH
-        );
+        this.ratio = event.clientX / window.innerWidth;
         this._applyRatio();
       };
       const up = () => {
@@ -772,17 +882,8 @@ class PaneOverview {
       searchStringKey: "searchString",
     });
     this.cellView = new GlyphCellView(this.fontController, this.settingsController);
+    // A double click (or Enter) on a cell picks its glyph; a click selects it.
     this.cellView.onOpenSelectedGlyphs = () => this._pickSelected();
-    // A plain click on a cell picks its glyph. The cell has selected it by the
-    // time the click reaches the view.
-    this.cellView.addEventListener("click", (event) => {
-      if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
-        return;
-      }
-      if (event.composedPath().some((node) => node.localName === "glyph-cell")) {
-        this._pickSelected();
-      }
-    });
 
     this.element = html.div({ class: "canvas-pane-overview" }, [
       html.div({ class: "canvas-pane-overview-search" }, [this.searchField]),

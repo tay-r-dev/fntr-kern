@@ -283,7 +283,6 @@ export class UITextInput extends UnlitElement {
     const children = [html.div({ class: "container" }, [this._field])];
     if (this._multiline) {
       const handle = html.createDomElement("ui-handle");
-      handle.size = "S";
       let startHeight;
       handle.addEventListener("handle-drag-start", () => {
         startHeight = this.getBoundingClientRect().height;

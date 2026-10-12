@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper } from "@fontra/core/utils.ts";
 import { InlineSVG } from "./inline-svg.js";
@@ -22,10 +23,10 @@ const colors = {
   // hand-picked until the design has a dark mode.
   "icon-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
   "icon-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "icon-button-icon-press-color": ["var(--bt-sgc-ic-focus)", "#a9c915"],
-  "icon-button-icon-disabled-color": ["var(--bt-sgc-ic-disabled)", "#5a5a5a"],
-  "icon-button-icon-active-color": ["var(--bt-sgi-ic-active)", "#e0e0e0"],
-  "icon-button-icon-active-hover-color": ["var(--bt-sgc-ic-active-hover)", "#a9c915"],
+  "icon-button-icon-press-color": ["var(--icon-color-lime-basic-4)", "#a9c915"],
+  "icon-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
+  "icon-button-icon-active-color": ["var(--icon-base-basic-3)", "#e0e0e0"],
+  "icon-button-icon-active-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "icon-button-hover-background-color": ["var(--bt-sgi-sr-hover)", "#464646"],
   "icon-button-hover-border-color": [
     "var(--bt-sgi-ln-hover)",
@@ -39,7 +40,7 @@ const colors = {
   // button/table (Figma 4054:1391): the same states in a table row, but a
   // paler icon at rest, and hover lifts the face to white with a pale border
   // (the row under it may be the light grey).
-  "icon-button-table-icon-color": ["var(--bt-sgt-ic-rest)", "#6a6a6a"],
+  "icon-button-table-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
   "icon-button-table-hover-background-color": ["var(--bt-sgt-sr-hover)", "#2c2c2c"],
   "icon-button-table-hover-border-color": [
     "var(--bt-sgt-ln-hover)",
@@ -52,7 +53,7 @@ const colors = {
   "icon-button-latch-hover-background-color": ["var(--bt-sgb-sr-hover)", "#444"],
   "icon-button-latch-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
   "icon-button-latch-active-background-color": [
-    "var(--bt-sgb-sr-active-rest)",
+    "var(--surface-base-basic-2)",
     "#505050",
   ],
   "icon-button-latch-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
@@ -114,9 +115,9 @@ export class IconButton extends UnlitElement {
       transition:
         background-color 150ms,
         color 150ms;
-      /* ui/label/S, for a text segment. */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
+      /* ui/label/XS, for a text segment. */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
     }
 
     /* The icon is 12px whatever the button's size: the button grows or
@@ -239,10 +240,10 @@ export class IconButton extends UnlitElement {
       border-radius: 6px;
     }
 
-    /* segment's chevron (Figma 2004:29126): an 8px box. */
+    /* segment's chevron (Figma 2004:29126): a 6px box. */
     inline-svg.icon-button-chevron {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
       flex: none;
       transform: rotate(180deg);
     }
@@ -258,11 +259,9 @@ export class IconButton extends UnlitElement {
       border-radius: 0.8em;
       background: var(--overflow-popover-background-color);
       color: inherit;
-      /* ui/label/S's size in the old UI font, for the checks and toggles
-         a card holds. */
-      font: var(--ui-text-label-m);
-      letter-spacing: var(--ui-tracking-label-m);
-      font-family: var(--ui-font-old);
+      /* ui/label/XS, for the checks and toggles a card holds. */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
       box-shadow: 0 0.2em 1em var(--overflow-popover-shadow-color);
     }
 
@@ -291,17 +290,13 @@ export class IconButton extends UnlitElement {
         this._focusKeeper.save();
       }
     });
-    this.addEventListener("pointerdown", (event) => {
-      if (own(event)) {
-        this._wasOpen = this._card?.matches(":popover-open") ?? false;
-      }
-    });
-    // The right button opens the dropdown at once.
+    // The right button opens the dropdown at once, and a second right press
+    // closes it.
     this.addEventListener("contextmenu", (event) => {
       if (own(event) && this.dropdown) {
         event.preventDefault();
         event.stopPropagation();
-        this._openDropdown();
+        this._cardPopover.toggle();
       }
     });
     // A keyboard press on the focused inner button bubbles here as a click too.
@@ -311,8 +306,8 @@ export class IconButton extends UnlitElement {
       }
       if (this._buttonOnClick) {
         this._buttonOnClick(event);
-      } else if (this.dropdown && !this._wasOpen) {
-        this._openDropdown();
+      } else if (this.dropdown) {
+        this._cardPopover.toggle();
       }
       event.stopImmediatePropagation();
       this._focusKeeper.restore();
@@ -330,6 +325,9 @@ export class IconButton extends UnlitElement {
     badge: { type: Boolean },
     table: { type: Boolean },
     size: { type: String },
+    // An overflow (overflow-popover.js): its dots say there is more, so a
+    // dropdown draws no chevron.
+    overflow: { type: Boolean },
   };
 
   get disabled() {
@@ -342,8 +340,8 @@ export class IconButton extends UnlitElement {
     if (this._button) {
       this._button.disabled = value;
     }
-    if (value && this._card?.matches(":popover-open")) {
-      this._card.hidePopover();
+    if (value) {
+      this._cardPopover?.close();
     }
   }
 
@@ -401,9 +399,11 @@ export class IconButton extends UnlitElement {
     }
     this._dropdownContent = element;
     if (!this._card) {
-      this._card = html.div({ class: "popover-card", popover: "auto" }, [
+      // Opened and closed by this button (html-utils.js's ButtonPopover).
+      this._card = html.div({ class: "popover-card" }, [
         html.createDomElement("slot", { name: "dropdown" }),
       ]);
+      this._cardPopover = new html.ButtonPopover(this._card, this);
       // Placed under the button's right edge, and kept on screen -- same
       // placement overflow-popover.js used.
       this._card.addEventListener("beforetoggle", (event) => {
@@ -422,10 +422,9 @@ export class IconButton extends UnlitElement {
     this.requestUpdate();
   }
 
-  _openDropdown() {
-    if (this._card && !this._card.matches(":popover-open")) {
-      this._card.showPopover();
-    }
+  disconnectedCallback() {
+    super.disconnectedCallback?.();
+    this._cardPopover?.close();
   }
 
   click() {
@@ -436,11 +435,11 @@ export class IconButton extends UnlitElement {
     const children =
       this.label && !this.src
         ? [this.label]
-        : [html.createDomElement("inline-svg", { src: this.src })];
-    if (this.dropdown) {
+        : [html.createDomElement("inline-svg", { src: iconPath(this.src) })];
+    if (this.dropdown && !this.overflow) {
       children.push(
         html.createDomElement("inline-svg", {
-          src: "/tabler-icons/chevron-up.svg",
+          src: "chevron-up",
           class: "icon-button-chevron",
         })
       );

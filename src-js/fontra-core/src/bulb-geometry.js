@@ -1,13 +1,13 @@
 import {
+  harmonizeCubicRun,
   matchCubicEndCurvatures,
   slideBulbEntryForCurvature,
+  solveCubicEndCurvatures,
 } from "./bulb-entry-slide.js";
-import { fitBulbNeck } from "./bulb-neck-fit.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
-import { makeSlideCandidate, projectPointToSegment } from "./point-slide.js";
-import { boundedEasingHandles } from "./serif-geometry.js";
+import { makeSlideCandidate } from "./point-slide.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
 // The forward half has radius R; Shape stretches only the rear half.
@@ -219,75 +219,277 @@ function innerBallCut(ball, inner, sideTheta) {
   return cut;
 }
 
-function arcLength(points, from, to) {
-  let total = 0,
-    p = cubicPointAt(points, from);
-  for (let i = 1; i <= 32; i++) {
-    const q = cubicPointAt(points, from + ((to - from) * i) / 32);
-    total += vector.distance(p, q);
+// Length along a cubic from `from` to its end, tabled once: the search for the
+// fillet's limit asks for a parameter at a length dozens of times. Linear
+// between rows, so it moves continuously.
+const WALL_TABLE_STEPS = 256;
+function wallLengthTable(points, from) {
+  const parameters = [from],
+    lengths = [0];
+  let p = cubicPointAt(points, from);
+  for (let i = 1; i <= WALL_TABLE_STEPS; i++) {
+    const t = from + ((1 - from) * i) / WALL_TABLE_STEPS,
+      q = cubicPointAt(points, t);
+    parameters.push(t);
+    lengths.push(lengths[i - 1] + vector.distance(p, q));
     p = q;
   }
-  return total;
+  const total = lengths[WALL_TABLE_STEPS];
+  return {
+    total,
+    parameterAt(distance) {
+      if (distance <= 0) return from;
+      if (distance >= total) return 1;
+      let lo = 0,
+        hi = WALL_TABLE_STEPS;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (lengths[mid] < distance) lo = mid;
+        else hi = mid;
+      }
+      const s = (distance - lengths[lo]) / (lengths[hi] - lengths[lo] || 1);
+      return parameters[lo] + (parameters[hi] - parameters[lo]) * s;
+    },
+  };
 }
 
-function wallParameterAtDistance(points, from, distance) {
-  let lo = from,
-    hi = 1;
-  for (let i = 0; i < 30; i++) {
-    const mid = (lo + hi) / 2;
-    if (arcLength(points, from, mid) < distance) lo = mid;
-    else hi = mid;
-  }
-  return distance > 0 ? (lo + hi) / 2 : from;
-}
-
-// P -> E is a splice, not a copy of P's skeleton handle. If E is on the wall,
-// both handles come from exact subdivision. If it is on the initial ball arc,
-// the shared V-slide refits P -> E, including P's outgoing handle, while the
-// kept ball piece is exact. No gesture history chooses between these cases.
+// E is the first vertical tangent along the outer run after P: on the wall if
+// the wall has one, otherwise on the ball's apex. The wall and the ball are the
+// reference. Of P -> E and E -> B, one is an exact split of it; the other holds
+// the rib and replaces the reference pieces it spans, refit as a V-slide refits
+// (`spans` names which). Its handle lengths are then solved for curvature at
+// both ends once the designer's edits are in (buildBulb).
 export function joinBulbEntry(wall, firstArc) {
-  const entry = bulbEntry(wall);
   const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
-  if (entry.orthogonal) {
-    const candidate =
-      entry.t < 1 - 1e-10
-        ? makeSlideCandidate(run, 3, "previous", entry.t)?.points
-        : run.points;
-    return { ...entry, wall: candidate.slice(0, 4), firstArc: candidate.slice(3, 7) };
+  const onWall = bulbEntry(wall);
+  if (onWall.orthogonal && onWall.t < 1 - 1e-10) {
+    const candidate = makeSlideCandidate(run, 3, "previous", onWall.t).points;
+    return {
+      ...onWall,
+      wall: candidate.slice(0, 4),
+      firstArc: candidate.slice(3, 7),
+      spans: "entry",
+    };
   }
+  // E goes on the ball's apex only where some pair of P -> E lengths meets the
+  // wall's curvature at P and the ball's at E. Where none does, no amount of
+  // solving fixes it there, and E stays on the wall.
   const onBall = bulbEntry(firstArc);
-  if (onBall.orthogonal && onBall.t > 1e-8 && onBall.t < 1 - 1e-8) {
-    const candidate = makeSlideCandidate(run, 3, "next", onBall.t).points;
+  const candidate =
+    onBall.orthogonal &&
+    onBall.t > 1e-4 &&
+    onBall.t < 1 - 1e-4 &&
+    makeSlideCandidate(run, 3, "next", onBall.t).points;
+  if (
+    candidate &&
+    solveCubicEndCurvatures(
+      candidate.slice(0, 4),
+      bulbEndCurvature(wall),
+      bulbEndCurvature(candidate.slice(3, 7))
+    ).length
+  ) {
     return {
       wall: candidate.slice(0, 4),
       firstArc: candidate.slice(3, 7),
-      orthogonal: true,
       t: 1,
+      orthogonal: true,
       ballParameter: onBall.t,
+      spans: "wall",
     };
   }
-  return { ...entry, firstArc };
+  return { ...onWall, firstArc, spans: null };
 }
 
-export function buildFourPointBulb({
+// How far back along the ball the fillet may reach from the corner, in radii.
+const FILLET_BALL_STOP = 0.75;
+// The arc from the side apex C to the fillet keeps at least this much of the
+// ball, in radii. A stub shorter than that has handles of a few units, and
+// whole-unit rounding turns its curvature over: a step of 32 times the ball's
+// own curvature at C where the corner stood one radius from it.
+const FILLET_MIN_RETURN = 0.25;
+// The fillet's handle on the ball side may not fall under this share of its
+// chord. Where it would, the fillet has gone as far up the wall as it can.
+const FILLET_MIN_BALL_HANDLE = 0.2;
+// How finely the wall is scanned for the fillet's limit, then bisected.
+const FILLET_SCAN_STEPS = 32;
+const FILLET_BISECT_STEPS = 10;
+
+// Signed curvature of a cubic at t, in traversal order. Unlike reading the
+// start of a split, it holds at t = 1.
+function cubicCurvatureAt(points, t) {
+  const [p0, p1, p2, p3] = points;
+  const mt = 1 - t;
+  const d = {
+    x:
+      3 *
+      (mt * mt * (p1.x - p0.x) + 2 * mt * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
+    y:
+      3 *
+      (mt * mt * (p1.y - p0.y) + 2 * mt * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
+  };
+  const dd = {
+    x: 6 * (mt * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
+    y: 6 * (mt * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
+  };
+  const speed = Math.hypot(d.x, d.y);
+  return speed > 1e-12 ? (d.x * dd.y - d.y * dd.x) / speed ** 3 : 0;
+}
+
+function cubicTangentAt(points, t) {
+  const [p0, p1, p2, p3] = points;
+  const mt = 1 - t;
+  return unit({
+    x: mt * mt * (p1.x - p0.x) + 2 * mt * t * (p2.x - p1.x) + t * t * (p3.x - p2.x),
+    y: mt * mt * (p1.y - p0.y) + 2 * mt * t * (p2.y - p1.y) + t * t * (p3.y - p2.y),
+  });
+}
+
+// Length along the ball between two angles: the speed integrated by Simpson's
+// rule. A sum of chords falls short by a tenth of a per cent over a quarter turn.
+function ballArcLength(ball, from, to, n = 64) {
+  const speed = (theta) => {
+    const along = Math.cos(theta) < -1e-10 ? ball.rearRadius : ball.radius;
+    return Math.hypot(
+      -ball.ex.x * along * Math.sin(theta) + ball.ey.x * ball.radius * Math.cos(theta),
+      -ball.ex.y * along * Math.sin(theta) + ball.ey.y * ball.radius * Math.cos(theta)
+    );
+  };
+  const h = (to - from) / n;
+
+  let total = speed(from) + speed(to);
+  for (let i = 1; i < n; i++) total += (i % 2 ? 4 : 2) * speed(from + i * h);
+  return (total * h) / 3;
+}
+
+// The ball angle a given length back along the ball from `to`, read off a table
+// of lengths built once per bulb: the search for the fillet's limit asks this
+// dozens of times, and integrating the arc on every bisection step cost a
+// tenth of the bulb. Linear between rows, so it moves continuously.
+const BALL_TABLE_STEPS = 512;
+function ballThetaBackTable(ball, lowest, to) {
+  const thetas = [],
+    lengths = [];
+  let total = 0;
+  for (let i = 0; i <= BALL_TABLE_STEPS; i++) {
+    const theta = to - ((to - lowest) * i) / BALL_TABLE_STEPS;
+    if (i) total += ballArcLength(ball, theta, thetas[i - 1], 4);
+    thetas.push(theta);
+    lengths.push(total);
+  }
+  return (length) => {
+    if (length <= 0) return to;
+    if (length >= total) return lowest;
+    let lo = 0,
+      hi = BALL_TABLE_STEPS;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (lengths[mid] < length) lo = mid;
+      else hi = mid;
+    }
+    const s = (length - lengths[lo]) / (lengths[hi] - lengths[lo] || 1);
+    return thetas[lo] + (thetas[hi] - thetas[lo]) * s;
+  };
+}
+
+// The fillet: one cubic from A on the ball to W on the wall, leaving the ball
+// with the ball's curvature and arriving with the wall's, so the comb runs on
+// through both ends. Its two handle lengths are the two unknowns, and there can
+// be more than one pair: every pair is found in one pass, nearest first to both
+// handles reaching most of the way to where the two tangents cross, which is
+// the fillet's own shape. The first pair that the caller accepts wins, so the
+// same input always gives the same fillet.
+function solveFillet(A, tA, kA, W, tW, kW, accept) {
+  const chord = vector.distance(A, W);
+  if (!(chord > 1e-6)) return null;
+  const d = sub(W, A),
+    determinant = cross(tA, tW);
+  let a = chord / 3,
+    b = chord / 3;
+  if (Math.abs(determinant) > 1e-12) {
+    const reachA = cross(d, tW) / determinant,
+      reachW = -cross(d, tA) / determinant;
+    if (reachA > 0 && reachW > 0) [a, b] = [0.9 * reachA, 0.9 * reachW];
+  }
+  const seed = [
+    { ...A },
+    { ...offset(A, tA, a), type: "cubic" },
+    { ...offset(W, tW, -b), type: "cubic" },
+    { ...W },
+  ];
+  for (const fillet of solveCubicEndCurvatures(seed, kA, kW))
+    if (accept(fillet)) return fillet;
+  return null;
+}
+const cross = (a, b) => a.x * b.y - a.y * b.x;
+
+// The bulb: E, B and C on the ball, A where the ball gives way to the easing
+// fillet, W where the fillet meets the inner wall, then Q, the wall's next
+// existing point. Sixteen points, at every easing: at zero easing A, W and the
+// fillet's handles all lie on the corner where the ball meets the wall.
+//
+// Easing fills that corner the way solder fills the corner between a part and
+// its pad. It adds material and never removes any: the ball stays whole under
+// the fillet, and the stroke stays whole beside it. The fillet's ball end goes
+// back from the corner as far as its wall end climbs, up to 0.75 of a radius,
+// then stops. Its wall end climbs on. Full easing is the furthest the wall end
+// can climb while one curve still fills the corner, with matching curvature at
+// both ends, outside the ball and outside the stroke.
+//
+// `preview` says an edit is in progress. The geometry is the same; the caller
+// hides E and its handles until release, because the entry fit can move E far
+// along the wall in one step and that jump is not to be seen under the cursor.
+// A drag regenerates every terminal on every frame, and most of them have not
+// changed. The bulb depends on nothing but its inputs, so the last few are
+// kept by their coordinates. Callers stamp and edit the returned points, so
+// every hit hands back fresh copies.
+const BULB_CACHE_SIZE = 16;
+const bulbCache = new Map();
+export function buildBulb(options) {
+  const xy = (points) => points?.map((p) => [p.x, p.y, p.type ?? 0]);
+  const key = JSON.stringify([
+    xy(options.wall),
+    xy(options.inner),
+    xy(options.beyond),
+    options.radius,
+    options.shape,
+    options.easing,
+    options.edits ?? null,
+    options.preview ?? false,
+  ]);
+  let result = bulbCache.get(key);
+  if (result === undefined) {
+    result = solveBulb(options);
+    if (bulbCache.size >= BULB_CACHE_SIZE)
+      bulbCache.delete(bulbCache.keys().next().value);
+  } else bulbCache.delete(key);
+  bulbCache.set(key, result);
+  if (!result) return null;
+  const copy = (points) => points.map((p) => ({ ...p }));
+  return {
+    ...result,
+    points: copy(result.points),
+    wall: copy(result.wall),
+    keptInner: copy(result.keptInner),
+    tangents: result.tangents.map((t) => ({ ...t })),
+  };
+}
+
+function solveBulb({
   wall,
   inner,
   radius,
   shape,
   easing,
-  easeCurvature = 0.55,
   edits = null,
-  preview = false,
   beyond = null,
+  preview = false,
 }) {
   wall = bulbCubic(wall);
   inner = bulbCubic(inner);
-  // The neck arrives at the wall point with the curvature the stroke leaves
-  // it with, not with the cut wall's own end curvature. Copying that end
-  // carried any step already at the point into the bulb, where nothing could
-  // remove it, because the bulb owns both handles of its last span.
+  // Q is reached with the curvature the stroke leaves it with, not with the
+  // cut wall's own end curvature. Copying that end carried any step already at
+  // the point into the bulb, where nothing could remove it.
   const wallCurvature = curvatureBeyond(inner, beyond);
-  const wallTarget = wallCurvature ?? bulbEndCurvature(inner, true);
   const rib = wall[3];
   const ball = makeBulbBall({
     outer: rib,
@@ -303,133 +505,211 @@ export function buildFourPointBulb({
     theta: Math.PI / 2,
   };
   const first = ballArc(ball, -Math.PI / 2, bottom.theta);
-  const entry = preview
-    ? { wall, firstArc: first, t: 1, orthogonal: false }
-    : joinBulbEntry(wall, first);
+  const entry = joinBulbEntry(wall, first);
+  const bodyArc = ballArc(ball, bottom.theta, side.theta);
   const cut = innerBallCut(ball, inner, side.theta);
   const cutPoint = cubicPointAt(inner, cut);
+  const thetaLowest = side.theta + 0.02;
   const thetaCut = clamp(
     unwrap(ball.thetaOf(cutPoint), -Math.PI / 2),
-    side.theta + 0.02,
+    thetaLowest,
     (3 * Math.PI) / 2 - 0.02
   );
-  const room = Math.max(0, thetaCut - side.theta - 0.02);
-  // Zero is a corner. Positive easing first constructs the reference fillet;
-  // the editable neck is fitted to that outline below.
-  const corner = easing === 0;
-  const extent = corner ? 0 : easing;
-  const retreat = extent * Math.min(0.55, 0.75 * room);
-  const thetaA = thetaCut - retreat;
-  const wallShare = Math.min(1, extent * (0.75 + 0.5 * clamp(easeCurvature, 0, 1)));
-  const easeDistance = wallShare * arcLength(inner, cut, 0.995);
-  const cutParameter = wallParameterAtDistance(inner, cut, easeDistance);
-  let keptInner = splitCubicAt(inner, cutParameter).second.map((p, i) => ({
-    ...inner[i],
-    ...p,
-  }));
-  // The preview carries the same arrival, so release does not change the comb.
-  if (wallCurvature !== undefined)
-    keptInner = arriveWithCurvature(keptInner, wallCurvature, radius) ?? keptInner;
-  const A = ball.at(thetaA),
-    W = keptInner[0];
-  if (corner && vector.distance(A, W) < 1e-6 * radius) Object.assign(A, W);
-  const tA = ball.tangentAt(thetaA),
-    tW = unit(sub(keptInner[1], W));
-  const uv = ({ x, y }) => ({ u: x, v: y });
-  const neck = boundedEasingHandles(
-    uv(A),
-    uv(tA),
-    uv(W),
-    uv(vector.mulVectorScalar(tW, -1)),
-    0.35 + 0.65 * clamp(easeCurvature, 0, 1),
-    { nearWindow: 1 }
+  const corner = ball.at(thetaCut);
+  const ballStop = Math.min(
+    FILLET_BALL_STOP * radius,
+    Math.max(0, ballArcLength(ball, side.theta, thetaCut) - FILLET_MIN_RETURN * radius)
   );
-  const returnArc = ballArc(ball, side.theta, thetaA);
-  returnArc[3] = A;
-  const easingCurve = [A, handle(A, tA, neck.startLen), handle(W, tW, -neck.endLen), W];
-  // A and W are internal reference boundaries, not emitted neck points.
-  const bodyArc = ballArc(ball, bottom.theta, side.theta);
-  const referenceCurves = corner
-    ? [first, bodyArc, returnArc, keptInner]
-    : [first, bodyArc, returnArc, easingCurve, keptInner];
-  const referencePoints = referenceCurves.flatMap((curve, i) =>
-    (i ? curve.slice(1) : curve).map((p) => ({ ...p }))
-  );
-  const fittedReturn =
-    corner || preview
-      ? returnArc
-      : makeSlideCandidate(
-          { points: [...returnArc, ...easingCurve.slice(1)], isClosed: false },
-          3,
-          "previous",
-          0
-        ).points.slice(3);
-  const fittedWall = keptInner;
-  let points = [
-    ...entry.firstArc,
-    ...bodyArc.slice(1),
-    ...fittedReturn.slice(1),
-    ...fittedWall.slice(1),
-  ].map((p) => ({ ...p }));
-  points[9].smooth = !corner;
+  const wallTable = wallLengthTable(inner, cut);
+  const wallLength = wallTable.total;
+
+  // E, B and C with the designer's edits, and the arc from C to A.
+  const tangents = [];
+  const body = (thetaA) => {
+    const returnArc = ballArc(ball, side.theta, thetaA);
+    const points = [...entry.firstArc, ...bodyArc.slice(1), ...returnArc.slice(1)].map(
+      (p) => ({ ...p })
+    );
+    for (const [i, axis] of [
+      [3, "y"],
+      [6, "x"],
+    ]) {
+      points[i - 1][axis] = points[i][axis];
+      points[i + 1][axis] = points[i][axis];
+    }
+    tangents.length = 0;
+    applyBulbEdits(points, edits, tangents, radius);
+    return points;
+  };
+
+  const counter = counterSideOf(inner, cut, ball.at(side.theta));
+  const thetaBack = ballThetaBackTable(ball, thetaLowest, thetaCut);
+  const fillets = new Map();
+  const filletAt = (travel) => {
+    if (fillets.has(travel)) return fillets.get(travel);
+    const thetaA = thetaBack(Math.min(travel, ballStop));
+    const points = body(thetaA);
+    const A = points[9];
+    const tA = unit(sub(A, points[8]));
+    const kA = bulbEndCurvature(points.slice(6, 10), true);
+    const t = wallTable.parameterAt(travel);
+    const rest = splitCubicAt(inner, t).second.map((p, i) => ({ ...inner[i], ...p }));
+    const W = rest[0];
+    const fillet = solveFillet(
+      A,
+      tA,
+      kA,
+      W,
+      cubicTangentAt(inner, t),
+      cubicCurvatureAt(inner, t),
+      (fillet) =>
+        vector.distance(fillet[0], fillet[1]) >=
+          FILLET_MIN_BALL_HANDLE * vector.distance(A, W) &&
+        fillsCorner(fillet, ball, counter)
+    );
+    const result = fillet ? { points, fillet, rest } : null;
+    fillets.set(travel, result);
+    return result;
+  };
+
+  // How far the wall end can climb: scan, then bisect the first failure.
+  let reach = wallLength;
+  for (let i = 1; i <= FILLET_SCAN_STEPS; i++) {
+    if (filletAt((wallLength * i) / FILLET_SCAN_STEPS)) continue;
+    let lo = (wallLength * (i - 1)) / FILLET_SCAN_STEPS,
+      hi = (wallLength * i) / FILLET_SCAN_STEPS;
+    for (let j = 0; j < FILLET_BISECT_STEPS; j++) {
+      const mid = (lo + hi) / 2;
+      if (filletAt(mid)) lo = mid;
+      else hi = mid;
+    }
+    reach = lo;
+    break;
+  }
+
+  const travel = clamp(easing, 0, 1) * reach;
+  let built = travel > 0 ? filletAt(travel) : null;
+  let points;
+  if (built) {
+    points = [...built.points, ...built.fillet.slice(1), ...built.rest.slice(1)];
+    points[9].smooth = true;
+    points[12].smooth = true;
+  } else {
+    // No easing: the ball meets the wall at a corner. The fillet's four points
+    // and W lie on it.
+    const rest = splitCubicAt(inner, cut).second.map((p, i) => ({ ...inner[i], ...p }));
+    points = [...body(thetaCut)];
+    Object.assign(points[9], corner);
+    points.push(
+      { ...corner, type: "cubic" },
+      { ...corner, type: "cubic" },
+      { ...corner },
+      ...rest.slice(1).map((p) => ({ ...p }))
+    );
+    points[9].smooth = false;
+    points[12].smooth = false;
+  }
+  points = points.map((p) => ({ ...p }));
   points[9].skipColinear = true;
-  for (const [i, axis] of [
-    [3, "y"],
-    [6, "x"],
-  ]) {
-    points[i - 1][axis] = points[i][axis];
-    points[i + 1][axis] = points[i][axis];
+  points[12].skipColinear = true;
+  // Q: the last span keeps the curvature it leaves W with and arrives with the
+  // stroke's.
+  if (wallCurvature !== undefined) {
+    const arrived = arriveWithCurvature(points.slice(12, 16), wallCurvature, radius);
+    if (arrived) points = [...points.slice(0, 12), ...arrived];
   }
-  if (preview) {
-    return {
-      points: referencePoints,
-      // The reference retains the original P-to-rib wall exactly. E is a
-      // fitting constraint only; imposing it here was bending the preview.
-      wall: wall.map((p) => ({ ...p })),
-      keptInner: [referencePoints.at(-1)],
-      preview: true,
-      error: 0,
-      status: "reference",
-      ball,
+
+  // E with no vertical tangent to stand on, on the wall or on the ball, is
+  // V-slid along the wall until the comb at E is even, as the editor's V-slide
+  // does on a realized contour.
+  if (entry.spans === null) {
+    const entrySlide = slideBulbEntryForCurvature({
+      wall: entry.wall,
+      points,
+      sourceWall: wall,
+      sourceArc: first,
       entryParameter: entry.t,
-      entryBallParameter: entry.ballParameter,
-      orthogonalEntry: entry.orthogonal,
-    };
+    });
+    if (entrySlide) {
+      points = entrySlide.points;
+      entry.wall = entrySlide.wall;
+      entry.t = entrySlide.parameter;
+      tangents[0] = unit(sub(points[1], points[0]));
+    }
   }
-  const tN = unit(sub(points[9], points[8]));
-  const tE = unit(sub(points[1], points[0]));
-  const tangents = [
-    tE,
+  // The outer run is made G2 at every join, from the exact wall to the fillet,
+  // by handle lengths alone: every on-curve stays on the reference and every
+  // handle keeps its direction. The change is the nearest one, spread over
+  // the run. Where E is on the ball, P -> E holds the rib and joins the run,
+  // and P keeps the curvature the wall has there. Where the run does not
+  // settle, the refit stands and the step is reported.
+  {
+    const ownsWall = entry.spans === "wall";
+    const run = [
+      ...(ownsWall ? [entry.wall] : []),
+      points.slice(0, 4),
+      points.slice(3, 7),
+      points.slice(6, 10),
+    ];
+    const solved = harmonizeCubicRun(run, {
+      start: ownsWall ? bulbEndCurvature(wall) : bulbEndCurvature(entry.wall, true),
+      end: built ? bulbEndCurvature(points.slice(9, 13)) : null,
+      radius,
+    });
+    if (solved) {
+      if (ownsWall) entry.wall = solved.shift();
+      points = [
+        ...solved[0],
+        ...solved[1].slice(1),
+        ...solved[2].slice(1),
+        ...points.slice(10),
+      ];
+    }
+  }
+  const errors = [
+    Math.abs(bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))),
+  ];
+  for (const join of [3, 6, ...(built ? [9, 12] : [])])
+    errors.push(
+      Math.abs(
+        bulbEndCurvature(points.slice(join - 3, join + 1), true) -
+          bulbEndCurvature(points.slice(join, join + 4))
+      )
+    );
+  const error = Math.max(...errors) * radius;
+  return {
+    points,
+    error,
+    status: error < 1e-5 ? "matched" : "bounded",
+    wall: entry.wall,
+    keptInner: [points[15]],
+    ball,
+    tangents,
+    fillet: { travel, reach },
+    entryParameter: entry.t,
+    orthogonalEntry: entry.orthogonal,
+    preview,
+  };
+}
+
+// The designer's edits to E, B and C: each on-curve slides along its tangent,
+// and each handle lengthens along its own line. E and its incoming handle stay
+// on the exact wall. Publishes the three tangents.
+function applyBulbEdits(points, edits, tangents, radius) {
+  const directions = [
+    unit(sub(points[1], points[0])),
     unit(sub(points[4], points[3])),
     unit(sub(points[7], points[6])),
-    tN,
   ];
-  const roles = ["entry", "bottom", "side", "neck"];
-  const uneditedNeck = points.slice(8, 11).map((p) => ({ ...p }));
-  for (let k = 0; k < roles.length; k++) {
-    const edit = edits?.[roles[k]];
-    if (
-      !edit ||
-      !["slide", "normal", "turn", "in", "out", "carry"].some((field) => edit[field])
-    )
-      continue;
+  tangents.push(...directions);
+  ["entry", "bottom", "side"].forEach((role, k) => {
+    const edit = edits?.[role];
+    if (!edit || !["slide", "in", "out", "carry"].some((field) => edit[field])) return;
     const i = 3 * k,
-      before = { ...points[i] };
-    let tangent = tangents[k];
-    if (k === 3 && edit.turn) {
-      const angle = clamp(edit.turn, -Math.PI / 2, Math.PI / 2);
-      tangent = {
-        x: tangent.x * Math.cos(angle) - tangent.y * Math.sin(angle),
-        y: tangent.x * Math.sin(angle) + tangent.y * Math.cos(angle),
-      };
-      tangents[k] = tangent;
-    }
+      before = { ...points[i] },
+      tangent = directions[k];
     const slide = k ? clamp(edit.slide ?? 0, -0.15 * radius, 0.15 * radius) : 0;
-    const normal = k === 3 ? clamp(edit.normal ?? 0, -0.15 * radius, 0.15 * radius) : 0;
-    Object.assign(
-      points[i],
-      offset(offset(before, tangent, slide), { x: -tangent.y, y: tangent.x }, normal)
-    );
+    Object.assign(points[i], offset(before, tangent, slide));
     for (const [h, sign, slot] of [
       [i - 1, -1, "in"],
       [i + 1, 1, "out"],
@@ -441,110 +721,75 @@ export function buildFourPointBulb({
           (edit[slot] ?? 0) +
           sign * ((k ? (edit.carry ?? 0) : 0) - slide)
       );
-      if (k === 3 && corner) {
-        const direction = unit(sub(points[h], before));
-        const angle = clamp(edit.turn ?? 0, -Math.PI / 2, Math.PI / 2);
-        points[h] = handle(
-          points[i],
-          {
-            x: direction.x * Math.cos(angle) - direction.y * Math.sin(angle),
-            y: direction.x * Math.sin(angle) + direction.y * Math.cos(angle),
-          },
-          length
-        );
-      } else points[h] = handle(points[i], tangent, sign * length);
+      points[h] = handle(points[i], tangent, sign * length);
     }
-  }
-  const preferred = points.map((p) => ({ ...p }));
-  let neckFit;
-  if (!corner) {
-    neckFit = fitBulbNeck({
-      points,
-      reference: referencePoints.slice(6),
-      wall: entry.wall,
-      radius,
-      nextCurvature: wallTarget,
-      neckOffsets: points.slice(8, 11).map((p, i) => sub(p, uneditedNeck[i])),
-    });
-    points = neckFit.points;
-  }
-  // V-slide acts on the fitted pair. It retains the traveled subcurve and
-  // refits the other span, without introducing a second neck point.
-  const v = clamp(edits?.neck?.vslide ?? 0, -0.995, 0.995);
-  if (v) {
-    points = makeSlideCandidate(
-      { points, isClosed: false },
-      9,
-      v < 0 ? "previous" : "next",
-      v < 0 ? 1 + v : v
-    ).points;
-  }
-  // The fit trades this join against the shape; the last handle settles it.
-  if (wallCurvature !== undefined) {
-    const arrived = arriveWithCurvature(points.slice(9, 13), wallCurvature, radius);
-    if (arrived) points = [...points.slice(0, 9), ...arrived];
-  }
-  const neckWallParameter = projectPointToSegment(
-    { kind: "cubic", points: inner },
-    points[9]
-  ).t;
-  const result = { points, error: 0, status: "bounded" };
-  // E at the extreme if the fit holds there, else V-slid toward the wall's
-  // centre (slideBulbEntryForCurvature).
-  const entrySlide = slideBulbEntryForCurvature({
-    wall: entry.wall,
-    points,
-    radius,
-    sourceWall: wall,
-    sourceArc: first,
-    entryParameter: entry.ballParameter === undefined ? entry.t : 1,
   });
-  if (entrySlide) {
-    points = entrySlide.points;
-    entry.wall = entrySlide.wall;
-    entry.orthogonal = Math.abs(points[1].x - points[0].x) < 1e-8;
-    if (entrySlide.direction === "previous") {
-      entry.t = entrySlide.parameter;
-      entry.ballParameter = undefined;
-    } else if (entrySlide.direction === "next") {
-      entry.ballParameter = entrySlide.parameter;
-    }
-    tangents[0] = unit(sub(points[1], points[0]));
-  }
-  result.points = points;
-  const errors = [
-    Math.abs(bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))),
-  ];
-  for (const join of [3, 6, ...(corner ? [] : [9])]) {
-    errors.push(
-      Math.abs(
-        bulbEndCurvature(points.slice(join - 3, join + 1), true) -
-          bulbEndCurvature(points.slice(join, join + 4))
-      )
-    );
-  }
-  errors.push(Math.abs(bulbEndCurvature(points.slice(9), true) - wallTarget));
-  result.error = Math.max(...errors) * radius;
-  result.status = result.error < 1e-5 ? "matched" : "bounded";
+}
 
-  const neckTangent = unit(sub(points[9], points[8]));
-  return {
-    ...result,
-    points,
-    preferred,
-    neckFitDeparture: neckFit?.departure ?? 0,
-    wall: entry.wall,
-    keptInner: [points[12]],
-    referencePoints,
-    referenceWall: splitCubicAt(inner, neckWallParameter).second,
-    ball,
-    tangents: [...tangents.slice(0, 3), neckTangent],
-    cutParameter: neckWallParameter,
-    referenceReturn: returnArc,
-    referenceEasing: easingCurve,
-    entryParameter: entry.t,
-    entryBallParameter: entry.ballParameter,
-    orthogonalEntry: entry.orthogonal,
-    entrySlide,
+// Signed distance from the inner wall past the corner, positive on the counter
+// side: the side the ball's side apex stands on. The wall is sampled once per
+// bulb, finely enough that the chords stand off the curve by far less than the
+// check's own tolerance, and each point is measured to the nearest chord.
+const WALL_SAMPLES = 256;
+function counterSideOf(inner, cut, reference) {
+  const wall = Array.from({ length: WALL_SAMPLES + 1 }, (_, i) =>
+    cubicPointAt(inner, cut + ((1 - cut) * i) / WALL_SAMPLES)
+  );
+  // The nearest sample out of every eighth, then the chords around it.
+  const STRIDE = 8;
+  const signed = (p) => {
+    let nearest = 0,
+      nearestDistance = Infinity;
+    for (let i = 0; i <= WALL_SAMPLES; i += STRIDE) {
+      const d = vector.distance(p, wall[i]);
+      if (d < nearestDistance) {
+        nearestDistance = d;
+        nearest = i;
+      }
+    }
+    let best = Infinity,
+      side = 0;
+    const from = Math.max(0, nearest - STRIDE),
+      to = Math.min(WALL_SAMPLES, nearest + STRIDE);
+    for (let i = from; i < to; i++) {
+      const a = wall[i],
+        b = wall[i + 1];
+      const dx = b.x - a.x,
+        dy = b.y - a.y;
+      const lengthSquared = dx * dx + dy * dy;
+      const s =
+        lengthSquared > 0
+          ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSquared, 0, 1)
+          : 0;
+      const qx = a.x + s * dx,
+        qy = a.y + s * dy;
+      const d = Math.hypot(p.x - qx, p.y - qy);
+      if (d < best) {
+        best = d;
+        side = dx * (p.y - qy) - dy * (p.x - qx);
+      }
+    }
+    return Math.sign(side) * best;
   };
+  const sign = Math.sign(signed(reference)) || 1;
+  return (p) => sign * signed(p);
+}
+
+// The fillet leaves the ball with the ball's curvature but not with the rate it
+// changes at, so it can graze the ball just after A: 0.06 units at most on the
+// skeletron-test glyphs. A quarter of a unit is under what the grid can draw.
+const BALL_TOLERANCE = 0.25;
+
+// The fillet fills the corner: no point of it lies inside the ball, and none
+// lies on the stroke's side of the wall. The ball, the cheaper test, goes first.
+function fillsCorner(fillet, ball, counter) {
+  const samples = Array.from({ length: 31 }, (_, i) =>
+    cubicPointAt(fillet, (i + 1) / 32)
+  );
+  for (const p of samples) {
+    const { u, v } = ball.localOf(p);
+    if ((1 - Math.hypot(u, v)) * ball.radius > BALL_TOLERANCE) return false;
+  }
+  // The stroke side at every other sample: the fillet is one smooth curve.
+  return samples.every((p, i) => i % 2 === 1 || counter(p) >= -0.01);
 }

@@ -1,7 +1,58 @@
 // This is a tiny subset of a few things that Lit does, except it uses
 // object notation to construct dom elements instead of HTML.
 
-import { consolidateCalls } from "./utils.ts";
+// One parsed sheet per stylesheet file and per block of style text, shared by
+// every shadow root that uses it. A shadow root adopts the sheet; nothing is
+// inserted, parsed or matched again per element. A file the page already
+// loaded is copied from the page's own sheet, so it applies on the first
+// frame; otherwise it is fetched once and fills in when it arrives.
+const sharedSheets = new Map();
+
+export function sharedStyleSheet(href) {
+  let sheet = sharedSheets.get(href);
+  if (sheet) {
+    return sheet;
+  }
+  sheet = new CSSStyleSheet();
+  sharedSheets.set(href, sheet);
+  const [base] = href.split("/").pop().split(".");
+  const loaded = [...document.styleSheets].find((pageSheet) => {
+    const name = pageSheet.href?.split("/").pop() ?? "";
+    return name === `${base}.css` || (name.startsWith(`${base}.`) && name.endsWith(".css"));
+  });
+  let rules = null;
+  try {
+    rules = loaded ? [...loaded.cssRules].map((rule) => rule.cssText).join("\n") : null;
+  } catch (error) {
+    // Not readable (still loading, or another origin): fetched below.
+  }
+  if (rules != null) {
+    sheet.replaceSync(rules);
+  } else {
+    fetch(href)
+      .then((response) => response.text())
+      .then((text) => sheet.replace(text));
+  }
+  return sheet;
+}
+
+const textSheets = new Map();
+
+function styleSheetFromText(cssText) {
+  let sheet = textSheets.get(cssText);
+  if (!sheet) {
+    sheet = new CSSStyleSheet();
+    sheet.replaceSync(cssText);
+    textSheets.set(cssText, sheet);
+  }
+  return sheet;
+}
+
+function adoptStyleSheet(root, sheet) {
+  if (!root.adoptedStyleSheets.includes(sheet)) {
+    root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+  }
+}
 
 export class SimpleElement extends HTMLElement {
   constructor() {
@@ -14,6 +65,7 @@ export class SimpleElement extends HTMLElement {
     this._attachStyles();
   }
 
+  // Safe to call more than once: a sheet already adopted is not added again.
   _attachStyles() {
     this._appendStyleSheetLink("/css/shared.css");
     if (this.constructor.styles) {
@@ -22,11 +74,11 @@ export class SimpleElement extends HTMLElement {
   }
 
   _appendStyle(cssText) {
-    addStyleSheet(cssText, this.shadowRoot);
+    adoptStyleSheet(this.shadowRoot, styleSheetFromText(cssText));
   }
 
   _appendStyleSheetLink(href) {
-    addStyleSheetLink(href, this.shadowRoot);
+    adoptStyleSheet(this.shadowRoot, sharedStyleSheet(href));
   }
 
   appendStyle(cssText) {
@@ -36,24 +88,35 @@ export class SimpleElement extends HTMLElement {
 
 export class UnlitElement extends SimpleElement {
   _postInit() {
-    this._additionalStyles = [];
+    this._attachStyles();
     this._setupProperties();
-    this.requestUpdate = consolidateCalls(() => this._render());
+    // A change marks the element for one redraw on the next turn. A redraw
+    // that happens first (the element joining the page) clears the mark, so
+    // properties set before the element is placed don't draw it twice.
+    this._needsRender = true;
+    this._renderScheduled = false;
+    this.requestUpdate = () => {
+      this._needsRender = true;
+      if (this._renderScheduled) {
+        return;
+      }
+      this._renderScheduled = true;
+      setTimeout(() => {
+        this._renderScheduled = false;
+        if (this._needsRender) {
+          this._render();
+        }
+      }, 0);
+    };
   }
 
-  _attachStyles() {
-    super._attachStyles();
-    for (const style of this._additionalStyles) {
-      this._appendStyle(style);
-    }
-  }
-
-  appendStyle(cssText) {
-    this._additionalStyles.push(cssText);
-  }
-
+  // Joining the page draws the element only if it has never drawn or has a
+  // change waiting; an element moved from one parent to another keeps what
+  // it drew.
   connectedCallback() {
-    this._render();
+    if (this._needsRender) {
+      this._render();
+    }
   }
 
   _setupProperties() {
@@ -96,15 +159,14 @@ export class UnlitElement extends SimpleElement {
   }
 
   async _render() {
-    this.shadowRoot.innerHTML = "";
-    this._attachStyles();
+    this._needsRender = false;
+    this.shadowRoot.replaceChildren();
 
     let elements = await this.render();
     // Cleared again after the await. Two renders can overlap -- a connect and
     // an update, or an element moved between two parents -- and both cleared
     // before either appended, so the element drew its contents twice.
-    this.shadowRoot.innerHTML = "";
-    this._attachStyles();
+    this.shadowRoot.replaceChildren();
     if (!elements) {
       return;
     }
@@ -279,4 +341,97 @@ export function naturalCellWidth(cell) {
   const width = probe.getBoundingClientRect().width;
   probe.remove();
   return width;
+}
+
+// Marks `element` with the own-line attribute while what it sits in has
+// wrapped to a line of its own under a heading: it is then lower in its row
+// than half its own height. What it sits in is its outermost control group
+// (shared.css), or the element itself outside one; the row is that one's
+// parent. Returns the observer, for the caller to disconnect.
+export function watchOwnLine(element) {
+  let group = element.closest(".control-group");
+  while (group?.parentElement?.closest(".control-group")) {
+    group = group.parentElement.closest(".control-group");
+  }
+  group = group || element;
+  const row = group.parentElement;
+  if (!row) {
+    return null;
+  }
+  const update = () => {
+    const groupBox = group.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    element.toggleAttribute(
+      "own-line",
+      groupBox.height > 0 && groupBox.top - rowBox.top > groupBox.height / 2
+    );
+  };
+  const observer = new ResizeObserver(update);
+  observer.observe(row);
+  update();
+  return observer;
+}
+
+// A popover its button opens and closes. It is a manual popover: an auto
+// popover closes itself on the press on its button, and the button's click
+// then opens it again, so the button could never close it. Here a press on
+// the button, or in the popover, is the button's own; a press anywhere else
+// closes it, except in a menu opened from it, and so does Escape. `owner` is
+// the element whose presses are the button's: the button, or a component
+// holding both the button and the popover.
+export class ButtonPopover {
+  constructor(popover, owner) {
+    this.popover = popover;
+    this.owner = owner;
+    popover.popover = "manual";
+  }
+
+  get isOpen() {
+    return this.popover.matches(":popover-open");
+  }
+
+  toggle() {
+    if (this.isOpen) {
+      this.close();
+    } else {
+      this.open();
+    }
+  }
+
+  open() {
+    if (this.isOpen) {
+      return;
+    }
+    this.popover.showPopover();
+    const onPointerDown = (event) => {
+      const path = event.composedPath();
+      if (
+        path.includes(this.owner) ||
+        path.includes(this.popover) ||
+        path.some((node) => node.tagName === "MENU-PANEL")
+      ) {
+        return;
+      }
+      this.close();
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        this.close();
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    this._stopWatching = () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }
+
+  close() {
+    this._stopWatching?.();
+    this._stopWatching = null;
+    if (this.isOpen) {
+      this.popover.hidePopover();
+    }
+  }
 }

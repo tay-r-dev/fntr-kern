@@ -5,12 +5,17 @@ import {
   drawLabel,
   labelMetrics,
 } from "@fontra/core/canvas-labels.js";
-import { DIMENSION_LABEL_GRIP, markerGeometry } from "@fontra/core/marker-measure.js";
+import {
+  DIMENSION_LABEL_GRIP,
+  markerGeometry,
+  rayAimHandlePoint,
+} from "@fontra/core/marker-measure.js";
 import { markerKind } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { parseSelection, round } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
-import { getVisibleMarkers } from "./marker-editing.js";
+import { drawGizmo } from "./gizmo.js";
+import { getVisibleMarkers, markerAimGizmoKey } from "./marker-editing.js";
 import {
   fillCircle,
   glyphSelector,
@@ -188,6 +193,16 @@ function drawMarkerRays(context, positionedGlyph, parameters, model, controller)
         )
       : anchorPoint;
     drawReadout(context, parameters, midpoint, geometry, marker);
+
+    // The aim handle, past the arrowhead: a curvature gizmo in the ray's colour,
+    // shown once the arrowhead has been rested on.
+    const aimPoint = rayAimHandlePoint(geometry, controller.onePixelUnit);
+    if (aimPoint) {
+      drawGizmo(context, model.gizmoReveal, markerAimGizmoKey(marker.id), aimPoint, {
+        ...parameters,
+        gizmoColor: color,
+      });
+    }
   }
 }
 
@@ -354,6 +369,8 @@ registerVisualizationLayerDefinition({
     gripRadius: 4,
     hoverRingGap: 3,
     arrowSize: 7,
+    gizmoSize: 7,
+    pixel: 1,
     ...LABEL_SCREEN_PARAMETERS,
   },
   ...MARKER_COLORS,

@@ -19,7 +19,7 @@ export class ShapeTool {
 }
 
 export class ShapeToolRect extends BaseTool {
-  iconPath = "/images/tool-panel-add-primitive-rectangle.svg";
+  iconPath = "tool-rectangle";
   identifier = "shape-tool-rectangle";
   shapeNames = ["rectangle", "square"];
 
@@ -223,7 +223,7 @@ export function getUnpackedContoursRect(x, y, width, height, contourType = "cubi
 }
 
 export class ShapeToolEllipse extends ShapeToolRect {
-  iconPath = "/images/tool-panel-add-primitive-circle.svg";
+  iconPath = "tool-circle";
   identifier = "shape-tool-ellipse";
   shapeNames = ["ellipse", "circle"];
 

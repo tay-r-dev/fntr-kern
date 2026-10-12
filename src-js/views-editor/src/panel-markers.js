@@ -9,7 +9,10 @@ import {
 } from "@fontra/core/marker-model.js";
 import { getSkeletonData } from "@fontra/core/skeleton-model.js";
 import { round, throttleCalls } from "@fontra/core/utils.ts";
-import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
+import {
+  disarmOnClickAway,
+  showArmedTooltip,
+} from "@fontra/web-components/armed-tooltip.js";
 import {
   actionsCell,
   additionalText,
@@ -88,7 +91,7 @@ const ACTIONS_COLUMN = { label: "", minWidth: 50 };
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";
-  iconPath = "/tabler-icons/ruler-measure.svg";
+  iconPath = "ruler-measure";
   tabLabel = "measure";
 
   constructor(editorController) {
@@ -152,7 +155,7 @@ export default class MarkersPanel extends Panel {
     persistAccordionOpenState(this.accordion, ACCORDION_OPEN_STORAGE_PREFIX);
     this.contentElement.appendChild(
       html.div({ class: "card-column panel-section--flex" }, [
-        html.div({ class: "card card--headed" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading" }, [
             translate("sidebar.markers.measurements"),
           ]),
@@ -210,12 +213,12 @@ export default class MarkersPanel extends Panel {
   // when empty, and the table.
   _buildMarkerSection(kind, labelKey, columns) {
     const eye = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/eye.svg",
+      "src": "eye",
       "data-tooltipposition": "left",
     });
     eye.onclick = () => this.toggleSectionVisible(kind);
     const trash = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/trash.svg",
+      "src": "delete",
       "data-tooltip": translate("sidebar.markers.erase-section"),
       "data-tooltipposition": "left",
     });
@@ -344,9 +347,7 @@ export default class MarkersPanel extends Panel {
     // The eye says what pressing it does: hide while anything shows, show once
     // everything is hidden.
     const allHidden = markers.length > 0 && markers.every((marker) => marker.hidden);
-    section.eye.src = allHidden
-      ? "/tabler-icons/eye-closed.svg"
-      : "/tabler-icons/eye.svg";
+    section.eye.src = allHidden ? "eye-closed" : "eye";
     section.eye.setAttribute(
       "data-tooltip",
       translate(
@@ -429,7 +430,7 @@ export default class MarkersPanel extends Panel {
         const visible = group.visible !== false;
         // The eye is an on-state icon button: lit while the group shows.
         const eye = rowAction({
-          src: visible ? "/tabler-icons/eye.svg" : "/tabler-icons/eye-closed.svg",
+          src: visible ? "eye" : "eye-closed",
           tooltip: translate(
             visible ? "sidebar.markers.hide-group" : "sidebar.markers.show-group"
           ),
@@ -462,7 +463,7 @@ export default class MarkersPanel extends Panel {
           actionsCell([
             eye,
             rowAction({
-              src: "/tabler-icons/trash.svg",
+              src: "delete",
               tooltip: translate("sidebar.markers.delete-group"),
               tooltipPosition: "left",
               onClick: () => this.deleteGroup(group.id),
@@ -532,7 +533,7 @@ export default class MarkersPanel extends Panel {
       ),
       actionsCell([
         rowAction({
-          src: marker.hidden ? "/tabler-icons/eye-closed.svg" : "/tabler-icons/eye.svg",
+          src: marker.hidden ? "eye-closed" : "eye",
           tooltip: translate(
             marker.hidden
               ? "sidebar.markers.show-marker"
@@ -544,7 +545,7 @@ export default class MarkersPanel extends Panel {
           onClick: () => this.setMarkerVisible(marker.id, !!marker.hidden),
         }),
         rowAction({
-          src: "/tabler-icons/trash.svg",
+          src: "delete",
           tooltip: translate("sidebar.markers.delete-marker"),
           tooltipPosition: "left",
           onClick: () => this.deleteMarker(marker.id),
@@ -570,8 +571,8 @@ export default class MarkersPanel extends Panel {
 
   // Erasing a section cannot be seen coming, so it takes two presses. The first press
   // arms and shows a tooltip; the second, within the lapse, erases that section only.
-  // The arming lapses on its own, so a stray press never leaves a live delete sitting
-  // under the cursor.
+  // The arming lapses on its own, or with a press anywhere else, so a stray press never
+  // leaves a live delete sitting under the cursor.
   async pressEraseSection(kind, anchor) {
     if (this._eraseArmed === kind) {
       this._disarmErase();
@@ -585,6 +586,7 @@ export default class MarkersPanel extends Panel {
       translate("sidebar.markers.erase-section-armed")
     );
     this._eraseTimer = setTimeout(() => this._disarmErase(), ERASE_ARMED_MILLISECONDS);
+    disarmOnClickAway(anchor, () => this._disarmErase());
   }
 
   _disarmErase() {

@@ -510,7 +510,6 @@ function readSnapParameter(path) {
 // Figma 379:22417's panel, card and field colours, light and dark.
 const DESIGNSPACE_PANEL_COLORS = {
   "ds-card-background-color": ["#ffffff", "#2a2a2a"],
-  "ds-heading-color": ["#848484", "#a0a0a0"],
   "ds-label-dark-color": ["#303030", "#e0e0e0"],
   "ds-popover-border-color": ["rgba(0, 0, 0, 0.05)", "rgba(255, 255, 255, 0.1)"],
   // Read by ui-accordion.js's accordion switch, through the shadow boundary.
@@ -552,7 +551,7 @@ export function makeGizmoHandlesControl(settings) {
 
 export default class DesignspaceNavigationPanel extends Panel {
   identifier = "designspace-navigation";
-  iconPath = "/images/sliders.svg";
+  iconPath = "sliders";
   tabLabel = "workspace";
 
   constructor(editorController) {
@@ -569,23 +568,6 @@ export default class DesignspaceNavigationPanel extends Panel {
     this._appendStyle(`
       ${themeColorCSS(DESIGNSPACE_PANEL_COLORS)}
 
-      .ds-card--phrase {
-        gap: 6px;
-      }
-
-      .ds-heading--spaced {
-        padding: 4px 0 12px;
-      }
-
-      /* ui/heading/h3 */
-      .ds-subheading {
-        flex: 1 1 auto;
-        font: var(--ui-text-heading-h3);
-        letter-spacing: var(--ui-tracking);
-        text-transform: uppercase;
-        color: var(--ds-heading-color);
-      }
-
       .ds-label--dark {
         color: var(--ds-label-dark-color);
         line-height: 14px;
@@ -595,14 +577,6 @@ export default class DesignspaceNavigationPanel extends Panel {
         display: flex;
         flex-direction: column;
         gap: 8px;
-      }
-
-      .ds-stack--sections {
-        gap: 16px;
-      }
-
-      .ds-stack--grid {
-        gap: 12px;
       }
 
       .ds-row {
@@ -746,7 +720,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       options: ["left", "center", "right"].map((value) => ({
         value,
         label: `Align ${value}`,
-        icon: `/images/align${value}.svg`,
+        icon: `text-align-${value}`,
       })),
       value: sceneSettingsController.model.align,
     });
@@ -758,7 +732,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       align.value = event.newValue;
     });
 
-    return html.div({ class: "card ds-card--phrase" }, [
+    return html.div({ class: "card" }, [
       html.div({ class: "card-heading-row" }, [
         html.div({ class: "card-heading" }, ["phrase"]),
         align,
@@ -905,87 +879,67 @@ export default class DesignspaceNavigationPanel extends Panel {
       });
     const settingsButton = html.createDomElement("icon-button", {
       "id": "measurements-settings-button",
-      "src": "/tabler-icons/settings.svg",
+      "src": "settings",
       "data-tooltip": "Point label settings",
       "data-tooltipposition": "top",
     });
-    // The popover closes itself on any press outside it, this button's too,
-    // before the click lands; so the click reads whether it was open at the press.
-    let wasOpen = false;
-    settingsButton.addEventListener("pointerdown", () => {
-      wasOpen = !!this._pointLabelsPopover?.matches(":popover-open");
-    });
-    settingsButton.onclick = () => {
-      if (!wasOpen) {
-        this._showPointLabelsPopover(settingsButton);
-      }
-    };
+    settingsButton.onclick = () => this._togglePointLabelsPopover(settingsButton);
 
     return html.div({ class: "card" }, [
-      html.div({ class: "card-heading ds-heading--spaced" }, ["display"]),
-      html.div({ class: "ds-stack ds-stack--sections" }, [
-        html.div({ id: "coarse-grid-content", class: "ds-stack" }, [
-          html.div({ class: "control-row" }, [
-            html.div({ class: "ds-subheading" }, ["grid"]),
-            presets.element,
+      html.div({ class: "card-heading" }, ["display"]),
+      html.div({ id: "coarse-grid-content", class: "card-section" }, [
+        html.div({ class: "control-row" }, [
+          html.div({ class: "card-subheading" }, ["grid"]),
+          presets.element,
+        ]),
+        html.div({ class: "ds-stack" }, [
+          // The grid itself on and off, then its spacing.
+          html.div({ class: "ds-row" }, [
+            segmented("coarse-grid-toggle"),
+            html.div({ class: "ds-grow" }, [
+              scrubField("coarse-grid-spacing-input", "Spacing", true),
+            ]),
           ]),
-          html.div({ class: "ds-stack ds-stack--grid" }, [
-            // The grid itself on and off, then its spacing.
+          // Figma 4110:10611: the secondary grid.
+          html.div({ id: "secondary-grid-field", class: "ds-field" }, [
+            html.div({ class: "section-label" }, ["Secondary grid"]),
+            html.createDomElement("segmented-control", {
+              id: "secondary-grid-multiplier",
+              options: [
+                { value: "0", label: "off" },
+                ...SECONDARY_GRID_MULTIPLIERS.map((multiplier) => ({
+                  value: String(multiplier),
+                  label: String(multiplier),
+                })),
+              ],
+              value: "0",
+            }),
+          ]),
+          html.div({ class: "ds-field" }, [
+            html.div({ class: "section-label" }, ["Custom spacing"]),
             html.div({ class: "ds-row" }, [
-              segmented("coarse-grid-toggle"),
-              html.div({ class: "ds-grow" }, [
-                scrubField("coarse-grid-spacing-input", "Spacing", true),
-              ]),
-            ]),
-            // Figma 4110:10611: the secondary grid.
-            html.div({ id: "secondary-grid-field", class: "ds-field" }, [
-              html.div({ class: "section-label" }, ["Secondary grid"]),
-              html.createDomElement("segmented-control", {
-                id: "secondary-grid-multiplier",
-                options: [
-                  { value: "0", label: "off" },
-                  ...SECONDARY_GRID_MULTIPLIERS.map((multiplier) => ({
-                    value: String(multiplier),
-                    label: String(multiplier),
-                  })),
-                ],
-                value: "0",
-              }),
-            ]),
-            html.div({ class: "ds-field" }, [
-              html.div({ class: "section-label" }, ["Custom spacing"]),
-              html.div({ class: "ds-row" }, [
-                segmented("coarse-grid-custom-toggle"),
-                html.div({ id: "coarse-grid-custom-fields", class: "ds-row ds-grow" }, [
-                  scrubField("coarse-grid-base-input", "Base", false),
-                  scrubField("coarse-grid-increment-input", "Increment", false),
-                ]),
+              segmented("coarse-grid-custom-toggle"),
+              html.div({ id: "coarse-grid-custom-fields", class: "ds-row ds-grow" }, [
+                scrubField("coarse-grid-base-input", "Base", false),
+                scrubField("coarse-grid-increment-input", "Increment", false),
               ]),
             ]),
           ]),
         ]),
-        html.div({ class: "ds-stack" }, [
-          html.div({ class: "ds-subheading" }, ["measurement"]),
-          html.div({ class: "ds-row ds-row--measurement" }, [
-            html.div({ class: "ds-field" }, [
-              html.div({ class: "section-label" }, ["Speedpunk"]),
-              segmented("measurements-speedpunk-toggle"),
-            ]),
-            html.div({ class: "ds-field" }, [
-              html.div({ class: "section-label" }, ["Point labels"]),
-              html.div({ class: "ds-row ds-row--labels" }, [
-                latch(
-                  "measurements-basic-latch",
-                  "/images/measure-distance.svg",
-                  "Point labels"
-                ),
-                latch(
-                  "measurements-skeleton-latch",
-                  "/images/skeleton-pen.svg",
-                  "Skeleton labels"
-                ),
-                settingsButton,
-              ]),
+      ]),
+      html.div({ class: "card-section" }, [
+        html.div({ class: "card-subheading" }, ["measurement"]),
+        html.div({ class: "ds-row ds-row--measurement" }, [
+          html.div({ class: "ds-field" }, [
+            html.div({ class: "section-label" }, ["Speedpunk"]),
+            segmented("measurements-speedpunk-toggle"),
+          ]),
+          html.div({ class: "ds-field" }, [
+            html.div({ class: "section-label" }, ["Point labels"]),
+            html.div({ class: "ds-row ds-row--labels" }, [
+              latch("measurements-basic-latch", "measure-distance", "Point labels"),
+              latch("measurements-skeleton-latch", "skeleton-pen", "Skeleton labels"),
+              settingsButton,
             ]),
           ]),
         ]),
@@ -1027,7 +981,8 @@ export default class DesignspaceNavigationPanel extends Panel {
 
   // Figma 381:23113: which values each kind of point label shows, in two
   // columns. A native popover, so a click elsewhere or Escape closes it.
-  _showPointLabelsPopover(anchor) {
+  // Opened and closed by its button (html-utils.js's ButtonPopover).
+  _togglePointLabelsPopover(anchor) {
     if (!this._pointLabelsPopover) {
       const column = (title, keys) => {
         const element = html.div({ class: "ds-popover-column" }, [
@@ -1047,7 +1002,7 @@ export default class DesignspaceNavigationPanel extends Panel {
         ]);
         return element;
       };
-      this._pointLabelsPopover = html.div({ class: "ds-popover", popover: "auto" }, [
+      this._pointLabelsPopover = html.div({ class: "ds-popover" }, [
         column("Point labels", {
           Distance: "showLabelsDistance",
           Tension: "showLabelsTension",
@@ -1062,10 +1017,11 @@ export default class DesignspaceNavigationPanel extends Panel {
       this.shadowRoot.appendChild(this._pointLabelsPopover);
     }
     const popover = this._pointLabelsPopover;
+    this._pointLabelsButtonPopover ??= new html.ButtonPopover(popover, anchor);
     const rect = anchor.getBoundingClientRect();
     popover.style.left = `${rect.left}px`;
     popover.style.top = `${rect.bottom + 4}px`;
-    popover.showPopover();
+    this._pointLabelsButtonPopover.toggle();
   }
 
   initActions() {
@@ -1167,7 +1123,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           open: true,
           content: html.div(
             {
-              style: "display: grid; grid-template-rows: 1fr auto auto; height: 100%;",
+              style:
+                "display: grid; grid-template-rows: 1fr auto auto; gap: 0; height: 100%;",
             },
             [
               // table/select (Figma 421:12696) with the add and delete keys
@@ -1200,7 +1157,8 @@ export default class DesignspaceNavigationPanel extends Panel {
           open: true,
           content: html.div(
             {
-              style: "display: grid; grid-template-rows: 1fr auto; height: 100%;",
+              style:
+                "display: grid; grid-template-rows: 1fr auto; gap: 0; height: 100%;",
             },
             [
               selectLookList("layers-list", "data"),
@@ -1485,7 +1443,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     return html.div({ class: "panel" }, [
       html.div({ class: "card-column panel-section--flex" }, [
         this._buildPhraseSection(),
-        html.div({ class: "card card--headed" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading" }, ["font"]),
           this.accordion,
         ]),
@@ -2547,7 +2505,7 @@ export default class DesignspaceNavigationPanel extends Panel {
     this.sourceLayersList.columnDescriptions = [
       { title: "layer name", key: "shortName", width: "151px" },
       {
-        title: makeClickableIconHeader("/tabler-icons/eye.svg", (event) => {
+        title: makeClickableIconHeader("eye", (event) => {
           const addLayers = !this.sourceLayersList.items.some((item) => item.visible);
           const newBackgroundLayers = { ...this.sceneSettings.backgroundLayers };
           for (const item of this.sourceLayersList.items) {
@@ -2560,10 +2518,7 @@ export default class DesignspaceNavigationPanel extends Panel {
           this.sceneSettings.backgroundLayers = newBackgroundLayers;
         }),
         key: "visible",
-        cellFactory: makeIconCellFactory([
-          "/tabler-icons/eye-closed.svg",
-          "/tabler-icons/eye.svg",
-        ]),
+        cellFactory: makeIconCellFactory(["eye-closed", "eye"]),
         width: "16px",
       },
     ];
@@ -2649,10 +2604,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       {
         title: " ",
         key: "active",
-        cellFactory: makeIconCellFactory(
-          ["/tabler-icons/circle-dotted.svg", "/tabler-icons/circle-dot.svg"],
-          true
-        ),
+        cellFactory: makeIconCellFactory(["circle-dotted", "circle-dot"], true),
         width: "16px",
       },
       {
@@ -2667,39 +2619,32 @@ export default class DesignspaceNavigationPanel extends Panel {
         width: "124px",
       },
       {
-        title: makeClickableIconHeader("/tabler-icons/eye.svg", (event) =>
+        title: makeClickableIconHeader("eye", (event) =>
           this.onVisibilityHeaderClick(event)
         ),
         key: "visible",
-        cellFactory: makeIconCellFactory([
-          "/tabler-icons/eye-closed.svg",
-          "/tabler-icons/eye.svg",
-        ]),
+        cellFactory: makeIconCellFactory(["eye-closed", "eye"]),
         width: "16px",
       },
       {
-        title: makeClickableIconHeader("/tabler-icons/pencil.svg", (event) =>
+        title: makeClickableIconHeader("pencil", (event) =>
           this.onEditHeaderClick(event)
         ),
         key: "editing",
-        cellFactory: makeIconCellFactory(
-          ["", "/tabler-icons/pencil.svg"],
-          false,
-          (item, key) => {
-            const selectedItem = this.sourcesList.getSelectedItem();
-            const discreteLocationKey =
-              selectedItem?.interpolationStatus?.discreteLocationKey;
-            const newValue =
-              item === selectedItem ||
-              (!selectedItem ||
-              item?.interpolationStatus?.error ||
-              selectedItem?.interpolationStatus?.error ||
-              item?.interpolationStatus?.discreteLocationKey !== discreteLocationKey
-                ? false
-                : !item[key]);
-            return { newValue, selectItem: !selectedItem };
-          }
-        ),
+        cellFactory: makeIconCellFactory(["", "pencil"], false, (item, key) => {
+          const selectedItem = this.sourcesList.getSelectedItem();
+          const discreteLocationKey =
+            selectedItem?.interpolationStatus?.discreteLocationKey;
+          const newValue =
+            item === selectedItem ||
+            (!selectedItem ||
+            item?.interpolationStatus?.error ||
+            selectedItem?.interpolationStatus?.error ||
+            item?.interpolationStatus?.discreteLocationKey !== discreteLocationKey
+              ? false
+              : !item[key]);
+          return { newValue, selectItem: !selectedItem };
+        }),
         width: "16px",
       },
     ];
@@ -4153,7 +4098,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       infoElement.appendChild(
         html.createDomElement("inline-svg", {
           class: "interpolation-error-icon",
-          src: `/tabler-icons/${icon}.svg`,
+          src: icon,
         })
       );
       infoElement.append(msg);
@@ -4235,9 +4180,7 @@ function interpolationErrorCell(item, colDesc) {
   const value = item[colDesc.key];
   return value?.error
     ? html.createDomElement("inline-svg", {
-        src: value.isModelError
-          ? "/tabler-icons/alert-circle.svg"
-          : "/tabler-icons/bug.svg",
+        src: value.isModelError ? "alert-circle" : "bug",
         style: "width: 1.2em; height: 1.2em; color: var(--fontra-light-red-color);",
         onclick: (event) => {
           event.stopImmediatePropagation();
@@ -4251,7 +4194,7 @@ function interpolationErrorCell(item, colDesc) {
 }
 
 const interpolationContributionIconSources = [...range(1, 6)].map(
-  (index) => `/tabler-icons/antenna-bars-${index}.svg`
+  (index) => `antenna-bars-${index}`
 );
 
 function interpolationContributionCell(item, colDesc) {

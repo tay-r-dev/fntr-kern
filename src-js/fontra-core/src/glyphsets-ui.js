@@ -6,6 +6,7 @@ import {
 } from "@fontra/web-components/data-table.js";
 import { IconButton } from "@fontra/web-components/icon-button.js"; // required for "icon-button"
 import "@fontra/web-components/text-button.js";
+import "@fontra/web-components/labeled-toggle.js";
 import { dialogSetup, message } from "@fontra/web-components/modal-dialog.js";
 import * as html from "./html-utils.js";
 import { translate } from "./localization.js";
@@ -32,6 +33,7 @@ export class GlyphSetsUIController {
       copyToLabel,
       otherCollectionKey,
       accordionId,
+      createdOnlyKey,
     } = options;
 
     this.settingsController = settingsController;
@@ -41,6 +43,7 @@ export class GlyphSetsUIController {
     this.copyToLabel = copyToLabel;
     this.otherCollectionKey = otherCollectionKey;
     this.accordionId = accordionId;
+    this.createdOnlyKey = createdOnlyKey;
 
     this.addGlyphSetToolTip = addGlyphSetToolTip;
     this.glyphSetErrorButtons = {};
@@ -74,9 +77,7 @@ export class GlyphSetsUIController {
             continue;
           }
 
-          errorButton.src = isLoading
-            ? "/tabler-icons/loader-2.svg"
-            : "/tabler-icons/alert-triangle.svg";
+          errorButton.src = isLoading ? "loader-2" : "alert-triangle";
 
           errorButton.classList.toggle(
             "glyphset-error",
@@ -192,7 +193,21 @@ export class GlyphSetsUIController {
       indeterminate: shownCount > 0 && shownCount < glyphSets.length,
     });
 
+    // Above the table: show only the glyphs the font has.
+    const createdOnly = this.createdOnlyKey
+      ? html.createDomElement("labeled-toggle", {
+          label: translate("glyph-organizing.created-only"),
+          onchange: (event) => {
+            this.settings[this.createdOnlyKey] = event.target.checked;
+          },
+        })
+      : null;
+    if (createdOnly) {
+      createdOnly.checked = !!this.settings[this.createdOnlyKey];
+    }
+
     return html.div({ class: "glyph-set-container" }, [
+      ...(createdOnly ? [createdOnly] : []),
       table,
       html.createDomElement("text-button", {
         "label": "add",
@@ -225,22 +240,22 @@ export class GlyphSetsUIController {
     return [
       this.makeGlyphSetErrorButton(glyphSet),
       rowAction({
-        src: "/tabler-icons/pencil.svg",
+        src: "pencil",
         tooltip: translate("action-topics.menu.edit"),
         onClick: (event) => this.editGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/arrow-big-right.svg",
+        src: "arrow-big-right",
         tooltip: translate("glyph-organizing.glyph-set.copy-to", this.copyToLabel),
         onClick: (event) => this.copyGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/refresh.svg",
+        src: "refresh",
         tooltip: translate("glyph-organizing.glyph-set.reload"),
         onClick: (event) => this.reloadGlyphSet(event, glyphSet),
       }),
       rowAction({
-        src: "/tabler-icons/trash.svg",
+        src: "delete",
         tooltip: translate("action.delete"),
         onClick: (event) => this.deleteGlyphSet(event, glyphSet),
       }),
@@ -249,7 +264,7 @@ export class GlyphSetsUIController {
 
   makeGlyphSetErrorButton(glyphSet) {
     const errorButton = rowAction({
-      src: "/tabler-icons/alert-triangle.svg",
+      src: "alert-triangle",
       reveal: "always",
       className: "glyphset-error-button",
       onClick: () => {
@@ -631,6 +646,7 @@ export function getGlyphSetsUIControllers(settingsController, accordionId) {
       copyToLabel: translate("glyph-organizing.my-glyph-sets"),
       otherCollectionKey: "myGlyphSets",
       accordionId,
+      createdOnlyKey: "createdGlyphsOnly",
     }),
     new GlyphSetsUIController(settingsController, {
       label: translate("glyph-organizing.my-glyph-sets"),

@@ -7,17 +7,11 @@ import Panel from "./panel.js";
 
 export default class GlyphSearchPanel extends Panel {
   identifier = "glyph-search";
-  iconPath = "/images/magnifyingglass.svg";
+  iconPath = "search";
   tabLabel = "search";
 
   // GLYPH SEARCH (Figma 4098:8012): the field, the glyph table and the glyph
   // sets switches in one card.
-  static styles = `
-    .glyph-search-card {
-      gap: 6px;
-    }
-  `;
-
   constructor(editorController) {
     super(editorController);
     this.glyphSearch = this.contentElement.querySelector("#glyph-search-list");
@@ -107,7 +101,7 @@ export default class GlyphSearchPanel extends Panel {
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section--flex card-column" }, [
-        html.div({ class: "card card--headed glyph-search-card" }, [
+        html.div({ class: "card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["glyph search"]),
           ]),

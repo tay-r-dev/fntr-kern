@@ -156,6 +156,7 @@ import {
   tableCell,
   tableRow,
 } from "@fontra/web-components/data-table.js"; // ticket 04: the shared table
+import { disarmOnClickAway } from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/input-field-large.js";
@@ -796,7 +797,7 @@ export class KerningViewController extends ViewController {
     // The design's "load file" icon button beside the dropdown.
     const presetAddButton = html.createDomElement("icon-button", {
       "id": "kerning-preset-add-button",
-      "src": "/tabler-icons/notes.svg",
+      "src": "notes",
       "data-tooltip": "Load a presets file",
       "data-tooltipposition": "bottom",
     });
@@ -855,7 +856,7 @@ export class KerningViewController extends ViewController {
       options: ["left", "center", "right"].map((value) => ({
         value,
         label: `Align ${value}`,
-        icon: `/images/align${value}.svg`,
+        icon: `text-align-${value}`,
       })),
       value: this.sceneSettings.align,
     });
@@ -942,7 +943,7 @@ export class KerningViewController extends ViewController {
     });
     const parametersButton = html.createDomElement("icon-button", {
       "id": "kerning-parameters-button",
-      "src": "/tabler-icons/arrows-horizontal.svg",
+      "src": "arrows-horizontal",
       "data-tooltip": "Parameters",
       "data-tooltipposition": "bottom",
     });
@@ -1295,7 +1296,7 @@ export class KerningViewController extends ViewController {
 
     const updateButton = () => {
       const enabled = this.suggestionPreviewSettings.model.enabled;
-      button.src = enabled ? "/tabler-icons/eye.svg" : "/tabler-icons/eye-closed.svg";
+      button.src = enabled ? "eye" : "eye-closed";
       button.setAttribute(
         "data-tooltip",
         `${enabled ? "Hide" : "Show"} suggestion preview (P)`
@@ -1412,7 +1413,7 @@ export class KerningViewController extends ViewController {
     // The hint (Figma 4128:2562): a button/icon with icon/s/question.
     const hint = html.createDomElement("icon-button", {
       "id": "kerning-stale-hint",
-      "src": "/images/question.svg",
+      "src": "help",
       "data-tooltip":
         "Stale glyphs changed shape since the last run and need re-running. New glyphs were never measured. A glyph whose spacing alone changed only needs its spacing recalculated.",
       "data-tooltipposition": "left",
@@ -4601,7 +4602,7 @@ export class KerningViewController extends ViewController {
     const button = document.createElement("icon-button");
     button.className =
       "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
-    button.src = "/tabler-icons/check.svg";
+    button.src = "check";
     button.setAttribute(
       "aria-label",
       `Save ${row.left} × ${row.right} = ${row.suggestion} at this pair`
@@ -4659,10 +4660,7 @@ export class KerningViewController extends ViewController {
     // Skip-all mode has no dashed circle: leaving a pair out is what the mode
     // already does, so only the filled circle appears, and it means "this one
     // is shown". Ordinary mode keeps the dashed circle for a pair taken out.
-    button.src =
-      excluded && !skipAll
-        ? "/tabler-icons/circle-dotted.svg"
-        : "/tabler-icons/circle-dot.svg";
+    button.src = excluded && !skipAll ? "circle-dotted" : "circle-dot";
     button.setAttribute(
       "aria-label",
       excluded
@@ -4696,7 +4694,7 @@ export class KerningViewController extends ViewController {
     const button = document.createElement("icon-button");
     button.className =
       "kerning-pairtable-reset-indicator kerning-pairtable-reset-value";
-    button.src = "/tabler-icons/rotate.svg";
+    button.src = "rotate";
     button.setAttribute("aria-label", `Reset ${row.left} × ${row.right} to 0`);
     button.setAttribute("data-tooltip", "Reset this pair to 0.");
     button.onclick = (event) => {
@@ -4822,7 +4820,7 @@ export class KerningViewController extends ViewController {
     const applyButton = document.createElement("icon-button");
     applyButton.className =
       "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
-    applyButton.src = "/tabler-icons/check.svg";
+    applyButton.src = "check";
     applyButton.setAttribute("aria-label", `Apply the class rule ${left} × ${right}`);
     // Task 17, spec F23: the aggregate's own median is unreliable when any
     // contributor is stale (aggregateStale) -- disable its one write action
@@ -4862,7 +4860,7 @@ export class KerningViewController extends ViewController {
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
     if (hidden) {
-      hideButton.src = "/tabler-icons/eye-closed.svg";
+      hideButton.src = "eye-closed";
       hideButton.setAttribute(
         "aria-label",
         `Restore hidden class rule ${left} × ${right}`
@@ -4872,7 +4870,7 @@ export class KerningViewController extends ViewController {
         "Hidden. Restore to show this class rule again -- its exposed members and saved exceptions were never affected."
       );
     } else {
-      hideButton.src = "/tabler-icons/eye.svg";
+      hideButton.src = "eye";
       hideButton.setAttribute("aria-label", `Hide class rule ${left} × ${right}`);
       hideButton.setAttribute(
         "data-tooltip",
@@ -5290,7 +5288,7 @@ export class KerningViewController extends ViewController {
     // icon/s/question (Figma 4134:4825): which side "left" and "right" name.
     const help = html.createDomElement("inline-svg", {
       "id": "autokern-class-help",
-      "src": "/images/question.svg",
+      "src": "help",
       "data-tooltip":
         "Left = this class's members appear as the LEFT glyph of a kerning pair. Right = the RIGHT glyph.",
       "data-tooltipposition": "bottom",
@@ -5579,19 +5577,19 @@ export class KerningViewController extends ViewController {
 
     const actions = actionsCell([
       rowAction({
-        src: "/tabler-icons/link-plus.svg",
+        src: "link-plus",
         tooltip: `Add the font view's selection to "${entry.name}"`,
         reveal: "hover",
         onClick: () => this.addFontModeSelectionToClass(entry),
       }),
       rowAction({
-        src: "/tabler-icons/layers-union.svg",
+        src: "layers-union",
         tooltip: `Fill "${entry.name}" with the composites built on its glyphs`,
         reveal: "hover",
         onClick: () => this.fillClass(entry.side, entry.name),
       }),
       rowAction({
-        src: "/tabler-icons/trash.svg",
+        src: "delete",
         tooltip: `Delete class "${entry.name}"`,
         tooltipPosition: "left",
         reveal: "hover",
@@ -6512,7 +6510,7 @@ export class KerningViewController extends ViewController {
       const acceptButton = document.createElement("icon-button");
       acceptButton.className =
         "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
-      acceptButton.src = "/tabler-icons/check.svg";
+      acceptButton.src = "check";
       acceptButton.setAttribute(
         "aria-label",
         `Save ${row.left} × ${row.right} = ${row.suggestion} as a pair exception`
@@ -6537,7 +6535,7 @@ export class KerningViewController extends ViewController {
         const removeButton = document.createElement("icon-button");
         removeButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
-        removeButton.src = "/tabler-icons/lock-open-2.svg";
+        removeButton.src = "unlock";
         removeButton.setAttribute(
           "aria-label",
           `Remove pair exception for ${row.left} × ${row.right}`
@@ -6562,7 +6560,7 @@ export class KerningViewController extends ViewController {
         const lockButton = document.createElement("icon-button");
         lockButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-create";
-        lockButton.src = "/tabler-icons/lock.svg";
+        lockButton.src = "lock";
         lockButton.setAttribute(
           "aria-label",
           `Create a pair exception for ${row.left} × ${row.right}`
@@ -6595,7 +6593,7 @@ export class KerningViewController extends ViewController {
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
     if (row.hidden) {
-      hideButton.src = "/tabler-icons/eye-closed.svg";
+      hideButton.src = "eye-closed";
       hideButton.setAttribute(
         "aria-label",
         `Restore hidden result ${row.left} × ${row.right}`
@@ -6605,7 +6603,7 @@ export class KerningViewController extends ViewController {
         "Hidden. Restore to show this result again -- its saved kerning value is unchanged."
       );
     } else {
-      hideButton.src = "/tabler-icons/eye.svg";
+      hideButton.src = "eye";
       hideButton.setAttribute("aria-label", `Hide result ${row.left} × ${row.right}`);
       hideButton.setAttribute(
         "data-tooltip",
@@ -6735,6 +6733,18 @@ export class KerningViewController extends ViewController {
     this.resetArmedKey = armedKey;
     this.updateResetButtonLabel();
     if (!commit) {
+      if (armedKey) {
+        // A press anywhere but on Reset disarms it.
+        disarmOnClickAway(
+          document.querySelector("#kerning-pairtable-reset-zero"),
+          () => {
+            if (this.resetArmedKey === armedKey) {
+              this.resetArmedKey = null;
+              this.updateResetButtonLabel();
+            }
+          }
+        );
+      }
       return;
     }
     const rows = targetIds.map((id) => {
@@ -7934,9 +7944,37 @@ export class KerningViewController extends ViewController {
           title: "Add to…",
           callback: () => this.showFontModeAddToDialog(glyphNames),
         },
+        { title: "-" },
+        {
+          title: "Use as input",
+          callback: () => this.useGlyphsAsInput(glyphNames),
+        },
+        {
+          title: "Show pairs",
+          enabled: () => glyphNames.length > 1,
+          callback: () => this.showPairsOfGlyphs(glyphNames),
+        },
       ],
       { x: event.clientX, y: event.clientY }
     );
+  }
+
+  // The results table's glyph field becomes the glyphs: one glyph lists all its
+  // pairs, several list the pairs between them.
+  useGlyphsAsInput(glyphNames) {
+    const glyphInput = this._glyphInputElement;
+    glyphInput.value = glyphNames.join(", ");
+    this.autokernFiltersController.setItem("glyphName", glyphInput.value);
+    this.renderPairTable();
+  }
+
+  // The pane shows every ordered pair of the glyphs, in pair mode.
+  showPairsOfGlyphs(glyphNames) {
+    const pairs = glyphNames.flatMap((left) =>
+      glyphNames.filter((right) => right !== left).map((right) => [left, right])
+    );
+    this.setPreviewPairs(pairs);
+    this.setChipMode("pair");
   }
 
   // Minimal picker: side (1st/2nd/both -- §1.2's own New class convention)

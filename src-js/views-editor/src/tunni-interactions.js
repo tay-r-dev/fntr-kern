@@ -11,7 +11,6 @@ import {
   calculateSkeletonTrueTunniPoint,
   calculateSkeletonTunniPoint,
   findGeneratedOutputPosition,
-  generatedSegmentCapCurvatureField,
   generatedSegmentConstructionPoints,
   generatedSegmentHandleAxes,
   getSkeletonData,
@@ -20,7 +19,6 @@ import {
   getSkeletonPointNudge,
   segmentToTunniPoints,
   isSkeletonSideLocked,
-  setSkeletonCapCurvature,
   setSkeletonHandleDetached,
   setSkeletonHandleOffset,
   setSkeletonPointSideNudge,
@@ -568,8 +566,6 @@ export async function handleGeneratedTunniDrag({
           return {
             contourIndex: resolved.contourIndex,
             pointIndex: resolved.pointIndex,
-            // The neck's ends are bulb points on a side; its pin write still
-            // asks that side's handle lock.
             side: provenance.side,
             bulbRole: provenance.bulbRole,
             bulbSlot: provenance.bulbSlot,
@@ -637,102 +633,89 @@ export async function handleGeneratedTunniDrag({
 
       let frame = new ChangeCollector();
       for (const { layerGlyph, changePath, originals } of layerInfo) {
-        const changes = editSkeleton(
-          layerGlyph,
-          (working) => {
-            for (const [index, write] of writes) {
-              const original = originals[index];
-              const point =
-                working?.contours?.[original?.contourIndex]?.points?.[
-                  original?.pointIndex
-                ];
-              // A ball segment: the handle's new length, stated against the one
-              // it had at the grab, lands on the bulb's edit for that handle.
-              if (write.bulbHandle) {
-                if (point && original?.bulbRole) {
-                  const anchor = originalPoints[index === 1 ? 0 : 3];
-                  const change =
-                    distance(write.bulbHandle, anchor) -
-                    distance(originalPoints[index], anchor);
-                  setSkeletonCapBallEdit(point, original.bulbRole, {
-                    [original.bulbSlot]: round(
-                      original.edit[original.bulbSlot] + change
-                    ),
-                  });
-                }
-                continue;
+        const changes = editSkeleton(layerGlyph, (working) => {
+          for (const [index, write] of writes) {
+            const original = originals[index];
+            const point =
+              working?.contours?.[original?.contourIndex]?.points?.[
+                original?.pointIndex
+              ];
+            // A ball segment: the handle's new length, stated against the one
+            // it had at the grab, lands on the bulb's edit for that handle.
+            if (write.bulbHandle) {
+              if (point && original?.bulbRole) {
+                const anchor = originalPoints[index === 1 ? 0 : 3];
+                const change =
+                  distance(write.bulbHandle, anchor) -
+                  distance(originalPoints[index], anchor);
+                setSkeletonCapBallEdit(point, original.bulbRole, {
+                  [original.bulbSlot]: round(original.edit[original.bulbSlot] + change),
+                });
               }
-              // Curvature, so the handle lock is the one that speaks.
-              // A ball point has no side, and no side's lock holds it.
-              if (
-                !original ||
-                !point ||
-                ((original.side === "left" || original.side === "right") &&
-                  isSkeletonSideLocked(point, original.side, "handles"))
-              ) {
-                continue;
-              }
-              if (write.capCurvature !== undefined) {
-                setSkeletonCapCurvature(
-                  point,
-                  write.capCurvatureField,
-                  write.capCurvature
-                );
-              } else if (write.pinnedTension !== undefined) {
-                // Absolute, not a delta: the drag already computed the tension it
-                // wants from the geometry it grabbed, and every mousemove restates
-                // it against the same original. Accumulating it would compound.
-                setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
-              } else if (write.offsetAbsolute && original.offset) {
-                const collapsed = !!(write.offsetAbsolute.x || write.offsetAbsolute.y);
-                setSkeletonHandleOffset(
-                  point,
-                  original.side,
-                  original.role,
-                  {
-                    ...write.offsetAbsolute,
-                    detached: original.offset.detached,
-                    collapsedByCurvature: collapsed,
-                  },
-                  { round }
-                );
-              } else if (write.release && original.offset) {
-                // Only what this gizmo put down. An unmarked offset is the
-                // designer's own placement and is not the gizmo's to undo.
-                if (original.offset.collapsedByCurvature) {
-                  setSkeletonHandleOffset(point, original.side, original.role, {
-                    x: 0,
-                    y: 0,
-                    detached: original.offset.detached,
-                  });
-                }
-              } else if (write.offsetDelta && original.offset) {
-                setSkeletonHandleOffset(
-                  point,
-                  original.side,
-                  original.role,
-                  {
-                    x: original.offset.x + write.offsetDelta.x,
-                    y: original.offset.y + write.offsetDelta.y,
-                    detached: original.offset.detached,
-                    collapsedByCurvature:
-                      write.collapsedByCurvature ||
-                      original.offset.collapsedByCurvature,
-                  },
-                  { round }
-                );
-              } else if (write.nudgeDelta !== undefined) {
-                setSkeletonPointSideNudge(
-                  point,
-                  original.side,
-                  original.nudge + write.nudgeDelta,
-                  { round }
-                );
-              }
+              continue;
             }
-          },
-          { bulbInteractive: Array.from(writes).some(([, write]) => write.bulbHandle) }
-        );
+            // Curvature, so the handle lock is the one that speaks.
+            // A ball point has no side, and no side's lock holds it.
+            if (
+              !original ||
+              !point ||
+              ((original.side === "left" || original.side === "right") &&
+                isSkeletonSideLocked(point, original.side, "handles"))
+            ) {
+              continue;
+            }
+            if (write.pinnedTension !== undefined) {
+              // Absolute, not a delta: the drag already computed the tension it
+              // wants from the geometry it grabbed, and every mousemove restates
+              // it against the same original. Accumulating it would compound.
+              setSkeletonSegmentCurvature(point, original.side, write.pinnedTension);
+            } else if (write.offsetAbsolute && original.offset) {
+              const collapsed = !!(write.offsetAbsolute.x || write.offsetAbsolute.y);
+              setSkeletonHandleOffset(
+                point,
+                original.side,
+                original.role,
+                {
+                  ...write.offsetAbsolute,
+                  detached: original.offset.detached,
+                  collapsedByCurvature: collapsed,
+                },
+                { round }
+              );
+            } else if (write.release && original.offset) {
+              // Only what this gizmo put down. An unmarked offset is the
+              // designer's own placement and is not the gizmo's to undo.
+              if (original.offset.collapsedByCurvature) {
+                setSkeletonHandleOffset(point, original.side, original.role, {
+                  x: 0,
+                  y: 0,
+                  detached: original.offset.detached,
+                });
+              }
+            } else if (write.offsetDelta && original.offset) {
+              setSkeletonHandleOffset(
+                point,
+                original.side,
+                original.role,
+                {
+                  x: original.offset.x + write.offsetDelta.x,
+                  y: original.offset.y + write.offsetDelta.y,
+                  detached: original.offset.detached,
+                  collapsedByCurvature:
+                    write.collapsedByCurvature || original.offset.collapsedByCurvature,
+                },
+                { round }
+              );
+            } else if (write.nudgeDelta !== undefined) {
+              setSkeletonPointSideNudge(
+                point,
+                original.side,
+                original.nudge + write.nudgeDelta,
+                { round }
+              );
+            }
+          }
+        });
         if (changes.hasChange) {
           frame = frame.concat(changes.prefixed(changePath));
         }
@@ -771,11 +754,6 @@ export async function handleGeneratedTunniCommand({
     // Only the curvature gizmo equalizes: it owns the split between the two
     // handles. The on-curve gizmo has no equalize gesture.
     if (gizmoHit.type !== "generated-curvature") {
-      return;
-    }
-    // A bulb's neck takes one tension for both of its handles, so it is always
-    // equalized and there is nothing for this gesture to do.
-    if (generatedSegmentCapCurvatureField(segment.provenance)) {
       return;
     }
     writes = generatedCurvatureEqualizationWrites(segment);
@@ -839,14 +817,6 @@ function generatedCurvatureEqualizationWrites(segment) {
 
 function generatedCurvatureResetWrites(segment) {
   const startIndex = segment.provenance[1]?.role === "out" ? 0 : 3;
-  // A bulb's neck keeps its curvature in a cap field and has no rib handles
-  // behind it, so clearing the field is the whole reset. Sending the ordinary
-  // writes instead cleared a pin the neck never had and zeroed the cap-owning
-  // point's rib handle offsets, which is a different part of the drawing.
-  const capCurvatureField = generatedSegmentCapCurvatureField(segment.provenance);
-  if (capCurvatureField) {
-    return [[startIndex, { capCurvature: null, capCurvatureField }]];
-  }
   // A ball segment's curvature is its two handle lengths, and nothing else.
   if (isBulbBallSegment(segment.provenance)) {
     return [
@@ -906,10 +876,8 @@ async function applyGeneratedSegmentWrites(
           const point =
             working.contours?.[resolved.contourIndex]?.points?.[resolved.pointIndex];
           // A ball segment's handles are the bulb's. A reset clears the length
-          // edit, and a displacement along the handle becomes one. The neck's
-          // ball end is a bulb point too, but its reset is the neck's pin,
-          // which the cap field write below owns.
-          if (provenance.bulbRole && write.capCurvature === undefined) {
+          // edit, and a displacement along the handle becomes one.
+          if (provenance.bulbRole) {
             if (!originalPoint || !point) continue;
             const slot = provenance.bulbSlot;
             const stored = getSkeletonCapBallEdit(originalPoint, provenance.bulbRole);
@@ -938,9 +906,7 @@ async function applyGeneratedSegmentWrites(
           ) {
             continue;
           }
-          if (write.capCurvature !== undefined) {
-            setSkeletonCapCurvature(point, write.capCurvatureField, write.capCurvature);
-          } else if (write.pinnedTension !== undefined) {
+          if (write.pinnedTension !== undefined) {
             setSkeletonSegmentCurvature(point, provenance.side, write.pinnedTension);
           } else if (write.resetHandle) {
             setSkeletonHandleDetached(point, provenance.side, false);
@@ -1002,15 +968,6 @@ function generatedCurvatureWrites(originalPoints, segment, delta, { fromBase } =
     return [
       [1, { bulbHandle: edit.controls[0] }],
       [2, { bulbHandle: edit.controls[1] }],
-    ];
-  }
-  if (edit.capCurvatureField) {
-    // A bulb's neck: one write, into the cap field on the cap-owning point.
-    return [
-      [
-        edit.segmentPointIndex,
-        { capCurvature: edit.tension, capCurvatureField: edit.capCurvatureField },
-      ],
     ];
   }
   // Below the pin's floor the drag keeps going on the one handle still off its

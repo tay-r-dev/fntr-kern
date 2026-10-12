@@ -33,8 +33,8 @@ export class RadioButtons extends UnlitElement {
       align-items: center;
       gap: 4px;
       cursor: pointer;
-      /* ui/label/S */
-      font: var(--ui-text-label-s);
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       color: var(--radio-buttons-text-color);

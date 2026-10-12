@@ -1,7 +1,7 @@
 import { BaseTool } from "./edit-tools-base.js";
 
 export class HandTool extends BaseTool {
-  iconPath = "/images/tool-panel-hand.svg";
+  iconPath = "tool-hand";
   identifier = "hand-tool";
 
   handleHover(event) {

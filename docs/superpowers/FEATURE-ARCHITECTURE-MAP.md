@@ -182,6 +182,7 @@ draws.
 | ----------------------------------------------------- | -------- | ------------------------------------------------------------- |
 | `fontra-core/src/tunni-calculations.js`               | +668     | **NEW** — pure math only. Canonical `calculateSegmentTension` |
 | `views-editor/src/tunni-interactions.js`              | +1621    | **NEW** — hit-tests, drag handlers, equalize trigger          |
+| `views-editor/src/gizmo.js`                           | NEW      | **Shared**, not Tunni's — the reveal, its tuning and the draw every gizmo uses; Tunni and the markers' aim handle both build on it |
 | `views-editor/src/edit-tools-pointer.js`              | (shared) | thin dispatch hooks only                                      |
 | `views-editor/src/visualization-layer-definitions.js` | (shared) | `fontra.tunni.handle`, `fontra.tunni.point`                   |
 | `views-editor/src/panel-transformation.js`            | (shared) | settings keys                                                 |

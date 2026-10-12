@@ -973,7 +973,7 @@ describe("generated on-curve gizmo edits", () => {
   });
 });
 
-// The outer wall keeps its gizmo. The inner one moves onto the eased neck.
+// The outer wall keeps its gizmo. The inner wall and the easing fillet have none.
 describe("the curvature gizmo at a bulb terminal", () => {
   function makeBulbGlyph(capFields) {
     const layer = {
@@ -1014,51 +1014,45 @@ describe("the curvature gizmo at a bulb terminal", () => {
     return layer;
   }
 
-  function neckSegments(capFields) {
-    const layer = makeBulbGlyph(capFields);
-    const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
-    return segments.filter((segment) => segment.provenance[1]?.capCurvatureField);
-  }
+  const FILLET_ROLES = ["fillet-ball", "fillet-wall"];
 
-  it("gives the neck a segment of its own once easing is on", () => {
-    const necks = neckSegments({ capBallEasing: 0.5 });
-    expect(necks).to.have.length(1);
-    // The neck's two handles and its ball end belong to the cap. Its stem end is
-    // the stem's own on-curve, which keeps its own owner.
-    for (const entry of necks[0].provenance.slice(1, 3)) {
-      expect(entry.skeletonPointId).to.equal(4);
+  // The easing fillet is set by the easing slider alone. Nothing on it, on the
+  // ball arc it leaves, or on the wall it climbs carries a gizmo.
+  it("offers no gizmo on the fillet or the curves either side of it", () => {
+    for (const capBallEasing of [0, 0.5, 1]) {
+      const layer = makeBulbGlyph({ capBallEasing });
+      const segments = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path);
+      for (const segment of segments)
+        expect(
+          segment.provenance.some((entry) => FILLET_ROLES.includes(entry?.bulbRole)),
+          `easing ${capBallEasing}`
+        ).to.equal(false);
     }
-    expect(
-      necks[0].provenance.some(
-        (entry) => entry.bulbRole === "neck" && entry.skeletonPointId === 4
-      )
-    ).to.equal(true);
-    expect(necks[0].provenance[1].capCurvatureField).to.equal("capBallEaseCurvature");
-    expect(necks[0].provenance[2].capCurvatureField).to.equal("capBallEaseCurvature");
-  });
-
-  it("offers the neck no on-curve gizmo", () => {
-    expect(neckSegments({ capBallEasing: 0.5 })[0].onCurveMovable).to.deep.equal([
-      false,
-      false,
-    ]);
   });
 
   // The bulb's points belong to the cap. Addressed as a rib point, a Z drag on
-  // the entry wrote the outer rib's nudge and moved the ball's anchor.
-  it("addresses every bulb point to the cap, none to a rib", () => {
+  // the entry wrote the outer rib's nudge and moved the ball's anchor. The
+  // fillet's two ends are not addressed at all: no hand moves them.
+  it("addresses the ball's points to the cap and leaves the fillet unaddressed", () => {
     const layer = makeBulbGlyph({ capBallEasing: 0.5 });
     const skeletonData = getSkeletonData(layer);
     const found = new Set();
+    let fillet = 0;
     for (let index = 0; index < layer.path.numPoints; index++) {
       const provenance = skeletonData.generated[0].pointMap[index];
       if (!provenance?.bulbRole) continue;
       const target = resolveEditableGeneratedTarget(skeletonData, layer.path, index);
+      if (FILLET_ROLES.includes(provenance.bulbRole)) {
+        expect(target, `point ${index}`).to.equal(null);
+        fillet++;
+        continue;
+      }
       expect(target.side, `point ${index}`).to.equal(`bulb-${provenance.bulbRole}`);
       expect(target.pointId).to.equal(4);
       found.add(`${target.side}/${target.role}`);
     }
-    for (const role of ["entry", "bottom", "side", "neck"])
+    expect(fillet).to.be.at.least(4);
+    for (const role of ["entry", "bottom", "side"])
       for (const slot of ["onCurve", "in", "out"])
         expect(found.has(`bulb-${role}/${slot}`), `${role} ${slot}`).to.equal(true);
   });
@@ -1085,7 +1079,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
 
   it("treats point and handle edits as preferences while retaining apex axes", () => {
     const plain = makeBulbGlyph({ capBallEasing: 0.5 });
-    for (const role of ["bottom", "side", "neck"]) {
+    for (const role of ["bottom", "side"]) {
       for (const values of [{ slide: 6, carry: 6 }, { in: 5 }, { out: 5 }]) {
         const edited = editedBulbGlyph(role, values);
         expect(edited.path.coordinates).to.not.deep.equal(plain.path.coordinates);
@@ -1135,8 +1129,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
   });
 
   // The drag itself: Z slides and carries, Z with Alt slides alone, a plain
-  // drag moves nothing, Z on a handle lengthens it, Alt gives its partner the
-  // same length.
+  // drag moves nothing, a handle drag lengthens the handle.
   it("drags bulb points and handles through the editor's own entries", () => {
     const edits = (layer) =>
       getSkeletonData(layer).contours[0].points.find((p) => p.id === 4).capBallEdits;
@@ -1149,7 +1142,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
       return { layer, entries };
     };
     const point = "editableGeneratedPoint/80/4/bulb-bottom";
-    const handle = "editableGeneratedHandle/80/4/bulb-neck/out";
+    const handle = "editableGeneratedHandle/80/4/bulb-bottom/out";
     const plain = makeBulbGlyph({ capBallEasing: 0.5 });
     const tangent = (() => {
       const a = bulbPosition(plain, "bottom", "in"),
@@ -1188,49 +1181,20 @@ describe("the curvature gizmo at a bulb terminal", () => {
     );
     expect(still.entries).to.have.length(0);
 
-    const anchor = bulbPosition(plain, "neck", "onCurve");
-    const out = bulbPosition(plain, "neck", "out");
-    const length = Math.hypot(out.x - anchor.x, out.y - anchor.y);
-    const axis = { x: (out.x - anchor.x) / length, y: (out.y - anchor.y) / length };
-    const pull = { x: axis.x * 7, y: axis.y * 7 };
+    const pull = { x: tangent.x * 7, y: tangent.y * 7 };
     const move = drag(
       createEditableGeneratedHandleTargetEntries,
       handle,
       "generated-handle-move",
       pull
     );
-    expect(edits(move.layer).neck).to.deep.include({ in: 0, out: 7 });
-    const equalize = drag(
-      createEditableGeneratedHandleTargetEntries,
-      handle,
-      "alternate",
-      pull
-    );
-    const moved = equalize.layer;
-    const newAnchor = bulbPosition(moved, "neck", "onCurve");
-    const lengthOf = (slot) => {
-      const p = bulbPosition(moved, "neck", slot);
-      return Math.hypot(p.x - newAnchor.x, p.y - newAnchor.y);
-    };
-    // Equalize sets equal preferred lengths; the shared G2 solve may compensate.
-    expect(edits(moved).neck.out).to.equal(7);
-    expect(edits(moved).neck.in).to.equal(
-      Math.round(
-        length +
-          7 -
-          Math.hypot(
-            bulbPosition(plain, "neck", "in").x - anchor.x,
-            bulbPosition(plain, "neck", "in").y - anchor.y
-          )
-      )
-    );
-    expect(Number.isFinite(lengthOf("in") + lengthOf("out"))).to.equal(true);
+    expect(edits(move.layer).bottom).to.deep.include({ in: 0, out: 7 });
     applyChange(z.layer, z.entries[0].rollbackChange);
     expect(z.layer.path.coordinates).to.deep.equal(plain.path.coordinates);
   });
 
-  // The ball's own three segments carry a curvature gizmo each, which writes the
-  // bulb's handle lengths. They have no on-curve gizmo.
+  // The ball's two segments between its own points carry a curvature gizmo
+  // each, which writes the bulb's handle lengths. They have no on-curve gizmo.
   it("offers a curvature gizmo on each ball segment, and a still grab moves nothing", () => {
     for (const capBallEasing of [0, 0.5]) {
       const layer = makeBulbGlyph({ capBallEasing });
@@ -1257,70 +1221,13 @@ describe("the curvature gizmo at a bulb terminal", () => {
     }
   });
 
-  it("keeps the neck gizmo's still grab on its pin after the neck's handles move", () => {
-    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.5 });
-    editSkeleton(layer, (skeleton) => {
-      const point = skeleton.contours[0].points.find((p) => p.id === 4);
-      setSkeletonCapBallEdit(point, "neck", { out: 8 });
-    });
-    const neck = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
-      (segment) => segment.provenance[1]?.capCurvatureField
-    );
-    const edit = calculateGeneratedCurvatureEdits({
-      segmentPoints: neck.points,
-      provenance: neck.provenance,
-      delta: { x: 0, y: 0 },
-    });
-    // Read off the whole-unit outline: one unit of handle is about 0.001.
-    expect(edit.tension).to.be.closeTo(0.5, 2e-3);
-  });
-
-  it("keeps a handled neck-to-wall span when easing is zero", () => {
-    expect(neckSegments({ capBallEasing: 0 })).to.have.length(1);
-  });
-
-  it("addresses a neck drag to the cap field, not to a side's pin", () => {
-    const neck = neckSegments({ capBallEasing: 0.5 })[0];
-    const edit = calculateGeneratedCurvatureEdits({
-      segmentPoints: neck.points,
-      provenance: neck.provenance,
-      delta: { x: 4, y: 4 },
-    });
-    expect(edit.capCurvatureField).to.equal("capBallEaseCurvature");
-    expect(edit.skeletonPointId).to.equal(4);
-    expect(edit.collapse).to.deep.equal([]);
-    expect(edit.tension).to.be.a("number");
-  });
-
-  // The construction snapshot lets a still grab preserve the neck pin.
-  it("grabs the neck without moving it: a still drag writes back the pin", () => {
-    for (const capBallEasing of [0.3, 0.8]) {
-      const neck = neckSegments({ capBallEasing, capBallEaseCurvature: 0.5 })[0];
-      const edit = calculateGeneratedCurvatureEdits({
-        segmentPoints: neck.points,
-        provenance: neck.provenance,
-        delta: { x: 0, y: 0 },
-      });
-      expect(edit.tension, `easing ${capBallEasing}`).to.be.closeTo(0.5, 1e-3);
-    }
-  });
-
-  it("reports the neck's curvature as pinned once the cap field is set", () => {
-    const layer = makeBulbGlyph({ capBallEasing: 0.5, capBallEaseCurvature: 0.4 });
-    const skeletonData = getSkeletonData(layer);
-    const neck = buildGeneratedTunniSegments(skeletonData, layer.path).find(
-      (segment) => segment.provenance[1]?.capCurvatureField
-    );
-    expect(getGeneratedSegmentCurvature(skeletonData, neck).pinned).to.equal(true);
-  });
-
-  it("keeps the outer wall gizmo and one combined neck-to-wall gizmo", () => {
+  it("keeps the outer wall gizmo and none on the inner wall", () => {
     for (const capBallEasing of [0, 0.5, 0.9, 1]) {
       const layer = makeBulbGlyph({ capBallEasing, capBallSide: "left" });
       const walls = buildGeneratedTunniSegments(
         getSkeletonData(layer),
         layer.path
-      ).filter((segment) => !segment.bulb && !segment.provenance[1]?.capCurvatureField);
+      ).filter((segment) => !segment.bulb);
       expect(walls.filter((segment) => segment.side === "left")).to.have.length(1);
       expect(walls.filter((segment) => segment.side === "right")).to.have.length(0);
       const snapshots = walls.filter((segment) =>
@@ -1334,10 +1241,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
   it("reads the outer wall's original tension after its entry slides", () => {
     const layer = makeBulbGlyph({ capBallSide: "left", capBallEasing: 0.5 });
     const outer = buildGeneratedTunniSegments(getSkeletonData(layer), layer.path).find(
-      (segment) =>
-        segment.side === "left" &&
-        !segment.bulb &&
-        !segment.provenance[1]?.capCurvatureField
+      (segment) => segment.side === "left" && !segment.bulb
     );
     const original = outer.provenance.find(
       (p) => p?.constructionSegment

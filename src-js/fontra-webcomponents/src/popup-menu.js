@@ -55,7 +55,7 @@ export class PopupMenu extends UnlitElement {
       [
         html.span({}, [this.valueLabel]),
         html.createDomElement("inline-svg", {
-          src: "/tabler-icons/chevron-up.svg",
+          src: "chevron-up",
         }),
       ]
     );

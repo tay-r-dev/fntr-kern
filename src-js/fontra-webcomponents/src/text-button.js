@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import "./inline-svg.js";
 import { themeColorCSS } from "./theme-support.js";
@@ -65,8 +66,8 @@ export class TextButton extends UnlitElement {
       background-color: var(--text-button-background-color);
       color: var(--text-button-text-color);
       cursor: inherit;
-      /* interactive/button: label/S at the light weight */
-      font: 320 condensed 10px / 12px var(--ui-font-mono);
+      /* ui/label/XS (Figma 2004:29282) */
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       white-space: nowrap;
@@ -74,7 +75,6 @@ export class TextButton extends UnlitElement {
 
     :host([data-size="S"]) button {
       height: 19px;
-      font: 320 condensed 10px / 10px var(--ui-font-mono);
     }
 
     .face {
@@ -102,7 +102,7 @@ export class TextButton extends UnlitElement {
 
     /* hover: white, ruled all round; the face keeps the grey. */
     :host(:hover) button {
-      padding: 3px calc(var(--bt-sgb-padding) - 1px) 3px;
+      padding: 3px calc(var(--bt-sgb-padding) - 1px) 4px;
       border-color: var(--text-button-hover-border-color);
       border-width: 1px;
       background-color: var(--text-button-hover-background-color);
@@ -174,7 +174,7 @@ export class TextButton extends UnlitElement {
     }
     if (this.icon) {
       faceChildren.push(
-        html.createDomElement("inline-svg", { class: "icon", src: this.icon })
+        html.createDomElement("inline-svg", { class: "icon", src: iconPath(this.icon) })
       );
     }
     this._button = html.button({ type: "button", disabled: this.disabled }, [

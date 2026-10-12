@@ -98,12 +98,41 @@ export class Form extends SimpleElement {
       margin-left: auto;
     }
 
-    /* Heading levels by the Figma style names: h2 to h4 are uppercase, h5 is
-       a small mixed-case section label. A header with no level is h4. */
+    /* Heading levels by the Figma style names: h1 to h4 are uppercase, h5 is
+       a small mixed-case section label. A header with no level is h4. h1 is
+       a card's heading, as shared.css's card-heading draws it. */
+    /* The form spaces itself as shared.css's card does: 12px over the h1
+       (the card's 8px and 4 more), 10px under it, sections 10px apart, 8px
+       between a section's rows and 4px under its h2. The row gap is 8px. */
+    .ui-form-label.header-h1 {
+      font: var(--ui-text-heading-h1);
+      letter-spacing: var(--ui-tracking-sans);
+      text-transform: uppercase;
+      color: var(--shared-heading, var(--text-base-basic-5));
+      margin-bottom: 2px;
+    }
+
+    .ui-form-label.header-h1:first-child {
+      margin-top: 4px;
+    }
+
+    /* h2, as shared.css's card-subheading, in text 3. A section starts at
+       its h2, so the divider before it takes no room. */
     .ui-form-label.header-h2 {
       font: var(--ui-text-heading-h2);
-      letter-spacing: var(--ui-tracking);
+      letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
+      color: var(--text-base-basic-3);
+      margin-top: 2px;
+      margin-bottom: -4px;
+    }
+
+    :is(.header-h1 + .header-h2, .header-h1 + hr + .header-h2) {
+      margin-top: 0;
+    }
+
+    hr:has(+ .ui-form-label.header-h2) {
+      display: none;
     }
 
     .ui-form-label.header-h3 {
@@ -312,9 +341,7 @@ export class Form extends SimpleElement {
 
   constructor() {
     super();
-    this.shadowRoot.appendChild(
-      html.link({ href: "/css/tooltip.css", rel: "stylesheet" })
-    );
+    this._appendStyleSheetLink("/css/tooltip.css");
     this.contentElement = this.shadowRoot.appendChild(document.createElement("div"));
     this.contentElement.classList.add("ui-form");
   }

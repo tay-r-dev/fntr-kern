@@ -379,7 +379,7 @@ class StatusDefinitionBox extends HTMLElement {
     this.append(
       html.createDomElement("icon-button", {
         "class": "fontra-ui-font-info-status-definitions-panel-status-def-box-delete",
-        "src": "/tabler-icons/trash.svg",
+        "src": "delete",
         "onclick": (event) => this.deleteStatusDef(this.statusIndex),
         "data-tooltip": translate("development-status-definitions.tooltip.delete"),
         "data-tooltipposition": "left",

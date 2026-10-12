@@ -1,8 +1,8 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement, htmlToElement } from "@fontra/core/html-utils.js";
-import "./input-field-large.js";
 import { RangeSlider } from "./range-slider.js";
 import "./slot-slider.js";
+import { smolCSS, smolEntry } from "./smol.js";
 import { themeColorCSS } from "./theme-support.js";
 
 const colors = {
@@ -103,9 +103,10 @@ export class DesignspaceLocation extends UnlitElement {
       gap: 8px;
     }
 
-    .slot-row input-field-large {
+    ${smolCSS()}
+
+    .slot-row .smol {
       flex: none;
-      width: 44px;
     }
 
     .slot-row slot-slider {
@@ -369,14 +370,8 @@ export class DesignspaceLocation extends UnlitElement {
     const maxValue = discrete ? Math.max(...axis.values) : axis.maxValue;
     const value = modelValue ?? axis.defaultValue;
 
-    const field = html.createDomElement("input-field-large");
-    field.type = "number";
-    field.integer = true;
-    field.minValue = minValue;
-    field.maxValue = maxValue;
-    field.defaultValue = axis.defaultValue;
-    field.value = value;
-    field.disabled = disabled;
+    // The value is a smol entry: typed, clamped to the axis and whole.
+    const field = smolEntry({ value, disabled });
 
     const slider = html.createDomElement("slot-slider");
     slider.min = minValue;
@@ -405,12 +400,24 @@ export class DesignspaceLocation extends UnlitElement {
       field.value = axis.defaultValue;
       commit(axis.defaultValue);
     });
-    field.addEventListener("change", (event) => {
-      if (event.detail.cancelled) {
+    field.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        field.blur();
+      } else if (event.key === "Escape") {
+        field.value = String(slider.value);
+        field.blur();
+      }
+    });
+    field.addEventListener("change", () => {
+      const typed = Number(field.value);
+      if (field.value.trim() === "" || !Number.isFinite(typed)) {
+        field.value = String(slider.value);
         return;
       }
-      slider.value = event.detail.value;
-      commit(event.detail.value);
+      const newValue = Math.round(Math.min(maxValue, Math.max(minValue, typed)));
+      field.value = String(newValue);
+      slider.value = newValue;
+      commit(newValue);
     });
 
     const control = {

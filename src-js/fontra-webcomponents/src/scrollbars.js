@@ -1,7 +1,7 @@
 // The design's scrollbars, drawn rather than native: browsers differ in what
 // they let a page style (Firefox: no thinner than its "thin", no hover
 // colour, no arrows), so a scroll box hides its own and these are drawn
-// beside it. A 2px thumb in line 4, line 2 under the pointer, an arrow
+// beside it. A 2px thumb in line 2, line 4 under the pointer, an arrow
 // triangle at each end in the same colours, no track and no fill
 // (shared.css's .scrollbar-rail). The box scrolls natively as before: wheel,
 // keys and touch are the browser's; only the bars are ours.
@@ -53,11 +53,21 @@ export function scrollForThumbOffset(offset, scrollSize, clientSize, trackLength
 // under the content for the sideways bar, scrolling or not, so it never
 // covers a row.
 export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
+  // A box has one pair of bars: a second call hands back the first pair,
+  // hidden until rested on if this call asks for that.
+  const attached = attachedScrollbars.get(box);
+  if (attached) {
+    if (reveal === "hover") {
+      attached.revealOnRest();
+    }
+    return attached;
+  }
   box.classList.add("drawn-scrollbars");
   const bars = [makeBar(box, "vertical"), makeBar(box, "horizontal")];
   let reserved = 0;
+  let positionedHolder = null;
 
-  const update = () => {
+  const updateNow = () => {
     const parent = box.parentNode;
     if (!parent || !box.isConnected) {
       return;
@@ -68,8 +78,11 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
       }
     }
     const holder = parent instanceof ShadowRoot ? parent.host : parent;
-    if (getComputedStyle(holder).position === "static") {
-      holder.style.position = "relative";
+    if (holder !== positionedHolder) {
+      positionedHolder = holder;
+      if (getComputedStyle(holder).position === "static") {
+        holder.style.position = "relative";
+      }
     }
     const [vertical, horizontal] = bars;
     const both =
@@ -79,10 +92,29 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
     horizontal.place(both ? RAIL : 0, reserved);
   };
 
-  if (reveal === "hover") {
-    for (const bar of bars) {
-      bar.revealOnRest();
+  // Scrolls, resizes and new contents all ask for one placing per frame: the
+  // layout is read once, when the frame is drawn, not on every event.
+  let frame = 0;
+  const update = () => {
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        updateNow();
+      });
     }
+  };
+
+  let revealing = false;
+  const revealOnRest = () => {
+    if (!revealing) {
+      revealing = true;
+      for (const bar of bars) {
+        bar.revealOnRest();
+      }
+    }
+  };
+  if (reveal === "hover") {
+    revealOnRest();
   }
 
   box.addEventListener("scroll", update, { passive: true });
@@ -94,7 +126,14 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
     }
   };
   observeChildren();
-  new MutationObserver(() => {
+  new MutationObserver((records) => {
+    for (const record of records) {
+      for (const child of record.removedNodes) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          resizeObserver.unobserve(child);
+        }
+      }
+    }
     observeChildren();
     update();
   }).observe(box, { childList: true });
@@ -107,7 +146,100 @@ export function attachScrollbars(box, { reveal = "always", reserve = 0 } = {}) {
   };
   setReserve(reserve);
 
-  return { update, setReserve };
+  const handle = { update, setReserve, revealOnRest };
+  attachedScrollbars.set(box, handle);
+  return handle;
+}
+
+const attachedScrollbars = new WeakMap();
+
+// Every box that scrolls gets the drawn bars, in the page and in every open
+// shadow root, including boxes added later. A view calls this once at start.
+// The boxes are found by their computed overflow, so no box has to ask.
+export function drawScrollbarsEverywhere(root = document) {
+  const pending = new Set();
+  let frame = 0;
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      // The bars restyle themselves on every scroll; that says nothing new.
+      if (record.target.closest?.(".scrollbar-rail")) {
+        continue;
+      }
+      if (record.type === "attributes") {
+        pending.add(record.target);
+      }
+      for (const node of record.addedNodes) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          pending.add(node);
+        }
+      }
+    }
+    if (!frame) {
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        const nodes = [...pending];
+        pending.clear();
+        for (const node of nodes) {
+          if (node.isConnected) {
+            walk(node);
+          }
+        }
+      });
+    }
+  });
+  const observed = new WeakSet();
+  const observe = (target) => {
+    if (!observed.has(target)) {
+      observed.add(target);
+      // A class or style change can make a box scroll.
+      observer.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["class", "style"],
+      });
+    }
+  };
+  const walk = (node) => {
+    const stack = [node];
+    while (stack.length) {
+      const element = stack.pop();
+      if (element.nodeType === Node.ELEMENT_NODE) {
+        if (scrolls(element)) {
+          attachScrollbars(element);
+        }
+        if (element.shadowRoot) {
+          observe(element.shadowRoot);
+          stack.push(...element.shadowRoot.children);
+        }
+      }
+      stack.push(...element.children);
+    }
+  };
+  observe(root);
+  walk(root.documentElement ?? root);
+}
+
+// Not the page itself, which has no parent to hold the bars, and not a
+// control that draws its own. The bars are rails beside the box, so a box
+// whose own children are rails (a rail holder) is left alone too.
+const NO_DRAWN_BARS = new Set(["HTML", "BODY", "INPUT", "SELECT", "TEXTAREA"]);
+
+function scrolls(element) {
+  if (
+    NO_DRAWN_BARS.has(element.tagName) ||
+    element.classList.contains("scrollbar-rail") ||
+    attachedScrollbars.has(element)
+  ) {
+    return false;
+  }
+  const style = getComputedStyle(element);
+  // A box that hides its bars on purpose (a header scrolled by its rows) keeps
+  // them hidden.
+  if (style.scrollbarWidth === "none") {
+    return false;
+  }
+  return /(auto|scroll)/.test(style.overflowY + " " + style.overflowX);
 }
 
 function makeBar(box, axis) {
@@ -238,9 +370,9 @@ function makeBar(box, axis) {
       const unit =
         event.deltaMode === 1 ? WHEEL_LINE : event.deltaMode === 2 ? clientSize() : 1;
       if (vertical) {
-        box.scrollBy({ left: event.deltaX * unit, top: event.deltaY * unit });
+        smoothScrollBy(box, event.deltaX * unit, event.deltaY * unit);
       } else {
-        box.scrollBy({ left: (event.deltaX || event.deltaY) * unit });
+        smoothScrollBy(box, (event.deltaX || event.deltaY) * unit, 0);
       }
     },
     { passive: false }
@@ -284,4 +416,47 @@ function makeBar(box, axis) {
   }
 
   return bar;
+}
+
+// The wheel over a bar eases the box toward where the wheel has sent it, as
+// the browser does over the box itself. Each notch adds to one target, so a
+// fast wheel loses nothing to an animation it interrupts.
+const SMOOTH_SCROLL_EASE = 0.3;
+const smoothScrolls = new WeakMap();
+
+function smoothScrollBy(box, dx, dy) {
+  let state = smoothScrolls.get(box);
+  if (!state) {
+    state = { x: box.scrollLeft, y: box.scrollTop, frame: 0 };
+    smoothScrolls.set(box, state);
+  }
+  if (!state.frame) {
+    // A scroll from elsewhere since the last run moves the start.
+    state.x = box.scrollLeft;
+    state.y = box.scrollTop;
+  }
+  const clamp = (value, max) => Math.min(Math.max(value, 0), Math.max(max, 0));
+  state.x = clamp(state.x + dx, box.scrollWidth - box.clientWidth);
+  state.y = clamp(state.y + dy, box.scrollHeight - box.clientHeight);
+  if (state.frame) {
+    return;
+  }
+  // A share of what is left, but at least a whole pixel: the box may round
+  // its scroll to pixels, and a smaller step would never arrive.
+  const toward = (from, to) => {
+    const left = to - from;
+    const move = left * SMOOTH_SCROLL_EASE;
+    return Math.abs(move) >= 1
+      ? from + move
+      : from + Math.sign(left) * Math.min(Math.abs(left), 1);
+  };
+  const step = () => {
+    const left = toward(box.scrollLeft, state.x);
+    const top = toward(box.scrollTop, state.y);
+    box.scrollTo({ left, top, behavior: "instant" });
+    const done =
+      Math.abs(state.x - box.scrollLeft) < 1 && Math.abs(state.y - box.scrollTop) < 1;
+    state.frame = done ? 0 : requestAnimationFrame(step);
+  };
+  state.frame = requestAnimationFrame(step);
 }

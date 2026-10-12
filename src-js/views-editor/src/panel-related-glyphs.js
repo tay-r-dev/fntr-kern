@@ -33,15 +33,15 @@ import { Accordion } from "@fontra/web-components/ui-accordion.js";
 
 // A composition row's actions as icons (Figma 4156:3268).
 const COMPOSITION_ACTION_ICONS = {
-  "composition.button.attach": "/tabler-icons/link.svg",
-  "composition.button.detach": "/tabler-icons/unlink.svg",
-  "composition.button.update": "/tabler-icons/refresh.svg",
-  "composition.button.override": "/tabler-icons/lock.svg",
+  "composition.button.attach": "link",
+  "composition.button.detach": "unlink",
+  "composition.button.update": "refresh",
+  "composition.button.override": "lock",
 };
 
 export default class RelatedGlyphPanel extends Panel {
   identifier = "related-glyphs";
-  iconPath = "/tabler-icons/binary-tree-2.svg";
+  iconPath = "binary-tree-2";
   tabLabel = "compose";
 
   // COMPOSE GLYPHS (Figma 4122:9325): the mark cloud switch, then the
@@ -49,13 +49,9 @@ export default class RelatedGlyphPanel extends Panel {
   static styles = `
     .compose-card {
       flex: 1 0 auto;
-      gap: 12px;
     }
 
     .compose-section {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
       min-height: 0;
       flex: 1;
     }
@@ -161,7 +157,7 @@ export default class RelatedGlyphPanel extends Panel {
 
     // The redraw icon shows only while the previews hold still.
     this.refreshButtonElement = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/refresh.svg",
+      "src": "refresh",
       "data-tooltip": translate("sidebar.related-glyphs.refresh"),
       "data-tooltipposition": "left",
       "onclick": () => {
@@ -186,12 +182,12 @@ export default class RelatedGlyphPanel extends Panel {
 
     return html.div({ class: "panel" }, [
       html.div({ class: "panel-section--flex card-column" }, [
-        html.div({ class: "card card--headed compose-card" }, [
+        html.div({ class: "card compose-card" }, [
           html.div({ class: "card-heading-row" }, [
             html.div({ class: "card-heading" }, ["compose glyphs"]),
           ]),
           this._buildMarkCloudAccordion(),
-          html.div({ class: "compose-section" }, [
+          html.div({ class: "card-section compose-section" }, [
             html.div({ class: "compose-heading-row" }, [
               html.div({ class: "card-subheading" }, [translate("composition.title")]),
               this.refreshButtonElement,

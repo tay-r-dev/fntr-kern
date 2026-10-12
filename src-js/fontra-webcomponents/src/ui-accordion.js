@@ -1,8 +1,14 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { FocusKeeper, enumerate } from "@fontra/core/utils.ts";
 
 export class Accordion extends UnlitElement {
+  constructor() {
+    super();
+    this._appendStyleSheetLink("/css/tooltip.css");
+  }
+
   static styles = `
   .ui-accordion-contents {
     display: grid;
@@ -30,9 +36,9 @@ export class Accordion extends UnlitElement {
     grid-template-columns: auto 1fr auto;
     justify-content: start;
     align-items: center;
-    /* ui/heading/h2 */
-    font: var(--ui-text-heading-h2);
-    letter-spacing: var(--ui-tracking);
+    /* heading/h1: the header is its card's heading. */
+    font: var(--ui-text-heading-h1);
+    letter-spacing: var(--ui-tracking-sans);
     text-transform: uppercase;
     cursor: pointer;
   }
@@ -54,9 +60,9 @@ export class Accordion extends UnlitElement {
   /* Every accordion's contents: 12px under the header and in at the sides,
      8px under. An accordion runs to its card's edges, so these are the
      distances from the card's edge too. A plain div
-     given as the contents lays its parts out top to bottom, touching, so a
+     given as the contents lays its parts out top to bottom, 8px apart, so a
      caller writes no layout for it; a caller's own rules for that div win
-     over this default. */
+     over this default -- a div whose parts touch says gap: 0 itself. */
   .ui-accordion-item-content {
     display: block;
     overflow: auto;
@@ -66,7 +72,7 @@ export class Accordion extends UnlitElement {
   ::slotted(div[slot$="-content"]) {
     display: flex;
     flex-direction: column;
-    gap: 0;
+    gap: 8px;
   }
 
   /* accordion switch (Figma 413:31167): a grey header bar ruled above and
@@ -167,7 +173,7 @@ export class Accordion extends UnlitElement {
         [
           html.createDomElement("inline-svg", {
             class: "open-close-icon",
-            src: "/tabler-icons/chevron-up.svg",
+            src: "chevron-up",
           }),
           this._slotted(item.label, slotName("label")),
         ]
@@ -202,10 +208,7 @@ export class Accordion extends UnlitElement {
         child.remove();
       }
     }
-    return [
-      html.link({ href: "/css/tooltip.css", rel: "stylesheet" }),
-      html.div({ class: "ui-accordion-contents" }, itemElements),
-    ];
+    return html.div({ class: "ui-accordion-contents" }, itemElements);
   }
 
   // The caller's slotted parts first, then this accordion's own chrome.
@@ -294,7 +297,7 @@ export function persistAccordionOpenState(accordion, prefix) {
   };
 }
 
-export function makeClickableIconHeader(iconPath, onClick) {
+export function makeClickableIconHeader(icon, onClick) {
   const focus = new FocusKeeper();
   return html.div(
     {
@@ -308,7 +311,7 @@ export function makeClickableIconHeader(iconPath, onClick) {
     },
     [
       html.createDomElement("inline-svg", {
-        src: iconPath,
+        src: iconPath(icon),
       }),
     ]
   );
@@ -327,10 +330,10 @@ export function groupAccordionHeaderButtons(buttons) {
 }
 
 export function makeAccordionHeaderButton(button) {
-  // button/icon at size S.
+  // button/icon at size S. `icon` is a name from icons.js, a full path, or a tabler icon's name.
   let options = {
     size: "S",
-    src: `/tabler-icons/${button.icon}.svg`,
+    src: iconPath(button.icon),
     onclick: button.onclick,
   };
 

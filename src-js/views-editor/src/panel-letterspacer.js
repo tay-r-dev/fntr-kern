@@ -29,8 +29,11 @@ import {
 import { ObservableController } from "@fontra/core/observable-object.js";
 import { getSkeletonData, translateSkeletonData } from "@fontra/core/skeleton-model.js";
 import { checkmark } from "@fontra/core/ui-utils.js";
-import "@fontra/web-components/input-field-large.js"; // the Area/Depth/Overshoot row
-import { showArmedTooltip } from "@fontra/web-components/armed-tooltip.js";
+import "@fontra/web-components/input-field-large.js"; // the Area/Depth/Overshoot fields
+import {
+  disarmOnClickAway,
+  showArmedTooltip,
+} from "@fontra/web-components/armed-tooltip.js";
 import "@fontra/web-components/labeled-toggle.js"; // the heading switch and the settings
 import "@fontra/web-components/multi-select-dropdown.js"; // batch apply's glyph set
 import "@fontra/web-components/overflow-popover.js"; // the settings overflow
@@ -230,11 +233,11 @@ const BULK_SUBSETS = [
 
 export default class LetterspacerPanel extends Panel {
   identifier = "letterspacer";
-  iconPath = "/tabler-icons/spacing-horizontal.svg";
+  iconPath = "spacing-horizontal";
 
   constructor(editorController) {
     super(editorController);
-    this.card = html.div({ class: "card card--headed" });
+    this.card = html.div({ class: "card" });
     this.contentElement.appendChild(this.card);
     this._appendStyle(LETTERSPACER_CARD_STYLES);
     this.fontController = this.editorController.fontController;
@@ -362,10 +365,10 @@ export default class LetterspacerPanel extends Panel {
   }
 
   // Area and Depth scrub; Overshoot is a plain field (Figma: "not scrub").
-  _buildAreaDepthOvershootRow() {
+  // One under another, each named over its field, as the reference glyph is.
+  _buildAreaDepthOvershootFields() {
     const makeField = (key, label, scrub) => {
       const field = html.createDomElement("input-field-large", {
-        label,
         value: this.params[key],
         // The old edit-number rows scrubbed and typed whole numbers only.
         integer: true,
@@ -375,13 +378,13 @@ export default class LetterspacerPanel extends Panel {
       field.addEventListener("change", (event) =>
         this._onSpacingParamChange(key, event.detail.value)
       );
-      return field;
+      return this._labeled(label, field);
     };
-    return html.div({ class: "field-pair" }, [
+    return [
       makeField("area", translate("sidebar.letterspacer.area"), true),
       makeField("depth", translate("sidebar.letterspacer.depth"), true),
       makeField("overshoot", translate("sidebar.letterspacer.overshoot"), false),
-    ]);
+    ];
   }
 
   async _onSpacingParamChange(key, value) {
@@ -611,8 +614,8 @@ export default class LetterspacerPanel extends Panel {
         this._heldMessageElement = html.div({ class: "field-label" }, []);
         this._renderHeldMessage();
         children.push(
-          html.div({ class: "metrics-stack ls-body" }, [
-            this._buildAreaDepthOvershootRow(),
+          html.div({ class: "card-section" }, [
+            ...this._buildAreaDepthOvershootFields(),
             this._labeled("reference glyph", this._buildReferenceField()),
             html.div({ class: "field-group" }, [
               this._buildCalculatedTable(),
@@ -634,7 +637,7 @@ export default class LetterspacerPanel extends Panel {
     }
   }
 
-  // A ui/label/XS caption over its control, 4px apart.
+  // A ui/heading/h5 caption over its control, 4px apart.
   _labeled(label, control) {
     return html.div({ class: "field-group" }, [
       html.span({ class: "field-label" }, [label]),
@@ -1480,6 +1483,8 @@ export default class LetterspacerPanel extends Panel {
   }
 
   async reverseSpacing(event) {
+    // Taken now: the event has no currentTarget once the awaits below return.
+    const button = event?.currentTarget;
     if (!this.algorithmEnabled) {
       return;
     }
@@ -1490,12 +1495,11 @@ export default class LetterspacerPanel extends Panel {
     if (guardInfo.shouldGuard && this.doubleCheckReverse && !this.reverseWarningArmed) {
       this.reverseWarningArmed = true;
       this.reverseWarningMessage = guardInfo.message;
-      this.showReverseWarningTooltip(event?.currentTarget, guardInfo.message);
+      this.showReverseWarningTooltip(button, guardInfo.message);
+      disarmOnClickAway(button, () => this.disarmReverse());
       return;
     }
-    this.reverseWarningArmed = false;
-    this.reverseWarningMessage = "";
-    this.hideReverseWarningTooltip();
+    this.disarmReverse();
 
     const positionedGlyph =
       this.sceneController.sceneModel.getSelectedPositionedGlyph();
@@ -2009,6 +2013,12 @@ export default class LetterspacerPanel extends Panel {
     this.reverseWarningTooltip = showArmedTooltip(anchor, message);
   }
 
+  disarmReverse() {
+    this.reverseWarningArmed = false;
+    this.reverseWarningMessage = "";
+    this.hideReverseWarningTooltip();
+  }
+
   hideReverseWarningTooltip() {
     if (this.reverseWarningTooltip) {
       this.reverseWarningTooltip();
@@ -2028,17 +2038,6 @@ const LETTERSPACER_CARD_STYLES = `
     height: auto;
   }
 
-  /* The LETTERSPACER card (Figma 4108:2095): its parts 10px apart. */
-  .card {
-    gap: 10px;
-  }
-
-  .metrics-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
   .metrics-heading-icon {
     width: 16px;
     height: 16px;
@@ -2053,10 +2052,6 @@ const LETTERSPACER_CARD_STYLES = `
     flex: 1 1 auto;
   }
 
-  .ls-body {
-    padding-bottom: 4px;
-  }
-
   /* Three even columns; the row names in the lighter grey. */
   .ls-table {
     table-layout: fixed;
@@ -2066,13 +2061,13 @@ const LETTERSPACER_CARD_STYLES = `
     color: var(--text-base-basic-3);
   }
 
-  /* The side checks heading L and R: ui/heading/h4. */
+  /* The side checks heading L and R: ui/table/heading. */
   .ls-side {
     display: flex;
     align-items: center;
     gap: 6px;
-    font: var(--ui-text-heading-h4);
-    letter-spacing: var(--ui-tracking);
+    font: var(--ui-text-table-heading);
+    letter-spacing: var(--ui-tracking-table-heading);
     text-transform: uppercase;
     color: var(--text-base-basic-3);
   }

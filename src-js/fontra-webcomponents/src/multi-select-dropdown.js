@@ -1,4 +1,5 @@
 import * as html from "@fontra/core/html-utils.js";
+import { iconPath } from "@fontra/core/icons.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import "./inline-svg.js";
@@ -156,8 +157,8 @@ const listStyles = `
     border: 1px solid var(--multi-select-dropdown-list-border-color);
     border-radius: 6px;
     box-shadow: 0 2px 8px var(--multi-select-dropdown-list-shadow-color);
-    /* ui/label/S */
-    font: var(--ui-text-label-s);
+    /* ui/label/XS */
+    font: var(--ui-text-label-xs);
     letter-spacing: var(--ui-tracking);
     font-feature-settings: "case" 1;
   }
@@ -247,7 +248,7 @@ export class MultiSelectDropdown extends UnlitElement {
     /* In a row it takes the room the row has, from 72px to 156px; its label
        ends in an ellipsis where the field is narrower than it. Its control
        group moved to a line of its own under the heading, it fills that
-       line. */
+       line; with stretch set it fills the room it is given anywhere. */
     :host {
       display: inline-block;
       flex: 1 1 auto;
@@ -256,7 +257,8 @@ export class MultiSelectDropdown extends UnlitElement {
       cursor: pointer;
     }
 
-    :host([own-line]) {
+    :host([own-line]),
+    :host([stretch]) {
       max-width: none;
     }
 
@@ -280,12 +282,10 @@ export class MultiSelectDropdown extends UnlitElement {
       gap: 4px;
     }
 
-    /* ui/label/XS */
+    /* ui/heading/h5: the name is outside the field. */
     .heading {
-      font: 320 9px / 10px var(--ui-font-mono);
-      font-stretch: 75%;
+      font: var(--ui-text-heading-h5);
       letter-spacing: var(--ui-tracking);
-      font-feature-settings: "case" 1;
       color: var(--multi-select-dropdown-heading-color);
       white-space: nowrap;
       overflow: hidden;
@@ -301,7 +301,7 @@ export class MultiSelectDropdown extends UnlitElement {
       padding: 4px 6px;
       gap: 4px;
       /* ui/label/S */
-      font: var(--ui-text-label-s);
+      font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       box-sizing: border-box;
@@ -410,26 +410,54 @@ export class MultiSelectDropdown extends UnlitElement {
       height: 8px;
     }
 
-    /* Ticket 48: the icon mode, which is how the overflow button draws. */
-    button.icon-mode {
-      display: flex;
-      background-color: transparent;
-      border: none;
-      padding: 0;
-      width: 1.5em;
-      height: 1.5em;
-    }
-
-    button.icon-mode inline-svg {
-      width: 100%;
-      height: 100%;
-    }
-
     button:disabled,
     :host(:hover) button:disabled {
       background-color: var(--multi-select-dropdown-disabled-color);
       border-color: var(--multi-select-dropdown-disabled-border-color);
       color: var(--multi-select-dropdown-disabled-text-color);
+    }
+
+    /* Ticket 48: the icon mode, which is how the overflow button draws --
+       as button/icon (icon-button.js): a 24px box round a 12px icon, the
+       grey fill on hover, the press look while its list is open. */
+    button.icon-mode,
+    button.icon-mode:disabled {
+      display: flex;
+      justify-content: center;
+      background-color: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 0;
+      width: var(--bt-sgb-height);
+      height: var(--bt-sgb-height);
+      color: var(--bt-sgc-ic-rest);
+      transition:
+        background-color 150ms,
+        color 150ms;
+    }
+
+    :host(:hover) button.icon-mode:not(:disabled) {
+      background-color: var(--bt-sgi-sr-hover);
+      border-color: var(--bt-sgi-ln-hover);
+      color: var(--bt-sgc-ic-hover);
+    }
+
+    button.icon-mode.open,
+    :host(:hover) button.icon-mode.open:not(:disabled) {
+      background-color: var(--bt-sgi-sr-focus);
+      border-color: var(--bt-sgi-ln-focus);
+      color: var(--icon-color-lime-basic-4);
+    }
+
+    button.icon-mode:disabled,
+    :host(:hover) button.icon-mode:disabled {
+      color: var(--icon-base-basic-4);
+    }
+
+    button.icon-mode inline-svg {
+      display: block;
+      width: 12px;
+      height: 12px;
     }
   `;
 
@@ -445,29 +473,12 @@ export class MultiSelectDropdown extends UnlitElement {
   }
 
   // In a control group (shared.css), marks whether the group has wrapped to
-  // a line of its own under its heading: it is then lower in its row than
-  // half its own height.
+  // a line of its own under its heading.
   _watchOwnLine() {
-    let group = this.closest(".control-group");
-    while (group?.parentElement?.closest(".control-group")) {
-      group = group.parentElement.closest(".control-group");
-    }
-    const row = group?.parentElement;
-    if (!row) {
-      return;
-    }
-    const update = () => {
-      const groupBox = group.getBoundingClientRect();
-      const rowBox = row.getBoundingClientRect();
-      this.toggleAttribute(
-        "own-line",
-        groupBox.height > 0 && groupBox.top - rowBox.top > groupBox.height / 2
-      );
-    };
     this._ownLineObserver?.disconnect();
-    this._ownLineObserver = new ResizeObserver(update);
-    this._ownLineObserver.observe(row);
-    update();
+    this._ownLineObserver = this.closest(".control-group")
+      ? html.watchOwnLine(this)
+      : null;
   }
 
   constructor() {
@@ -562,6 +573,16 @@ export class MultiSelectDropdown extends UnlitElement {
     this.requestUpdate();
   }
 
+  // `stretch`: no 156px cap; the field fills the width its place gives it.
+  get stretch() {
+    return this._stretch ?? false;
+  }
+
+  set stretch(value) {
+    this._stretch = !!value;
+    this.toggleAttribute("stretch", this._stretch);
+  }
+
   // The picks the field shows. A pick flagged `showsLabel` (an "All") reads
   // as no pick.
   _picks() {
@@ -609,13 +630,13 @@ export class MultiSelectDropdown extends UnlitElement {
         },
       },
       this._icon
-        ? [html.createDomElement("inline-svg", { src: this._icon })]
+        ? [html.createDomElement("inline-svg", { src: iconPath(this._icon) })]
         : [
             this._labelSpan,
             (this._tagSpan = html.span({ class: "tag" })),
             html.createDomElement("inline-svg", {
               class: "chevron",
-              src: "/images/chevron-down.svg",
+              src: "chevron-down",
             }),
           ]
     );

@@ -123,7 +123,7 @@ class AddRemoveButtons extends html.UnlitElement {
                   this.addButtonCallback();
                 },
               },
-              [new InlineSVG("/images/plus.svg")]
+              [new InlineSVG("add")]
             ),
             html.button(
               {
@@ -132,7 +132,7 @@ class AddRemoveButtons extends html.UnlitElement {
                   this.removeButtonCallback();
                 },
               },
-              [new InlineSVG("/images/minus.svg")]
+              [new InlineSVG("remove")]
             ),
           ]
         );

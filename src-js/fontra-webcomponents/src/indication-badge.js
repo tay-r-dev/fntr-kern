@@ -9,8 +9,10 @@ import { themeColorCSS } from "./theme-support.js";
 // `size` is "M" (6px, the default) or "S" (4px). `state` is "inside" (the
 // default: a dark-lime rim, for a badge drawn inside its owner, as on a latch
 // button) or "outside" (a white ring, for a badge straddling its owner's
-// corner, as on an icon button) -- Figma 2004:29970. Both are plain JS
-// properties, the convention every UnlitElement component in this tree uses.
+// corner, as on an icon button) -- Figma 2004:29970. `status` is "active"
+// (the default: lime) or "rest" (grey: surface 1 with a line 3 rim inside,
+// surface 2 in its white ring outside). All are plain JS properties, the
+// convention every UnlitElement component in this tree uses.
 const colors = {
   "indication-badge-color": ["var(--ind-bdg-sr-active)", "#d0eb49"],
   "indication-badge-inside-color": ["var(--ind-bdg-ln-inside)", "#9cbb12"],
@@ -36,6 +38,17 @@ export class IndicationBadge extends UnlitElement {
       box-shadow: 0 0 0 2px var(--indication-badge-outside-color);
     }
 
+    /* An owner whose state turns the badge lime in CSS (a press) sets
+       --indication-badge-rest-fill and -rim to the active colours. */
+    :host([data-status="rest"]) {
+      background: var(--indication-badge-rest-fill, var(--surface-base-basic-1));
+      border-color: var(--indication-badge-rest-rim, var(--line-base-basic-3));
+    }
+
+    :host([data-status="rest"][data-state="outside"]) {
+      background: var(--indication-badge-rest-fill, var(--surface-base-basic-2));
+    }
+
     :host([data-size="S"]) {
       width: 4px;
       height: 4px;
@@ -45,11 +58,13 @@ export class IndicationBadge extends UnlitElement {
   static properties = {
     size: { type: String },
     state: { type: String },
+    status: { type: String },
   };
 
   render() {
     this.setAttribute("data-size", this.size === "S" ? "S" : "M");
     this.setAttribute("data-state", this.state === "outside" ? "outside" : "inside");
+    this.setAttribute("data-status", this.status === "rest" ? "rest" : "active");
   }
 }
 

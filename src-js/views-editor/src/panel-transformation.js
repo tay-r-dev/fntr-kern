@@ -32,6 +32,7 @@ import "@fontra/web-components/input-scrub.js"; // for <ui-input-scrub>, the Sca
 import "@fontra/web-components/icon-button.js"; // for <icon-button>, ticket 39's origin pick
 import "@fontra/web-components/inline-svg.js"; // for the rows' static icons
 import { Form } from "@fontra/web-components/ui-form.js";
+import { checkmark } from "@fontra/core/ui-utils.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
   applyGeneratedContourRemap,
@@ -71,21 +72,33 @@ export default class TransformationPanel {
     min-width: 0;
   }
 
-  /* 16px: the icons' 24px grid lands on whole pixels there. */
+  /* A row icon that opens a card is a button, 16px. */
   .row-icon {
     width: 16px;
     height: 16px;
   }
 
-  /* A static row icon is an inline-svg: fill its box. */
+  /* A static one is 12px, the size of a button's icon. */
+  inline-svg.row-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* A static row icon is an inline-svg, in icon 3 as a button icon at rest:
+     fill its box. */
+  inline-svg.row-icon {
+    color: var(--icon-base-basic-3);
+  }
+
   inline-svg.row-icon svg {
     display: block;
     width: 100%;
     height: 100%;
   }
 
-  /* The Origin row: the grid, the typed X and Y, then pick and clear. */
-  .origin-row {
+  /* Fields and the buttons after them in one line: the Origin row's typed
+     X and Y with pick and clear, the distribution spacing with clear. */
+  .field-row {
     display: flex;
     flex: 1 1 0;
     min-width: 0;
@@ -93,7 +106,7 @@ export default class TransformationPanel {
     gap: 4px;
   }
 
-  .origin-row > input-field-large {
+  .field-row > input-field-large {
     flex: 1 1 0;
     min-width: 0;
   }
@@ -102,12 +115,6 @@ export default class TransformationPanel {
     display: flex;
     gap: 6px;
     padding-left: 2px;
-    opacity: 0.3;
-  }
-
-  .origin-buttons:hover,
-  .origin-buttons:has(icon-button[on]) {
-    opacity: 1;
   }
 
   /* A 24px square: 3 x 6px dots and two 3px gaps. */
@@ -120,10 +127,12 @@ export default class TransformationPanel {
     flex: 0 0 auto;
   }
 
+  /* The dots take select/basic's fills: grey at rest, darker on hover, dark
+     when picked, lime when a picked dot is hovered. */
   .origin-radio-buttons > input[type="radio"] {
     appearance: none;
     box-sizing: border-box;
-    background-color: var(--editor-mini-console-background-color-light);
+    background-color: var(--sl-bsb-sr-rest);
     margin: 0;
     padding: 0;
     width: 100%;
@@ -133,14 +142,23 @@ export default class TransformationPanel {
     cursor: pointer;
   }
 
-  .origin-radio-buttons > input[type="radio"]:hover,
-  .origin-radio-buttons > input[type="radio"]:checked {
-    background-color: var(--text-input-background-color-dark);
+  .origin-radio-buttons > input[type="radio"]:hover {
+    background-color: var(--sl-bsb-sr-hover);
   }
 
+  .origin-radio-buttons > input[type="radio"]:checked {
+    background-color: var(--sl-bsb-sr-active);
+  }
+
+  .origin-radio-buttons > input[type="radio"]:checked:hover {
+    background-color: var(--sl-bsb-sr-active-hover);
+  }
+
+  /* ui/label/XS, as a card-note. */
   .harmonize-report {
-    font-size: 0.9em;
-    opacity: 0.7;
+    font: var(--ui-text-label-xs);
+    letter-spacing: var(--ui-tracking);
+    color: var(--text-base-basic-3);
   }
 
   /* Operations, Path, Harmonize: a small label over segmented rows, two
@@ -462,7 +480,7 @@ export default class TransformationPanel {
 
     formContents.push({
       type: "header",
-      level: "h2",
+      level: "h1",
       label: translate("sidebar.selection-transformation.title"),
     });
 
@@ -497,7 +515,7 @@ export default class TransformationPanel {
     // Ticket 39: a button beside the grid enters pick mode. The next canvas
     // click types that point into X and Y; Escape leaves without a change.
     const pickButton = html.createDomElement("icon-button", {
-      "src": "/tabler-icons/focus-2.svg",
+      "src": "focus-2",
       "data-tooltip": translate("sidebar.selection-transformation.origin.pick"),
       "data-tooltipposition": "bottom",
     });
@@ -507,7 +525,7 @@ export default class TransformationPanel {
     this.originPickButton = pickButton;
     // The cross drops a picked or typed origin, back to the grid's centre.
     const clearButton = html.createDomElement("icon-button", {
-      "src": "/images/cross.svg",
+      "src": "close",
       "data-tooltip": translate("sidebar.selection-transformation.origin.clear"),
       "data-tooltipposition": "bottom",
     });
@@ -535,13 +553,13 @@ export default class TransformationPanel {
     formContents.push({
       type: "universal-row",
       field1: this._rowIcon(
-        "/images/transform-panel-origin.svg",
+        "transform-origin",
         translate("sidebar.selection-transformation.origin")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: radioButtonOrigin },
       field3: {
         type: "auxiliaryElement",
-        auxiliaryElement: html.div({ class: "origin-row" }, [
+        auxiliaryElement: html.div({ class: "field-row" }, [
           this.originXField,
           this.originYField,
           html.div({ class: "origin-buttons" }, [pickButton, clearButton]),
@@ -554,7 +572,7 @@ export default class TransformationPanel {
       fieldX: moveXField,
       fieldY: moveYField,
     } = this._buildScrubXYRow({
-      icon: "/images/transform-panel-move.svg",
+      icon: "transform-move",
       tooltip: translate("sidebar.selection-transformation.move"),
       valueX: this.transformParameters.moveX,
       valueY: this.transformParameters.moveY,
@@ -651,7 +669,7 @@ export default class TransformationPanel {
     const scaleRow = {
       type: "universal-row",
       field1: this._rowIcon(
-        "/images/transform-panel-scale.svg",
+        "transform-scale",
         translate("sidebar.selection-transformation.scale")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: scaleInput },
@@ -690,7 +708,7 @@ export default class TransformationPanel {
     formContents.push({
       type: "universal-row",
       field1: this._rowIcon(
-        "/images/transform-panel-rotate.svg",
+        "transform-rotate",
         translate("sidebar.selection-transformation.rotate")
       ),
       field2: { type: "auxiliaryElement", auxiliaryElement: rotateField },
@@ -702,7 +720,7 @@ export default class TransformationPanel {
       fieldX: skewXField,
       fieldY: skewYField,
     } = this._buildScrubXYRow({
-      icon: "/images/transform-panel-skew.svg",
+      icon: "transform-skew",
       tooltip: translate("sidebar.selection-transformation.skew"),
       valueX: this.transformParameters.skewX,
       valueY: this.transformParameters.skewY,
@@ -765,7 +783,7 @@ export default class TransformationPanel {
       fieldX: dimensionWidthField,
       fieldY: dimensionHeightField,
     } = this._buildScrubXYRow({
-      icon: "/images/transform-panel-dimension.svg",
+      icon: "transform-dimension",
       tooltip: translate("sidebar.selection-info.dimensions"),
       labels: ["W", "H"],
       valueX: this.transformParameters.dimensionWidth,
@@ -812,8 +830,14 @@ export default class TransformationPanel {
       if (onclick) {
         button.onclick = onclick;
       }
+      // The dropdown is the design's settings card (shared.css): its parts
+      // stacked in the card's body.
       if (dropdown) {
-        button.dropdown = dropdown;
+        button.setAttribute("settings-card", "");
+        button.dropdown = html.div(
+          { class: "settings-card-body" },
+          [].concat(dropdown)
+        );
       }
       return button;
     };
@@ -825,58 +849,61 @@ export default class TransformationPanel {
     const labeledGroup = (key, element) =>
       html.div({ class: "row-group" }, [groupLabel(key), element]);
 
-    // The distribution spacing lives in each distribute button's dropdown;
-    // both write the one parameter.
-    const spacingCard = () =>
-      html.input({
-        type: "number",
-        value:
-          this.transformParameters.customDistributionSpacing == null
-            ? ""
-            : String(this.transformParameters.customDistributionSpacing),
-        placeholder: translate(
-          "sidebar.selection-transformation.distribute.distance-in-units"
-        ),
-        oninput: (event) => {
-          const raw = event.target.value;
-          this.transformParameters.customDistributionSpacing =
-            raw === "" ? null : Number(raw);
-        },
+    // The distribution spacing lives in each distribute button's dropdown,
+    // a plain number field named over it; both write the one parameter. Empty,
+    // the distribution spaces the objects evenly; the cross empties it.
+    const spacingCard = () => {
+      const field = html.createDomElement("input-field-large", {
+        value: this.transformParameters.customDistributionSpacing,
       });
+      field.type = "number";
+      field.addEventListener("change", (event) => {
+        this.transformParameters.customDistributionSpacing = Number(event.detail.value);
+      });
+      const clearButton = html.createDomElement("icon-button", {
+        "src": "close",
+        "data-tooltip": translate("sidebar.selection-transformation.distribute.clear"),
+        "data-tooltipposition": "bottom",
+      });
+      clearButton.onclick = () => {
+        this.transformParameters.customDistributionSpacing = null;
+        field.value = null;
+      };
+      return html.div({ class: "field-group" }, [
+        html.span({ class: "field-label" }, [
+          translate("sidebar.selection-transformation.distribute.distance-in-units"),
+        ]),
+        html.div({ class: "field-row" }, [field, clearButton]),
+      ]);
+    };
 
     const K = "sidebar.selection-transformation";
     const operations = html.div({ class: "row-group" }, [
       groupLabel(`${K}.operations`),
       pairRow(
         tray([
-          segment(
-            "/images/transform-pane-lflip-vertical.svg",
-            `${K}.flip.vertically`,
-            () =>
-              this.transformSelection(
-                () => new Transform().scale(-1, 1),
-                "flip vertically"
-              )
+          segment("flip-vertical", `${K}.flip.vertically`, () =>
+            this.transformSelection(
+              () => new Transform().scale(-1, 1),
+              "flip vertically"
+            )
           ),
-          segment(
-            "/images/transform-pane-lflip-horizontal.svg",
-            `${K}.flip.horizontally`,
-            () =>
-              this.transformSelection(
-                () => new Transform().scale(1, -1),
-                "flip horizontally"
-              )
+          segment("flip-horizontal", `${K}.flip.horizontally`, () =>
+            this.transformSelection(
+              () => new Transform().scale(1, -1),
+              "flip horizontally"
+            )
           ),
         ]),
         tray([
           segment(
-            "/images/transform-pane-ldistribute-vertically.svg",
+            "distribute-horizontally",
             `${K}.distribute.horizontally`,
             () => this.moveObjects(distributeHorizontally),
             spacingCard()
           ),
           segment(
-            "/images/transform-pane-ldistribute-horizontally.svg",
+            "distribute-vertically",
             `${K}.distribute.vertically`,
             () => this.moveObjects(distributeVertically),
             spacingCard()
@@ -885,28 +912,20 @@ export default class TransformationPanel {
       ),
       pairRow(
         tray([
-          segment("/images/transform-panel-align-left.svg", `${K}.align.left`, () =>
-            this.moveObjects(alignLeft)
+          segment("align-left", `${K}.align.left`, () => this.moveObjects(alignLeft)),
+          segment("align-horizontally", `${K}.align.center`, () =>
+            this.moveObjects(alignCenter)
           ),
-          segment(
-            "/images/transform-panel-align-horizontally.svg",
-            `${K}.align.center`,
-            () => this.moveObjects(alignCenter)
-          ),
-          segment("/images/transform-panel-alight-right.svg", `${K}.align.right`, () =>
+          segment("align-right", `${K}.align.right`, () =>
             this.moveObjects(alignRight)
           ),
         ]),
         tray([
-          segment("/images/transform-panel-align-top.svg", `${K}.align.top`, () =>
-            this.moveObjects(alignTop)
+          segment("align-top", `${K}.align.top`, () => this.moveObjects(alignTop)),
+          segment("align-vertically", `${K}.align.middle`, () =>
+            this.moveObjects(alignMiddle)
           ),
-          segment(
-            "/images/transform-panel-align-vertically.svg",
-            `${K}.align.middle`,
-            () => this.moveObjects(alignMiddle)
-          ),
-          segment("/images/transform-panel-align-bottom.svg", `${K}.align.bottom`, () =>
+          segment("align-bottom", `${K}.align.bottom`, () =>
             this.moveObjects(alignBottom)
           ),
         ])
@@ -918,28 +937,28 @@ export default class TransformationPanel {
     // dropdown; simplify; balance.
     const P = `${K}.path-operations`;
     const booleanCard = tray([
-      segment("/images/subtract.svg", `${P}.subtract`, () =>
+      segment("subtract", `${P}.subtract`, () =>
         this.doPathOperations(this.pathOperations.subtractPath, "subtract")
       ),
-      segment("/images/intersect.svg", `${P}.intersect`, () =>
+      segment("intersect", `${P}.intersect`, () =>
         this.doPathOperations(this.pathOperations.intersectPath, "intersect")
       ),
-      segment("/images/exclude.svg", `${P}.exclude`, () =>
+      segment("exclude", `${P}.exclude`, () =>
         this.doPathOperations(this.pathOperations.excludePath, "exclude")
       ),
     ]);
     const pathGroup = tray([
       segment(
-        "/images/union.svg",
+        "union",
         `${P}.union.more`,
         () => this.doPathOperations(this.pathOperations.unionPath, "union"),
         booleanCard
       ),
-      segment("/images/simplify.svg", "action.simplify-contour", () => {
+      segment("simplify", "action.simplify-contour", () => {
         this.sceneController.updateContextMenuState(null);
         this.sceneController.doSimplifySelectedContours();
       }),
-      segment("/images/balance.svg", `${K}.harmonize.balance`, () => this.doBalance()),
+      segment("balance", `${K}.harmonize.balance`, () => this.doBalance()),
     ]);
 
     // Harmonize: one segment per continuity. G2's options hang off it; G3 has
@@ -947,26 +966,20 @@ export default class TransformationPanel {
     const settings = applicationSettingsController.model;
     this.harmonizeChecks = {};
     const optionCheck = (key, labelKey) => {
-      const check = html.input({ type: "checkbox" });
-      check.checked = !!settings[key];
-      check.addEventListener("change", () => (settings[key] = check.checked));
-      this.harmonizeChecks[key] = check;
-      return html.label({ style: "display: flex; gap: 0.5em; align-items: center;" }, [
-        check,
+      const row = checkmark(
+        settings[key],
         translate(`${K}.harmonize.${labelKey}`),
-      ]);
+        (checked) => (settings[key] = checked)
+      );
+      this.harmonizeChecks[key] = row.querySelector("input");
+      return row;
     };
-    const harmonizeOptions = html.div(
-      {
-        style: "display: flex; flex-direction: column; align-items: start; gap: 0.6em;",
-      },
-      [
-        optionCheck("harmonizePreserveCurvature", "preserve-curvature"),
-        optionCheck("harmonizeMoveOnCurve", "move-on-curve"),
-        optionCheck("harmonizeEqualize", "equalize"),
-        optionCheck("harmonizeOtherSources", "other-sources"),
-      ]
-    );
+    const harmonizeOptions = [
+      optionCheck("harmonizePreserveCurvature", "preserve-curvature"),
+      optionCheck("harmonizeMoveOnCurve", "move-on-curve"),
+      optionCheck("harmonizeEqualize", "equalize"),
+      optionCheck("harmonizeOtherSources", "other-sources"),
+    ];
     const g3Button = segment(undefined, `${K}.harmonize.g3`, () =>
       this.doHarmonize(true)
     );
@@ -1175,14 +1188,27 @@ export default class TransformationPanel {
       }
     }
 
+    // Generated contours take no part: the skeleton owns them, so they stay
+    // as they are and are only re-indexed around the result.
+    const generatedIndices = (layerGlyph) =>
+      new Set(
+        (getSkeletonData(layerGlyph)?.generated || []).map(
+          ({ pathContourIndex }) => pathContourIndex
+        )
+      );
+
     const layerPaths = await mapObjectValuesAsync(
       editLayerGlyphs,
       async (layerGlyph) => {
         const path = layerGlyph.path;
+        const generated = generatedIndices(layerGlyph);
         const selectedContoursPath = new VarPackedPath();
         const unselectedContoursPath = new VarPackedPath();
 
         for (const contourIndex of range(path.numContours)) {
+          if (generated.has(contourIndex)) {
+            continue;
+          }
           if (isContourSelected(contourIndex)) {
             selectedContoursPath.appendContour(path.getContour(contourIndex));
           } else {
@@ -1200,29 +1226,24 @@ export default class TransformationPanel {
     await this.sceneController.editGlyphAndRecordChanges(
       (glyph) => {
         for (const [layerName, layerPath] of Object.entries(layerPaths)) {
-          if (doUnion && pointIndices.length) {
-            // Union of selected contours: the selected contours (never
-            // generated ones — those are unselectable) are deleted and the
-            // boolean result is appended, so the surviving generated contours
-            // only move; re-derive their indices via a marked dry run.
-            const layerGlyph = glyph.layers[layerName].glyph;
-            const structuralEdit = (path) => {
-              for (const contourIndex of reversed(selectedContourIndices)) {
-                path.deleteContour(contourIndex);
-              }
-              path.appendPath(layerPath);
-            };
-            const remap = computeGeneratedContourRemap(layerGlyph, structuralEdit);
-            structuralEdit(layerGlyph.path);
-            applyGeneratedContourRemap(layerGlyph, remap);
-          } else {
-            // Whole-path boolean ops (union-all, subtract/intersect/exclude)
-            // consume every contour, generated ones included: the result no
-            // longer corresponds to the skeleton's generated bookkeeping.
-            // Documented WS-9 limitation (Deviations): with an active skeleton
-            // these ops are destructive to the generated linkage.
-            glyph.layers[layerName].glyph.path = layerPath;
-          }
+          // The contours the operation consumed are deleted and its result
+          // appended, so the generated contours only move.
+          const layerGlyph = glyph.layers[layerName].glyph;
+          const generated = generatedIndices(layerGlyph);
+          const consumed = [...range(layerGlyph.path.numContours)].filter(
+            (contourIndex) =>
+              !generated.has(contourIndex) &&
+              (!doUnion || !pointIndices.length || isContourSelected(contourIndex))
+          );
+          const structuralEdit = (path) => {
+            for (const contourIndex of reversed(consumed)) {
+              path.deleteContour(contourIndex);
+            }
+            path.appendPath(layerPath);
+          };
+          const remap = computeGeneratedContourRemap(layerGlyph, structuralEdit);
+          structuralEdit(layerGlyph.path);
+          applyGeneratedContourRemap(layerGlyph, remap);
         }
         return undoLabel.toLowerCase();
       },

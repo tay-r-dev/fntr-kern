@@ -416,7 +416,7 @@ class AxisBox extends HTMLElement {
       ]),
       html.createDomElement("icon-button", {
         "class": "fontra-ui-font-info-axes-panel-axis-box-delete",
-        "src": "/tabler-icons/trash.svg",
+        "src": "delete",
         "onclick": (event) => this.deleteAxis(this.axisIndex),
         "data-tooltip": translate("axes.delete-axis"),
         "data-tooltipposition": "left",

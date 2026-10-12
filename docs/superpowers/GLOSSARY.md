@@ -346,7 +346,8 @@ where the outline leaves the black.
 
 **Aimed ray** — a ray that points where the designer dragged it, not along the normal. The angle
 is in glyph space and is stored on the ray's cast end. Drag its arrow to aim it again. Ctrl-click
-it to return it to the normal.
+it to return it to the normal. Any ray can be aimed from its **aim handle**: rest the pointer on the
+arrowhead for half a second, and a gizmo in the ray's colour shows past it. Drag it to aim the ray.
 
 **Ruler** — a marker that keeps the Power Ruler's line: a place and an angle, attached to nothing,
 measuring every span it crosses in the black and in the white.

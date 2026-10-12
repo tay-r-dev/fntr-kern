@@ -24,10 +24,7 @@ import {
   union,
 } from "@fontra/core/set-ops.js";
 import {
-  bulbSideOfRole,
   getSkeletonData,
-  makeEditableGeneratedPointKey,
-  makeSkeletonRibKey,
   parseEditableGeneratedHandleKey,
 } from "@fontra/core/skeleton-model.js";
 import { dragSnapPolicy } from "@fontra/core/snapping.js";
@@ -59,6 +56,7 @@ import {
 } from "./handle-length-editing.js";
 import { rulerExtraLinesFor } from "./edit-tools-power-ruler.js";
 import { deleteMarkers, handleMarkerDrag, unaimMarker } from "./marker-editing.js";
+
 import { MeasureInteraction } from "./measure-interactions.js";
 import { getPinPoint } from "./panel-transformation.js";
 import {
@@ -115,9 +113,9 @@ import {
   findTunniGizmo,
   isTunniOnCurveType,
   tunniGizmoContourKey,
-  TUNNI_GIZMO_TUNING,
   TunniGizmoReveal,
 } from "./tunni-gizmos.js";
+import { GIZMO_TUNING } from "./gizmo.js";
 import {
   equalizeSegmentDistances,
   equalizeSkeletonTunniTensions,
@@ -126,6 +124,9 @@ import {
   handleSkeletonTunniDrag,
   handleTunniDrag,
 } from "./tunni-interactions.js";
+
+// How long the arrowhead of a ray is rested on before its aim handle shows.
+const MARKER_AIM_REVEAL_MS = 500;
 
 const transformHandleMargin = 6;
 const transformHandleSize = 8;
@@ -180,7 +181,7 @@ export class PointerTools {
 }
 
 export class PointerTool extends BaseTool {
-  iconPath = "/images/tool-panel-pointer.svg";
+  iconPath = "tool-pointer";
   identifier = "pointer-tool";
 
   constructor(...args) {
@@ -200,13 +201,26 @@ export class PointerTool extends BaseTool {
     // the drawing layers read the reveal off the scene model: a reveal per tool
     // left the layers reading one copy while the active tool armed another, so
     // a gizmo took clicks and never showed.
-    this.sceneModel.tunniGizmoReveal ??= new TunniGizmoReveal(() =>
+    this.sceneModel.gizmoReveal ??= new TunniGizmoReveal(() =>
       this.canvasController.requestUpdate()
     );
   }
 
-  get tunniGizmoReveal() {
-    return this.sceneModel.tunniGizmoReveal;
+  get gizmoReveal() {
+    return this.sceneModel.gizmoReveal;
+  }
+
+  // The nearest gizmo: a Tunni gizmo or a ray's aim handle. Each feature finds
+  // its own; neither knows about the other.
+  _findGizmo(point, radius, positionedGlyph) {
+    const tunni = this._findTunniGizmo(point, radius, positionedGlyph);
+    const aim = this.sceneModel.markerAimGizmoAtPoint(
+      point,
+      radius,
+      positionedGlyph,
+      this.sceneController.onePixelUnit
+    );
+    return aim && (!tunni || aim.distance < tunni.distance) ? aim : tunni;
   }
 
   _findTunniGizmo(point, radius, positionedGlyph) {
@@ -228,9 +242,8 @@ export class PointerTool extends BaseTool {
     if (
       gizmo &&
       isTunniOnCurveType(gizmo.type) &&
-      (this.tunniGizmoReveal.isContourArmed(tunniGizmoContourKey(gizmo.key)) ||
-        gizmo.distance <=
-          TUNNI_GIZMO_TUNING.clickRadius * this.sceneController.onePixelUnit)
+      (this.gizmoReveal.isContourArmed(tunniGizmoContourKey(gizmo.key)) ||
+        gizmo.distance <= GIZMO_TUNING.clickRadius * this.sceneController.onePixelUnit)
     ) {
       return tunniGizmoContourKey(gizmo.key);
     }
@@ -302,18 +315,18 @@ export class PointerTool extends BaseTool {
     const positionedGlyph = sceneController.sceneModel.getSelectedPositionedGlyph();
     const pixel = sceneController.onePixelUnit;
     const gizmo = positionedGlyph
-      ? this._findTunniGizmo(
-          point,
-          TUNNI_GIZMO_TUNING.revealRadius * pixel,
-          positionedGlyph
-        )
+      ? this._findGizmo(point, GIZMO_TUNING.revealRadius * pixel, positionedGlyph)
       : null;
-    const hot = !!gizmo && gizmo.distance <= TUNNI_GIZMO_TUNING.clickRadius * pixel;
-    this.tunniGizmoReveal.hover(gizmo?.key ?? null, { hot });
-    this.tunniGizmoReveal.hoverContour(this._hoveredTunniContour(point, size, gizmo));
+    const hot = !!gizmo && gizmo.distance <= GIZMO_TUNING.clickRadius * pixel;
+    this.gizmoReveal.hover(gizmo?.key ?? null, {
+      hot,
+      // A ray's aim handle shows after the arrowhead has been rested on.
+      ...(gizmo?.kind === "marker-aim" ? { delay: MARKER_AIM_REVEAL_MS } : {}),
+    });
+    this.gizmoReveal.hoverContour(this._hoveredTunniContour(point, size, gizmo));
     if (
       hot &&
-      this.tunniGizmoReveal.isArmed(gizmo.key) &&
+      this.gizmoReveal.isArmed(gizmo.key) &&
       !this._skeletonPointUnder(point, size)
     ) {
       // Crosshair moves on-curve points, pointer reshapes between them.
@@ -342,9 +355,9 @@ export class PointerTool extends BaseTool {
     }
   }
 
-  // Pressing a skeleton or generated gizmo selects what it belongs to, so the
-  // panel shows that object: a skeleton segment's two points, or the ribs at
-  // the two ends of a generated segment.
+  // Pressing a skeleton gizmo selects what it belongs to, so the panel shows
+  // that object: a skeleton segment's two points. A generated gizmo selects
+  // nothing, so a drag on it leaves no ribs selected.
   _skeletonPointUnder(point, size) {
     return (
       this.sceneModel.skeletonPointAtPoint(
@@ -373,35 +386,30 @@ export class PointerTool extends BaseTool {
           keys.add(makeSkeletonPointKey(gizmo.contourId, pointId));
         }
       }
-    } else if (gizmo.kind === "generated" && segment) {
-      for (const entry of [segment.provenance?.[0], segment.provenance?.at(-1)]) {
-        if (entry?.skeletonPointId === undefined || entry.insertion) {
-          continue;
-        }
-        // A ball segment belongs to no rib: its ends are the bulb's own points.
-        if (segment.bulb) {
-          if (entry.bulbRole) {
-            keys.add(
-              makeEditableGeneratedPointKey(
-                entry.skeletonContourId ?? segment.skeletonContourId,
-                entry.skeletonPointId,
-                bulbSideOfRole(entry.bulbRole)
-              )
-            );
-          }
-          continue;
-        }
-        keys.add(
-          makeSkeletonRibKey(
-            entry.skeletonContourId ?? segment.skeletonContourId,
-            entry.skeletonPointId,
-            segment.side
-          )
-        );
-      }
     }
     if (keys.size) {
       this.sceneController.selection = keys;
+    }
+  }
+
+  // A press on a shown gizmo goes to the feature that owns it.
+  async _handleGizmoDrag(gizmo, eventStream, initialEvent, options) {
+    if (gizmo.kind !== "marker-aim") {
+      await this._handleTunniGizmoDrag(gizmo, eventStream, initialEvent, options);
+      return;
+    }
+    this.gizmoReveal.setDragged(gizmo.key);
+    try {
+      await handleMarkerDrag({
+        sceneController: this.sceneController,
+        eventStream,
+        initialEvent,
+        markerId: gizmo.markerId,
+        endIndex: gizmo.endIndex,
+        aimNow: true,
+      });
+    } finally {
+      this.gizmoReveal.setDragged(null);
     }
   }
 
@@ -453,7 +461,7 @@ export class PointerTool extends BaseTool {
       return;
     }
     // The held gizmo shows its handles and their plaques until the drag ends.
-    this.tunniGizmoReveal.setDragged(gizmo.key);
+    this.gizmoReveal.setDragged(gizmo.key);
     if (gizmo.kind === "generated") {
       // The readout layer re-reads the segment from live geometry each frame,
       // so it shows the curvature the drag is arriving at even when the label
@@ -471,7 +479,7 @@ export class PointerTool extends BaseTool {
         });
       } finally {
         this.sceneModel.generatedCurvatureDragTarget = null;
-        this.tunniGizmoReveal.setDragged(null);
+        this.gizmoReveal.setDragged(null);
       }
       return;
     }
@@ -487,7 +495,7 @@ export class PointerTool extends BaseTool {
         });
       } finally {
         this.sceneModel.tunniDragTarget = null;
-        this.tunniGizmoReveal.setDragged(null);
+        this.gizmoReveal.setDragged(null);
       }
       return;
     }
@@ -497,7 +505,7 @@ export class PointerTool extends BaseTool {
       await handleTunniDrag({ sceneController, eventStream, initialEvent, gizmo });
     } finally {
       this.sceneModel.tunniDragTarget = null;
-      this.tunniGizmoReveal.setDragged(null);
+      this.gizmoReveal.setDragged(null);
     }
   }
 
@@ -554,9 +562,9 @@ export class PointerTool extends BaseTool {
     // A gizmo is reached only once it has shown. A skeleton point under the
     // pointer outranks every gizmo (see below).
     const gizmo = positionedGlyph
-      ? this._findTunniGizmo(
+      ? this._findGizmo(
           point,
-          TUNNI_GIZMO_TUNING.clickRadius * sceneController.onePixelUnit,
+          GIZMO_TUNING.clickRadius * sceneController.onePixelUnit,
           positionedGlyph
         )
       : null;
@@ -569,7 +577,7 @@ export class PointerTool extends BaseTool {
     // gizmo can sit exactly on one.
     const gizmoTakesPress =
       gizmo &&
-      this.tunniGizmoReveal.isArmed(gizmo.key) &&
+      this.gizmoReveal.isArmed(gizmo.key) &&
       !this._skeletonPointUnder(point, size);
     // The browser counts any press soon after a click as a double-click: the
     // press after an equalize click, or each of several quick drags in a row.
@@ -581,7 +589,7 @@ export class PointerTool extends BaseTool {
       dragConfirmed = await shouldInitiateDrag(eventStream, initialEvent);
     }
     if (gizmoTakesPress && (!passesDoubleClick || dragConfirmed)) {
-      await this._handleTunniGizmoDrag(gizmo, eventStream, initialEvent, {
+      await this._handleGizmoDrag(gizmo, eventStream, initialEvent, {
         dragConfirmed,
       });
       return;
@@ -2031,7 +2039,7 @@ registerVisualizationLayerDefinition({
 });
 
 export class PointerToolScale extends PointerTool {
-  iconPath = "/images/pointerscale.svg";
+  iconPath = "tool-pointer-scale";
   identifier = "pointer-tool-scale";
 
   get scalingEditBehavior() {

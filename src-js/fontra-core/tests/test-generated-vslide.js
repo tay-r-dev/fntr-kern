@@ -113,28 +113,13 @@ describe("V-slide of generated points", () => {
     }
   });
 
-  it("V-slides only the neck, keeping four bulb roles and the wall entry", () => {
+  it("V-slides no bulb point: the fillet follows the easing slider alone", () => {
     const cap = { capStyle: "drop", capBallEasing: 0.5, capBallSide: "right" };
     const plain = generateFromSkeleton(skeleton({}, cap));
-    for (const value of [-0.3, 0.3]) {
-      const slid = generateFromSkeleton(
-        skeleton({}, { ...cap, capBallEdits: { neck: { vslide: value } } })
-      );
-      const at = (result, role) =>
-        onCurve(result, (m) => m?.bulbRole === role && m.bulbSlot === "onCurve");
-      expect(
-        Math.hypot(
-          at(slid, "neck").x - at(plain, "neck").x,
-          at(slid, "neck").y - at(plain, "neck").y
-        )
-      ).to.be.greaterThan(2);
-      expect(at(slid, "entry")).to.deep.equal(at(plain, "entry"));
-      expect(slid.contours[0].points).to.have.length(plain.contours[0].points.length);
-      expect(
-        slid.provenance[0].pointMap.filter((m) => m?.bulbSlot === "onCurve")
-      ).to.have.length(4);
-    }
-    for (const role of ["entry", "bottom", "side"]) {
+    expect(
+      plain.provenance[0].pointMap.filter((m) => m?.bulbSlot === "onCurve")
+    ).to.have.length(5);
+    for (const role of ["entry", "bottom", "side", "neck"]) {
       const ignored = generateFromSkeleton(
         skeleton({}, { ...cap, capBallEdits: { [role]: { vslide: 0.3 } } })
       );
@@ -258,78 +243,35 @@ describe("V-slide of generated points, through the editor's entry", () => {
     expect(point.vSlide.left).to.be.greaterThan(0);
   });
 
-  it("slides a bulb point through the same gesture", async () => {
-    const layer = await layerWith(
-      skeleton({}, { capStyle: "drop", capBallEasing: 0.5, capBallSide: "left" })
-    );
-    const isNeck = (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve";
-    const start = pathPoint(layer, isNeck);
-    const side = pathPoint(
-      layer,
-      (m) => m?.bulbRole === "side" && m.bulbSlot === "onCurve"
-    );
-    const pointer = {
-      x: start.x + (side.x - start.x) * 0.3,
-      y: start.y + (side.y - start.y) * 0.3,
-    };
-    await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", start, pointer);
-    const end = pathPoint(layer, isNeck);
-    expect(Math.hypot(end.x - start.x, end.y - start.y)).to.be.greaterThan(3);
-    const edits = globalThis.__model
-      .getSkeletonData(layer)
-      .contours[0].points.find((p) => p.id === 8).capBallEdits;
-    expect(edits.neck.vslide).to.be.below(0);
-    const before = [...layer.path.coordinates];
-    await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", end, end);
-    expect([...layer.path.coordinates]).to.deep.equal(before);
-  });
-
-  it("V-slides a zero-easing corner neck into the retained wall", async () => {
-    for (const capBallSide of ["left", "right"]) {
+  it("does not slide the fillet's ends", async () => {
+    const { getSkeletonData } = globalThis.__model;
+    const { createPointSlideTargetEntries, getPointSlideBehaviorName } =
+      await import("../../views-editor/src/point-slide-editing.js");
+    for (const capBallEasing of [0, 0.5]) {
       const layer = await layerWith(
-        skeleton(
-          {},
-          {
-            capStyle: "drop",
-            capBallEasing: 0,
-            capBallSide,
-            capBallRatio: 2,
-          }
-        )
+        skeleton({}, { capStyle: "drop", capBallEasing, capBallSide: "left" })
       );
-      const data = globalThis.__model.getSkeletonData(layer);
-      const generated = data.generated[0];
-      const map = generated.pointMap;
-      const at = (i) =>
-        layer.path.getPoint(
-          layer.path.getAbsolutePointIndex(
-            generated.pathContourIndex,
-            (i + map.length) % map.length
-          )
-        );
-      const n = map.findIndex(
-        (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
-      );
-      const q = map.findIndex(
-        (m) =>
-          m?.skeletonPointId === 5 &&
-          m.side === map[n].side &&
-          m.role === "onCurve" &&
-          !m.bulbRole
-      );
-      const start = at(n);
-      expect(q).to.be.at.least(0);
-      const step = (n + 3) % map.length === q ? 1 : -1;
-      expect((n + 3 * step + map.length) % map.length).to.equal(q);
-      const wall = new Bezier(Array.from({ length: 4 }, (_, k) => at(n + k * step)));
-      const pointer = wall.get(0.25);
-      await drag(layer, "editableGeneratedPoint/1/8/bulb-neck", start, pointer);
-      const end = pathPoint(
-        layer,
-        (m) => m?.bulbRole === "neck" && m.bulbSlot === "onCurve"
-      );
-      expect(Math.hypot(end.x - start.x, end.y - start.y)).to.be.greaterThan(3);
-      expect(Math.hypot(end.x - pointer.x, end.y - pointer.y)).to.be.below(1.5);
+      for (const role of ["fillet-ball", "fillet-wall"]) {
+        const selection = new Set([`editableGeneratedPoint/1/8/bulb-${role}`]);
+        expect(
+          getPointSlideBehaviorName(
+            { pointSlideMode: true },
+            new Set(),
+            selection,
+            layer
+          ),
+          role
+        ).to.equal(null);
+        expect(
+          createPointSlideTargetEntries(layer, selection, {
+            referenceSkeletonData: getSkeletonData(layer),
+            initialPointer: { x: 0, y: 0 },
+            isPrimary: true,
+            session: {},
+          }),
+          role
+        ).to.have.length(0);
+      }
     }
   });
 });

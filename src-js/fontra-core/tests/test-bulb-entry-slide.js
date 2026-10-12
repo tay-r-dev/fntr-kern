@@ -1,7 +1,7 @@
 import { expect } from "chai";
 import { slideBulbEntryForCurvature } from "../src/bulb-entry-slide.js";
 import { bulbEndCurvature } from "../src/bulb-harmonization.js";
-import { buildFourPointBulb } from "../src/bulb-geometry.js";
+import { buildBulb } from "../src/bulb-geometry.js";
 import { splitCubicAt } from "../src/offset-contour.js";
 
 describe("bulb entry V-slide fallback", () => {
@@ -29,16 +29,15 @@ describe("bulb entry V-slide fallback", () => {
     ];
     const result = slideBulbEntryForCurvature({ wall, points, radius: 67.34 });
     expect(result).not.to.equal(null);
-    // The fit at the extreme does not hold on whole units, so E V-slides up
-    // the wall; the wall piece it keeps is exact.
-    expect(result.direction).to.equal("previous");
+    // The fit holds at the extreme. Whole units are a refining pass, not a
+    // condition, so E does not slide; the wall piece it keeps is exact.
+    expect(result.direction).to.equal("stationary");
     expect(result.points.slice(3)).to.deep.equal(points.slice(3));
     expect(result.points.length).to.equal(13);
     const retainedWall = splitCubicAt(wall, result.parameter).first;
     expect(result.wall.map(({ x, y }) => ({ x, y }))).to.deep.equal(
       retainedWall.map(({ x, y }) => ({ x, y }))
     );
-    expect(Math.abs(result.points[1].x - result.points[0].x)).to.be.greaterThan(0.01);
     expect(bulbEndCurvature(result.wall, true)).to.be.closeTo(
       bulbEndCurvature(result.points.slice(0, 4)),
       1e-8
@@ -62,30 +61,24 @@ describe("bulb entry V-slide fallback", () => {
       [417, 435],
       [304, 435],
     ].map(([x, y], i) => ({ x, y, ...(i === 1 || i === 2 ? { type: "cubic" } : {}) }));
-    const r = buildFourPointBulb({
+    const r = buildBulb({
       wall,
       inner,
       radius: 94.77,
       shape: 0,
       easing: 0.59,
-      easeCurvature: 0.14,
     });
     // No position between the extreme and the wall's centre meets the jump
     // while keeping the wall exact and the ball within tolerance. The shapes
     // win: nothing slides, the ball stays exact, and the jump is reported.
+    // The wall has no extreme, so E stays at its end: on the wall, never on
+    // the ball.
     expect(r.entrySlide).to.equal(null);
-    const oldBall = [
-      [590.1922866045394, 253.1458168659178],
-      [590.1922866045395, 202.8363421938656],
-      [549.4650356842409, 158.54328026048844],
-      [495.3596611760296, 158.54328026048844],
-      [443.00686947193435, 158.54328026048844],
-      [400.5603614173832, 200.98245227974303],
-      [400.5603614173832, 253.32619584429938],
-    ];
-    r.points.slice(0, 7).forEach((p, i) => {
-      expect(p.x).to.be.closeTo(oldBall[i][0], 1e-8);
-      expect(p.y).to.be.closeTo(oldBall[i][1], 1e-8);
+    expect(r.points[0].x).to.be.closeTo(585, 1e-8);
+    expect(r.points[0].y).to.be.closeTo(284, 1e-8);
+    r.wall.forEach((p, i) => {
+      expect(p.x).to.be.closeTo(wall[i].x, 1e-8);
+      expect(p.y).to.be.closeTo(wall[i].y, 1e-8);
     });
     expect(r.error).to.be.greaterThan(0);
   });

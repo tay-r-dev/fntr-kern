@@ -85,6 +85,10 @@ export class GlyphSetsController {
           glyphName = disambiguateGlyphName(glyphName, fontGlyphMap);
         }
 
+        if (this.settings.createdGlyphsOnly && !(glyphName in fontGlyphMap)) {
+          continue;
+        }
+
         if (!combinedGlyphMap[glyphName]) {
           combinedGlyphMap[glyphName] = codePoints;
         }

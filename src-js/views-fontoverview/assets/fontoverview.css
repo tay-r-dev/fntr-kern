@@ -2,6 +2,8 @@ body {
   overflow: auto;
 }
 
+/* The editor's look: the side panel's cards and the tile area's canvas card
+   (shared.css) on the panel grey, the canvas card 8px in from the window. */
 .main-container {
   display: grid;
   grid-template-columns: 22em 1fr;
@@ -9,38 +11,34 @@ body {
   gap: 0em;
   width: 100vw;
   height: calc(100vh - var(--top-bar-height));
+  background-color: var(--surface-base-basic-1);
 }
 
 .sidebar-container {
-  background-color: var(--ui-element-background-color);
+  position: relative;
   height: calc(100vh - var(--top-bar-height));
-  box-shadow: 0px 0px 8px #0006;
+  min-height: 0;
 }
 
 font-overview-navigation {
-  display: flex;
-  flex-direction: column;
   height: 100%;
-  padding: 1em;
-  gap: 0.5em;
-}
-
-.font-overview-navigation-section {
-  flex: 1;
-  height: calc(
-    100% - 5em
-  ); /* FIXME: 100% makes it too tall, and I don't understand why */
+  box-sizing: border-box;
 }
 
 #glyph-cell-view-container {
+  position: relative;
   overflow: auto;
-  padding: 1em;
+  margin: 8px 8px 8px 0;
 }
 
 glyph-cell-view {
   position: relative;
   display: grid;
   gap: 0;
+  /* The spare height must not stretch the hidden text entry's row. */
+  align-content: start;
+  /* Fills its box, so a click under the last row is a click away. */
+  min-height: 100%;
 }
 
 .font-source-selector {

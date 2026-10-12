@@ -21,6 +21,7 @@ import {
 } from "@fontra/core/skeleton-model.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 import "@fontra/web-components/segmented-control.js";
+import { smolCSS, smolEntry } from "@fontra/web-components/smol.js";
 import { parseSelection } from "@fontra/core/utils.ts";
 import * as vector from "@fontra/core/vector.js";
 import { Bezier } from "bezier-js";
@@ -37,6 +38,10 @@ import {
 } from "./skeleton-editing.js";
 import { SnappingSession } from "./snapping-interactions.js";
 
+// The width menu's heading row sits in the document, so the smol box's
+// styles go there.
+html.addStyleSheet(smolCSS());
+
 // W turns on insertion-point placement for as long as it is held, the way Z
 // and D do on the pointer tool. Alt is already the handle insert on this same
 // click and Shift is the angle constraint, so the third thing to place at a
@@ -49,7 +54,7 @@ import { SnappingSession } from "./snapping-interactions.js";
 const REALTIME_INSERTION_POINT_ACTION = "action.realtime.insertion-point";
 
 export class SkeletonPenTool extends BaseTool {
-  iconPath = "/images/tool-panel-ribbon-pen.svg";
+  iconPath = "tool-ribbon-pen";
   identifier = "skeleton-pen-tool";
 
   constructor(...args) {
@@ -1224,7 +1229,7 @@ class SkeletonPenSettings {
 
     // The menu's heading row: the custom width, a pick of its own, with its
     // value typed in place.
-    this.customField = html.input({ class: "entry-field", type: "text" });
+    this.customField = smolEntry({});
     this.customField.addEventListener("change", () => {
       const width = Number(this.customField.value);
       if (Number.isFinite(width) && width > 0) {

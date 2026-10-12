@@ -1,4 +1,3 @@
-import { collectUnchangedBulbs } from "@fontra/core/bulb-reuse.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { recordChanges } from "@fontra/core/change-recorder.js";
 import { applyChange } from "@fontra/core/changes.js";
@@ -71,8 +70,9 @@ import {
   SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 
-// Scoped by the editor's edit transaction. The final write always fits the
-// reference back to the four editable bulb points before it is committed.
+// Scoped by the editor's edit transaction. While it is on, a bulb is built as
+// its reference -- the perfect ball, E on the rib end -- so nothing jumps under
+// the cursor. The transaction fits the entry once, on release.
 let bulbReferencePreview = false;
 let bulbReferencePreviewUsed = false;
 export function setBulbReferencePreview(enabled) {
@@ -349,18 +349,13 @@ function applySkeletonMutation(layerGlyph, mutate, options = {}) {
       working
     );
   }
+  const preview = options.bulbPreview ?? bulbReferencePreview;
   const generated = generateFromSkeleton(working, {
     ...readSkeletonGenerationOptions(),
-    bulbPreview: options.bulbPreview ?? bulbReferencePreview,
-    retainedBulbs: collectUnchangedBulbs(
-      normalizeSkeletonData(structuredClone(original || makeEmptySkeletonData())),
-      working,
-      layerGlyph.path,
-      { allowEditDeltas: options.bulbInteractive === true }
-    ),
+    bulbPreview: preview,
   });
   if (
-    (options.bulbPreview ?? bulbReferencePreview) &&
+    preview &&
     generated.provenance.some((entry) =>
       entry.pointMap.some((point) => point?.bulbPreview)
     )

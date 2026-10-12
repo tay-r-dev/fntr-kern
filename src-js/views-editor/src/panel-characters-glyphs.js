@@ -22,7 +22,7 @@ import { equalGlyphSelection } from "./scene-controller.js";
 
 export default class CharactersGlyphsPanel extends Panel {
   identifier = "characters-glyphs";
-  iconPath = "/tabler-icons/columns.svg";
+  iconPath = "columns";
   tabLabel = "characters";
 
   // One card filling the column: the three lists as an accordion switch,
@@ -618,14 +618,14 @@ export default class CharactersGlyphsPanel extends Panel {
               class: `indent-block changed-icon ${
                 messageItem.childChanged ? "nested" : ""
               }`,
-              src: "/tabler-icons/arrow-big-right.svg",
+              src: "arrow-big-right",
             })
           : html.span({ class: "indent-block changed-icon" });
 
       const foldingChevron = children?.length
         ? html.createDomElement("inline-svg", {
             class: `indent-block folding-icon ${messageItem.open ? "" : "closed"}`,
-            src: "/tabler-icons/chevron-up.svg",
+            src: "chevron-up",
             onclick: (event) => {
               event.preventDefault();
               event.stopImmediatePropagation();

@@ -47,7 +47,11 @@ describe("skeleton-source-defaults", () => {
 
   it("returns the fallback for a truly absent source", () => {
     expect(
-      getSourceSkeletonDefaultsValue(null, SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING, 42)
+      getSourceSkeletonDefaultsValue(
+        null,
+        SKELETON_SOURCE_DEFAULT_KEYS.SERIF_SIMPLIFY_EASING,
+        42
+      )
     ).to.equal(42);
   });
 
@@ -293,7 +297,6 @@ describe("terminal presets", () => {
       "capBallRatio",
       "capBallShape",
       "capBallEasing",
-      "capBallEaseCurvature",
     ]);
     expect(getTerminalPresetFields("flat")).to.equal(null);
   });
@@ -345,14 +348,13 @@ describe("terminal presets", () => {
         capBallRatio: 1.5,
         capBallShape: 0.4,
         capBallEasing: 0.2,
-        capBallEaseCurvature: 0.7,
       })
     );
     expect(point.capStyle).to.equal("drop");
     expect(point.capBallRatio).to.equal(1.5);
     expect(point.capBallShape).to.equal(0.4);
     expect(point.capBallEasing).to.equal(0.2);
-    expect(point.capBallEaseCurvature).to.equal(0.7);
+    expect(point).to.not.have.property("capBallEaseCurvature");
   });
 
   it("changes a point's kind to the preset's type when it was something else", () => {

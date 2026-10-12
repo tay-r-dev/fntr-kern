@@ -107,7 +107,6 @@ import { SceneModel } from "./scene-model.js";
 import {
   applyGeneratedContourRemap,
   applySkeletonEditInPlace,
-  setBulbReferencePreview,
   computeGeneratedContourRemap,
   createEditableGeneratedHandleTargetEntries,
   createEditableGeneratedPointTargetEntries,
@@ -121,6 +120,7 @@ import {
   makeSkeletonTensionAwareTargetEntry,
   parseSkeletonPointKey,
   recordSkeletonContourIndexShift,
+  setBulbReferencePreview,
 } from "./skeleton-editing.js";
 import {
   closePanelSkeletonContours,
@@ -450,7 +450,7 @@ export class SceneController {
     );
 
     this.sceneSettingsController.addKeyListener(
-      ["projectGlyphSetSelection", "myGlyphSetSelection"],
+      ["projectGlyphSetSelection", "myGlyphSetSelection", "createdGlyphsOnly"],
       updateCombinedGlyphAndCharacterMapping
     );
 
@@ -1804,8 +1804,8 @@ export class SceneController {
   handleHover(event) {
     if (this.selectedTool) {
       // A pass, so a tool that does not look for Tunni gizmos lets a shown one
-      // go (TunniGizmoReveal).
-      const reveal = this.sceneModel.tunniGizmoReveal;
+      // go (GizmoReveal).
+      const reveal = this.sceneModel.gizmoReveal;
       reveal?.beginHoverPass();
       this.selectedTool.handleHover(event);
       reveal?.endHoverPass();
@@ -2135,16 +2135,17 @@ export class SceneController {
     // so it undoes with the edit it was taken for.
     const markerChanges = doInstance ? null : recordMarkerAnchorRefresh(editSubject);
 
-    // Direct bulb-point manipulation needs its editable topology. Skeleton
-    // drags and panel gestures use the independent reference until release.
+    // While the edit runs, bulbs are built as their reference: the perfect ball,
+    // E on the rib end. On release the entry is fitted once, in the same undo
+    // record. Direct edits to a bulb's own points need the fitted entry they
+    // grabbed, so they skip the reference.
     const previewBulbs = ![...this.selection].some((item) => item.includes("/bulb-"));
     setBulbReferencePreview(previewBulbs);
     let result;
     let fitChanges;
     try {
       result = await editFunc(sendIncrementalChange, editSubject);
-      const usedPreview = setBulbReferencePreview(false);
-      if (usedPreview) {
+      if (setBulbReferencePreview(false)) {
         fitChanges = recordChanges(editSubject, (subject) => {
           const layers = doInstance
             ? [subject]
@@ -2377,6 +2378,18 @@ export class SceneController {
   // removes any points at all, as one undoable change. A tolerance control
   // only ever asked the designer to guess a number the command can find for
   // itself, and every answer other than the smallest is a worse drawing.
+  // The layers Simplify works on: every master being edited, or, with the
+  // Edit menu's "Simplify all masters together" off, only the one being
+  // edited.
+  simplifyLayers(layerGlyphs) {
+    const layers = Object.values(layerGlyphs);
+    if (applicationSettingsController.model.simplifyMastersTogether !== false) {
+      return layers;
+    }
+    const editLayer = layerGlyphs[this.sceneSettings.editLayerName] || layers[0];
+    return editLayer ? [editLayer] : [];
+  }
+
   async doSimplifySelectedContours() {
     // A skeleton selection answers this itself, as Harmonize does: the
     // centerline is simplified and written through the skeleton's own path,
@@ -2393,11 +2406,6 @@ export class SceneController {
       if (changed) {
         // Removed points take their selection keys with them.
         this.selection = new Set();
-      } else {
-        message(
-          translate("action.simplify-contour.title"),
-          translate("action.simplify-contour.nothing-to-simplify")
-        );
       }
       return;
     }
@@ -2409,9 +2417,8 @@ export class SceneController {
       return;
     }
 
-    let simplifiedAny = false;
     await this.editLayersAndRecordChanges((layerGlyphs) => {
-      const layers = Object.values(layerGlyphs);
+      const layers = this.simplifyLayers(layerGlyphs);
       const rewritten = [];
       const simplifiedContours = new Map();
       for (const contourIndex of contourIndices) {
@@ -2468,16 +2475,8 @@ export class SceneController {
             `point/${layers[0].path.getAbsolutePointIndex(contourIndex, 0)}`
         )
       );
-      simplifiedAny = true;
       return translate("action.simplify-contour");
     });
-
-    if (!simplifiedAny) {
-      message(
-        translate("action.simplify-contour.title"),
-        translate("action.simplify-contour.nothing-to-simplify")
-      );
-    }
   }
 
   // Reverse, for a skeleton. It flips the flag the generator already reads, so
@@ -3048,6 +3047,7 @@ const persistentSceneSettings = [
   { key: "selection", waitKeyBefore: "positionedLines" },
   { key: "projectGlyphSetSelection" },
   { key: "myGlyphSetSelection" },
+  { key: "createdGlyphsOnly" },
 ];
 
 export const persistentSceneSettingsKeys = persistentSceneSettings.map(
@@ -3096,6 +3096,7 @@ export function getSceneSettingsDefaults() {
     myGlyphSets: {},
     projectGlyphSetSelection: [],
     myGlyphSetSelection: [],
+    createdGlyphsOnly: false,
     combinedGlyphMap: {},
     combinedCharacterMap: {},
   };

@@ -1,6 +1,9 @@
 import { Backend } from "@fontra/core/backend-api.js";
 import { loaderSpinner } from "@fontra/core/loader-spinner.js";
 import "@fontra/core/theme-settings.js";
+import { drawScrollbarsEverywhere } from "@fontra/web-components/scrollbars.js";
+
+drawScrollbarsEverywhere();
 
 export async function startupLandingPage(authenticateFunc) {
   if (authenticateFunc) {

@@ -10,14 +10,9 @@ import {
 } from "@fontra/core/point-slide.js";
 import { generateFromSkeleton } from "@fontra/core/skeleton-generator.js";
 import {
-  CAP_BALL_EDIT_ROLES,
-  bulbRoleOfSide,
-  getSkeletonCapBallEdit,
   getSkeletonData,
-  getSkeletonPointVSlide,
   isSkeletonSideLocked,
   parseSkeletonPointKey,
-  setSkeletonCapBallEdit,
   setSkeletonPointVSlide,
 } from "@fontra/core/skeleton-model.js";
 import { parseSelection } from "@fontra/core/utils.ts";
@@ -341,10 +336,10 @@ function findGeneratedSlideItem(selection) {
   const ribs = parsed.skeletonRib || [];
   if (generated.length + ribs.length !== 1) return null;
   const [contourId, pointId, side] = `${generated[0] ?? ribs[0]}`.split("/");
-  const bulbRole = bulbRoleOfSide(side);
-  if (!bulbRole && side !== "left" && side !== "right") return null;
-  if (bulbRole && bulbRole !== "neck") return null;
-  return { contourId: Number(contourId), pointId: Number(pointId), side, bulbRole };
+  // A bulb's points do not V-slide: the ball's are its shape, and the easing
+  // fillet's are the easing slider's.
+  if (side !== "left" && side !== "right") return null;
+  return { contourId: Number(contourId), pointId: Number(pointId), side };
 }
 
 function createGeneratedSlideTargetEntries(
@@ -355,7 +350,6 @@ function createGeneratedSlideTargetEntries(
   const item = findGeneratedSlideItem(selection);
   const skeletonData = getSkeletonData(layerGlyph);
   if (!item || !skeletonData || !initialPointer || !session) return [];
-  if (item.bulbRole && item.bulbRole !== "neck") return [];
   const address = resolveSkeletonAddressAcrossLayers(
     referenceSkeletonData || skeletonData,
     skeletonData,
@@ -363,32 +357,23 @@ function createGeneratedSlideTargetEntries(
     item.pointId
   );
   if (!address || address.point.type) return [];
-  if (!item.bulbRole && isSkeletonSideLocked(address.point, item.side, "slide")) {
+  if (isSkeletonSideLocked(address.point, item.side, "slide")) {
     return [];
   }
-  const read = (point) =>
-    item.bulbRole
-      ? getSkeletonCapBallEdit(point, item.bulbRole).vslide
-      : getSkeletonPointVSlide(point, item.side);
-  const write = (point, value) =>
-    item.bulbRole
-      ? setSkeletonCapBallEdit(point, item.bulbRole, { vslide: value })
-      : setSkeletonPointVSlide(point, item.side, value);
+  const write = (point, value) => setSkeletonPointVSlide(point, item.side, value);
 
   // The outline this point slides on: the one the generator slides it on,
   // which is the outline with this one slide taken away.
-  // ponytail: other slides and bulb edits stay in; a neighbour's own slide can
-  // move the segment the generator starts from. Exact when one point is slid.
+  // ponytail: other slides stay in; a neighbour's own slide can move the
+  // segment the generator starts from. Exact when one point is slid.
   const unslid = structuredClone(skeletonData);
   write(unslid.contours[address.contourIndex].points[address.pointIndex], 0);
   const generated = generateFromSkeleton(unslid);
   const matches = (origin) =>
-    item.bulbRole
-      ? origin?.bulbRole === item.bulbRole && origin.bulbSlot === "onCurve"
-      : origin?.skeletonPointId === item.pointId &&
-        origin.side === item.side &&
-        origin.role === "onCurve" &&
-        !origin.bulbRole;
+    origin?.skeletonPointId === item.pointId &&
+    origin.side === item.side &&
+    origin.role === "onCurve" &&
+    !origin.bulbRole;
   let found = null;
   generated.provenance.forEach((entry, k) => {
     if (found || entry.skeletonContourId !== address.contour.id) return;
@@ -404,7 +389,7 @@ function createGeneratedSlideTargetEntries(
   };
   const adjacent = getSlidableSegments(contour, found.index);
   if (!adjacent.previous && !adjacent.next) return [];
-  const forward = generatedSlideForward(contour, found, item);
+  const forward = item.side === "left" ? "next" : "previous";
   const point = contour.points[found.index];
   const projectedShare = (pointer) => {
     const destination = chooseSlideInterval(adjacent, pointer, point);
@@ -412,13 +397,6 @@ function createGeneratedSlideTargetEntries(
     const share = destination.side === "next" ? destination.t : 1 - destination.t;
     return destination.side === forward ? share : -share;
   };
-  // Calibrate at mouse-down, so rounding a still grab of an already edited
-  // neck preserves its value.
-  const initialShare = item.bulbRole
-    ? (projectedShare(vector.roundVector(initialPointer)) ?? 0)
-    : 0;
-  const originalShare = read(address.point) ?? 0;
-
   const originalLayerGlyph = cloneLayerGlyphForSkeletonEdit(layerGlyph);
   let rollbackChange = null;
   return [
@@ -436,8 +414,7 @@ function createGeneratedSlideTargetEntries(
           });
           const share = projectedShare(pointer);
           if (share === null) return null;
-          value = item.bulbRole ? originalShare + share - initialShare : share;
-          if (item.bulbRole) value = Math.max(-0.995, Math.min(0.995, value));
+          value = share;
           session.generatedSlide = value;
         } else {
           value = session.generatedSlide;
@@ -456,28 +433,4 @@ function createGeneratedSlideTargetEntries(
       },
     },
   ];
-}
-
-// Which way along the contour a positive share runs. A rib's share is stated
-// along the skeleton: its left side is emitted in skeleton order, its right
-// side backwards. A bulb point's share runs from the outer wall to the inner,
-// which is the contour's own order where the next bulb point follows it.
-const BULB_ORDER = CAP_BALL_EDIT_ROLES;
-function generatedSlideForward(contour, found, item) {
-  if (!item.bulbRole) return item.side === "left" ? "next" : "previous";
-  const onCurveOrigin = (step) => {
-    const n = contour.points.length;
-    for (let i = 1; i < n; i++) {
-      const index = (found.index + step * i + n) % n;
-      if (!contour.points[index].type) return found.pointMap[index];
-    }
-    return null;
-  };
-  const position = BULB_ORDER.indexOf(item.bulbRole);
-  const nextRole = onCurveOrigin(1)?.bulbRole;
-  const previousRole = onCurveOrigin(-1)?.bulbRole;
-  if (nextRole) return BULB_ORDER.indexOf(nextRole) > position ? "next" : "previous";
-  if (previousRole)
-    return BULB_ORDER.indexOf(previousRole) < position ? "next" : "previous";
-  return "next";
 }

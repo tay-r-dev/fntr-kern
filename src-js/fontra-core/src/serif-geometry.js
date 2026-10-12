@@ -537,50 +537,6 @@ function splitCubic(p0, p1, p2, p3, t) {
   return { first: [p0, a, d, f], second: [f, e, c, p3] };
 }
 
-// Keep the ordinary Tunni construction where both forward rays meet nearby.
-// Far or backward intersections are not useful corners. Blend to a local
-// chord-based construction before reaching parallel, so neither the handle
-// lengths nor their derivatives jump when the intersection changes sides.
-// The bulb's neck is the same rounding and uses this copy (rail R-B).
-//
-// `nearWindow` is how much of the chord the blend takes as the meeting nears an
-// end. The bulb's neck meets shallow crossings, where the meeting sweeps past
-// its release quickly, and takes a wider window than the serif.
-export function boundedEasingHandles(
-  start,
-  startDirection,
-  end,
-  endDirection,
-  curvature,
-  { nearWindow = 0.05 } = {}
-) {
-  const chord = lengthUV(subUV(end, start));
-  const fallback = chord / 2;
-  const a = normalize(startDirection);
-  const b = normalize(endDirection);
-  const cross = (p, q) => p.u * q.v - p.v * q.u;
-  const denominator = cross(a, b);
-  const delta = subUV(end, start);
-  const smooth = (value) => {
-    const t = Math.max(0, Math.min(1, value));
-    return t * t * (3 - 2 * t);
-  };
-  let startLen = fallback;
-  let endLen = fallback;
-  if (chord > 0 && Math.abs(denominator) > 1e-12) {
-    const reachStart = cross(delta, b) / denominator;
-    const reachEnd = cross(delta, a) / denominator;
-    if (reachStart > 0 && reachEnd > 0) {
-      const weight =
-        smooth(Math.min(reachStart, reachEnd) / (nearWindow * chord)) *
-        (1 - smooth((Math.max(reachStart, reachEnd) - chord) / chord));
-      startLen += weight * (reachStart - fallback);
-      endLen += weight * (reachEnd - fallback);
-    }
-  }
-  return { startLen: startLen * curvature, endLen: endLen * curvature };
-}
-
 function easingHandleLengths({
   wall,
   junctionLength,

@@ -431,9 +431,7 @@ export class OpenTypeFeatureCodePanel extends BaseInfoPanel {
           [
             html.createDomElement("inline-svg", {
               class: "font-info-opentype-feature-code-error-icon",
-              src: isWarning
-                ? "/tabler-icons/alert-triangle.svg"
-                : "/tabler-icons/bug.svg",
+              src: isWarning ? "alert-triangle" : "bug",
             }),
             message.text,
             html.div({ class: "fea-error-line-number" }, [lineNumberString]),

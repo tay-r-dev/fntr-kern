@@ -9,7 +9,8 @@ import { IconButton } from "./icon-button.js";
 export class OverflowPopover extends IconButton {
   constructor() {
     super();
-    this.src = "/tabler-icons/dots-vertical.svg";
+    this.src = "overflow";
+    this.overflow = true;
   }
 
   set content(element) {

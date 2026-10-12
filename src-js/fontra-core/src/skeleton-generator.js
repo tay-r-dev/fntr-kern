@@ -1,6 +1,5 @@
 import { Bezier } from "bezier-js";
-import { buildFourPointBulb } from "./bulb-geometry.js";
-import { reconnectRetainedBulb } from "./bulb-reuse.js";
+import { buildBulb } from "./bulb-geometry.js";
 import { gridJoinPlacement, gridKinkAllowance } from "./harmonization.js";
 import {
   getAdjacentSegments,
@@ -73,10 +72,9 @@ const MIN_CAP_BALL_RATIO = 0.5;
 const MAX_CAP_BALL_RATIO = 3;
 const DEFAULT_CAP_BALL_SIDE = "auto";
 // The rib grows the preferred ball. Shape stretches its rear half; Easing
-// controls the shared neck point between the side apex and the inner wall.
+// grows the fillet in the corner where the ball meets the inner wall.
 const DEFAULT_CAP_BALL_SHAPE = 0;
 const DEFAULT_CAP_BALL_EASING = 0;
-export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
 const MAX_CAP_BALL_SHAPE = 1;
 // A corner trim may run the whole way to the neighbouring on-curve. Two corners
 // sharing one segment are held apart by the pairwise limiter below, which is
@@ -166,7 +164,6 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
       removeCollapsedPoints: options.removeCollapsedPoints === true,
       simplifyEasing: options.simplifyEasing === true,
       bulbPreview: options.bulbPreview === true,
-      retainedBulbs: options.retainedBulbs,
     });
     for (const generatedContour of generatedContours) {
       const generatedContourIndex = contours.length;
@@ -221,10 +218,41 @@ function roundGeneratedPoints(contour) {
     point.x = Math.round(point.x) + 0;
     point.y = Math.round(point.y) + 0;
   }
-  // Twice: a join's step reads the next handle out, which belongs to the
-  // neighbouring join and may move when that join is placed.
-  for (let pass = 0; pass < 2; pass++)
-    for (const { index, exact } of joins) chooseBulbJoinGrid(points, index, exact);
+  // A join's step reads the next handle out, which belongs to the neighbouring
+  // join and may move when that join is placed. Neighbouring joins can trade
+  // that handle back and forth forever, so the passes stop when nothing moves
+  // and the outline keeps the pass with the smallest worst step.
+  const snapshot = () => points.map(({ x, y }) => ({ x, y }));
+  const worst = () => Math.max(0, ...joins.map(({ index }) => bulbJoinStep(points, index)));
+  let best = { at: snapshot(), step: worst() };
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const { index, exact } of joins)
+      moved = chooseBulbJoinGrid(points, index, exact) || moved;
+    const step = worst();
+    if (step < best.step) best = { at: snapshot(), step };
+    if (!moved) break;
+  }
+  best.at.forEach(({ x, y }, i) => {
+    points[i].x = x;
+    points[i].y = y;
+  });
+}
+
+// The comb step at a smooth join, as a fraction of the larger side.
+function bulbJoinStep(points, index) {
+  const count = points.length;
+  const at = (step) => points[(index + step + count) % count];
+  const end = (a, b, c) => {
+    const d1 = { x: b.x - a.x, y: b.y - a.y };
+    const d2 = { x: c.x - 2 * b.x + a.x, y: c.y - 2 * b.y + a.y };
+    const speed = Math.hypot(d1.x, d1.y);
+    return speed ? Math.abs((2 / 3) * (d1.x * d2.y - d1.y * d2.x)) / speed ** 3 : 0;
+  };
+  const kIn = end(at(0), at(-1), at(-2)),
+    kOut = end(at(0), at(1), at(2));
+  const larger = Math.max(kIn, kOut);
+  return larger ? Math.abs(kIn - kOut) / larger : 0;
 }
 
 // Rounding a join's three points each to its own nearest unit throws the
@@ -233,14 +261,17 @@ function roundGeneratedPoints(contour) {
 function chooseBulbJoinGrid(points, index, exact) {
   const count = points.length;
   const at = (step) => points[(index + step + count) % count];
-  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return;
+  if (!at(-1).type || !at(1).type || !at(-2).type || !at(2).type) return false;
   const placed = [at(-1), at(0), at(1)];
   const best = gridJoinPlacement(exact, at(-2), at(2), placed);
-  if (!best) return;
+  if (!best) return false;
+  let moved = false;
   placed.forEach((point, k) => {
+    moved ||= point.x !== best.points[k].x || point.y !== best.points[k].y;
     point.x = best.points[k].x;
     point.y = best.points[k].y;
   });
+  return moved;
 }
 
 function stripPointProvenance(contour) {
@@ -3162,13 +3193,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
-        capBallEaseCurvature:
-          firstOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: firstOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
-        retained: options.retainedBulbs?.get(
-          `${skeletonContour.id}/${firstOnCurvePoint._sourcePointId}`
-        ),
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -3369,13 +3395,8 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
-        capBallEaseCurvature:
-          lastOnCurvePoint.capBallEaseCurvature ?? DEFAULT_CAP_BALL_EASE_CURVATURE,
         capBallEdits: lastOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
-        retained: options.retainedBulbs?.get(
-          `${skeletonContour.id}/${lastOnCurvePoint._sourcePointId}`
-        ),
       });
       if (drop) {
         roundedLeftSide = drop.leftSide;
@@ -6508,7 +6529,7 @@ function assembleOpenOutlineWithRoundCaps({ leftSide, endCap, rightSide, startCa
 }
 
 // ---- Drop (ball terminal) caps ---------------------------------------------
-// Grow the ball directly from the outer rib apex; cut the inner wall for its neck.
+// Grow the ball directly from the outer rib apex; ease it into the inner wall.
 
 function clampCapBallRatio(value) {
   if (!Number.isFinite(value)) {
@@ -6527,15 +6548,6 @@ function clampCapBallShape(value) {
 function clampCapBallEasing(value) {
   if (!Number.isFinite(value)) {
     return DEFAULT_CAP_BALL_EASING;
-  }
-  return Math.min(Math.max(value, 0), 1);
-}
-
-// Clamped on output only, like every other curvature the gizmo writes: a stored
-// value the geometry cannot honor today comes back intact once it can.
-function clampCapBallEaseCurvature(value) {
-  if (!Number.isFinite(value)) {
-    return DEFAULT_CAP_BALL_EASE_CURVATURE;
   }
   return Math.min(Math.max(value, 0), 1);
 }
@@ -6589,15 +6601,12 @@ function buildDropCap({
   capBallRatio,
   capBallShape,
   capBallEasing,
-  capBallEaseCurvature,
   capBallEdits = null,
   preview = false,
-  retained = null,
 }) {
   if (!endpoint || !(capWidth > 0.001)) return null;
   const outer = outerSide === "left" ? leftSide : rightSide;
   const inner = outerSide === "left" ? rightSide : leftSide;
-  const innerSide = outerSide === "left" ? "right" : "left";
   const outerPiece = getSideSegmentsFromTerminal(outer, position)[0];
   const innerPieces = getSideSegmentsFromTerminal(inner, position);
   const innerPiece = innerPieces[0];
@@ -6606,44 +6615,37 @@ function buildDropCap({
   const awayFromRib = (p) => (position === "end" ? [...p].reverse() : p);
   const wall = towardsRib(outerPiece.segmentPoints);
   const easing = clampCapBallEasing(capBallEasing);
-  const pin = clampCapBallEaseCurvature(capBallEaseCurvature);
-  // W, the wall point the neck arrives at, may be slid along its outline. An
-  // Alt slide interpolates: the on-curve moves and its handles stay. So the
-  // bulb is built against where W's handles are carried to -- its construction
-  // place plus the handle-carrying part of the slide -- and only W's on-curve
-  // then takes its slid place. Building against the slid W carried the bulb's
-  // handle at W along with it.
+  // Q, the wall point after the bulb, may be slid along its outline. An Alt
+  // slide interpolates: the on-curve moves and its handles stay. So the bulb is
+  // built against where Q's handles are carried to -- its construction place
+  // plus the handle-carrying part of the slide -- and only Q's on-curve then
+  // takes its slid place. Building against the slid Q carried the bulb's
+  // handle at Q along with it.
   const innerRun = awayFromRib(innerPiece.segmentPoints);
   const beyondRun = innerPieces[1] && awayFromRib(innerPieces[1].segmentPoints);
-  const w = innerRun.at(-1);
+  const q = innerRun.at(-1);
   const handleCarry = beyondRun?.[1]?._provenance?.handleNudge ?? { x: 0, y: 0 };
-  const wHandleAnchor = w._constructionAnchor
+  const qHandleAnchor = q._constructionAnchor
     ? {
-        ...w,
-        x: w._constructionAnchor.x + handleCarry.x,
-        y: w._constructionAnchor.y + handleCarry.y,
+        ...q,
+        x: q._constructionAnchor.x + handleCarry.x,
+        y: q._constructionAnchor.y + handleCarry.y,
       }
-    : w;
-  const innerForBulb = [...innerRun.slice(0, -1), wHandleAnchor];
-  const result = retained
-    ? reconnectRetainedBulb(retained, wall, innerForBulb)
-    : buildFourPointBulb({
-        wall,
-        inner: innerForBulb,
-        radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
-        shape: clampCapBallShape(capBallShape),
-        easing,
-        easeCurvature: pin,
-        edits: capBallEdits,
-        preview,
-        beyond: beyondRun && [wHandleAnchor, ...beyondRun.slice(1)],
-      });
+    : q;
+  const innerForBulb = [...innerRun.slice(0, -1), qHandleAnchor];
+  const result = buildBulb({
+    wall,
+    inner: innerForBulb,
+    radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
+    shape: clampCapBallShape(capBallShape),
+    easing,
+    edits: capBallEdits,
+    beyond: beyondRun && [qHandleAnchor, ...beyondRun.slice(1)],
+    preview: preview === true,
+  });
   if (!result) return null;
-  if (wHandleAnchor !== w) {
-    result.points[12] = { ...w };
-    result.keptInner = [result.points[12]];
-  }
   const points = result.points;
+  points[15] = { ...q };
   // Keep the source wall snapshot for its gizmo, even when E lies before the rib.
   const entry = points[0];
   entry._provenance = {
@@ -6652,85 +6654,81 @@ function buildDropCap({
       ({ x, y }) => ({ x, y })
     ),
     bulbEntryParameter: result.entryParameter,
-    bulbEntryBallParameter: result.entryBallParameter,
     bulbEntryOrthogonal: result.orthogonalEntry,
     bulbHarmonizationError: result.error,
+    // The editor fits the entry on release wherever it finds this mark.
+    ...(result.preview ? { bulbPreview: true } : {}),
   };
   result.wall[3] = entry;
-  const stamp = (p, role, slot) => {
-    p._provenance = {
-      ...p._provenance,
-      skeletonPointId: endpoint._sourcePointId,
-      side: role === "neck" ? innerSide : (p._provenance?.side ?? null),
-      role: p._provenance?.role ?? slot,
-      bulbRole: role,
-      bulbSlot: slot,
-    };
-  };
-  if (result.preview) {
-    result.wall[2]._provenance = { ...result.wall[2]._provenance, bulbPreview: true };
-    // Construction points have no edit identities and are hidden while dragging.
-    for (const p of points.slice(0, -1)) {
-      p._provenance = { skeletonPointId: endpoint._sourcePointId, bulbPreview: true };
-      p.skipColinear = true;
-    }
-    points.at(-1)._provenance = {
-      ...awayFromRib(innerPiece.segmentPoints).at(-1)._provenance,
-    };
-  } else {
-    ["entry", "bottom", "side", "neck"].forEach((role, k) => {
-      const i = k * 3;
-      stamp(points[i], role, "onCurve");
-      points[i]._provenance.bulbTangent = result.tangents[k];
-      stamp(i ? points[i - 1] : result.wall[2], role, "in");
-      stamp(points[i + 1], role, "out");
-      points[i].smooth = role !== "neck" || easing > 0;
-      points[i].skipColinear = true;
-    });
-    // The neck joins Q, the existing inner-wall on-curve. No separate wall-cut
-    // point is emitted. Preserve Q's identity and every wall segment beyond it.
-    const originalInner = awayFromRib(innerPiece.segmentPoints);
-    points[12]._provenance = {
-      ...originalInner.at(-1)._provenance,
-    };
-    points[12].skipColinear = true;
-    points[12].smooth = originalInner.at(-1).smooth;
-    result.keptInner[0] = points[12];
-    const tension = calculateSegmentTension(
-      points[10],
-      points[9],
-      points[11],
-      points[12]
-    );
-    for (const [i, role] of [
-      [10, "out"],
-      [11, "in"],
-    ]) {
-      points[i]._provenance = {
-        ...points[i]._provenance,
+  // The ball's three points belong to the cap and take the designer's edits.
+  ["entry", "bottom", "side"].forEach((role, k) => {
+    const i = k * 3;
+    const stamp = (p, slot) => {
+      p._provenance = {
+        ...p._provenance,
         skeletonPointId: endpoint._sourcePointId,
-        side: innerSide,
-        role,
-        capCurvatureField: "capBallEaseCurvature",
-        capCurvatureValue: pin,
-        capCurvatureTension: tension,
+        side: p._provenance?.side ?? null,
+        role: p._provenance?.role ?? slot,
+        bulbRole: role,
+        bulbSlot: slot,
       };
-    }
-    points[9]._provenance.constructionSegment = points
-      .slice(9)
-      .map(({ x, y }) => ({ x, y }));
-  }
+    };
+    stamp(points[i], "onCurve");
+    points[i]._provenance.bulbTangent = result.tangents[k];
+    stamp(i ? points[i - 1] : result.wall[2], "in");
+    stamp(points[i + 1], "out");
+    points[i].smooth = true;
+    points[i].skipColinear = true;
+  });
+  // The fillet's two ends and their handles belong to the cap too, but no hand
+  // moves them: the easing slider sets them. They name no side, so nothing
+  // reads them as a rib's own points.
+  for (const [i, role] of [
+    [9, "fillet-ball"],
+    [12, "fillet-wall"],
+  ])
+    for (const [h, slot] of [
+      [i - 1, "in"],
+      [i, "onCurve"],
+      [i + 1, "out"],
+    ])
+      points[h]._provenance = {
+        skeletonPointId: endpoint._sourcePointId,
+        side: null,
+        role: slot,
+        bulbRole: role,
+        bulbSlot: slot,
+      };
+  // While an edit runs, E and its two handles are hidden: the fit on release
+  // moves them, and the jump is not to be seen under the cursor.
+  if (result.preview)
+    for (const p of [result.wall[2], points[0], points[1]])
+      p._provenance = { ...p._provenance, bulbPreview: true };
+  // Q's handle on the bulb side is the bulb's as well: the wall from W to Q is
+  // the cut the fillet leaves. It names the terminal and no side, so a drag on
+  // Q's rib does not carry it.
+  points[14]._provenance = {
+    skeletonPointId: endpoint._sourcePointId,
+    side: null,
+    role: "in",
+    bulbRole: "fillet-wall",
+    bulbSlot: "wall",
+  };
+  points[9].skipColinear = true;
+  points[12].skipColinear = true;
+  // Q keeps its own identity, and every wall segment beyond it.
+  const originalInner = awayFromRib(innerPiece.segmentPoints);
+  points[15]._provenance = { ...originalInner.at(-1)._provenance };
+  points[15].skipColinear = true;
+  points[15].smooth = originalInner.at(-1).smooth;
   const keptOuter =
     position === "end"
       ? [...outer.slice(0, outerPiece.segmentStartIndex), ...result.wall]
       : [...result.wall].reverse().concat(outer.slice(outerPiece.segmentEndIndex + 1));
   const keptInner =
     position === "end"
-      ? [
-          ...inner.slice(0, innerPiece.segmentStartIndex),
-          ...result.keptInner.slice().reverse(),
-        ]
-      : [...result.keptInner, ...inner.slice(innerPiece.segmentEndIndex + 1)];
+      ? [...inner.slice(0, innerPiece.segmentStartIndex), points[15]]
+      : [points[15], ...inner.slice(innerPiece.segmentEndIndex + 1)];
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =
     outerSide === fromSide ? points.slice(1, -1) : points.slice(1, -1).reverse();
