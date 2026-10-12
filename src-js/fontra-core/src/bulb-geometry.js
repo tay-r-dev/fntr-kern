@@ -482,12 +482,41 @@ function solveBulb({
     sA,
     sW,
   ];
+  // While an edit runs the bulb's points are hidden, so only the outline has
+  // to move smoothly. The final build pins X and B to where the ball runs
+  // exactly horizontal or vertical, where it does: one extreme takes the
+  // slot whose equal split is nearer, two or more fill both slots with the
+  // pair nearest the equal splits. An extreme within half a radius of the rib,
+  // of A or of the other pin is left alone: the span it would leave is too
+  // short to keep its curvature on whole units.
+  let pins = [null, null];
+  if (!preview) {
+    const gapOnBall = FIT_APEX_ROOM * radius;
+    const targets = [sRib + (sA - sRib) / 3, sRib + (2 * (sA - sRib)) / 3];
+    const found = reference.extremes(sRib + gapOnBall, sA - gapOnBall);
+    if (found.length === 1) {
+      const k =
+        Math.abs(found[0] - targets[0]) <= Math.abs(found[0] - targets[1]) ? 0 : 1;
+      pins[k] = found[0];
+    } else if (found.length >= 2) {
+      let best = null;
+      for (let i = 0; i < found.length; i++)
+        for (let j = i + 1; j < found.length; j++) {
+          if (found[j] - found[i] < gapOnBall) continue;
+          const cost =
+            Math.abs(found[i] - targets[0]) + Math.abs(found[j] - targets[1]);
+          if (!best || cost < best.cost) best = { cost, pins: [found[i], found[j]] };
+        }
+      if (best) pins = best.pins;
+    }
+  }
   const fit = fitToReference(reference, start, {
     kP,
     kQ,
     radius,
     corner: built ? null : { s: sA },
     sRib,
+    pins,
   });
   if (!built) {
     let rest = splitCubicAt(inner, cut).second;
@@ -571,6 +600,37 @@ function referencePath(cubics) {
       const { curve, t } = locate(s, after);
       return cubicTangentAt(curve, t);
     },
+    // Places strictly between two places where the reference runs exactly
+    // horizontal or vertical, in order.
+    extremes: (from, to) => {
+      const found = [];
+      for (const { curve, table, from: start } of pieces) {
+        for (const axis of ["x", "y"]) {
+          const [p0, p1, p2, p3] = curve.map((p) => p[axis]);
+          // The derivative's quadratic, a t^2 + b t + c.
+          const a = 3 * (-p0 + 3 * p1 - 3 * p2 + p3),
+            b = 6 * (p0 - 2 * p1 + p2),
+            c = 3 * (p1 - p0);
+          const roots =
+            Math.abs(a) < 1e-12
+              ? Math.abs(b) < 1e-12
+                ? []
+                : [-c / b]
+              : (() => {
+                  const d = b * b - 4 * a * c;
+                  if (d < 0) return [];
+                  const r = Math.sqrt(d);
+                  return [(-b - r) / (2 * a), (-b + r) / (2 * a)];
+                })();
+          for (const t of roots) {
+            if (!(t > 1e-9 && t < 1 - 1e-9)) continue;
+            const place = start + table.lengthAt(t);
+            if (place > from && place < to) found.push(place);
+          }
+        }
+      }
+      return found.sort((p, q) => p - q);
+    },
     // The handle lengths of the reference itself between two places, where
     // both lie on one piece; null where they do not.
     handles: (s0, s1) => {
@@ -625,8 +685,15 @@ const FIT_SAMPLES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
 const FIT_CURVATURE_WEIGHTS = [0, 1, 10, 100, 2000];
 const FIT_STEPS = 40;
 const FIT_MIN_HANDLE = 0.01;
+// The least span, in ball radii, an extreme must leave on each side to become
+// a point in the final build.
+const FIT_APEX_ROOM = 0.5;
 const FIT_LENGTH_PULL = 2;
-function fitToReference(reference, start, { kP, kQ, radius, corner, sRib }) {
+function fitToReference(
+  reference,
+  start,
+  { kP, kQ, radius, corner, sRib, pins = [null, null] }
+) {
   const gap = 0.1 * radius;
   const total = reference.total;
   const fixedCorner = corner !== null;
@@ -638,15 +705,15 @@ function fitToReference(reference, start, { kP, kQ, radius, corner, sRib }) {
   const places = (z) => {
     const sA = fixedCorner ? corner.s : z[1],
       sW = fixedCorner ? corner.s : z[2];
-    return [
-      0,
-      z[0],
-      sRib + (sA - sRib) / 3,
-      sRib + (2 * (sA - sRib)) / 3,
-      sA,
-      sW,
-      total,
-    ];
+    // A slot with no pin splits what its neighbours leave: equally in three
+    // with no pins, in half beside a single pin.
+    const sX =
+      pins[0] ??
+      (pins[1] !== null ? sRib + (pins[1] - sRib) / 2 : sRib + (sA - sRib) / 3);
+    const sB =
+      pins[1] ??
+      (pins[0] !== null ? pins[0] + (sA - pins[0]) / 2 : sRib + (2 * (sA - sRib)) / 3);
+    return [0, z[0], sX, sB, sA, sW, total];
   };
   const build = (z) => {
     const s = places(z);
@@ -700,11 +767,14 @@ function fitToReference(reference, start, { kP, kQ, radius, corner, sRib }) {
   const project = (z) => {
     const out = [...z];
     if (!fixedCorner) {
-      out[1] = clamp(out[1], sRib + 3 * gap, total - 2 * gap);
+      out[1] = clamp(
+        out[1],
+        Math.max(sRib + 3 * gap, (pins[1] ?? 0) + gap),
+        total - 2 * gap
+      );
       out[2] = clamp(out[2], out[1] + gap, total - gap);
     }
-    const sA = fixedCorner ? corner.s : out[1];
-    out[0] = clamp(out[0], gap, sRib + (sA - sRib) / 3 - gap);
+    out[0] = clamp(out[0], gap, places(out)[2] - gap);
     // No handle under a twentieth of its span: a collapsed handle meets any
     // curvature with any shape.
     const s = places(out);
