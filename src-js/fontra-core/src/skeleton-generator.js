@@ -6711,11 +6711,6 @@ function buildDropCap({
         bulbRole: role,
         bulbSlot: slot,
       };
-  // While an edit runs, E and its two handles are hidden: the fit on release
-  // moves them, and the jump is not to be seen under the cursor.
-  if (result.preview)
-    for (const p of [result.wall[2], points[0], points[1]])
-      p._provenance = { ...p._provenance, bulbPreview: true };
   // Q's handle on the bulb side is the bulb's as well: the wall from W to Q is
   // the cut the fillet leaves. It names the terminal and no side, so a drag on
   // Q's rib does not carry it.
@@ -6726,6 +6721,12 @@ function buildDropCap({
     bulbRole: "fillet-wall",
     bulbSlot: "wall",
   };
+  // While an edit runs, every bulb point and handle is hidden: only the
+  // outline moves smoothly. The final build on release places the points on
+  // the ball's extremes, and that jump is not to be seen under the cursor.
+  if (result.preview)
+    for (const p of [result.wall[2], ...points.slice(0, 15)])
+      p._provenance = { ...p._provenance, bulbPreview: true };
   points[9].skipColinear = true;
   points[12].skipColinear = true;
   // Q keeps its own identity, and every wall segment beyond it.
