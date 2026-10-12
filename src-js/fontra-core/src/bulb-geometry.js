@@ -781,8 +781,11 @@ function counterSideOf(inner, cut, reference) {
 
 // The fillet leaves the ball with the ball's curvature but not with the rate it
 // changes at, so it can graze the ball just after A: 0.06 units at most on the
-// skeletron-test glyphs. A quarter of a unit is under what the grid can draw.
-const BALL_TOLERANCE = 0.25;
+// skeletron-test glyphs, and 0.31 on the S of skeletron-test just before the
+// ball end stops. Half a unit is what whole-unit rounding moves a point by, so
+// a dip under it cannot be drawn. A tighter bound opened gaps in the search
+// for the fillet's limit, and the reach jumped from 77 to 34 units.
+const BALL_TOLERANCE = 0.5;
 
 // The fillet fills the corner: no point of it lies inside the ball, and none
 // lies on the stroke's side of the wall. The ball, the cheaper test, goes first.
