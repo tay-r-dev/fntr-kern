@@ -97,12 +97,14 @@ function curveMovement(a, b) {
   return largest;
 }
 // E is checked only while the entry says it stayed at the wall's extreme. Slid
-// up the wall to meet the curvature, it leaves at the wall's own angle.
-function verifyApexes(run, entryOrthogonal = true) {
+// up the wall to meet the curvature, it leaves at the wall's own angle. C is
+// checked only while it stands on its apex: it slides down the ball when the
+// fillet needs the room.
+function verifyApexes(run, entryOrthogonal = true, sideOnApex = true) {
   for (const [i, axis] of [
     ...(entryOrthogonal ? [[3, "x"]] : []),
     [6, "y"],
-    [9, "x"],
+    ...(sideOnApex ? [[9, "x"]] : []),
   ]) {
     expect(run[i - 1][axis]).to.be.closeTo(run[i][axis], 1e-9);
     expect(run[i + 1][axis]).to.be.closeTo(run[i][axis], 1e-9);
@@ -384,7 +386,7 @@ describe("bulb construction", () => {
         const { points, run, origin } = bulb(
           generateFromSkeleton(specimen({ cap: { [field]: value } }))
         );
-        verifyApexes(run, origin.bulbEntryOrthogonal);
+        verifyApexes(run, origin.bulbEntryOrthogonal, origin.bulbSideOnApex);
         expect(
           points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
         ).to.equal(true);

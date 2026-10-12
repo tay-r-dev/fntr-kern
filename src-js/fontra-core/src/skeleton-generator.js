@@ -6655,6 +6655,7 @@ function buildDropCap({
     ),
     bulbEntryParameter: result.entryParameter,
     bulbEntryOrthogonal: result.orthogonalEntry,
+    bulbSideOnApex: result.sideOnApex,
     bulbHarmonizationError: result.error,
     // The editor fits the entry on release wherever it finds this mark.
     ...(result.preview ? { bulbPreview: true } : {}),

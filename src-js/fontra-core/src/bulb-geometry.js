@@ -506,7 +506,6 @@ function solveBulb({
   };
   const first = ballArc(ball, -Math.PI / 2, bottom.theta);
   const entry = joinBulbEntry(wall, first);
-  const bodyArc = ballArc(ball, bottom.theta, side.theta);
   const cut = innerBallCut(ball, inner, side.theta);
   const cutPoint = cubicPointAt(inner, cut);
   const thetaLowest = side.theta + 0.02;
@@ -516,23 +515,28 @@ function solveBulb({
     (3 * Math.PI) / 2 - 0.02
   );
   const corner = ball.at(thetaCut);
+  // A may go back past C. C then slides down the ball ahead of it, keeping the
+  // return arc, and B -> C keeps as much again: the ball is drawn exactly
+  // wherever C stands, only C's handles leave the axis.
+  const thetaFloor = bottom.theta + 0.02;
   const ballStop = Math.min(
     FILLET_BALL_STOP * radius,
-    Math.max(0, ballArcLength(ball, side.theta, thetaCut) - FILLET_MIN_RETURN * radius)
+    Math.max(0, ballArcLength(ball, bottom.theta, thetaCut) - 2 * FILLET_MIN_RETURN * radius)
   );
   const wallTable = wallLengthTable(inner, cut);
   const wallLength = wallTable.total;
 
   // E, B and C with the designer's edits, and the arc from C to A.
   const tangents = [];
-  const body = (thetaA) => {
-    const returnArc = ballArc(ball, side.theta, thetaA);
+  const body = (thetaA, thetaC = side.theta) => {
+    const bodyArc = ballArc(ball, bottom.theta, thetaC);
+    const returnArc = ballArc(ball, thetaC, thetaA);
     const points = [...entry.firstArc, ...bodyArc.slice(1), ...returnArc.slice(1)].map(
       (p) => ({ ...p })
     );
     for (const [i, axis] of [
       [3, "y"],
-      [6, "x"],
+      ...(thetaC === side.theta ? [[6, "x"]] : []),
     ]) {
       points[i - 1][axis] = points[i][axis];
       points[i + 1][axis] = points[i][axis];
@@ -543,12 +547,14 @@ function solveBulb({
   };
 
   const counter = counterSideOf(inner, cut, ball.at(side.theta));
-  const thetaBack = ballThetaBackTable(ball, thetaLowest, thetaCut);
+  const thetaBack = ballThetaBackTable(ball, thetaFloor, thetaCut);
   const fillets = new Map();
   const filletAt = (travel) => {
     if (fillets.has(travel)) return fillets.get(travel);
-    const thetaA = thetaBack(Math.min(travel, ballStop));
-    const points = body(thetaA);
+    const back = Math.min(travel, ballStop);
+    const thetaA = thetaBack(back);
+    const thetaC = Math.min(side.theta, thetaBack(back + FILLET_MIN_RETURN * radius));
+    const points = body(thetaA, thetaC);
     const A = points[9];
     const tA = unit(sub(A, points[8]));
     const kA = bulbEndCurvature(points.slice(6, 10), true);
@@ -567,7 +573,7 @@ function solveBulb({
           FILLET_MIN_BALL_HANDLE * vector.distance(A, W) &&
         fillsCorner(fillet, ball, counter)
     );
-    const result = fillet ? { points, fillet, rest } : null;
+    const result = fillet ? { points, fillet, rest, sideOnApex: thetaC === side.theta } : null;
     fillets.set(travel, result);
     return result;
   };
@@ -692,6 +698,7 @@ function solveBulb({
     fillet: { travel, reach },
     entryParameter: entry.t,
     orthogonalEntry: entry.orthogonal,
+    sideOnApex: built?.sideOnApex ?? true,
     preview,
   };
 }
