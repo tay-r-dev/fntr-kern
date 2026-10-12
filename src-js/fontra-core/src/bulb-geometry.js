@@ -1,13 +1,7 @@
-import {
-  harmonizeCubicRun,
-  matchCubicEndCurvatures,
-  slideBulbEntryForCurvature,
-  solveCubicEndCurvatures,
-} from "./bulb-entry-slide.js";
+import { matchCubicEndCurvatures } from "./bulb-entry-slide.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
 import * as vector from "./vector.js";
-import { makeSlideCandidate } from "./point-slide.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
 // The forward half has radius R; Shape stretches only the rear half.
@@ -57,27 +51,6 @@ export function makeBulbBall({ outer, inner, outerDirection, radius, shape }) {
       return u * u + v * v < 1;
     },
   };
-}
-
-// Glyph-axis extrema of the two half ellipses. The rear half may have a
-// different along radius, so each candidate is accepted only on its own half.
-export function bulbApexes(ball, from = -Math.PI / 2, to = (3 * Math.PI) / 2) {
-  const result = [];
-  for (const rear of [false, true]) {
-    const along = rear ? ball.rearRadius : ball.radius;
-    for (const axis of ["x", "y"]) {
-      const base = Math.atan2(ball.ey[axis] * ball.radius, ball.ex[axis] * along);
-      for (let theta of [base, base + Math.PI]) {
-        while (theta <= from + 1e-9) theta += 2 * Math.PI;
-        while (theta > from + 2 * Math.PI) theta -= 2 * Math.PI;
-        if (theta >= to - 1e-9 || theta <= from + 1e-9) continue;
-        if (Math.cos(theta) < -1e-9 !== rear) continue;
-        if (!result.some((p) => Math.abs(p.theta - theta) < 1e-9))
-          result.push({ theta, axis });
-      }
-    }
-  }
-  return result.sort((a, b) => a.theta - b.theta);
 }
 
 const sub = vector.subVectors;
@@ -184,6 +157,12 @@ function ballArc(ball, a, b) {
   ];
 }
 
+function cubicSlice(points, t0, t1) {
+  if (t1 <= 1e-12) return [0, 1, 2, 3].map(() => cubicPointAt(points, 0));
+  const head = splitCubicAt(points, t1).first;
+  return splitCubicAt(head, t0 / t1).second;
+}
+
 function unwrap(theta, after) {
   while (theta < after - 1e-9) theta += 2 * Math.PI;
   return theta;
@@ -212,7 +191,13 @@ function innerBallCut(ball, inner, sideTheta) {
       }
       const root = (lo + hi) / 2;
       const theta = unwrap(ball.thetaOf(cubicPointAt(inner, root)), -Math.PI / 2);
-      if (theta >= sideTheta && theta <= (3 * Math.PI) / 2 - 0.02) cut = root;
+      // With no side apex given, the corner is where the wall leaves the ball.
+      if (
+        sideTheta === null
+          ? previous < 0 && theta <= (3 * Math.PI) / 2 - 0.02
+          : theta >= sideTheta && theta <= (3 * Math.PI) / 2 - 0.02
+      )
+        cut = root;
     }
     previous = value;
   }
@@ -237,6 +222,16 @@ function wallLengthTable(points, from) {
   const total = lengths[WALL_TABLE_STEPS];
   return {
     total,
+    lengthAt(t) {
+      if (t <= from) return 0;
+      if (t >= 1) return total;
+      const i = Math.min(
+        WALL_TABLE_STEPS - 1,
+        Math.floor(((t - from) / (1 - from)) * WALL_TABLE_STEPS)
+      );
+      const s = (t - parameters[i]) / (parameters[i + 1] - parameters[i] || 1);
+      return lengths[i] + (lengths[i + 1] - lengths[i]) * s;
+    },
     parameterAt(distance) {
       if (distance <= 0) return from;
       if (distance >= total) return 1;
@@ -253,91 +248,15 @@ function wallLengthTable(points, from) {
   };
 }
 
-// E is the first vertical tangent along the outer run after P: on the wall if
-// the wall has one, otherwise on the ball's apex. The wall and the ball are the
-// reference. Of P -> E and E -> B, one is an exact split of it; the other holds
-// the rib and replaces the reference pieces it spans, refit as a V-slide refits
-// (`spans` names which). Its handle lengths are then solved for curvature at
-// both ends once the designer's edits are in (buildBulb).
-export function joinBulbEntry(wall, firstArc) {
-  const run = { points: [...wall, ...firstArc.slice(1)], isClosed: false };
-  const onWall = bulbEntry(wall);
-  if (onWall.orthogonal && onWall.t < 1 - 1e-10) {
-    const candidate = makeSlideCandidate(run, 3, "previous", onWall.t).points;
-    return {
-      ...onWall,
-      wall: candidate.slice(0, 4),
-      firstArc: candidate.slice(3, 7),
-      spans: "entry",
-    };
-  }
-  // E goes on the ball's apex only where some pair of P -> E lengths meets the
-  // wall's curvature at P and the ball's at E. Where none does, no amount of
-  // solving fixes it there, and E stays on the wall.
-  const onBall = bulbEntry(firstArc);
-  const candidate =
-    onBall.orthogonal &&
-    onBall.t > 1e-4 &&
-    onBall.t < 1 - 1e-4 &&
-    makeSlideCandidate(run, 3, "next", onBall.t).points;
-  if (
-    candidate &&
-    solveCubicEndCurvatures(
-      candidate.slice(0, 4),
-      bulbEndCurvature(wall),
-      bulbEndCurvature(candidate.slice(3, 7))
-    ).length
-  ) {
-    return {
-      wall: candidate.slice(0, 4),
-      firstArc: candidate.slice(3, 7),
-      t: 1,
-      orthogonal: true,
-      ballParameter: onBall.t,
-      spans: "wall",
-    };
-  }
-  return { ...onWall, firstArc, spans: null };
-}
-
-// How far back along the ball the fillet may reach from the corner, in radii.
-// At 0.75 the ball end stopped while the wall end climbed on, and the fillet's
-// ball handle shrank to nothing before full easing: past that point no curve
-// meets both curvatures. At 1.5 every easing on the skeletron-test glyphs
-// meets both, with handles near half the chord.
-const FILLET_BALL_STOP = 1.5;
-// The arc from the side apex C to the fillet keeps at least this much of the
-// ball, in radii. A stub shorter than that has handles of a few units, and
-// whole-unit rounding turns its curvature over: a step of 32 times the ball's
-// own curvature at C where the corner stood one radius from it.
-const FILLET_MIN_RETURN = 0.25;
-// How far up the wall the fillet's wall end climbs at full easing, in radii,
-// and as a share of the wall from the corner to the next wall point. A fixed
-// length, never a searched limit: a limit found by testing positions moves
-// whenever a test changes its answer, and the fillet jumped with it.
-const FILLET_WALL_REACH = 2;
+// The rolling circle's radius at the smallest easing and at full easing, in
+// ball radii. Easing 0 is the plain corner.
+const FILLET_MIN_RADIUS = 0.5;
+const FILLET_RADIUS = 2.2;
+// How far back along the outer wall from the rib the refit starts E, in ball
+// radii: where the realized S put it.
+const FIT_ENTRY_LEAD = 1.75;
+// The wall end never climbs past this share of the wall to the next wall point.
 const FILLET_WALL_SHARE = 0.75;
-
-// Signed curvature of a cubic at t, in traversal order. Unlike reading the
-// start of a split, it holds at t = 1.
-function cubicCurvatureAt(points, t) {
-  const [p0, p1, p2, p3] = points;
-  const mt = 1 - t;
-  const d = {
-    x:
-      3 *
-      (mt * mt * (p1.x - p0.x) + 2 * mt * t * (p2.x - p1.x) + t * t * (p3.x - p2.x)),
-    y:
-      3 *
-      (mt * mt * (p1.y - p0.y) + 2 * mt * t * (p2.y - p1.y) + t * t * (p3.y - p2.y)),
-  };
-  const dd = {
-    x: 6 * (mt * (p2.x - 2 * p1.x + p0.x) + t * (p3.x - 2 * p2.x + p1.x)),
-    y: 6 * (mt * (p2.y - 2 * p1.y + p0.y) + t * (p3.y - 2 * p2.y + p1.y)),
-  };
-  const speed = Math.hypot(d.x, d.y);
-  return speed > 1e-12 ? (d.x * dd.y - d.y * dd.x) / speed ** 3 : 0;
-}
 
 function cubicTangentAt(points, t) {
   const [p0, p1, p2, p3] = points;
@@ -348,134 +267,6 @@ function cubicTangentAt(points, t) {
   });
 }
 
-// Length along the ball between two angles: the speed integrated by Simpson's
-// rule. A sum of chords falls short by a tenth of a per cent over a quarter turn.
-function ballArcLength(ball, from, to, n = 64) {
-  const speed = (theta) => {
-    const along = Math.cos(theta) < -1e-10 ? ball.rearRadius : ball.radius;
-    return Math.hypot(
-      -ball.ex.x * along * Math.sin(theta) + ball.ey.x * ball.radius * Math.cos(theta),
-      -ball.ex.y * along * Math.sin(theta) + ball.ey.y * ball.radius * Math.cos(theta)
-    );
-  };
-  const h = (to - from) / n;
-
-  let total = speed(from) + speed(to);
-  for (let i = 1; i < n; i++) total += (i % 2 ? 4 : 2) * speed(from + i * h);
-  return (total * h) / 3;
-}
-
-// The ball angle a given length back along the ball from `to`, read off a table
-// of lengths built once per bulb: the search for the fillet's limit asks this
-// dozens of times, and integrating the arc on every bisection step cost a
-// tenth of the bulb. Linear between rows, so it moves continuously.
-const BALL_TABLE_STEPS = 512;
-function ballThetaBackTable(ball, lowest, to) {
-  const thetas = [],
-    lengths = [];
-  let total = 0;
-  for (let i = 0; i <= BALL_TABLE_STEPS; i++) {
-    const theta = to - ((to - lowest) * i) / BALL_TABLE_STEPS;
-    if (i) total += ballArcLength(ball, theta, thetas[i - 1], 4);
-    thetas.push(theta);
-    lengths.push(total);
-  }
-  return (length) => {
-    if (length <= 0) return to;
-    if (length >= total) return lowest;
-    let lo = 0,
-      hi = BALL_TABLE_STEPS;
-    while (hi - lo > 1) {
-      const mid = (lo + hi) >> 1;
-      if (lengths[mid] < length) lo = mid;
-      else hi = mid;
-    }
-    const s = (length - lengths[lo]) / (lengths[hi] - lengths[lo] || 1);
-    return thetas[lo] + (thetas[hi] - thetas[lo]) * s;
-  };
-}
-
-// The fillet: one cubic from A on the ball to W on the wall, leaving the ball
-// with the ball's curvature and arriving with the wall's, so the comb runs on
-// through both ends. Its two handle lengths are the unknowns, solved by one
-// damped Gauss-Newton walk in their logarithms from a fixed start: both handles
-// most of the way to where the two tangents cross, the fillet's own shape.
-// Where the two curvatures can be met the walk lands on them exactly; where
-// they cannot, it lands on the nearest pair, which continues smoothly from the
-// last exact one. No answer is tested and refused, so nothing can jump.
-// Both lengths stay between a thousandth of the chord and twice the chord. The
-// tangent crossing is no bound here: the fillet leaves the ball bending the
-// ball's way and turns the other way to reach the wall, and that inflection
-// needs the wall handle past the crossing.
-function solveFillet(A, tA, kA, W, tW, kW) {
-  const d = sub(W, A),
-    chord = Math.hypot(d.x, d.y);
-  if (!(chord > 1e-6)) return null;
-  const X = cross(tA, d),
-    Y = cross(tA, tW),
-    Z = cross(d, tW);
-  const max = 2 * chord,
-    floor = 1e-3 * chord;
-  const bound = (u) => clamp(u, Math.log(floor), Math.log(max));
-  const seed = (reach) => Math.log(0.9 * (reach > 0 ? Math.min(reach, max) : max / 6));
-  let u = bound(seed(Math.abs(Y) > 1e-12 ? Z / Y : Infinity)),
-    v = bound(seed(Math.abs(Y) > 1e-12 ? X / Y : Infinity));
-  // Residuals in curvature times the chord, so the walk reads the same at
-  // every size.
-  const residual = (u, v) => {
-    const a = Math.exp(u),
-      c = Math.exp(v);
-    const k0 = ((2 / 3) * (X - c * Y)) / (a * a),
-      k1 = ((2 / 3) * (Z - a * Y)) / (c * c);
-    return { a, c, k0, k1, r: [(k0 - kA) * chord, (k1 - kW) * chord] };
-  };
-  let lambda = 1e-3;
-  let state = residual(u, v);
-  for (let i = 0; i < 100; i++) {
-    const { a, c, k0, k1, r } = state;
-    const cost = r[0] * r[0] + r[1] * r[1];
-    if (cost < 1e-24) break;
-    // Derivatives in the log lengths.
-    const J = [
-      [-2 * k0 * chord, ((-(2 / 3) * Y * c) / (a * a)) * chord],
-      [((-(2 / 3) * Y * a) / (c * c)) * chord, -2 * k1 * chord],
-    ];
-    const g = [J[0][0] * r[0] + J[1][0] * r[1], J[0][1] * r[0] + J[1][1] * r[1]];
-    const H = [
-      [J[0][0] ** 2 + J[1][0] ** 2, J[0][0] * J[0][1] + J[1][0] * J[1][1]],
-      [0, J[0][1] ** 2 + J[1][1] ** 2],
-    ];
-    H[1][0] = H[0][1];
-    let moved = false;
-    for (let attempt = 0; attempt < 30 && !moved; attempt++) {
-      const h00 = H[0][0] * (1 + lambda) + 1e-12,
-        h11 = H[1][1] * (1 + lambda) + 1e-12,
-        det = h00 * h11 - H[0][1] * H[1][0];
-      let du = (-g[0] * h11 + g[1] * H[0][1]) / det,
-        dv = (-g[1] * h00 + g[0] * H[1][0]) / det;
-      const largest = Math.max(Math.abs(du), Math.abs(dv));
-      if (largest > Math.log(1.4)) {
-        du *= Math.log(1.4) / largest;
-        dv *= Math.log(1.4) / largest;
-      }
-      const next = residual(bound(u + du), bound(v + dv));
-      if (next.r[0] ** 2 + next.r[1] ** 2 < cost) {
-        u = Math.log(next.a);
-        v = Math.log(next.c);
-        state = next;
-        lambda = Math.max(lambda / 3, 1e-9);
-        moved = true;
-      } else lambda *= 4;
-    }
-    if (!moved) break;
-  }
-  return [
-    { ...A },
-    { ...offset(A, tA, state.a), type: "cubic" },
-    { ...offset(W, tW, -state.c), type: "cubic" },
-    { ...W },
-  ];
-}
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 
 // The bulb: E, B and C on the ball, A where the ball gives way to the easing
@@ -542,10 +333,6 @@ function solveBulb({
 }) {
   wall = bulbCubic(wall);
   inner = bulbCubic(inner);
-  // Q is reached with the curvature the stroke leaves it with, not with the
-  // cut wall's own end curvature. Copying that end carried any step already at
-  // the point into the bulb, where nothing could remove it.
-  const wallCurvature = curvatureBeyond(inner, beyond);
   const rib = wall[3];
   const ball = makeBulbBall({
     outer: rib,
@@ -555,185 +342,486 @@ function solveBulb({
     shape,
   });
   if (!ball) return null;
-  const stops = bulbApexes(ball, -Math.PI / 2, (3 * Math.PI) / 2);
-  const bottom = stops.find((p) => p.axis === "y") ?? { theta: 0 };
-  const side = stops.find((p) => p.axis === "x" && p.theta > bottom.theta) ?? {
-    theta: Math.PI / 2,
-  };
-  const first = ballArc(ball, -Math.PI / 2, bottom.theta);
-  const entry = joinBulbEntry(wall, first);
-  const cut = innerBallCut(ball, inner, side.theta);
-  const cutPoint = cubicPointAt(inner, cut);
-  const thetaLowest = side.theta + 0.02;
+  // The corner: where the inner wall leaves the ball.
+  const cut = innerBallCut(ball, inner, null);
+  const thetaE = -Math.PI / 2;
   const thetaCut = clamp(
-    unwrap(ball.thetaOf(cutPoint), -Math.PI / 2),
-    thetaLowest,
+    unwrap(ball.thetaOf(cubicPointAt(inner, cut)), thetaE),
+    thetaE + 0.2,
     (3 * Math.PI) / 2 - 0.02
   );
   const corner = ball.at(thetaCut);
-  // A may go back past C. C then slides down the ball ahead of it, keeping the
-  // return arc, and B -> C keeps as much again: the ball is drawn exactly
-  // wherever C stands, only C's handles leave the axis.
-  const thetaFloor = bottom.theta + 0.02;
-  const ballStop = Math.min(
-    FILLET_BALL_STOP * radius,
-    Math.max(
-      0,
-      ballArcLength(ball, bottom.theta, thetaCut) - 2 * FILLET_MIN_RETURN * radius
-    )
-  );
+  const thetaFloor = thetaE + 0.1;
   const wallTable = wallLengthTable(inner, cut);
   const wallLength = wallTable.total;
 
-  // E, B and C with the designer's edits, and the arc from C to A.
-  const tangents = [];
-  const body = (thetaA, thetaC = side.theta) => {
-    const bodyArc = ballArc(ball, bottom.theta, thetaC);
-    const returnArc = ballArc(ball, thetaC, thetaA);
-    const points = [...entry.firstArc, ...bodyArc.slice(1), ...returnArc.slice(1)].map(
-      (p) => ({ ...p })
-    );
-    for (const [i, axis] of [[3, "y"], ...(thetaC === side.theta ? [[6, "x"]] : [])]) {
-      points[i - 1][axis] = points[i][axis];
-      points[i + 1][axis] = points[i][axis];
+  // The rolling circle: radius r, outside the ball and on the counter side of
+  // the wall, touching both. Where it touches them are the reference's A and W.
+  const outerMid = cubicPointAt(wall, 0.5);
+  const counterSign =
+    cross(cubicTangentAt(inner, cut), sub(outerMid, corner)) > 0 ? -1 : 1;
+  const counterNormal = (t) => {
+    const tangent = cubicTangentAt(inner, t);
+    return { x: -tangent.y * counterSign, y: tangent.x * counterSign };
+  };
+  const BALL_SAMPLES = 160;
+  const nearestOnBall = (p) => {
+    const at = (theta) => vector.distance(ball.at(theta), p);
+    let best = thetaFloor;
+    for (let i = 0; i <= BALL_SAMPLES; i++) {
+      const theta = thetaFloor + ((thetaCut - thetaFloor) * i) / BALL_SAMPLES;
+      if (at(theta) < at(best)) best = theta;
     }
-    tangents.length = 0;
-    applyBulbEdits(points, edits, tangents, radius);
-    return points;
+    const step = (thetaCut - thetaFloor) / BALL_SAMPLES;
+    let lo = Math.max(thetaFloor, best - step),
+      hi = Math.min(thetaCut, best + step);
+    for (let i = 0; i < 40; i++) {
+      const m1 = lo + (hi - lo) / 3,
+        m2 = hi - (hi - lo) / 3;
+      if (at(m1) < at(m2)) hi = m2;
+      else lo = m1;
+    }
+    const theta = (lo + hi) / 2;
+    return { theta, distance: (ball.contains(p) ? -1 : 1) * at(theta) };
+  };
+  const tTop = wallTable.parameterAt(FILLET_WALL_SHARE * wallLength);
+  const gapAt = (t, r) =>
+    nearestOnBall(offset(cubicPointAt(inner, t), counterNormal(t), r)).distance - r;
+  // The largest circle that still touches the wall within its allowed share:
+  // a larger one would end its arc off the wall.
+  const largestCircle = () => {
+    let lo = 0,
+      hi = FILLET_RADIUS * radius;
+    if (gapAt(tTop, hi) >= 0) return hi;
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      if (gapAt(tTop, mid) >= 0) lo = mid;
+      else hi = mid;
+    }
+    return lo;
+  };
+  const rolled = (r) => {
+    const centre = (t) => offset(cubicPointAt(inner, t), counterNormal(t), r);
+    const gap = (t) => gapAt(t, r);
+    let lo = cut,
+      hi = tTop;
+    if (gap(hi) < 0) lo = hi;
+    else
+      for (let i = 0; i < 50; i++) {
+        const mid = (lo + hi) / 2;
+        if (gap(mid) < 0) lo = mid;
+        else hi = mid;
+      }
+    return { t: lo, thetaA: nearestOnBall(centre(lo)).theta, centre: centre(lo) };
   };
 
-  const thetaBack = ballThetaBackTable(ball, thetaFloor, thetaCut);
-  const filletAt = (travel) => {
-    const back = Math.min(travel, ballStop);
-    const thetaA = thetaBack(back);
-    const thetaC = Math.min(side.theta, thetaBack(back + FILLET_MIN_RETURN * radius));
-    const points = body(thetaA, thetaC);
-    const A = points[9];
-    const tA = unit(sub(A, points[8]));
-    const kA = bulbEndCurvature(points.slice(6, 10), true);
-    const t = wallTable.parameterAt(travel);
-    const rest = splitCubicAt(inner, t).second.map((p, i) => ({ ...inner[i], ...p }));
-    const W = rest[0];
-    const fillet = solveFillet(
-      A,
-      tA,
-      kA,
-      W,
-      cubicTangentAt(inner, t),
-      cubicCurvatureAt(inner, t)
-    );
-    return fillet ? { points, fillet, rest, sideOnApex: thetaC === side.theta } : null;
-  };
-
-  const reach = Math.min(FILLET_WALL_REACH * radius, FILLET_WALL_SHARE * wallLength);
-  const travel = clamp(easing, 0, 1) * reach;
-  let built = travel > 0 ? filletAt(travel) : null;
-  let points;
-  if (built) {
-    points = [...built.points, ...built.fillet.slice(1), ...built.rest.slice(1)];
-    points[9].smooth = true;
-    points[12].smooth = true;
-  } else {
-    // No easing: the ball meets the wall at a corner. The fillet's four points
-    // and W lie on it.
-    const rest = splitCubicAt(inner, cut).second.map((p, i) => ({ ...inner[i], ...p }));
-    points = [...body(thetaCut)];
-    Object.assign(points[9], corner);
-    points.push(
-      { ...corner, type: "cubic" },
-      { ...corner, type: "cubic" },
-      { ...corner },
-      ...rest.slice(1).map((p) => ({ ...p }))
-    );
-    points[9].smooth = false;
-    points[12].smooth = false;
-  }
-  points = points.map((p) => ({ ...p }));
-  points[9].skipColinear = true;
-  points[12].skipColinear = true;
-  // Q: the last span keeps the curvature it leaves W with and arrives with the
-  // stroke's.
-  if (wallCurvature !== undefined) {
-    const arrived = arriveWithCurvature(points.slice(12, 16), wallCurvature, radius);
-    if (arrived) points = [...points.slice(0, 12), ...arrived];
-  }
-
-  // E with no vertical tangent to stand on, on the wall or on the ball, is
-  // V-slid along the wall until the comb at E is even, as the editor's V-slide
-  // does on a realized contour.
-  if (entry.spans === null) {
-    const entrySlide = slideBulbEntryForCurvature({
-      wall: entry.wall,
-      points,
-      sourceWall: wall,
-      sourceArc: first,
-      entryParameter: entry.t,
-    });
-    if (entrySlide) {
-      points = entrySlide.points;
-      entry.wall = entrySlide.wall;
-      entry.t = entrySlide.parameter;
-      tangents[0] = unit(sub(points[1], points[0]));
-    }
-  }
-  // The outer run is made G2 at every join, from the exact wall to the fillet,
-  // by handle lengths alone: every on-curve stays on the reference and every
-  // handle keeps its direction. The change is the nearest one, spread over
-  // the run. Where E is on the ball, P -> E holds the rib and joins the run,
-  // and P keeps the curvature the wall has there. Where the run does not
-  // settle, the refit stands and the step is reported.
-  {
-    const ownsWall = entry.spans === "wall";
-    const run = [
-      ...(ownsWall ? [entry.wall] : []),
-      points.slice(0, 4),
-      points.slice(3, 7),
-      points.slice(6, 10),
-    ];
-    const solved = harmonizeCubicRun(run, {
-      start: ownsWall ? bulbEndCurvature(wall) : bulbEndCurvature(entry.wall, true),
-      // At zero easing A is a corner, but the ball still arrives there with
-      // its own curvature. Left free, the solve flattens the whole ball.
-      end: built
-        ? bulbEndCurvature(points.slice(9, 13))
-        : bulbEndCurvature(points.slice(6, 10), true),
-      radius,
-    });
-    if (solved) {
-      if (ownsWall) entry.wall = solved.shift();
-      points = [
-        ...solved[0],
-        ...solved[1].slice(1),
-        ...solved[2].slice(1),
-        ...points.slice(10),
-      ];
-    }
-  }
-  const errors = [
-    Math.abs(bulbEndCurvature(entry.wall, true) - bulbEndCurvature(points.slice(0, 4))),
-  ];
-  for (const join of [3, 6, ...(built ? [9, 12] : [])])
-    errors.push(
-      Math.abs(
-        bulbEndCurvature(points.slice(join - 3, join + 1), true) -
-          bulbEndCurvature(points.slice(join, join + 4))
+  // The ideal reference: the outer wall, the ball from the rib, the rolling
+  // circle's arc, the inner wall to Q. Every piece is exact. Its comb may step,
+  // because it is the shape to follow, not the outline.
+  const built = easing > 0;
+  // Easing runs from the smallest circle to the largest that fits.
+  const largest = built ? largestCircle() : 0;
+  const smallest = Math.min(FILLET_MIN_RADIUS * radius, largest);
+  const filletRadius = built
+    ? smallest + clamp(easing, 0, 1) * (largest - smallest)
+    : 0;
+  const ballPieces = (from, to) => {
+    const count = Math.max(1, Math.ceil(Math.abs(to - from) / (Math.PI / 3)));
+    return Array.from({ length: count }, (_, i) =>
+      ballArc(
+        ball,
+        from + ((to - from) * i) / count,
+        from + ((to - from) * (i + 1)) / count
       )
     );
-  const error = Math.max(...errors) * radius;
+  };
+  let pieces, ballCount, arcCount, tW;
+  if (built) {
+    const circle = rolled(filletRadius);
+    tW = circle.t;
+    const ballPart = ballPieces(thetaE, circle.thetaA);
+    const arcPart = circleArc(
+      circle.centre,
+      filletRadius,
+      ball.at(circle.thetaA),
+      cubicPointAt(inner, tW)
+    );
+    ballCount = ballPart.length;
+    arcCount = arcPart.length;
+    pieces = [wall, ...ballPart, ...arcPart, splitCubicAt(inner, tW).second];
+  } else {
+    tW = cut;
+    const ballPart = ballPieces(thetaE, thetaCut);
+    ballCount = ballPart.length;
+    arcCount = 0;
+    pieces = [wall, ...ballPart, splitCubicAt(inner, cut).second];
+  }
+  const reference = referencePath(pieces);
+  // Places along the reference by its own measure, so A and W land exactly
+  // on the joints between its pieces.
+  const sRib = reference.ends[0];
+  const sA = reference.ends[ballCount];
+  const sW = reference.ends[ballCount + arcCount];
+
+  // The refit: E, X, B, A and W slide along the reference, every handle keeps
+  // the reference's direction at its point, and only the handle lengths and
+  // those five places are free. Curvature matches at every join, at P with
+  // the wall before it and at Q with the stroke after it, and the outline
+  // stays as near the reference as that allows. One solve from one start:
+  // E as far back on the wall as the realized S put it, X and B splitting the
+  // ball from the rib to A, A and W where the circle touches. At zero easing
+  // A and W are the corner: the fit ends there, with no condition at it, and
+  // the inner wall leaves the corner at its own angle, exact.
+  const kP = bulbEndCurvature(wall);
+  const wallCurvature = curvatureBeyond(inner, beyond);
+  const kQ = wallCurvature ?? bulbEndCurvature(inner, true);
+  const start = [
+    sRib - Math.min(FIT_ENTRY_LEAD * radius, 0.8 * sRib),
+    sRib + (sA - sRib) / 3,
+    sRib + (2 * (sA - sRib)) / 3,
+    sA,
+    sW,
+  ];
+  const fit = fitToReference(reference, start, {
+    kP,
+    kQ,
+    radius,
+    corner: built ? null : { s: sA },
+    sRib,
+  });
+  if (!built) {
+    let rest = splitCubicAt(inner, cut).second;
+    if (wallCurvature !== undefined)
+      rest = arriveWithCurvature(rest, wallCurvature, radius) ?? rest;
+    fit.curves[5] = rest;
+  }
+  const curves = fit.curves;
+  const points = [
+    ...curves[1],
+    ...curves[2].slice(1),
+    ...curves[3].slice(1),
+    ...curves[4].slice(1),
+    ...curves[5].slice(1),
+  ].map((p, i) => (i % 3 ? { x: p.x, y: p.y, type: "cubic" } : { x: p.x, y: p.y }));
+  const tangents = [];
+  applyBulbEdits(points, edits, tangents, radius);
+  for (const i of [0, 3, 6]) points[i].smooth = true;
+  points[9].smooth = built;
+  points[12].smooth = built;
+  points[9].skipColinear = true;
+  points[12].skipColinear = true;
+  const outerWall = curves[0].map((p, i) =>
+    i % 3 ? { x: p.x, y: p.y, type: "cubic" } : { ...wall[i], x: p.x, y: p.y }
+  );
+  outerWall[3] = points[0];
   return {
     points,
-    error,
-    status: error < 1e-5 ? "matched" : "bounded",
-    wall: entry.wall,
+    error: fit.curvatureError * radius,
+    status: fit.curvatureError * radius < 1e-5 ? "matched" : "bounded",
+    wall: outerWall,
     keptInner: [points[15]],
     ball,
     tangents,
-    fillet: { travel, reach },
-    entryParameter: entry.t,
-    orthogonalEntry: entry.orthogonal,
-    sideOnApex: built?.sideOnApex ?? true,
+    fillet: { radius: filletRadius },
+    entryParameter: 1,
+    orthogonalEntry: false,
+    sideOnApex: false,
     preview,
   };
+}
+
+// Cubics end to end, read by length: the place and the direction at any
+// distance along them. Linear between table rows, so both move continuously.
+function referencePath(cubics) {
+  const pieces = [];
+  // Where each given cubic ends along the path, by the path's own measure.
+  const ends = [];
+  let total = 0;
+  for (const curve of cubics) {
+    const table = wallLengthTable(curve, 0);
+    if (table.total > 1e-9) {
+      pieces.push({ curve, table, from: total });
+      total += table.total;
+    }
+    ends.push(total);
+  }
+  const locate = (s, after) => {
+    s = clamp(s, 0, total);
+    let k = pieces.length - 1;
+    for (let i = 0; i < pieces.length; i++) {
+      const end = pieces[i].from + pieces[i].table.total;
+      if (after ? s < end : s <= end) {
+        k = i;
+        break;
+      }
+    }
+    const piece = pieces[k];
+    return { curve: piece.curve, t: piece.table.parameterAt(s - piece.from) };
+  };
+  return {
+    total,
+    ends,
+    point: (s) => {
+      const { curve, t } = locate(s);
+      return cubicPointAt(curve, t);
+    },
+    // Where the reference turns a corner, the direction arriving and the
+    // direction leaving differ.
+    tangent: (s, after = false) => {
+      const { curve, t } = locate(s, after);
+      return cubicTangentAt(curve, t);
+    },
+    // The handle lengths of the reference itself between two places, where
+    // both lie on one piece; null where they do not.
+    handles: (s0, s1) => {
+      const a = locate(s0, true),
+        b = locate(s1);
+      if (a.curve !== b.curve || !(b.t > a.t)) return null;
+      const piece = cubicSlice(a.curve, a.t, b.t);
+      return [vector.distance(piece[0], piece[1]), vector.distance(piece[2], piece[3])];
+    },
+  };
+}
+
+// A circle's arc from a to b, the short way round, as cubics of at most 60
+// degrees.
+function circleArc(centre, r, a, b) {
+  const from = Math.atan2(a.y - centre.y, a.x - centre.x);
+  let sweep = Math.atan2(b.y - centre.y, b.x - centre.x) - from;
+  while (sweep > Math.PI) sweep -= 2 * Math.PI;
+  while (sweep <= -Math.PI) sweep += 2 * Math.PI;
+  const count = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 3)));
+  const at = (angle) => ({
+    x: centre.x + r * Math.cos(angle),
+    y: centre.y + r * Math.sin(angle),
+  });
+  return Array.from({ length: count }, (_, i) => {
+    const a0 = from + (sweep * i) / count,
+      a1 = from + (sweep * (i + 1)) / count;
+    const k = (4 / 3) * Math.tan((a1 - a0) / 4) * r;
+    const p0 = at(a0),
+      p3 = at(a1);
+    return [
+      p0,
+      { x: p0.x - k * Math.sin(a0), y: p0.y + k * Math.cos(a0) },
+      { x: p3.x + k * Math.sin(a1), y: p3.y - k * Math.cos(a1) },
+      p3,
+    ];
+  });
+}
+
+// The refit of six cubics, P-E-X-B-A-W-Q, to a reference. The unknowns are
+// the five inner places along the reference and the twelve handle lengths, in
+// logarithms. Residuals: each curve's distance from the reference, across it,
+// at seven fixed parameters, and each curvature condition, weighted to hold.
+// Levenberg-Marquardt from the given start with a fixed step budget: one
+// objective, one start, nothing chosen among. `corner` holds A and W together
+// on the reference's corner: the fit then stops at A, with no condition there,
+// and the caller supplies the wall after it.
+const FIT_SAMPLES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
+// The curvature conditions come in by steps, the shape alone first, so the
+// fit stays by the reference while the joins are made smooth. The same
+// sequence every time.
+const FIT_CURVATURE_WEIGHTS = [0, 1, 10, 100, 2000];
+const FIT_STEPS = 40;
+const FIT_MIN_HANDLE = 0.01;
+const FIT_LENGTH_PULL = 2;
+function fitToReference(reference, start, { kP, kQ, radius, corner, sRib }) {
+  const gap = 0.1 * radius;
+  const total = reference.total;
+  const fixedCorner = corner !== null;
+  // The free places are E, and A and W unless they are the corner. X and B
+  // split the ball from the rib to A into three equal lengths, as the
+  // realized S has them: left free, the two trade length along one smooth
+  // arc almost for nothing, and the fit had two answers to choose between.
+  const placeCount = fixedCorner ? 1 : 3;
+  const places = (z) => {
+    const sA = fixedCorner ? corner.s : z[1],
+      sW = fixedCorner ? corner.s : z[2];
+    return [
+      0,
+      z[0],
+      sRib + (sA - sRib) / 3,
+      sRib + (2 * (sA - sRib)) / 3,
+      sA,
+      sW,
+      total,
+    ];
+  };
+  const build = (z) => {
+    const s = places(z);
+    const logs = z.slice(placeCount);
+    return Array.from({ length: 6 }, (_, k) => {
+      const a = reference.point(s[k]),
+        b = reference.point(s[k + 1]);
+      if (fixedCorner && k === 4) return [a, { ...a }, { ...b }, b];
+      const ta = reference.tangent(s[k], true),
+        tb = reference.tangent(s[k + 1]);
+      const chord = Math.max(vector.distance(a, b), 1e-6);
+      const h0 = Math.min(Math.exp(logs[2 * k]), 3 * chord),
+        h1 = Math.min(Math.exp(logs[2 * k + 1]), 3 * chord);
+      return [a, offset(a, ta, h0), offset(b, tb, -h1), b];
+    });
+  };
+  const curvatureRows = (curves) => {
+    const rows = [bulbEndCurvature(curves[0]) - kP];
+    for (let k = 0; k < (fixedCorner ? 3 : 5); k++)
+      rows.push(bulbEndCurvature(curves[k], true) - bulbEndCurvature(curves[k + 1]));
+    if (!fixedCorner) rows.push(bulbEndCurvature(curves[5], true) - kQ);
+    return rows;
+  };
+  let weight = 0,
+    anchor = null;
+  const residuals = (z) => {
+    const s = places(z);
+    const curves = build(z);
+    const rows = [];
+    curves.forEach((curve, k) => {
+      if (fixedCorner && k >= 4) return;
+      // Both curves at the same fractions of their own length, compared in
+      // full. Measured across the reference only, a point could slide along
+      // it unseen.
+      const at = atLengthFractions(curve, FIT_SAMPLES);
+      FIT_SAMPLES.forEach((u, j) => {
+        const r = reference.point(s[k] + (s[k + 1] - s[k]) * u);
+        rows.push(at[j].x - r.x, at[j].y - r.y);
+      });
+    });
+    for (const row of curvatureRows(curves)) rows.push(row * radius * weight);
+    // A gentle pull of every handle length toward its start, in logarithms:
+    // it gives the fit one answer where the shape alone leaves a length loose.
+    if (anchor)
+      for (let i = placeCount; i < z.length; i++)
+        rows.push(FIT_LENGTH_PULL * (z[i] - anchor[i]));
+    return rows;
+  };
+  // The places stay in order, a tenth of a radius apart; the lengths stay
+  // finite.
+  const project = (z) => {
+    const out = [...z];
+    if (!fixedCorner) {
+      out[1] = clamp(out[1], sRib + 3 * gap, total - 2 * gap);
+      out[2] = clamp(out[2], out[1] + gap, total - gap);
+    }
+    const sA = fixedCorner ? corner.s : out[1];
+    out[0] = clamp(out[0], gap, sRib + (sA - sRib) / 3 - gap);
+    // No handle under a twentieth of its span: a collapsed handle meets any
+    // curvature with any shape.
+    const s = places(out);
+    for (let i = placeCount; i < out.length; i++) {
+      const k = Math.floor((i - placeCount) / 2);
+      const span = Math.max(s[k + 1] - s[k], 1e-3);
+      out[i] = clamp(out[i], Math.log(FIT_MIN_HANDLE * span), Math.log(4 * total));
+    }
+    return out;
+  };
+  // Start: each handle as the reference has it where a span lies on one
+  // piece, else a third of the span along the reference.
+  const free = fixedCorner ? [start[0]] : [start[0], start[3], start[4]];
+  const s0 = places(free);
+  let z = project([
+    ...free,
+    ...Array.from({ length: 12 }, (_, i) => {
+      const k = Math.floor(i / 2);
+      const own = reference.handles(s0[k], s0[k + 1]);
+      return Math.log(Math.max(own ? own[i % 2] : (s0[k + 1] - s0[k]) / 3, 1e-3));
+    }),
+  ]);
+  anchor = [...z];
+  const cost = (r) => r.reduce((a, v) => a + v * v, 0);
+  for (const w of FIT_CURVATURE_WEIGHTS) {
+    weight = w;
+    let r = residuals(z),
+      current = cost(r),
+      lambda = 1e-2;
+    for (let step = 0; step < FIT_STEPS; step++) {
+      const J = z.map((_, j) => {
+        const h = j < placeCount ? 1e-3 : 1e-5;
+        const zj = [...z];
+        zj[j] += h;
+        const rj = residuals(zj);
+        return rj.map((v, i) => (v - r[i]) / h);
+      });
+      const n = z.length;
+      const A = Array.from({ length: n }, (_, a) =>
+        Array.from({ length: n }, (_, b) =>
+          J[a].reduce((sum, v, i) => sum + v * J[b][i], 0)
+        )
+      );
+      const g = Array.from({ length: n }, (_, a) =>
+        J[a].reduce((sum, v, i) => sum + v * r[i], 0)
+      );
+      let improved = false;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const M = A.map((row, a) =>
+          row.map((v, b) => (a === b ? v * (1 + lambda) + 1e-9 : v))
+        );
+        const delta = solveLinearSystem(
+          M,
+          g.map((v) => -v)
+        );
+        if (delta) {
+          const candidate = project(z.map((v, i) => v + delta[i]));
+          const rc = residuals(candidate);
+          const c = cost(rc);
+          if (c < current) {
+            improved = current - c > 1e-12 * current;
+            z = candidate;
+            r = rc;
+            current = c;
+            lambda = Math.max(lambda / 3, 1e-7);
+            break;
+          }
+        }
+        lambda *= 4;
+      }
+      if (!improved) break;
+    }
+  }
+  const curves = build(z);
+  return {
+    curves,
+    places: places(z),
+    curvatureError: Math.max(...curvatureRows(curves).map(Math.abs)),
+  };
+}
+
+// Points of a cubic at fractions of its length, from a short length table.
+function atLengthFractions(curve, fractions) {
+  const STEPS = 24;
+  const lengths = [0];
+  let previous = curve[0];
+  for (let i = 1; i <= STEPS; i++) {
+    const p = cubicPointAt(curve, i / STEPS);
+    lengths.push(lengths[i - 1] + vector.distance(previous, p));
+    previous = p;
+  }
+  const total = lengths[STEPS];
+  return fractions.map((u) => {
+    const target = u * total;
+    let i = 1;
+    while (i < STEPS && lengths[i] < target) i++;
+    const share = (target - lengths[i - 1]) / (lengths[i] - lengths[i - 1] || 1);
+    return cubicPointAt(curve, (i - 1 + share) / STEPS);
+  });
+}
+
+function solveLinearSystem(A, b) {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++)
+      if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    if (Math.abs(M[pivot][col]) < 1e-18) return null;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col] / M[col][col];
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  return M.map((row, i) => row[n] / row[i]);
 }
 
 // The designer's edits to E, B and C: each on-curve slides along its tangent,

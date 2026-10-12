@@ -196,13 +196,23 @@ function roundGeneratedPoints(contour) {
   // The bulb's smooth joins are solved so both sides bend alike. Each keeps its
   // three exact points, to place them on the grid after rounding.
   const joins = [];
+  // A join beside a collapsed segment is left to plain rounding. Its collapsed
+  // neighbour then rounds from the same coordinates to the same unit; placing
+  // one of the two put them a unit apart, a kink the comb blows up.
+  const at = (index, step) => points[(index + step + count) % count];
+  const same = (a, b) => a.x === b.x && a.y === b.y;
+  const collapsedBeside = (index) =>
+    [1, -1].some((side) =>
+      [1, 2, 3].every((step) => same(at(index, side * step), points[index]))
+    );
   points.forEach((point, index) => {
     const origin = point._provenance;
     if (
       !point.type &&
       point.smooth &&
       origin?.bulbRole &&
-      origin.bulbSlot === "onCurve"
+      origin.bulbSlot === "onCurve" &&
+      !collapsedBeside(index)
     ) {
       joins.push({
         index,
@@ -223,7 +233,8 @@ function roundGeneratedPoints(contour) {
   // that handle back and forth forever, so the passes stop when nothing moves
   // and the outline keeps the pass with the smallest worst step.
   const snapshot = () => points.map(({ x, y }) => ({ x, y }));
-  const worst = () => Math.max(0, ...joins.map(({ index }) => bulbJoinStep(points, index)));
+  const worst = () =>
+    Math.max(0, ...joins.map(({ index }) => bulbJoinStep(points, index)));
   let best = { at: snapshot(), step: worst() };
   for (let pass = 0; pass < 8; pass++) {
     let moved = false;
