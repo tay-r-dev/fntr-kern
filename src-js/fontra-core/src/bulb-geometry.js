@@ -653,7 +653,11 @@ function solveBulb({
     ];
     const solved = harmonizeCubicRun(run, {
       start: ownsWall ? bulbEndCurvature(wall) : bulbEndCurvature(entry.wall, true),
-      end: built ? bulbEndCurvature(points.slice(9, 13)) : null,
+      // At zero easing A is a corner, but the ball still arrives there with
+      // its own curvature. Left free, the solve flattens the whole ball.
+      end: built
+        ? bulbEndCurvature(points.slice(9, 13))
+        : bulbEndCurvature(points.slice(6, 10), true),
       radius,
     });
     if (solved) {
