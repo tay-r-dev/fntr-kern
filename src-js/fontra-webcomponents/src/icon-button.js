@@ -21,42 +21,42 @@ const colors = {
   // button's top-right corner, on top of the base or hover look.
   // Light colours are the design system's tokens (core.css); dark ones stay
   // hand-picked until the design has a dark mode.
-  "icon-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
-  "icon-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "icon-button-icon-color": ["var(--icon-base-basic-3)", "#8e8e8e"],
+  "icon-button-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "icon-button-icon-press-color": ["var(--icon-color-lime-basic-4)", "#a9c915"],
   "icon-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
   "icon-button-icon-active-color": ["var(--icon-base-basic-3)", "#e0e0e0"],
   "icon-button-icon-active-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
-  "icon-button-hover-background-color": ["var(--bt-sgi-sr-hover)", "#464646"],
+  "icon-button-hover-background-color": ["var(--surface-base-basic-2)", "#464646"],
   "icon-button-hover-border-color": [
-    "var(--bt-sgi-ln-hover)",
+    "transparent",
     "rgba(255, 255, 255, 0.06)",
   ],
-  "icon-button-press-background-color": ["var(--bt-sgi-sr-focus)", "#3c3c3c"],
+  "icon-button-press-background-color": ["var(--surface-base-basic-1)", "#3c3c3c"],
   "icon-button-press-border-color": [
-    "var(--bt-sgi-ln-focus)",
+    "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.14)",
   ],
   // button/table (Figma 4054:1391): the same states in a table row, but a
   // paler icon at rest, and hover lifts the face to white with a pale border
   // (the row under it may be the light grey).
   "icon-button-table-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
-  "icon-button-table-hover-background-color": ["var(--bt-sgt-sr-hover)", "#2c2c2c"],
+  "icon-button-table-hover-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
   "icon-button-table-hover-border-color": [
-    "var(--bt-sgt-ln-hover)",
+    "transparent",
     "rgba(255, 255, 255, 0.1)",
   ],
   // button/latch (Figma 287:15701): rest/hover/press/active backgrounds and
   // the shared border color, plus the dropdown card's own colors (moved in
   // from overflow-popover.js, which is now a thin subclass of this button).
-  "icon-button-latch-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
-  "icon-button-latch-hover-background-color": ["var(--bt-sgb-sr-hover)", "#444"],
-  "icon-button-latch-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
+  "icon-button-latch-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "icon-button-latch-hover-background-color": ["var(--surface-base-basic-0)", "#444"],
+  "icon-button-latch-press-background-color": ["var(--surface-base-basic-0)", "#4a4a4a"],
   "icon-button-latch-active-background-color": [
     "var(--surface-base-basic-2)",
     "#505050",
   ],
-  "icon-button-latch-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
+  "icon-button-latch-border-color": ["var(--line-base-basic-2)", "#555"],
   "overflow-popover-background-color": ["#fff", "#2a2a2a"],
   "overflow-popover-shadow-color": ["#0003", "#0008"],
 };
@@ -71,8 +71,8 @@ export class IconButton extends UnlitElement {
        4054:1391) are a 24px box round a 12px icon; a container that draws
        the button as part of itself (the tray's segments) sets its own. */
     :host {
-      width: var(--bt-sgb-height);
-      height: var(--bt-sgb-height);
+      width: var(--height-l);
+      height: var(--height-l);
       line-height: 0;
       /* For the badge dot at the button's top-right corner. */
       position: relative;
@@ -102,7 +102,7 @@ export class IconButton extends UnlitElement {
          part of a larger component (the tray's segment/button). */
       background-color: var(--icon-button-inner-fill, transparent);
       border: 1px solid var(--icon-button-inner-border, transparent);
-      border-radius: var(--icon-button-inner-radius, 6px);
+      border-radius: var(--icon-button-inner-radius, var(--corner-outer-l));
       box-sizing: border-box;
       padding: var(--icon-button-inner-padding, 0);
       opacity: var(--icon-button-inner-opacity, 1);
@@ -212,15 +212,15 @@ export class IconButton extends UnlitElement {
        by default like "on" -- callers opt in with the latch attribute. */
     button.icon-button-latch {
       box-sizing: border-box;
-      width: 24px;
-      height: 24px;
+      width: var(--height-l);
+      height: var(--height-l);
       background: var(--icon-button-latch-background-color);
       /* segment/button (Figma 287:15640): a 1px line under it at rest,
          above and below on hover, and above and at the sides, none under,
          while pressed or on. */
       border: 0 solid var(--icon-button-latch-border-color);
       border-bottom-width: 1px;
-      border-radius: 6px;
+      border-radius: var(--corner-outer-l);
       padding: 4px;
     }
 
@@ -237,7 +237,7 @@ export class IconButton extends UnlitElement {
     button.icon-button-latch.icon-button-on {
       background: var(--icon-button-latch-active-background-color);
       border-width: 1px 1px 0;
-      border-radius: 6px;
+      border-radius: var(--corner-outer-l);
     }
 
     /* segment's chevron (Figma 2004:29126): a 6px box. */
@@ -270,7 +270,7 @@ export class IconButton extends UnlitElement {
     :host([settings-card]) .popover-card {
       padding: 0;
       border: 1px solid var(--line-base-basic-1);
-      border-radius: 6px;
+      border-radius: var(--corner-outer-l);
       background: var(--ui-element-background-color);
       box-shadow: 0 2px 4px var(--shadow-base-1);
       font: var(--ui-text-label-xs);

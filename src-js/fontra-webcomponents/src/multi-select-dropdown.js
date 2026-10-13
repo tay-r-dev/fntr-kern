@@ -35,9 +35,9 @@ import { themeColorCSS } from "./theme-support.js";
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
-  "multi-select-dropdown-background-color": ["var(--sl-drf-sr-rest)", "#2c2c2c"],
-  // The field's own bindings (Figma 2004:29427), base tokens rather than the
-  // sl-drf aliases: line 1 at rest and on hover, surface 1 on hover.
+  "multi-select-dropdown-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  // The field's own bindings (Figma 2004:29427): line 1 at rest and on
+  // hover, surface 1 on hover.
   "multi-select-dropdown-border-color": [
     "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.14)",
@@ -47,46 +47,46 @@ const colors = {
     "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.18)",
   ],
-  // The open ("selecting") field: white with a faint border (a Figma literal).
-  "multi-select-dropdown-open-color": ["var(--sl-drf-sr-focus)", "#2c2c2c"],
+  // The open ("selecting") field: surface 0 with a line 2 border.
+  "multi-select-dropdown-open-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
   "multi-select-dropdown-open-border-color": [
-    "rgba(0, 0, 0, 0.1)",
+    "var(--line-base-basic-2)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "multi-select-dropdown-disabled-color": ["var(--sl-drf-sr-disabled)", "#333"],
+  "multi-select-dropdown-disabled-color": ["var(--surface-base-basic-1)", "#333"],
   "multi-select-dropdown-disabled-border-color": [
     "var(--line-base-basic-0)",
     "rgba(255, 255, 255, 0.08)",
   ],
   // The field's text: empty (the property name, or "select" under a label)
   // and filled (the pick), each at rest, on hover and while open.
-  "multi-select-dropdown-placeholder-color": ["var(--sl-drf-lb-empty-rest)", "#8e8e8e"],
-  "multi-select-dropdown-text-color": ["var(--sl-drf-lb-empty-hover)", "#e0e0e0"],
-  "multi-select-dropdown-open-text-color": ["var(--sl-drf-lb-empty-focus)", "#e0e0e0"],
+  "multi-select-dropdown-placeholder-color": ["var(--text-base-basic-3)", "#8e8e8e"],
+  "multi-select-dropdown-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "multi-select-dropdown-open-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
   "multi-select-dropdown-filled-text-color": ["var(--text-base-basic-2)", "#b0b0b0"],
   "multi-select-dropdown-filled-hover-text-color": [
-    "var(--sl-drf-lb-filled-hover)",
+    "var(--text-base-basic-2)",
     "#e0e0e0",
   ],
-  "multi-select-dropdown-disabled-text-color": ["var(--sl-drf-lb-disabled)", "#5a5a5a"],
+  "multi-select-dropdown-disabled-text-color": ["var(--text-base-basic-5)", "#5a5a5a"],
   // The chevron.
-  "multi-select-dropdown-chevron-color": ["var(--sl-drf-ic-rest)", "#8e8e8e"],
-  "multi-select-dropdown-chevron-hover-color": ["var(--sl-drf-ic-hover)", "#e0e0e0"],
-  "multi-select-dropdown-chevron-open-color": ["var(--sl-drf-ic-focus)", "#e0e0e0"],
+  "multi-select-dropdown-chevron-color": ["var(--icon-base-basic-3)", "#8e8e8e"],
+  "multi-select-dropdown-chevron-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "multi-select-dropdown-chevron-open-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "multi-select-dropdown-chevron-filled-hover-color": [
     "var(--icon-base-basic-1)",
     "#f0f0f0",
   ],
   "multi-select-dropdown-chevron-disabled-color": [
-    "var(--sl-drf-ic-disabled)",
+    "var(--icon-base-basic-5)",
     "#5a5a5a",
   ],
   // The label above the field (select/dropdown, Figma 2004:29458).
-  "multi-select-dropdown-heading-color": ["var(--grey-deprecated-3)", "#b0b0b0"],
+  "multi-select-dropdown-heading-color": ["var(--text-base-basic-3)", "#b0b0b0"],
   // The "+N" tag after the pick when there are several.
-  "multi-select-dropdown-tag-color": ["var(--lime-deprecated-7)", "#d5ed57"],
-  "multi-select-dropdown-tag-border-color": ["var(--lime-alpha-dark-20)", "#3b560033"],
-  "multi-select-dropdown-tag-text-color": ["var(--lime-deprecated-0)", "#3b5600"],
+  "multi-select-dropdown-tag-color": ["var(--surface-color-lime-basic-2)", "#d5ed57"],
+  "multi-select-dropdown-tag-border-color": ["var(--line-color-lime-basic-2)", "#3b560033"],
+  "multi-select-dropdown-tag-text-color": ["var(--text-color-lime-basic-2)", "#3b5600"],
   // The open list: white, hairline border, soft shadow.
   "multi-select-dropdown-list-background-color": ["#fff", "#2a2a2a"],
   "multi-select-dropdown-list-border-color": [
@@ -100,9 +100,9 @@ const colors = {
   // Menu items: grey text; hover fills light grey. A one-choice list's pick
   // fills lime with dark-lime text; a several-choice list's checked items
   // are pale lime with a check, full lime on hover.
-  "multi-select-dropdown-item-color": ["var(--sl-drm-lb-single-rest)", "#b0b0b0"],
+  "multi-select-dropdown-item-color": ["var(--text-base-basic-3)", "#b0b0b0"],
   "multi-select-dropdown-item-hover-color": [
-    "var(--sl-drm-lb-single-hover)",
+    "var(--text-base-basic-2)",
     "#e0e0e0",
   ],
   "multi-select-dropdown-item-multi-hover-color": [
@@ -110,23 +110,23 @@ const colors = {
     "#e0e0e0",
   ],
   "multi-select-dropdown-item-hover-background-color": [
-    "var(--sl-drm-sr-single-hover)",
+    "var(--surface-base-basic-2)",
     "#3a3a3a",
   ],
   "multi-select-dropdown-item-active-background-color": [
-    "var(--sl-drm-sr-single-active)",
+    "var(--surface-color-lime-basic-3)",
     "#d0eb49",
   ],
   "multi-select-dropdown-item-active-color": [
-    "var(--sl-drm-lb-single-active)",
+    "var(--text-color-lime-basic-2)",
     "#3b5600",
   ],
   "multi-select-dropdown-item-checked-background-color": [
-    "var(--sl-drm-sr-multi-active)",
+    "var(--surface-color-lime-basic-1)",
     "#4a5a20",
   ],
   "multi-select-dropdown-item-checked-color": [
-    "var(--sl-drm-lb-multi-active)",
+    "var(--text-color-lime-basic-3)",
     "#d0eb49",
   ],
   "multi-select-dropdown-item-check-color": [
@@ -134,11 +134,11 @@ const colors = {
     "#d0eb49",
   ],
   "multi-select-dropdown-item-checked-hover-background-color": [
-    "var(--sl-drm-sr-multi-active-hover)",
+    "var(--surface-color-lime-basic-3)",
     "#d0eb49",
   ],
   "multi-select-dropdown-item-checked-hover-color": [
-    "var(--sl-drm-lb-multi-active-hover)",
+    "var(--text-color-lime-basic-2)",
     "#3b5600",
   ],
   "multi-select-dropdown-item-check-hover-color": [
@@ -172,7 +172,7 @@ const listStyles = `
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border-radius: var(--sl-drm-corner);
+    border-radius: var(--corner-inner-l);
     color: var(--multi-select-dropdown-item-color);
   }
 
@@ -297,7 +297,7 @@ export class MultiSelectDropdown extends UnlitElement {
       background-color: var(--multi-select-dropdown-background-color);
       color: var(--multi-select-dropdown-placeholder-color);
       border: 1px solid var(--multi-select-dropdown-border-color);
-      border-radius: var(--sl-drf-nm-corner);
+      border-radius: var(--corner-outer-l);
       padding: 4px 6px;
       gap: 4px;
       /* ui/label/S */
@@ -305,7 +305,7 @@ export class MultiSelectDropdown extends UnlitElement {
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;
       box-sizing: border-box;
-      height: var(--multi-select-dropdown-height, var(--sl-drf-nm-height));
+      height: var(--multi-select-dropdown-height, var(--height-l));
       width: var(--multi-select-dropdown-width, 100%);
       max-width: 100%;
       display: inline-flex;
@@ -426,26 +426,25 @@ export class MultiSelectDropdown extends UnlitElement {
       justify-content: center;
       background-color: transparent;
       border: 1px solid transparent;
-      border-radius: 6px;
+      border-radius: var(--corner-outer-l);
       padding: 0;
-      width: var(--bt-sgb-height);
-      height: var(--bt-sgb-height);
-      color: var(--bt-sgc-ic-rest);
+      width: var(--height-l);
+      height: var(--height-l);
+      color: var(--icon-base-basic-3);
       transition:
         background-color 150ms,
         color 150ms;
     }
 
     :host(:hover) button.icon-mode:not(:disabled) {
-      background-color: var(--bt-sgi-sr-hover);
-      border-color: var(--bt-sgi-ln-hover);
-      color: var(--bt-sgc-ic-hover);
+      background-color: var(--surface-base-basic-2);
+      color: var(--icon-base-basic-2);
     }
 
     button.icon-mode.open,
     :host(:hover) button.icon-mode.open:not(:disabled) {
-      background-color: var(--bt-sgi-sr-focus);
-      border-color: var(--bt-sgi-ln-focus);
+      background-color: var(--surface-base-basic-1);
+      border-color: var(--line-base-basic-1);
       color: var(--icon-color-lime-basic-4);
     }
 

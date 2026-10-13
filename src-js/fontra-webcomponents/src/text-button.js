@@ -20,19 +20,19 @@ import { themeColorCSS } from "./theme-support.js";
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
-  "text-button-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
-  "text-button-hover-background-color": ["var(--bt-sgb-sr-hover)", "#2c2c2c"],
-  "text-button-hover-face-color": ["var(--bt-sgc-sr-hover)", "#3a3a3a"],
-  "text-button-press-background-color": ["var(--bt-sgx-sr-focus)", "#3a3a3a"],
-  "text-button-disabled-background-color": ["var(--bt-sgb-sr-disabled)", "#333"],
-  "text-button-border-color": ["var(--bt-sgb-ln-rest)", "#505050"],
-  "text-button-hover-border-color": ["var(--bt-sgb-ln-hover)", "#505050"],
-  "text-button-press-border-color": ["var(--bt-sgb-ln-focus)", "#5a5a5a"],
-  "text-button-disabled-border-color": ["var(--bt-sgb-ln-disabled)", "#444"],
-  "text-button-text-color": ["var(--bt-sgc-tx-rest)", "#8e8e8e"],
-  "text-button-hover-text-color": ["var(--bt-sgc-tx-hover)", "#c0c0c0"],
+  "text-button-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "text-button-hover-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  "text-button-hover-face-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "text-button-press-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "text-button-disabled-background-color": ["var(--surface-base-basic-1)", "#333"],
+  "text-button-border-color": ["var(--line-base-basic-2)", "#505050"],
+  "text-button-hover-border-color": ["var(--line-base-basic-2)", "#505050"],
+  "text-button-press-border-color": ["var(--line-base-basic-2)", "#5a5a5a"],
+  "text-button-disabled-border-color": ["var(--line-base-basic-1)", "#444"],
+  "text-button-text-color": ["var(--text-base-basic-3)", "#8e8e8e"],
+  "text-button-hover-text-color": ["var(--text-base-basic-2)", "#c0c0c0"],
   "text-button-press-text-color": ["var(--text-color-lime-basic-4)", "#a9c915"],
-  "text-button-disabled-text-color": ["var(--bt-sgc-tx-disabled)", "#5a5a5a"],
+  "text-button-disabled-text-color": ["var(--text-base-basic-5)", "#5a5a5a"],
 };
 
 export class TextButton extends UnlitElement {
@@ -50,19 +50,19 @@ export class TextButton extends UnlitElement {
       pointer-events: none;
     }
 
-    /* button/text M (Figma 2004:29279): the key is bt-sgb-height tall with
-       bt-sgb-corner corners and bt-sgb-padding at the sides; the face inside
+    /* button/text M (Figma 2004:29279): the key is height-l tall with
+       corner-outer-l corners and padding-l at the sides; the face inside
        it has the same padding at its sides, 4px between label and icon. */
     button {
       box-sizing: border-box;
       display: flex;
       align-items: center;
-      height: var(--bt-sgb-height);
+      height: var(--height-l);
       margin: 0;
-      padding: 3px var(--bt-sgb-padding) 4px;
+      padding: 3px var(--padding-l) 4px;
       border: 0 solid var(--text-button-border-color);
       border-bottom-width: 1px;
-      border-radius: var(--bt-sgb-corner);
+      border-radius: var(--corner-outer-l);
       background-color: var(--text-button-background-color);
       color: var(--text-button-text-color);
       cursor: inherit;
@@ -84,7 +84,7 @@ export class TextButton extends UnlitElement {
       justify-content: center;
       gap: 4px;
       height: 100%;
-      padding: 0 var(--bt-sgb-padding);
+      padding: 0 var(--padding-l);
       border-radius: 2px;
     }
 
@@ -102,7 +102,7 @@ export class TextButton extends UnlitElement {
 
     /* hover: white, ruled all round; the face keeps the grey. */
     :host(:hover) button {
-      padding: 3px calc(var(--bt-sgb-padding) - 1px) 4px;
+      padding: 3px calc(var(--padding-l) - 1px) 4px;
       border-color: var(--text-button-hover-border-color);
       border-width: 1px;
       background-color: var(--text-button-hover-background-color);
@@ -117,7 +117,7 @@ export class TextButton extends UnlitElement {
        turns lime. The padding gives back what the rules take, so the key
        keeps its size. */
     :host(:active) button {
-      padding: 4px calc(var(--bt-sgb-padding) - 1px) 2px;
+      padding: 4px calc(var(--padding-l) - 1px) 2px;
       border-color: var(--text-button-press-border-color);
       border-width: 2px 1px 0;
       background-color: var(--text-button-press-background-color);
@@ -132,7 +132,7 @@ export class TextButton extends UnlitElement {
 
     /* disabled: flat, a rule under only. */
     button:disabled {
-      padding: 4px var(--bt-sgb-padding);
+      padding: 4px var(--padding-l);
       border-color: var(--text-button-disabled-border-color);
       border-width: 0 0 1px;
       background-color: var(--text-button-disabled-background-color);

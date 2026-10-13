@@ -27,22 +27,22 @@ import { themeColorCSS } from "./theme-support.js";
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
-  "latch-button-face-background-color": ["var(--bt-sgb-sr-rest)", "#3a3a3a"],
-  "latch-button-face-hover-background-color": ["var(--bt-sgb-sr-hover)", "#4a4a4a"],
-  "latch-button-face-press-background-color": ["var(--bt-sgb-sr-focus)", "#4a4a4a"],
+  "latch-button-face-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "latch-button-face-hover-background-color": ["var(--surface-base-basic-0)", "#4a4a4a"],
+  "latch-button-face-press-background-color": ["var(--surface-base-basic-0)", "#4a4a4a"],
   "latch-button-face-on-background-color": ["var(--surface-base-basic-2)", "#505050"],
-  "latch-button-face-disabled-background-color": ["var(--bt-sgb-sr-disabled)", "#333"],
-  "latch-button-container-background-color": ["var(--bt-sgc-sr-rest)", "#3a3a3a"],
-  "latch-button-container-hover-background-color": ["var(--bt-sgc-sr-hover)", "#444"],
-  "latch-button-container-press-background-color": ["var(--bt-sgc-sr-focus)", "#444"],
+  "latch-button-face-disabled-background-color": ["var(--surface-base-basic-1)", "#333"],
+  "latch-button-container-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "latch-button-container-hover-background-color": ["var(--surface-base-basic-2)", "#444"],
+  "latch-button-container-press-background-color": ["var(--surface-base-basic-2)", "#444"],
   "latch-button-container-disabled-background-color": [
-    "var(--bt-sgc-sr-disabled)",
+    "var(--surface-base-basic-1)",
     "#333",
   ],
-  "latch-button-border-color": ["var(--bt-sgb-ln-rest)", "#555"],
-  "latch-button-disabled-border-color": ["var(--bt-sgb-ln-disabled)", "#444"],
-  "latch-button-icon-color": ["var(--bt-sgc-ic-rest)", "#8e8e8e"],
-  "latch-button-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "latch-button-border-color": ["var(--line-base-basic-2)", "#555"],
+  "latch-button-disabled-border-color": ["var(--line-base-basic-1)", "#444"],
+  "latch-button-icon-color": ["var(--icon-base-basic-3)", "#8e8e8e"],
+  "latch-button-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "latch-button-icon-press-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "latch-button-icon-open-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "latch-button-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
@@ -59,8 +59,8 @@ export class LatchButton extends UnlitElement {
     :host {
       display: inline-block;
       position: relative;
-      width: 24px;
-      height: 24px;
+      width: var(--height-l);
+      height: var(--height-l);
       cursor: pointer;
       line-height: 0;
     }
@@ -86,7 +86,7 @@ export class LatchButton extends UnlitElement {
       background: var(--latch-button-face-background-color);
       border: 0 solid var(--latch-button-border-color);
       border-bottom-width: 1px;
-      border-radius: 6px;
+      border-radius: var(--corner-outer-l);
       overflow: hidden;
       cursor: pointer;
       pointer-events: none;
@@ -104,7 +104,7 @@ export class LatchButton extends UnlitElement {
       gap: 4px;
       min-width: 0;
       padding: 3px 4px;
-      border-radius: 3px;
+      border-radius: var(--corner-inner-l);
       background: var(--latch-button-container-background-color);
       color: var(--latch-button-icon-color);
       transition:
@@ -222,8 +222,8 @@ export class LatchButton extends UnlitElement {
        render gives it. */
     indication-badge.shown,
     :host(:active:not([disabled])) indication-badge {
-      --indication-badge-rest-fill: var(--ind-bdg-sr-active);
-      --indication-badge-rest-rim: var(--ind-bdg-ln-inside);
+      --indication-badge-rest-fill: var(--surface-color-lime-basic-3);
+      --indication-badge-rest-rim: var(--line-color-lime-basic-4);
     }
 
     /* The chevron flips while the card is open. */

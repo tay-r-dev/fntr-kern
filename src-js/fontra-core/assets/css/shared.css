@@ -1043,14 +1043,14 @@ glyph-cell-view .glyph-count {
   justify-self: start;
   gap: 1px;
   padding: 0;
-  border-radius: var(--bt-sgb-corner);
+  border-radius: var(--corner-outer-l);
   background: var(--line-base-basic-2);
 }
 
 .selection-row-group-icons.tray:has(icon-button[disabled]):not(
     :has(icon-button:not([disabled]))
   ) {
-  background: var(--bt-sgb-ln-disabled);
+  background: var(--line-base-basic-1);
 }
 
 /* Each icon-button child drawn as ./segment (Figma 2004:29126). The host
@@ -1073,22 +1073,22 @@ glyph-cell-view .glyph-count {
   flex: 1 1 0;
   min-width: 0;
   width: auto;
-  height: var(--bt-sgb-height);
+  height: var(--height-l);
   padding: 2px 1px;
-  background: var(--bt-sgb-sr-rest);
+  background: var(--surface-base-basic-2);
   /* Longhands: the style must not hang on the colour's var(), or a var
      the browser cannot resolve drops the whole border. */
   border-style: solid;
   border-width: 0 0 1px;
-  border-color: var(--bt-sgb-ln-rest);
+  border-color: var(--line-base-basic-2);
   --icon-button-icon-size: 16px;
-  --icon-button-inner-fill: var(--bt-sgc-sr-rest);
+  --icon-button-inner-fill: var(--surface-base-basic-2);
   --icon-button-inner-border: transparent;
-  --icon-button-inner-radius: var(--bt-sgc-corner);
+  --icon-button-inner-radius: var(--corner-inner-l);
   --icon-button-inner-padding: 3px 4px;
-  --icon-button-inner-hover-fill: var(--bt-sgc-sr-hover);
+  --icon-button-inner-hover-fill: var(--surface-base-basic-2);
   --icon-button-inner-hover-border: transparent;
-  --icon-button-inner-press-fill: var(--bt-sgc-sr-focus);
+  --icon-button-inner-press-fill: var(--surface-base-basic-2);
   --icon-button-inner-press-border: transparent;
   --icon-button-on-background-color: transparent;
   /* The segment's icon: grey at rest, dark pressed and open, pale disabled
@@ -1099,18 +1099,18 @@ glyph-cell-view .glyph-count {
 }
 
 .selection-row-group-icons.tray icon-button:first-child {
-  border-radius: var(--bt-sgb-corner) 0 0 var(--bt-sgb-corner);
-  --icon-button-inner-radius: 4px var(--bt-sgc-corner) var(--bt-sgc-corner) 4px;
+  border-radius: var(--corner-outer-l) 0 0 var(--corner-outer-l);
+  --icon-button-inner-radius: 4px var(--corner-inner-l) var(--corner-inner-l) 4px;
 }
 
 .selection-row-group-icons.tray icon-button:last-child {
-  border-radius: 0 var(--bt-sgb-corner) var(--bt-sgb-corner) 0;
-  --icon-button-inner-radius: var(--bt-sgc-corner) 4px 4px var(--bt-sgc-corner);
+  border-radius: 0 var(--corner-outer-l) var(--corner-outer-l) 0;
+  --icon-button-inner-radius: var(--corner-inner-l) 4px 4px var(--corner-inner-l);
 }
 
 .selection-row-group-icons.tray icon-button:hover {
-  background: var(--bt-sgb-sr-hover);
-  border-color: var(--bt-sgb-ln-hover);
+  background: var(--surface-base-basic-0);
+  border-color: var(--line-base-basic-2);
   border-width: 1px 0;
   --icon-button-inner-padding: 4px;
 }
@@ -1123,14 +1123,14 @@ glyph-cell-view .glyph-count {
 }
 
 .selection-row-group-icons.tray icon-button:active {
-  background: var(--bt-sgb-sr-focus);
-  border-color: var(--bt-sgb-ln-focus);
+  background: var(--surface-base-basic-0);
+  border-color: var(--line-base-basic-2);
 }
 
 .selection-row-group-icons.tray icon-button[on] {
   background: var(--surface-base-basic-2);
-  border-color: var(--bt-sgb-ln-active-hover);
-  --icon-button-inner-fill: var(--bt-sgc-sr-dropdown);
+  border-color: var(--line-base-basic-2);
+  --icon-button-inner-fill: transparent;
 }
 
 .selection-row-group-icons.tray icon-button:first-child:is(:active, [on]) {
@@ -1143,10 +1143,10 @@ glyph-cell-view .glyph-count {
 
 .selection-row-group-icons.tray icon-button[disabled] {
   padding: 2px 1px;
-  background: var(--bt-sgb-sr-disabled);
-  border-color: var(--bt-sgb-ln-disabled);
+  background: var(--surface-base-basic-1);
+  border-color: var(--line-base-basic-1);
   border-width: 0 0 1px;
-  --icon-button-inner-fill: var(--bt-sgc-sr-disabled);
+  --icon-button-inner-fill: var(--surface-base-basic-1);
   --icon-button-inner-padding: 4px;
 }
 

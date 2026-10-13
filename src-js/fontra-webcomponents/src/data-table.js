@@ -51,8 +51,8 @@ const FIT_FIELD_GAP = 2;
 // system's tokens (core.css); dark ones stay hand-picked until the design has
 // a dark mode.
 const lookColors = {
-  "data-table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
-  "data-table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
+  "data-table-look-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  "data-table-look-border-color": ["var(--line-base-basic-1)", "#3a3a3a"],
   "data-table-look-rule-color": ["var(--line-base-basic-0)", "rgba(255, 255, 255, 0.1)"],
   "data-table-look-divider-color": [
     "var(--line-base-basic-1)",
@@ -63,13 +63,13 @@ const lookColors = {
     "rgba(255, 255, 255, 0.2)",
   ],
   "data-table-look-heading-color": ["var(--text-base-basic-4)", "#8e8e8e"],
-  "data-table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
-  "data-table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
-  "data-table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
-  "data-table-look-additional-color": ["var(--tbl-lb-sec-rest)", "#8e8e8e"],
-  "data-table-look-additional-hover-color": ["var(--tbl-lb-sec-hover)", "#b4b4b4"],
+  "data-table-look-entry-color": ["var(--text-base-basic-3)", "#a8a8a8"],
+  "data-table-look-entry-hover-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "data-table-look-entry-disabled-color": ["var(--text-base-basic-4)", "#5a5a5a"],
+  "data-table-look-additional-color": ["var(--text-base-basic-4)", "#8e8e8e"],
+  "data-table-look-additional-hover-color": ["var(--text-base-basic-3)", "#b4b4b4"],
   "data-table-look-additional-disabled-color": [
-    "var(--tbl-lb-sec-disabled)",
+    "var(--text-base-basic-4)",
     "#5a5a5a",
   ],
   // A selected row in a table that does not have the focus: grey
@@ -84,7 +84,7 @@ const lookColors = {
     "#b4b4b4",
   ],
   "data-table-look-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
-  "data-table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
+  "data-table-look-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "data-table-look-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
 };
 
@@ -129,11 +129,11 @@ const focusedSelectionColors = {
     "#5a6e1a",
   ],
   "data-table-look-selection-icon-press-fill": [
-    "var(--bt-sgt-sr-select-focus)",
+    "var(--surface-color-lime-basic-2)",
     "#4a5a20",
   ],
   "data-table-look-selection-icon-press-border-color": [
-    "var(--bt-sgt-ln-select-focus)",
+    "var(--line-color-lime-basic-2)",
     "#5a6e1a",
   ],
 };
@@ -406,7 +406,7 @@ const DATA_TABLE_STYLES = `
 
   /* ui/table/heading */
   data-table[look] .data-table th {
-    height: var(--tbl-height, 24px);
+    height: var(--height-l);
     box-sizing: border-box;
     font: var(--ui-text-table-heading);
     letter-spacing: var(--ui-tracking-table-heading);
@@ -444,7 +444,7 @@ const DATA_TABLE_STYLES = `
 
   /* ui/label/XS */
   data-table[look] .data-table td {
-    height: var(--tbl-height, 24px);
+    height: var(--height-l);
     box-sizing: border-box;
     font: var(--ui-text-label-xs);
     letter-spacing: var(--ui-tracking);
