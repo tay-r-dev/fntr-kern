@@ -210,14 +210,8 @@ const DATA_TABLE_STYLES = `
   /* The cells' entries and dropdowns are the smol box (smol.js). */
   ${smolCSS({
     hoverWithin: ".data-table tr",
-    selectedWithin: "data-table:focus-within .data-table-row-selected",
+    selectedWithin: "data-table:hover .data-table-row-selected",
   })}
-
-  /* The box on a selected row of a table without the focus fills
-     surface/base/basic/3 on hover (Figma 2004:29827). */
-  .data-table .data-table-row-selected:hover .smol:not(:disabled):not(:focus) {
-    background-color: var(--surface-base-basic-3);
-  }
 
   :where(.data-table-action) {
     display: inline-flex;
@@ -247,7 +241,7 @@ const DATA_TABLE_STYLES = `
 
   :where(.data-table-actions) {
     display: flex;
-    gap: 0.3em;
+    gap: 1px;
     justify-content: flex-end;
     align-items: center;
   }
@@ -367,7 +361,7 @@ const DATA_TABLE_STYLES = `
 
   ${themeColorCSS(lookColors, "data-table")}
 
-  ${themeColorCSS(focusedSelectionColors, "data-table:focus-within")}
+  ${themeColorCSS(focusedSelectionColors, "data-table:hover")}
 
   /* The looks (table, Figma 2004:29827): a white box, ruled and rounded; a
      24px head of small uppercase light grey labels over a rule; 24px rows of
@@ -552,7 +546,7 @@ const DATA_TABLE_STYLES = `
 
   /* button/table's "select" variant on a selected row: lime icons, a lime
      edge on hover, a lime face while pressed. */
-  data-table[look]:focus-within tr.data-table-row-selected icon-button {
+  data-table[look]:hover tr.data-table-row-selected icon-button {
     --icon-button-icon-color: var(--data-table-look-selection-icon-color);
     --icon-button-icon-hover-color: var(--data-table-look-selection-icon-hover-color);
     --icon-button-icon-active-color: var(
@@ -615,9 +609,12 @@ const DATA_TABLE_STYLES = `
   /* button/table's 24px box over the row's own 24px: it lays over the
      row's rule rather than growing the row. */
   data-table[look] tbody icon-button {
-    margin-bottom: -1px;
     vertical-align: middle;
     --icon-button-inner-radius: 4px;
+  }
+
+  data-table[look] tbody icon-button:not([size="S"]) {
+    margin-bottom: -1px;
   }
 
   /* A plain icon in a row is coloured like button/table: its rest colour
@@ -632,13 +629,13 @@ const DATA_TABLE_STYLES = `
     color: var(--data-table-look-icon-hover-color);
   }
 
-  data-table[look]:focus-within tbody tr.data-table-row-selected td > inline-svg,
-  data-table[look]:focus-within tbody tr.data-table-row-selected td > span > inline-svg {
+  data-table[look]:hover tbody tr.data-table-row-selected td > inline-svg,
+  data-table[look]:hover tbody tr.data-table-row-selected td > span > inline-svg {
     color: var(--data-table-look-selection-icon-color);
   }
 
-  data-table[look]:focus-within tbody tr.data-table-row-selected td > inline-svg:hover,
-  data-table[look]:focus-within tbody tr.data-table-row-selected td > span > inline-svg:hover {
+  data-table[look]:hover tbody tr.data-table-row-selected td > inline-svg:hover,
+  data-table[look]:hover tbody tr.data-table-row-selected td > span > inline-svg:hover {
     color: var(--data-table-look-selection-icon-hover-color);
   }
 
@@ -657,7 +654,7 @@ const DATA_TABLE_STYLES = `
   }
 
   data-table[look] .data-table-actions {
-    gap: 4px;
+    gap: 1px;
   }
 
   data-table[look] tbody icon-button + icon-button {
@@ -854,6 +851,8 @@ export function rowAction({
     button.classList.add(...className.split(" ").filter(Boolean));
   }
   button.src = src;
+  // button/table at 16px, the size the rows' actions are drawn at.
+  button.size = "S";
   if (label || tooltip) {
     button.setAttribute("aria-label", label || tooltip);
   }
@@ -956,7 +955,10 @@ export class DataTable extends HTMLElement {
 
   // Column descriptor shape: { label, key, sortKey, sortable, selectAll,
   // hideable, visible, align, headerClassName, width, minWidth, noShrink,
-  // fitText, fitField }. A `fitText` column is as wide as that text in the
+  // fitText, fitField, hug, stretch }. A `hug` column is as wide as its
+  // widest cell and head -- an actions column always is, unless `hug` is
+  // false. `stretch` marks the column that takes the room the others leave;
+  // without it that is the last column that neither hugs nor fits text. A `fitText` column is as wide as that text in the
   // rows' type, or as its head if that is wider -- "0000" for a number
   // column, or a list for fields side by side. `fitField` measures it
   // inside an editable cell's box, "select" inside a dropdown field's. Such a column cannot be dragged or
@@ -1123,16 +1125,24 @@ export class DataTable extends HTMLElement {
   // less than its `minWidth` (48px by default). A table whose columns have no
   // widths at all shares its width among them as before.
   _applyColumnWidths() {
-    if (!this._table || !this._columnWidthsStorageKey) {
+    if (!this._table) {
       return;
     }
     const visible = this._visibleColumns();
-    const last = visible[visible.length - 1];
+    const hugs = visible.some(({ column, index }) => this._isHugColumn(column, index));
+    if (!this._columnWidthsStorageKey && !hugs) {
+      return;
+    }
+    const last = this._flexEntry(visible);
     const fixed = visible.filter(({ column }) => column !== last?.column);
     const widthOf = ({ column, index }) =>
       column.fitText != null
         ? this._fitTextWidth(column)
-        : (this._columnWidths?.[this._columnId(column, index)] ?? column.width ?? null);
+        : this._isHugColumn(column, index)
+          ? this._hugWidth(column, index)
+          : (this._columnWidths?.[this._columnId(column, index)] ??
+            column.width ??
+            null);
     const anyWidth = fixed.some((entry) => widthOf(entry) != null);
 
     if (last) {
@@ -1158,6 +1168,7 @@ export class DataTable extends HTMLElement {
       const th = entry.column._headerElement;
       if (
         entry.column.fitText == null &&
+        !this._isHugColumn(entry.column, entry.index) &&
         !th.querySelector(":scope > .data-table-column-grip")
       ) {
         th.appendChild(this._makeColumnGrip(entry.column, entry.index));
@@ -1190,10 +1201,53 @@ export class DataTable extends HTMLElement {
   // The width each fixed column may shrink to: its `minWidth`, or its own
   // width for a column marked `noShrink`, which the box never narrows.
   _shrinkFloors(fixed, widths) {
-    return fixed.map(({ column }, i) =>
-      column.noShrink || column.fitText != null
+    return fixed.map(({ column, index }, i) =>
+      column.noShrink ||
+      column.fitText != null ||
+      this._isHugColumn(column, index)
         ? (widths[i] ?? 0)
         : (column.minWidth ?? 24)
+    );
+  }
+
+  // An actions column hugs its buttons; any other column hugs when asked.
+  _isHugColumn(column, index) {
+    if (column.hug != null) {
+      return !!column.hug;
+    }
+    return !!this._tbody?.querySelector(
+      `tr > :nth-child(${index + 1}) > .data-table-actions`
+    );
+  }
+
+  // The column that takes the room the others leave: the one marked
+  // `stretch`, else the last that neither hugs nor fits text, else the last.
+  _flexEntry(visible) {
+    return (
+      visible.find(({ column }) => column.stretch) ??
+      [...visible]
+        .reverse()
+        .find(
+          ({ column, index }) =>
+            column.fitText == null && !this._isHugColumn(column, index)
+        ) ??
+      visible[visible.length - 1]
+    );
+  }
+
+  // A hugging column's width: its widest cell, the head included.
+  _hugWidth(column, index) {
+    const cells = [column._headerElement];
+    for (const row of this._tbody?.children || []) {
+      const cell = row.children[index];
+      if (cell) {
+        cells.push(cell);
+      }
+    }
+    return huggedColumnWidth(
+      cells.map((cell) => html.naturalCellWidth(cell)),
+      column.minWidth ?? 0,
+      Infinity
     );
   }
 
@@ -1202,12 +1256,13 @@ export class DataTable extends HTMLElement {
   // several fields side by side, FIT_FIELD_GAP apart. Measured while shown,
   // so it follows the look's type.
   _fitTextWidth(column) {
-    const measure = (cell, texts, className) => {
+    const measure = (cell, texts, className, boxPadding = 0) => {
       const style = getComputedStyle(cell);
       let width =
         parseFloat(style.paddingLeft) +
         parseFloat(style.paddingRight) +
-        FIT_FIELD_GAP * (texts.length - 1);
+        FIT_FIELD_GAP * (texts.length - 1) +
+        boxPadding * texts.length;
       for (const text of texts) {
         const probe = document.createElement("span");
         probe.className = className || "";
@@ -1232,7 +1287,10 @@ export class DataTable extends HTMLElement {
         ? "data-table-select"
         : column.fitField
           ? "data-table-input"
-          : ""
+          : "",
+      // The smol box round the text (smol.js): 3px and a 1px edge each side,
+      // a dropdown's arrow side 10px and the edge.
+      column.fitField === "select" ? 15 : column.fitField ? 8 : 0
     );
     row.remove();
     return Math.ceil(Math.max(head, text));
@@ -1245,7 +1303,7 @@ export class DataTable extends HTMLElement {
       return Infinity;
     }
     const visible = this._visibleColumns();
-    const last = visible[visible.length - 1];
+    const last = this._flexEntry(visible);
     let others = 0;
     for (const entry of visible) {
       if (entry.column === column || entry.column === last?.column) {
@@ -1254,9 +1312,11 @@ export class DataTable extends HTMLElement {
       others +=
         entry.column.fitText != null
           ? this._fitTextWidth(entry.column)
-          : (this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
-            entry.column.width ??
-            80);
+          : this._isHugColumn(entry.column, entry.index)
+            ? this._hugWidth(entry.column, entry.index)
+            : (this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
+              entry.column.width ??
+              80);
     }
     const box = this._scroll?.clientWidth || 0;
     return box > 0 ? box - (last?.column.minWidth ?? 48) - others : Infinity;
@@ -1271,7 +1331,7 @@ export class DataTable extends HTMLElement {
       }
     }
     const visible = this._visibleColumns();
-    const lastColumn = visible[visible.length - 1]?.column;
+    const lastColumn = this._flexEntry(visible)?.column;
     this._columnWidths = { ...this._columnWidths };
     for (const entry of visible) {
       if (entry.column !== lastColumn) {
@@ -1314,7 +1374,7 @@ export class DataTable extends HTMLElement {
       // A drag starts from what is on screen: the fixed columns' shown widths
       // (shrunk to fit a narrow box, maybe) become their kept ones.
       const visible = this._visibleColumns();
-      const lastColumn = visible[visible.length - 1]?.column;
+      const lastColumn = this._flexEntry(visible)?.column;
       this._columnWidths = { ...this._columnWidths };
       for (const entry of visible) {
         if (entry.column !== lastColumn) {
@@ -1689,12 +1749,15 @@ export class DataTable extends HTMLElement {
     this._lastBoxWidth = box;
     if (this._columnWidthsStorageKey && previous > 0 && box > 0 && box !== previous) {
       const visible = this._visibleColumns();
-      const fixed = visible.slice(0, -1);
+      const flex = this._flexEntry(visible);
+      const fixed = visible.filter(({ column }) => column !== flex?.column);
       const ids = fixed.map(({ column, index }) => this._columnId(column, index));
-      const current = fixed.map(({ column }, i) =>
+      const current = fixed.map(({ column, index }, i) =>
         column.fitText != null
           ? this._fitTextWidth(column)
-          : (this._columnWidths?.[ids[i]] ?? column.width ?? null)
+          : this._isHugColumn(column, index)
+            ? this._hugWidth(column, index)
+            : (this._columnWidths?.[ids[i]] ?? column.width ?? null)
       );
       if (box < previous && current.every((width) => width != null)) {
         // Growing goes to the last column alone; the fixed columns stay.
@@ -1702,7 +1765,7 @@ export class DataTable extends HTMLElement {
         // minimum; only what is still over comes off the fixed columns,
         // equally.
         const sum = current.reduce((total, width) => total + width, 0);
-        const lastMin = visible[visible.length - 1]?.column.minWidth ?? 48;
+        const lastMin = flex?.column.minWidth ?? 48;
         const slack = Math.max(0, previous - sum - lastMin);
         const delta = Math.min(0, box - previous + slack);
         const next = spreadColumnWidths(

@@ -89,12 +89,12 @@ const SKELETON_SETTINGS_STYLES = `
 // right sidebar. It holds the generator setting Delete collapsing points and
 // the master-wide source defaults: the width and terminal presets. The
 // defaults used to be hosted in the Metrics panel.
-// The preset tables' columns: the name dragged to any width, a number as
-// wide as four digits or its head, and the row's actions taking what is left,
-// never less than its three buttons.
-const NAME_COLUMN = { width: 80, minWidth: 40 };
+// The preset tables' columns: the name takes the room that is left, a number
+// is as wide as four digits in its box or its head, and the row's actions hug
+// their buttons.
+const NAME_COLUMN = { stretch: true, minWidth: 40 };
 const NUMBER_COLUMN = { fitText: "0000", fitField: true };
-const ACTIONS_COLUMN = { label: "", minWidth: 64 };
+const ACTIONS_COLUMN = { label: "", hug: true };
 
 function longest(texts) {
   return texts.reduce((a, b) => (b.length > a.length ? b : a), "");
@@ -159,8 +159,8 @@ export default class SkeletonSettingsPanel extends Panel {
       // table, look "select" (Figma 4109:3669).
       table.look = "select";
       table.columns = columns;
-      // The name column is dragged wider or narrower; the number columns fit
-      // their numbers; the actions take what is left.
+      // The name column takes what is left; the number columns fit their
+      // numbers; the actions hug their buttons.
       if (columnWidthsKey) {
         table.columnWidthsStorageKey = columnWidthsKey;
       }
@@ -229,9 +229,9 @@ export default class SkeletonSettingsPanel extends Panel {
     // master, built once and refilled on update.
     this.terminalPresetTable = presetTable(
       [
-        { label: translate("sidebar.skeleton-settings.column.type") },
-        { label: translate("sidebar.skeleton-settings.column.name") },
-        { label: "" },
+        { label: translate("sidebar.skeleton-settings.column.type"), hug: true },
+        { label: translate("sidebar.skeleton-settings.column.name"), stretch: true },
+        ACTIONS_COLUMN,
       ],
       "fontra-skeleton-terminal-presets-height"
     );

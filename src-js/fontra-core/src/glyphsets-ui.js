@@ -164,7 +164,11 @@ export class GlyphSetsUIController {
     const table = html.createDomElement("data-table");
     table.look = "select";
     table.selectAllClassName = "checkmark";
-    table.columns = [{ label: "", selectAll: true }, { label: "name" }, { label: "" }];
+    table.columns = [
+      { label: "", selectAll: true, hug: true },
+      { label: "name", stretch: true },
+      { label: "" },
+    ];
     table.resizable = true;
     table.minHeight = 48;
     table.style.setProperty("--data-table-height", "76px");
@@ -298,14 +302,22 @@ export class CheckboxGroup {
       }
     });
 
-    return html.div({ class: "checkbox-group" }, [
-      ...checkboxItems
-        .map(({ key, label, extraItem }) => [
-          labeledCheckbox(label, this.checkboxController, key),
-          extraItem ? extraItem : html.div(),
-        ])
-        .flat(),
-    ]);
+    // The checkmark component (Figma 2004:29411), kept in step with the model.
+    return html.div(
+      { class: "checkbox-group" },
+      checkboxItems.map(({ key, label }) => {
+        const row = checkmark(
+          this.checkboxController.model[key],
+          label,
+          (checked) => (this.checkboxController.model[key] = checked)
+        );
+        const input = row.querySelector("input");
+        this.checkboxController.addKeyListener(key, (event) => {
+          input.checked = !!event.newValue;
+        });
+        return row;
+      })
+    );
   }
 }
 

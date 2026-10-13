@@ -878,7 +878,7 @@ export default class TransformationPanel {
     };
 
     const K = "sidebar.selection-transformation";
-    const operations = html.div({ class: "row-group" }, [
+    const operations = html.div({ "class": "row-group", "style": "padding-top: 4px;" }, [
       groupLabel(`${K}.operations`),
       pairRow(
         tray([

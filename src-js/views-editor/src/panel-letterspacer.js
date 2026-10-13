@@ -2066,9 +2066,9 @@ const LETTERSPACER_CARD_STYLES = `
     display: flex;
     align-items: center;
     gap: 6px;
-    font: var(--ui-text-table-heading);
-    letter-spacing: var(--ui-tracking-table-heading);
-    text-transform: uppercase;
+    font: var(--ui-text-label-xs);
+    letter-spacing: var(--ui-tracking);
+    font-feature-settings: "case" 1;
     color: var(--text-base-basic-3);
   }
 

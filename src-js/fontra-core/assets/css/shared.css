@@ -169,6 +169,16 @@ theme marker until the design has a dark mode.
   color: var(--text-base-basic-3);
 }
 
+/* A terminal kind's name over its fields (Square, Round, Drop, Serif):
+   ui/label/XS in capitals, text 3. */
+.terminal-type-title {
+  font: var(--ui-text-label-xs);
+  letter-spacing: var(--ui-tracking);
+  font-feature-settings: "case" 1;
+  text-transform: uppercase;
+  color: var(--text-base-basic-3);
+}
+
 /* Fields side by side, 4px apart, sharing the width. */
 .field-pair {
   display: flex;
@@ -337,9 +347,9 @@ input[type="checkbox"] + label {
 /* CheckboxGroup (glyphsets-ui.js): the font overview's group-by checks. */
 .checkbox-group {
   width: 100%;
-  display: grid;
-  grid-template-columns: auto auto;
-  justify-content: space-between;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
 }
 
 /* The glyph sets tables (glyphsets-ui.js): the table over its add button. */
@@ -357,6 +367,11 @@ input[type="checkbox"] + label {
 .glyphset-error-button {
   color: var(--fontra-light-red-color);
   opacity: 0;
+}
+
+/* Only while its set failed or loads does it take room in the actions. */
+.glyphset-error-button:not(.glyphset-error):not(.loading) {
+  display: none;
 }
 
 .glyphset-error-button.glyphset-error {

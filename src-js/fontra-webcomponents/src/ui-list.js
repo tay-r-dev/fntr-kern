@@ -34,24 +34,37 @@ const colors = {
   "table-look-heading-color": ["var(--text-base-basic-4)", "#8e8e8e"],
   "table-look-entry-color": ["var(--text-base-basic-3)", "#a8a8a8"],
   "table-look-entry-hover-color": ["var(--text-base-basic-2)", "#e0e0e0"],
-  "table-look-selection-color": ["var(--surface-color-lime-basic-1)", "#3a4220"],
-  "table-look-selection-rule-color": ["var(--line-color-lime-basic-1)", "#5a6e1a"],
-  "table-look-selection-entry-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
+  // A selected row: grey, and lime while the pointer is over the table
+  // (Figma 2004:29827, focus=false and focus=true).
+  "table-look-selection-color": ["var(--surface-base-basic-1)", "#333333"],
+  "table-look-selection-rule-color": ["var(--line-base-basic-1)", "#444444"],
+  "table-look-selection-entry-color": ["var(--text-base-basic-3)", "#a8a8a8"],
   "table-look-entry-disabled-color": ["var(--text-base-basic-4)", "#5a5a5a"],
   "table-look-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
   "table-look-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
-  "table-look-icon-selection-color": ["color-mix(in srgb, var(--icon-color-lime-basic-3) 50%, transparent)", "#a9c915"],
-  "table-look-icon-selection-hover-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
+  "table-look-icon-selection-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
+  "table-look-icon-selection-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "table-look-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
-  "table-look-selection-entry-hover-color": [
-    "var(--text-color-lime-basic-1)",
-    "#e2f38f",
+  "table-look-selection-entry-hover-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+};
+
+const focusedColors = {
+  "table-look-selection-color": ["var(--surface-color-lime-basic-1)", "#3a4220"],
+  "table-look-selection-rule-color": ["var(--line-color-lime-basic-1)", "#5a6e1a"],
+  "table-look-selection-entry-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
+  "table-look-icon-selection-color": [
+    "color-mix(in srgb, var(--icon-color-lime-basic-3) 50%, transparent)",
+    "#a9c915",
   ],
+  "table-look-icon-selection-hover-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
+  "table-look-selection-entry-hover-color": ["var(--text-color-lime-basic-1)", "#e2f38f"],
 };
 
 export class UIList extends UnlitElement {
   static styles = `
     ${themeColorCSS(colors)}
+
+    ${themeColorCSS(focusedColors, ":host(:hover)")}
 
     :host {
       --column-header-divider-thickness: 1px;

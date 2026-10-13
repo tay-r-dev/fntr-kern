@@ -1010,7 +1010,7 @@ export default class SkeletonParametersPanel {
     );
     // The kind's own heading under the Terminal header: its name, then the
     // preset controls for that kind. Built once, like the rows it heads.
-    this.terminalTypeTitle = html.span({ style: "font-weight: bold;" }, []);
+    this.terminalTypeTitle = html.span({ class: "terminal-type-title" }, []);
     this.terminalTypeControls = html.div({ class: "control-group" }, []);
     this.terminalTypeHeader = html.div({ class: "control-row" }, [
       this.terminalTypeTitle,
