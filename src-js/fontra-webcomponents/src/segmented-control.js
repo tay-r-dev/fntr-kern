@@ -105,7 +105,7 @@ export class SegmentedControl extends UnlitElement {
         inset -1px 0 0 var(--segmented-control-tray-hover-border-color);
     }
 
-    .row:hover button.on {
+    .row:hover button.on:not(:disabled) {
       background: var(--segmented-control-on-hover-background-color);
       box-shadow: 0 1px 1px var(--segmented-control-on-hover-shadow-color);
       color: var(--segmented-control-on-hover-text-color);
