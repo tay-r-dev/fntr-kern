@@ -116,45 +116,29 @@ export function checkmark(checked, label, onchange, { disabled, tooltip } = {}) 
   return row;
 }
 
+// A checkbox bound to `controller.model[key]`, drawn as the checkmark
+// component (Figma 2004:29411), its name label/XS. `options`: id (on the
+// input), class (on the wrapper), labelClass (on the row), disabled.
 export function labeledCheckbox(label, controller, key, options) {
-  const checkboxID = options?.id || `checkbox-${uniqueID()}-${key}`;
-  const inputElement = html.input({ type: "checkbox", id: checkboxID });
-  inputElement.checked = controller.model[key];
-  if (options?.disabled) {
-    inputElement.disabled = true;
+  const row = checkmark(
+    controller.model[key],
+    label,
+    (checked) => {
+      controller.model[key] = checked;
+    },
+    { disabled: options?.disabled }
+  );
+  const inputElement = row.querySelector("input");
+  inputElement.id = options?.id || `checkbox-${uniqueID()}-${key}`;
+  if (options?.labelClass) {
+    row.classList.add(...options.labelClass.split(" ").filter(Boolean));
   }
 
   const inputWrapper = html.div();
   if (options?.class) {
     inputWrapper.className = options.class;
   }
-
-  if (label) {
-    const labelElement = html.label({ for: checkboxID }, [label]);
-    if (options?.labelClass) {
-      labelElement.className = options.labelClass;
-    }
-
-    const labeledCheckBoxElement = html.div(
-      {
-        style: `
-          display: grid;
-          grid-template-columns: auto auto;
-          justify-content: left;
-          gap: 0.1em;
-          align-items: center;
-        `,
-      },
-      [inputElement, labelElement]
-    );
-    inputWrapper.appendChild(labeledCheckBoxElement);
-  } else {
-    inputWrapper.appendChild(inputElement);
-  }
-
-  inputElement.onchange = () => {
-    controller.model[key] = inputElement.checked;
-  };
+  inputWrapper.appendChild(row);
 
   controller.addKeyListener(key, (event) => {
     inputElement.checked = event.newValue;
