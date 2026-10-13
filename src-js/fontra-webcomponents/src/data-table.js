@@ -54,6 +54,11 @@ const lookColors = {
   "data-table-look-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
   "data-table-look-border-color": ["var(--line-base-basic-1)", "#3a3a3a"],
   "data-table-look-rule-color": ["var(--line-base-basic-0)", "rgba(255, 255, 255, 0.1)"],
+  // The head's rule (Figma 4066:6350): line 1, a step darker than the rows'.
+  "data-table-look-head-rule-color": [
+    "var(--line-base-basic-1)",
+    "rgba(255, 255, 255, 0.1)",
+  ],
   "data-table-look-divider-color": [
     "var(--line-base-basic-1)",
     "rgba(255, 255, 255, 0.1)",
@@ -82,6 +87,20 @@ const lookColors = {
   "data-table-look-selection-additional-hover-color": [
     "var(--text-base-basic-3)",
     "#b4b4b4",
+  ],
+  // A selected row that is disabled (Figma 4289:1164): the pale lime fill with
+  // no rule, and entries faded to a third.
+  "data-table-look-disabled-selection-color": [
+    "var(--surface-color-lime-basic-1)",
+    "#2f3620",
+  ],
+  "data-table-look-disabled-selection-entry-color": [
+    "color-mix(in srgb, var(--text-color-lime-basic-2) 34%, transparent)",
+    "#5a6e1a",
+  ],
+  "data-table-look-disabled-selection-additional-color": [
+    "color-mix(in srgb, var(--text-color-lime-basic-4) 30%, transparent)",
+    "#4a5a20",
   ],
   "data-table-look-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
   "data-table-look-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
@@ -352,7 +371,7 @@ const DATA_TABLE_STYLES = `
 
   /* The looks (table, Figma 2004:29827): a white box, ruled and rounded; a
      24px head of small uppercase light grey labels over a rule; 24px rows of
-     thin grey entries. "select" rules every row, "data" only the selected
+     thin grey entries. "data" rules every row, "select" only the selected
      ones; the rest is shared. A hovered row darkens its text and
      shows its icons and its editable box; a selected row is lime-filled with
      a lime rule and lime text; a disabled row is pale. */
@@ -401,7 +420,7 @@ const DATA_TABLE_STYLES = `
   data-table[look] .data-table th {
     background-color: var(--data-table-look-background-color);
     border-bottom: none;
-    box-shadow: inset 0 -1px var(--data-table-look-rule-color);
+    box-shadow: inset 0 -1px var(--data-table-look-head-rule-color);
   }
 
   /* ui/table/heading */
@@ -456,7 +475,9 @@ const DATA_TABLE_STYLES = `
     border-bottom: none;
   }
 
-  data-table[look="data"] .data-table tbody tr:not(.data-table-row-selected) td {
+  /* A "select" table (source layers, glyph sets) has no underline on its
+     unselected rows (Figma 4062:1055's note); a "data" table keeps them. */
+  data-table[look="select"] .data-table tbody tr:not(.data-table-row-selected) td {
     border-bottom-color: transparent;
   }
 
@@ -569,6 +590,24 @@ const DATA_TABLE_STYLES = `
 
   data-table[look] tr.data-table-row-disabled .data-table-status {
     opacity: 0.3;
+  }
+
+  /* A selected row that is disabled: pale lime, no rule, faded text, and no
+     actions (Figma 4289:1164, 4289:1169, 4289:1174). */
+  data-table[look] .data-table tr.data-table-row-disabled.data-table-row-selected td,
+  data-table[look] .data-table tr.data-table-row-disabled.data-table-row-selected:hover td {
+    background-color: var(--data-table-look-disabled-selection-color);
+    border-bottom-color: transparent;
+    box-shadow: none;
+    color: var(--data-table-look-disabled-selection-entry-color);
+  }
+
+  data-table[look] .data-table tr.data-table-row-disabled.data-table-row-selected .data-table-additional {
+    color: var(--data-table-look-disabled-selection-additional-color);
+  }
+
+  data-table[look] .data-table tr.data-table-row-disabled.data-table-row-selected .data-table-actions {
+    opacity: 0;
   }
 
   /* The row's icons: button/table icon, a 16px slot with 4px corners

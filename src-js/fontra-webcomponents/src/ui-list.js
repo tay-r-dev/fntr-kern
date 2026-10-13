@@ -17,28 +17,34 @@ const colors = {
   "row-selected-background-color": ["#ddd", "#555"],
   // table (Figma 2004:29827), for look="data" and look="select". Light colours are the design
   // system's tokens (core.css); dark ones stay hand-picked.
-  "table-look-background-color": ["var(--tbl-cs-sr-rest)", "#2c2c2c"],
-  "table-look-border-color": ["var(--tbl-ln-hover)", "#3a3a3a"],
-  "table-look-rule-color": ["var(--tbl-ln-rest)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  "table-look-border-color": ["var(--line-base-basic-1)", "#3a3a3a"],
+  "table-look-rule-color": ["var(--line-base-basic-0)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-head-rule-color": ["var(--line-base-basic-1)", "rgba(255, 255, 255, 0.1)"],
+  "table-look-disabled-selection-color": ["var(--surface-color-lime-basic-1)", "#2f3620"],
+  "table-look-disabled-selection-entry-color": [
+    "color-mix(in srgb, var(--text-color-lime-basic-2) 34%, transparent)",
+    "#5a6e1a",
+  ],
   "table-look-divider-color": ["var(--line-base-basic-1)", "rgba(255, 255, 255, 0.1)"],
   "table-look-drag-divider-color": [
     "var(--line-base-basic-3)",
     "rgba(255, 255, 255, 0.2)",
   ],
-  "table-look-heading-color": ["var(--grey-deprecated-5)", "#8e8e8e"],
-  "table-look-entry-color": ["var(--tbl-lb-prim-rest)", "#a8a8a8"],
-  "table-look-entry-hover-color": ["var(--tbl-lb-prim-hover)", "#e0e0e0"],
-  "table-look-selection-color": ["var(--tbl-cs-sr-selection)", "#3a4220"],
-  "table-look-selection-rule-color": ["var(--tbl-ln-selection)", "#5a6e1a"],
-  "table-look-selection-entry-color": ["var(--tbl-lb-prim-rest-selection)", "#c4dc6a"],
-  "table-look-entry-disabled-color": ["var(--tbl-lb-prim-disabled)", "#5a5a5a"],
+  "table-look-heading-color": ["var(--text-base-basic-4)", "#8e8e8e"],
+  "table-look-entry-color": ["var(--text-base-basic-3)", "#a8a8a8"],
+  "table-look-entry-hover-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "table-look-selection-color": ["var(--surface-color-lime-basic-1)", "#3a4220"],
+  "table-look-selection-rule-color": ["var(--line-color-lime-basic-1)", "#5a6e1a"],
+  "table-look-selection-entry-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
+  "table-look-entry-disabled-color": ["var(--text-base-basic-4)", "#5a5a5a"],
   "table-look-icon-color": ["var(--icon-base-basic-3)", "#6a6a6a"],
-  "table-look-icon-hover-color": ["var(--bt-sgc-ic-hover)", "#e0e0e0"],
-  "table-look-icon-selection-color": ["var(--bt-sgt-ic-select-rest)", "#a9c915"],
-  "table-look-icon-selection-hover-color": ["var(--bt-sgt-ic-select-hover)", "#c4dc6a"],
+  "table-look-icon-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
+  "table-look-icon-selection-color": ["color-mix(in srgb, var(--icon-color-lime-basic-3) 50%, transparent)", "#a9c915"],
+  "table-look-icon-selection-hover-color": ["var(--text-color-lime-basic-3)", "#c4dc6a"],
   "table-look-icon-disabled-color": ["var(--icon-base-basic-4)", "#5a5a5a"],
   "table-look-selection-entry-hover-color": [
-    "var(--tbl-lb-prim-hover-selection)",
+    "var(--text-color-lime-basic-1)",
     "#e2f38f",
   ],
 };
@@ -244,13 +250,13 @@ export class UIList extends UnlitElement {
     }
 
     :host([look]) .header-container {
-      border-bottom: 1px solid var(--table-look-rule-color);
+      border-bottom: 1px solid var(--table-look-head-rule-color);
     }
 
     :host([look]) .header {
       box-sizing: border-box;
       align-items: center;
-      height: var(--tbl-height, 24px);
+      height: var(--height-l);
       padding: 0 8px;
       /* ui/table/heading */
       font: var(--ui-text-table-heading);
@@ -304,7 +310,7 @@ export class UIList extends UnlitElement {
     /* A head cell is the head's full height, so its hover dividers have
        room to stand centred in it. */
     :host([look]) .text-cell-header {
-      line-height: var(--tbl-height, 24px);
+      line-height: var(--height-l);
     }
 
     :host([look]) .text-cell,
@@ -337,7 +343,7 @@ export class UIList extends UnlitElement {
     :host([look]) .row {
       box-sizing: border-box;
       align-items: center;
-      height: var(--tbl-height, 24px);
+      height: var(--height-l);
       padding: 0 8px;
       border-top: none;
       border-bottom: 1px solid var(--table-look-rule-color);
@@ -353,7 +359,9 @@ export class UIList extends UnlitElement {
       border-bottom-color: transparent;
     }
 
-    :host([look="data"]) .row:not(.selected) {
+    /* A "select" table (source layers, glyph sets) has no underline on its
+       unselected rows (Figma 4062:1055's note); a "data" table keeps them. */
+    :host([look="select"]) .row:not(.selected) {
       border-bottom-color: transparent;
     }
 
@@ -380,6 +388,16 @@ export class UIList extends UnlitElement {
 
     :host([look]) .contents > .selected:hover {
       color: var(--table-look-selection-entry-hover-color);
+    }
+
+    /* A selected row that is disabled (Figma 4289:1164): pale lime, no rule,
+       faded text. */
+    :host([look]) .contents > .row.disabled.selected,
+    :host([look]) .contents > .row.disabled.selected:hover {
+      background-color: var(--table-look-disabled-selection-color);
+      border-bottom-color: transparent;
+      box-shadow: none;
+      color: var(--table-look-disabled-selection-entry-color);
     }
 
     /* Disabled: pale text and icons, on hover too. */
