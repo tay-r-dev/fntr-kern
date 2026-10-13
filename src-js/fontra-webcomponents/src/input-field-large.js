@@ -28,9 +28,9 @@ import { themeColorCSS } from "./theme-support.js";
 // - "slider": a bar behind the name showing where the value sits between
 //   minValue and maxValue; dragging moves it, as "scrub" does.
 //
-// `scrubOnly` keeps a dragging type from being typed in. A double-click on the
-// scrub area puts back `defaultValue`, as a typed value would; a field with no
-// default ignores it. An element with slot="end" sits after the value, for one
+// `scrubOnly` keeps a dragging type from being typed in (a slider always is).
+// A double-click on the scrub area puts back `defaultValue`, as a typed value
+// would; a field with no default ignores it. An element with slot="end" sits after the value, for one
 // icon.
 //
 // The arithmetic and the cancel sentinel are number-scrub.js's, the same
@@ -42,33 +42,33 @@ import { themeColorCSS } from "./theme-support.js";
 // Light colours are the design system's tokens (core.css); dark ones stay
 // hand-picked until the design has a dark mode.
 const colors = {
-  "input-field-large-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
-  "input-field-large-border-color": ["var(--in-bln-rest)", "#4a4a4a"],
-  "input-field-large-tray-active-color": ["var(--in-bsr-focus)", "#333"],
-  "input-field-large-tray-active-border-color": ["var(--in-bln-focus)", "#4a4a4a"],
+  "input-field-large-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "input-field-large-border-color": ["var(--line-base-basic-2)", "#4a4a4a"],
+  "input-field-large-tray-active-color": ["var(--surface-base-basic-1)", "#333"],
+  "input-field-large-tray-active-border-color": ["var(--line-base-basic-1)", "#4a4a4a"],
   "input-field-large-tray-disabled-color": ["var(--surface-base-basic-1)", "#3a3a3a"],
-  "input-field-large-tray-disabled-border-color": ["var(--in-bln-disabled)", "#444"],
-  "input-field-large-rest-background-color": ["var(--in-csr-rest)", "#3a3a3a"],
-  "input-field-large-rest-border-color": ["var(--in-sln-rest)", "transparent"],
-  "input-field-large-hover-background-color": ["var(--in-csr-hover)", "#464646"],
+  "input-field-large-tray-disabled-border-color": ["var(--line-base-basic-1)", "#444"],
+  "input-field-large-rest-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
+  "input-field-large-rest-border-color": ["transparent", "transparent"],
+  "input-field-large-hover-background-color": ["var(--surface-base-basic-2)", "#464646"],
   "input-field-large-hover-border-color": [
-    "var(--in-sln-hover)",
+    "var(--line-base-basic-2)",
     "rgba(255, 255, 255, 0.14)",
   ],
-  "input-field-large-active-background-color": ["var(--in-csr-focus)", "#2c2c2c"],
-  "input-field-large-active-border-color": ["var(--in-sln-focus)", "#8fae4a"],
+  "input-field-large-active-background-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  "input-field-large-active-border-color": ["var(--line-color-lime-basic-2)", "#8fae4a"],
   "input-field-large-disabled-background-color": ["transparent", "#3a3a3a"],
-  "input-field-large-disabled-border-color": ["var(--in-sln-disabled)", "transparent"],
+  "input-field-large-disabled-border-color": ["transparent", "transparent"],
   // The label.
-  "input-field-large-text-color": ["var(--in-lbl-rest)", "#b0b0b0"],
-  "input-field-large-hover-text-color": ["var(--in-lbl-hover)", "#e0e0e0"],
-  "input-field-large-focus-text-color": ["var(--in-lbl-focus)", "#e0e0e0"],
-  "input-field-large-disabled-text-color": ["var(--in-lbl-disabled)", "#666"],
+  "input-field-large-text-color": ["var(--text-base-basic-3)", "#b0b0b0"],
+  "input-field-large-hover-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "input-field-large-focus-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "input-field-large-disabled-text-color": ["var(--text-base-basic-4)", "#666"],
   // The value.
   "input-field-large-value-rest-text-color": ["var(--text-base-basic-3)", "#b0b0b0"],
-  "input-field-large-value-hover-text-color": ["var(--in-vl-hover)", "#e0e0e0"],
-  "input-field-large-active-text-color": ["var(--in-vl-focus)", "#f0f0f0"],
-  "input-field-large-value-disabled-text-color": ["var(--in-vl-disabled)", "#666"],
+  "input-field-large-value-hover-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "input-field-large-active-text-color": ["var(--text-base-basic-1)", "#f0f0f0"],
+  "input-field-large-value-disabled-text-color": ["var(--text-base-basic-4)", "#666"],
   // The scrub (drag-arrows) icon: the component's own bindings (icon/base/
   // basic 3 at rest, 2 on hover and focus, 4 disabled).
   "input-field-large-handle-color": ["var(--icon-base-basic-3)", "#777777"],
@@ -76,9 +76,9 @@ const colors = {
   "input-field-large-handle-disabled-color": ["var(--icon-base-basic-4)", "#555555"],
   // input/field/slider (Figma 2004:29608): the value's share of the range as
   // a bar -- grey at rest (a Figma literal), lime while active.
-  "input-field-large-fill-color": ["#e9e9e9", "#4a4a4a"],
-  "input-field-large-active-fill-color": ["var(--in-sln-focus)", "#6f8a1e"],
-  "input-field-large-selection-color": ["var(--in-sln-focus)", "#5c7033"],
+  "input-field-large-fill-color": ["var(--grey-deprecated-7)", "#4a4a4a"],
+  "input-field-large-active-fill-color": ["var(--line-color-lime-basic-2)", "#6f8a1e"],
+  "input-field-large-selection-color": ["var(--line-color-lime-basic-2)", "#5c7033"],
   // button/increment (Figma 2004:29110): icon/base/basic/3 arrows; the
   // hovered half lifts to surface/base/basic/0 with an icon/base/basic/1 arrow.
   "input-field-large-stepper-color": ["var(--icon-base-basic-3)", "#666666"],
@@ -107,10 +107,10 @@ export class InputFieldLarge extends UnlitElement {
       background-color: var(--input-field-large-background-color);
       border: 0 solid var(--input-field-large-border-color);
       border-top-width: 1px;
-      border-radius: var(--in-bsn-corner);
+      border-radius: var(--corner-outer-l);
       box-sizing: border-box;
-      height: var(--in-bsn-height);
-      padding: var(--in-bsn-pad);
+      height: var(--height-l);
+      padding: var(--padding-l);
       color: var(--input-field-large-text-color);
       cursor: ew-resize;
       user-select: none;
@@ -132,7 +132,7 @@ export class InputFieldLarge extends UnlitElement {
       overflow: hidden;
       background-color: var(--input-field-large-rest-background-color);
       border: 1px solid var(--input-field-large-rest-border-color);
-      border-radius: var(--in-cnn-corner);
+      border-radius: var(--corner-inner-l);
     }
 
     .inner > :not(.fill) {
@@ -220,6 +220,12 @@ export class InputFieldLarge extends UnlitElement {
 
     .box.disabled .scrub-icon {
       color: var(--input-field-large-handle-disabled-color);
+    }
+
+    /* input/field/slider (Figma 2004:29608): no increment, 8px in at the
+       right, so the value sits at the right edge. */
+    .box.slider .inner {
+      padding-right: 8px;
     }
 
     /* The label takes the room the value leaves, and truncates. */
@@ -441,6 +447,11 @@ export class InputFieldLarge extends UnlitElement {
     this.requestUpdate();
   }
 
+  // A slider is set by a drag alone: no typing and no increment.
+  _noTyping() {
+    return this._scrubOnly || this._fill;
+  }
+
   // "number" and "text": neither the scrub icon nor the slider's fill, so
   // nothing says the field drags, and it does not.
   _isStringInput() {
@@ -621,7 +632,7 @@ export class InputFieldLarge extends UnlitElement {
         class:
           "value" +
           (this._showsMixed() ? " mixed" : "") +
-          (this._scrubOnly ? " scrub-only" : ""),
+          (this._noTyping() ? " scrub-only" : ""),
         onclick: () => this._startEdit(),
       },
       [this._showsMixed() ? "mixed" : this._displayValue()]
@@ -652,7 +663,8 @@ export class InputFieldLarge extends UnlitElement {
         class:
           "box" +
           (this._disabled ? " disabled" : "") +
-          (this._isStringInput() ? " string" : ""),
+          (this._isStringInput() ? " string" : "") +
+          (this._fill ? " slider" : ""),
         onpointerdown: (event) => this._onPointerDown(event),
         ondblclick: (event) => {
           if (
@@ -680,7 +692,7 @@ export class InputFieldLarge extends UnlitElement {
           this._valueElement,
           ...(this._note ? [html.span({ class: "note" }, [`(${this._note})`])] : []),
           html.createDomElement("slot", { name: "end" }),
-          ...(this._scrubOnly ? [] : [this._hoverSteppers]),
+          ...(this._noTyping() ? [] : [this._hoverSteppers]),
         ]),
       ]
     );
@@ -756,7 +768,7 @@ export class InputFieldLarge extends UnlitElement {
   }
 
   _startEdit() {
-    if (this._scrubOnly) {
+    if (this._noTyping()) {
       return;
     }
     if (this._disabled || this._editing) {
@@ -906,7 +918,7 @@ export class InputFieldLarge extends UnlitElement {
     if (this._disabled || this._editing || event.button !== 0) {
       return;
     }
-    if (!this._scrubOnly && this._valueElement.contains(event.target)) {
+    if (!this._noTyping() && this._valueElement.contains(event.target)) {
       // Let the click-to-edit handler take it instead.
       return;
     }

@@ -17,12 +17,14 @@ import { themeColorCSS } from "./theme-support.js";
 // tree uses.
 const colors = {
   // The strip keeps the fields' outer-shell gray, so it merges with them.
-  "link-button-background-color": ["var(--in-bsr-rest)", "#3a3a3a"],
+  "link-button-background-color": ["var(--surface-base-basic-2)", "#3a3a3a"],
   // The notches match the fields' inner background (white / its dark
   // counterpart), so they read as cutouts from the strip.
-  "link-button-notch-color": ["#ffffff", "#2c2c2c"],
-  "link-button-dot-color": ["#dedede", "#5a5a5a"],
-  "link-button-dot-hover-color": ["#d6d6d6", "#707070"],
+  "link-button-notch-color": ["var(--surface-base-basic-0)", "#2c2c2c"],
+  // The off state's dots (Figma 2004:29519): surface 4 with a line 4 edge.
+  "link-button-dot-color": ["var(--surface-base-basic-4)", "#5a5a5a"],
+  "link-button-dot-hover-color": ["var(--surface-base-basic-4)", "#707070"],
+  "link-button-dot-border-color": ["var(--line-base-basic-4)", "#444"],
 };
 
 export class LinkButton extends UnlitElement {
@@ -121,7 +123,9 @@ export class LinkButton extends UnlitElement {
     .ui-link-button-dot {
       width: 0.21875em;
       height: 0.21875em;
+      box-sizing: border-box;
       border-radius: 50%;
+      border-bottom: 1px solid var(--link-button-dot-border-color);
       background: var(--link-button-dot-color);
       transition: 120ms;
     }
