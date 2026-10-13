@@ -23,33 +23,33 @@ import { themeColorCSS } from "./theme-support.js";
 // system's tokens (core.css); dark ones stay hand-picked until the design has
 // a dark mode.
 const colors = {
-  "segmented-control-tray-color": ["var(--sl-sgb-sr-rest)", "#3a3a3e"],
-  "segmented-control-border-color": ["var(--sl-sgb-ln-rest)", "#6a6a74"],
-  "segmented-control-disabled-border-color": ["var(--sl-sgb-ln-disabled)", "#4a4a50"],
-  "segmented-control-tray-hover-color": ["var(--sl-sgb-sr-hover)", "#d5ed57"],
-  "segmented-control-tray-hover-border-color": ["var(--sl-sgb-ln-hover)", "#b7d817"],
+  "segmented-control-tray-color": ["var(--surface-base-basic-2)", "#3a3a3e"],
+  "segmented-control-border-color": ["var(--line-base-basic-2)", "#6a6a74"],
+  "segmented-control-disabled-border-color": ["var(--line-base-basic-1)", "#4a4a50"],
+  "segmented-control-tray-hover-color": ["var(--surface-color-lime-basic-3)", "#d5ed57"],
+  "segmented-control-tray-hover-border-color": ["var(--line-color-lime-basic-3)", "#b7d817"],
   "segmented-control-on-hover-shadow-color": [
-    "var(--sl-sgc-sh-active-rest)",
+    "var(--shadow-color-lime-2)",
     "#9cbb12",
   ],
   "segmented-control-on-shadow-color": ["var(--shadow-base-2)", "#000000a0"],
-  "segmented-control-on-background-color": ["var(--sl-sgc-sr-active)", "#5a5a60"],
-  "segmented-control-off-text-color": ["var(--sl-sgc-lb-rest)", "#ffffff80"],
+  "segmented-control-on-background-color": ["var(--surface-base-basic-0)", "#5a5a60"],
+  "segmented-control-off-text-color": ["var(--text-base-basic-3)", "#ffffff80"],
   "segmented-control-off-container-hover-text-color": [
-    "var(--sl-sgc-lb-hover-container)",
+    "var(--text-color-lime-basic-3)",
     "#d0eb49",
   ],
   "segmented-control-on-hover-background-color": [
-    "var(--sl-sgc-sr-active-hover)",
+    "var(--surface-base-basic-0)",
     "#5a5a60",
   ],
-  "segmented-control-on-hover-text-color": ["var(--sl-sgc-lb-active-hover)", "#e9e9ed"],
+  "segmented-control-on-hover-text-color": ["var(--text-base-basic-2)", "#e9e9ed"],
   // The lit chip's label: text/base/basic/3 at rest (the chip's own binding,
   // Figma 2004:29364 and 2004:29368), text 2 while the tray is hovered.
   "segmented-control-on-text-color": ["var(--text-base-basic-3)", "#e9e9ed"],
-  "segmented-control-disabled-text-color": ["var(--sl-sgc-lb-disabled)", "#ffffff40"],
-  "segmented-control-hover-background-color": ["var(--sl-sgc-sr-hover)", "#9cbb12"],
-  "segmented-control-hover-text-color": ["var(--sl-sgc-lb-hover)", "#fff"],
+  "segmented-control-disabled-text-color": ["var(--text-base-basic-5)", "#ffffff40"],
+  "segmented-control-hover-background-color": ["var(--surface-color-lime-inverted-1)", "#9cbb12"],
+  "segmented-control-hover-text-color": ["var(--text-base-inverted-1)", "#fff"],
 };
 
 export class SegmentedControl extends UnlitElement {
@@ -66,16 +66,16 @@ export class SegmentedControl extends UnlitElement {
       align-items: center;
       box-sizing: border-box;
       /* select/segmented's tray at 24px; a view whose design sets the
-         sl-sgb numbers smaller (20px, 5px corners) sets these. */
-      height: var(--segmented-control-height, var(--sl-sgb-height));
-      padding: var(--segmented-control-tray-padding, var(--sl-sgb-padding));
+         base numbers smaller (20px, 5px corners) sets these. */
+      height: var(--segmented-control-height, var(--height-l));
+      padding: var(--segmented-control-tray-padding, var(--padding-l));
       gap: 0;
       background: var(--segmented-control-tray-color);
       /* The design draws the tray's line inside, so it takes no room: a
          rule on top at rest, on top and at the sides on hover, all round when
          disabled. */
       box-shadow: inset 0 1px 0 var(--segmented-control-border-color);
-      border-radius: var(--segmented-control-radius, var(--sl-sgb-radius));
+      border-radius: var(--segmented-control-radius, var(--corner-outer-l));
     }
 
     button {
@@ -83,7 +83,7 @@ export class SegmentedControl extends UnlitElement {
       margin: 0;
       padding: 3px 5px;
       border: none;
-      border-radius: var(--sl-sgc-radius);
+      border-radius: var(--corner-inner-l);
       background: transparent;
       color: var(--segmented-control-off-text-color);
       /* ui/label/XS */
