@@ -93,11 +93,35 @@ export class Sidebar {
   attach(element) {
     this.container = element;
     this.initResizeGutter();
+    this.initTabsOpening();
 
     if (localStorage.getItem(`fontra-selected-sidebar-${this.identifier}`)) {
       const container = document.querySelector(`.sidebar-container.${this.identifier}`);
       container.classList.add("visible");
     }
+  }
+
+  // The tabs open to tiles only once the pointer has rested on them for 2s:
+  // any movement restarts the wait, and leaving closes them at once.
+  initTabsOpening() {
+    const tabs = this.container.querySelector(
+      `.tab-pane.${this.identifier} > .tab-pane-tabs`
+    );
+    if (!tabs) {
+      return;
+    }
+    let timer;
+    tabs.addEventListener("pointermove", () => {
+      if (tabs.classList.contains("open")) {
+        return;
+      }
+      clearTimeout(timer);
+      timer = setTimeout(() => tabs.classList.add("open"), 2000);
+    });
+    tabs.addEventListener("pointerleave", () => {
+      clearTimeout(timer);
+      tabs.classList.remove("open");
+    });
   }
 
   applyWidth(width, saveLocalStorage = false) {

@@ -545,7 +545,8 @@ glyph-cell-view .glyph-count {
    switching what the sidebar beside it shows. Mark it .left or .right for
    its side; its tabs go in a .tab-pane-tabs inside it. At rest the tabs are
    24px icons, touching, 4px in from the edge. Resting on the tabs -- not
-   the pane's empty length -- for 2s opens them to 60px tiles with their
+   the pane's empty length -- without moving the pointer for 2s (views-editor's
+   sidebar.js adds .open; any movement restarts the wait) opens them to 60px tiles with their
    names, 4px apart on a white card ruled in line 1, 4px round them and 8px in, and the pane
    widens from 28px to 76px, moving its neighbour aside. Leaving closes them
    at once. Clicks and hover colours never wait. */
@@ -610,9 +611,8 @@ glyph-cell-view .glyph-count {
   inset: 0 calc(4px + 4px * var(--tab-open)) 0 0;
 }
 
-.tab-pane-tabs:hover {
+.tab-pane-tabs.open {
   --tab-open: 1;
-  transition-delay: 2s;
 }
 
 /* ./tab-tab (Figma 4167:3375): an icon in currentColor over its name. At
