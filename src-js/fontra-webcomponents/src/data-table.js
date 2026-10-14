@@ -1257,7 +1257,7 @@ export class DataTable extends HTMLElement {
     }
     let others = 0;
     for (const entry of visible) {
-      if (entry.index !== index && entry !== flex) {
+      if (entry.index !== index && entry.index !== flex.index) {
         others += this._columnWidth(entry);
       }
     }
