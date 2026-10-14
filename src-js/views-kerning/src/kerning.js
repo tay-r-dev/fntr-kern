@@ -1538,7 +1538,6 @@ export class KerningViewController extends ViewController {
     // names are the line's tooltip.
     countEl.textContent = String(stale.length);
     newCountEl.textContent = String(added.length);
-    summaryEl.title = hasStale ? truncateGlyphList(all) : "";
     // F02: "disable duplicate runs" -- this._staleRerunInFlight is set by
     // runStaleGlyphs below for the duration of one run.
     rerunButton.disabled = !hasStale || !!this._staleRerunInFlight;
@@ -4712,7 +4711,6 @@ export class KerningViewController extends ViewController {
       round: true,
       value: current,
       className: "kerning-pairtable-current-input",
-      title: `Stored value for ${left} × ${right}. Type a value to write it.`,
       onCommit: (value) =>
         this.writePairValues([{ left, right }], () => value, true, true),
     });
@@ -4726,8 +4724,6 @@ export class KerningViewController extends ViewController {
     tr.dataset.left = left;
     tr.dataset.right = right;
     tr.dataset.kind = "class-rule";
-    // Task 11, spec F15: same textual category cue buildPairRowElement uses.
-    tr.title = ROW_KIND_CATEGORY_LABELS["class-rule"];
 
     // Task 3 (spec F04): same stable row ID mechanism a pair row uses.
     const id = rowId(this.activeSourceIdentifier(), left, right);
@@ -4764,9 +4760,6 @@ export class KerningViewController extends ViewController {
     // gap (ledger §11.4/§11.5 #1): includedCount/excludedCount now actually
     // exist on `stats` (computeFoldGroupStats, countMedianContributors) --
     // previously only the total contributor count was disclosed.
-    leftLabel.title =
-      `${stats.entries.length} pairs, spread ${stats.spread.overall.toFixed(1)} ` +
-      `(${stats.includedCount} in median, ${stats.excludedCount} excluded as outliers)`;
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
@@ -4807,7 +4800,6 @@ export class KerningViewController extends ViewController {
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-class-name";
     rightLabel.textContent = right;
-    rightLabel.title = right;
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
@@ -5559,7 +5551,7 @@ export class KerningViewController extends ViewController {
     // The class's colour is its label (the table's status swatch); a click
     // opens the colour picker.
     const currentColor = this.getClassColor(entry.side, entry.name);
-    const swatch = statusSwatch(currentColor || "transparent", { title: entry.name });
+    const swatch = statusSwatch(currentColor || "transparent");
     const colorInput = document.createElement("input");
     colorInput.type = "color";
     colorInput.value = currentColor || "#cccccc";
@@ -5605,8 +5597,7 @@ export class KerningViewController extends ViewController {
         tableCell([swatch, colorInput]),
         tableCell(truncateGlyphList(entry.members)),
         actions,
-      ],
-      { title: entry.name }
+      ]
     );
   }
 
@@ -6000,15 +5991,6 @@ export class KerningViewController extends ViewController {
     const side2Color = side2Name ? this.getClassColor("side2", side2Name) : null;
     cell.style.setProperty("--kerning-class-side1-color", side1Color || "transparent");
     cell.style.setProperty("--kerning-class-side2-color", side2Color || "transparent");
-
-    const tooltipParts = [];
-    if (side1Name) {
-      tooltipParts.push(`Left class: ${side1Name}`);
-    }
-    if (side2Name) {
-      tooltipParts.push(`Right class: ${side2Name}`);
-    }
-    cell.title = tooltipParts.join(" / ");
   }
 
   // ---- Class color (design doc §3) ----
@@ -6382,9 +6364,6 @@ export class KerningViewController extends ViewController {
 
     const reachLine = document.createElement("p");
     reachLine.textContent = `Envelope reach settled at ${bias}`;
-    reachLine.title = widened
-      ? "The three control glyphs disagreed, so calibration widened the reach."
-      : "The three control glyphs agreed; calibration did not need to widen.";
     body.appendChild(reachLine);
   }
 
@@ -6405,7 +6384,6 @@ export class KerningViewController extends ViewController {
     // alone. "member-pair" reads as a class row here (its cascade is still
     // class-derived; F15 groups it with "classes," not as a fourth
     // category) -- the same grouping rowRelationship already uses.
-    tr.title = ROW_KIND_CATEGORY_LABELS[row.kind] || "";
 
     // Task 3 (spec F04): stable row ID for the highlight/tick selection
     // layer, independent of scene preview selection below.
@@ -6436,7 +6414,6 @@ export class KerningViewController extends ViewController {
     // struck-through hidden-row name styling.
     leftLabel.className = "kerning-pairtable-glyph-name";
     leftLabel.textContent = row.left;
-    leftLabel.title = row.left;
     leftCell.appendChild(leftLabel);
     tr.appendChild(leftCell);
 
@@ -6471,7 +6448,6 @@ export class KerningViewController extends ViewController {
     const rightLabel = document.createElement("span");
     rightLabel.className = "kerning-pairtable-glyph-name";
     rightLabel.textContent = row.right;
-    rightLabel.title = row.right;
     rightCell.appendChild(rightLabel);
     tr.appendChild(rightCell);
 
@@ -7997,17 +7973,14 @@ export class KerningViewController extends ViewController {
     // sideController.model.side and passed straight to
     // addFontModeSelectionToClass below) is unchanged.
     const sideSelect = document.createElement("select");
-    for (const [value, label, title] of [
-      ["side1", "Left", "Kerning side 1 (left member of a pair)"],
-      ["side2", "Right", "Kerning side 2 (right member of a pair)"],
-      ["both", "Both", ""],
+    for (const [value, label] of [
+      ["side1", "Left"],
+      ["side2", "Right"],
+      ["both", "Both"],
     ]) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = label;
-      if (title) {
-        option.title = title;
-      }
       sideSelect.appendChild(option);
     }
     sideSelect.value = sideController.model.side;
@@ -8778,7 +8751,6 @@ function buildValueSpan(value, unreliable) {
   span.textContent = text;
   if (unreliable) {
     span.className = "kerning-pairtable-value-unreliable";
-    span.title = STALE_EXPLANATION;
     span.setAttribute("aria-label", `${text}. ${STALE_EXPLANATION}`);
     span.tabIndex = 0;
   }
