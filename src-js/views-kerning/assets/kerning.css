@@ -871,8 +871,8 @@ data-table[look] .kerning-pairtable-table td.kerning-pairtable-proposed-col {
    three 16px slots fit the column exactly, so no ellipsis can take one. */
 data-table[look] .kerning-pairtable-table th:nth-child(5),
 data-table[look] .kerning-pairtable-table td.kerning-pairtable-apply-col {
-  /* 7px on the right, so the last icon clears the box's edge. */
-  padding: 0 7px 0 2px;
+  /* 11px on the right, so the last icon clears the box's edge. */
+  padding: 0 11px 0 2px;
   text-overflow: clip;
 }
 

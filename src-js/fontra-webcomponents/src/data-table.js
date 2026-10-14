@@ -422,6 +422,11 @@ const DATA_TABLE_STYLES = `
     text-overflow: ellipsis;
   }
 
+  /* A row's actions sit 4px further in from the right than other cells. */
+  data-table[look] .data-table td:has(> .data-table-actions) {
+    padding-right: 12px;
+  }
+
   /* A collapsed border does not travel with a sticky head, so the head's
      rule is drawn inside it instead. */
   data-table[look] .data-table th {
