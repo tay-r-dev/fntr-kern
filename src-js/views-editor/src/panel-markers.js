@@ -77,12 +77,12 @@ const MARKERS_PANEL_STYLES = `
 `;
 
 // The columns, by the shared table rule: a column of numbers fits four
-// digits in its box or its head; the names are dragged to fit, the values
-// take what is left, and the actions hug their buttons.
+// digits in its box or its head; the names and values are dragged to fit,
+// and the actions take what is left, never less than their buttons.
 // Dragged columns keep their widths in a narrow panel: the table scrolls
 // sideways instead.
 const ID_COLUMN = { width: 96, minWidth: 32, noShrink: true };
-const VALUE_COLUMN = { minWidth: 48, stretch: true };
+const VALUE_COLUMN = { width: 120, minWidth: 48, noShrink: true };
 const NUMBER_COLUMN = { fitText: "0000", align: "right" };
 // Goal can be turned off from the table head's menu (right-click).
 const GOAL_COLUMN = { key: "goal", hideable: true, fitText: "0000", fitField: true };

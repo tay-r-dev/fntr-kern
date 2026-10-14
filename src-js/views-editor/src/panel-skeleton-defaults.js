@@ -89,10 +89,10 @@ const SKELETON_SETTINGS_STYLES = `
 // right sidebar. It holds the generator setting Delete collapsing points and
 // the master-wide source defaults: the width and terminal presets. The
 // defaults used to be hosted in the Metrics panel.
-// The preset tables' columns: the name takes the room that is left, a number
-// is as wide as four digits in its box or its head, and the row's actions hug
-// their buttons.
-const NAME_COLUMN = { stretch: true, minWidth: 40 };
+// The preset tables' columns: the name dragged to any width, a number as
+// wide as four digits in its box or its head, and the row's actions taking
+// what is left, never less than their buttons.
+const NAME_COLUMN = { width: 80, minWidth: 40 };
 const NUMBER_COLUMN = { fitText: "0000", fitField: true };
 const ACTIONS_COLUMN = { label: "", hug: true };
 

@@ -1158,7 +1158,7 @@ export class DataTable extends HTMLElement {
         ?.remove();
     }
     const box = this._scroll?.clientWidth || 0;
-    const lastMin = last?.column.minWidth ?? 48;
+    const lastMin = this._flexMin(last);
     const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
     // Every column but the last keeps its own width; only the last stretches,
     // to fill the box, never below its minimum. When the box is too narrow
@@ -1227,18 +1227,20 @@ export class DataTable extends HTMLElement {
   }
 
   // The column that takes the room the others leave: the one marked
-  // `stretch`, else the last that neither hugs nor fits text, else the last.
+  // `stretch`, else the last. A hugging one never goes below its contents.
   _flexEntry(visible) {
-    return (
-      visible.find(({ column }) => column.stretch) ??
-      [...visible]
-        .reverse()
-        .find(
-          ({ column, index }) =>
-            column.fitText == null && !this._isHugColumn(column, index)
-        ) ??
-      visible[visible.length - 1]
-    );
+    return visible.find(({ column }) => column.stretch) ?? visible[visible.length - 1];
+  }
+
+  // The narrowest the flexing column may be.
+  _flexMin(entry) {
+    if (!entry) {
+      return 48;
+    }
+    const { column, index } = entry;
+    return this._isHugColumn(column, index)
+      ? Math.max(column.minWidth ?? 0, this._hugWidth(column, index))
+      : (column.minWidth ?? 48);
   }
 
   // A hugging column's width: its widest cell, the head included.
@@ -1325,7 +1327,7 @@ export class DataTable extends HTMLElement {
               80);
     }
     const box = this._scroll?.clientWidth || 0;
-    return box > 0 ? box - (last?.column.minWidth ?? 48) - others : Infinity;
+    return box > 0 ? box - this._flexMin(last) - others : Infinity;
   }
 
   _hugColumn(column, index) {
