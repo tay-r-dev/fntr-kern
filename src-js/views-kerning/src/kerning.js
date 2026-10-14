@@ -2822,7 +2822,7 @@ export class KerningViewController extends ViewController {
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       // It takes the width the other columns leave, never less than its
-      // three 18px buttons, 1px apart, 2px in on the left and 7px on the right.
+      // three 16px buttons, 1px apart, 2px in on the left and 7px on the right.
       { label: "", headerClassName: "kerning-pairtable-apply-col", size: "stretch" },
     ];
     // Backlog item 11: click a column header to sort by it, click again to
@@ -4600,7 +4600,7 @@ export class KerningViewController extends ViewController {
   }
 
   buildApplyProposalButton(row) {
-    const button = document.createElement("icon-button");
+    const button = tableIconButton();
     button.className =
       "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
     button.src = "check";
@@ -4654,7 +4654,7 @@ export class KerningViewController extends ViewController {
     // hovering -- in either mode.
     const marked = this.isPairMarkedForPreview(left, right);
     const skipAll = !!this.suggestionPreviewSettings?.model.skipAll;
-    const button = document.createElement("icon-button");
+    const button = tableIconButton();
     button.className = marked
       ? "kerning-pairtable-preview-toggle kerning-pairtable-preview-excluded"
       : "kerning-pairtable-preview-toggle";
@@ -4692,7 +4692,7 @@ export class KerningViewController extends ViewController {
   // designer cannot see all of, and this icon acts on the row under the
   // cursor.
   buildResetValueButton(row) {
-    const button = document.createElement("icon-button");
+    const button = tableIconButton();
     button.className =
       "kerning-pairtable-reset-indicator kerning-pairtable-reset-value";
     button.src = "rotate";
@@ -4818,7 +4818,7 @@ export class KerningViewController extends ViewController {
     // row actions read as one family.
     const applyCell = document.createElement("td");
     applyCell.className = "kerning-pairtable-apply-col";
-    const applyButton = document.createElement("icon-button");
+    const applyButton = tableIconButton();
     applyButton.className =
       "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
     applyButton.src = "check";
@@ -4857,7 +4857,7 @@ export class KerningViewController extends ViewController {
     // this.autokernCache's per-pair `junk` field, not this Set.
     const hidden = this.hiddenClassRuleIds.has(id);
     tr.classList.toggle("kerning-pairtable-row-hidden", hidden);
-    const hideButton = document.createElement("icon-button");
+    const hideButton = tableIconButton();
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
     if (hidden) {
@@ -6508,7 +6508,7 @@ export class KerningViewController extends ViewController {
       // F19: "An apply-exception action must identify the exact pair and
       // proposed value it will save" -- row.suggestion (the candidate's own
       // proposed value), never row.current.
-      const acceptButton = document.createElement("icon-button");
+      const acceptButton = tableIconButton();
       acceptButton.className =
         "kerning-pairtable-apply-indicator kerning-pairtable-apply-class";
       acceptButton.src = "check";
@@ -6533,7 +6533,7 @@ export class KerningViewController extends ViewController {
         // F12: "A saved exception's indicator remains visible" (not muted,
         // unlike the create-lock below). Drawn red, the same cue the row's
         // own left bar already carries for a pair exception.
-        const removeButton = document.createElement("icon-button");
+        const removeButton = tableIconButton();
         removeButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-saved";
         removeButton.src = "unlock";
@@ -6558,7 +6558,7 @@ export class KerningViewController extends ViewController {
         // F12: "An inherited pair's lock is muted until hover or focus" --
         // kerning.css's own .kerning-pairtable-exception-create rule holds
         // the muted/reveal styling; this only assigns the class.
-        const lockButton = document.createElement("icon-button");
+        const lockButton = tableIconButton();
         lockButton.className =
           "kerning-pairtable-exception-indicator kerning-pairtable-exception-create";
         lockButton.src = "lock";
@@ -6590,7 +6590,7 @@ export class KerningViewController extends ViewController {
     // 10's lock/Remove-exception cell already established (kerning.css's
     // tr:hover/tr:focus-within rule), not a second one.
     tr.classList.toggle("kerning-pairtable-row-hidden", !!row.hidden);
-    const hideButton = document.createElement("icon-button");
+    const hideButton = tableIconButton();
     hideButton.className =
       "kerning-pairtable-hide-indicator kerning-pairtable-hide-action";
     if (row.hidden) {
@@ -8790,6 +8790,14 @@ function buildValueSpan(value, unreliable) {
 // layer toggles bleed into the editor's and vice versa.
 // An empty slot the size of a row icon, standing in for an action a row does
 // not have, so every action sits in the same column on every row.
+// A row's button: button/table at 16px, the table's own (data-table.js).
+function tableIconButton() {
+  const button = document.createElement("icon-button");
+  button.className = "data-table-action";
+  button.size = "S";
+  return button;
+}
+
 function actionSlotSpacer() {
   const spacer = document.createElement("span");
   spacer.className = "kerning-pairtable-action-spacer";
