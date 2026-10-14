@@ -1675,6 +1675,8 @@ export class DataTable extends HTMLElement {
     if (this._selectable) {
       this._syncSelectAll();
     }
+    // A hugging column follows the rows now drawn.
+    this._applyColumnWidths();
     this._restoreCellFocus(focus);
     this.onRowsRender?.();
   }
