@@ -1,4 +1,5 @@
 import { PopupMenu } from "@fontra/web-components/popup-menu.js";
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js";
 import { DefaultFormatter } from "./formatters.js";
 import * as html from "./html-utils.js";
 import { uniqueID, zip } from "./utils.ts";
@@ -96,24 +97,10 @@ function didReorder(a, b) {
   return false;
 }
 
-// A checkmark (Figma 379:22544): shared.css's label.checkmark-row holding an
-// input.checkmark, with an optional name. `onchange(checked)` runs on a click.
-export function checkmark(checked, label, onchange, { disabled, tooltip } = {}) {
-  const input = html.input({
-    type: "checkbox",
-    class: "checkmark",
-    checked: !!checked,
-    disabled: !!disabled,
-    onchange: (event) => onchange(event.target.checked),
-  });
-  const row = html.label({ class: "checkmark-row" }, [
-    input,
-    ...(label ? [html.span({}, [label])] : []),
-  ]);
-  if (tooltip) {
-    row.dataset.tooltip = tooltip;
-  }
-  return row;
+// A checkmark (Figma 2004:29411): the ui-checkmark component, with an
+// optional name. `onchange(checked)` runs on a click.
+export function checkmark(checked, label, onchange, options) {
+  return makeCheckmark(checked, label, onchange, options);
 }
 
 // A checkbox bound to `controller.model[key]`, drawn as the checkmark
@@ -128,7 +115,7 @@ export function labeledCheckbox(label, controller, key, options) {
     },
     { disabled: options?.disabled }
   );
-  const inputElement = row.querySelector("input");
+  const inputElement = row;
   inputElement.id = options?.id || `checkbox-${uniqueID()}-${key}`;
   if (options?.labelClass) {
     row.classList.add(...options.labelClass.split(" ").filter(Boolean));

@@ -878,7 +878,7 @@ export default class TransformationPanel {
     };
 
     const K = "sidebar.selection-transformation";
-    const operations = html.div({ "class": "row-group", "style": "padding-top: 4px;" }, [
+    const operations = html.div({ class: "row-group", style: "padding-top: 4px;" }, [
       groupLabel(`${K}.operations`),
       pairRow(
         tray([
@@ -971,7 +971,7 @@ export default class TransformationPanel {
         translate(`${K}.harmonize.${labelKey}`),
         (checked) => (settings[key] = checked)
       );
-      this.harmonizeChecks[key] = row.querySelector("input");
+      this.harmonizeChecks[key] = row;
       return row;
     };
     const harmonizeOptions = [

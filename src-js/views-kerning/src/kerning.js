@@ -161,6 +161,7 @@ import "@fontra/web-components/segmented-control.js";
 import "@fontra/web-components/text-button.js";
 import "@fontra/web-components/input-field-large.js";
 import "@fontra/web-components/radio-buttons.js";
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js";
 import "@fontra/web-components/ui-text-input.js";
 import { GlyphCell } from "@fontra/web-components/glyph-cell.js";
 import { GlyphCellView } from "@fontra/web-components/glyph-cell-view.js";
@@ -1157,10 +1158,9 @@ export class KerningViewController extends ViewController {
 
     // checkmark (Figma 4128:2857), the same rows the filters use.
     const checkmark = (id, label, checked, onChange) => {
-      const input = html.input({ type: "checkbox", class: "checkmark", id });
-      input.checked = checked;
-      input.addEventListener("change", () => onChange(input.checked));
-      return [html.label({ class: "checkmark-row" }, [input, label]), input];
+      const element = makeCheckmark(checked, label, onChange);
+      element.id = id;
+      return [element, element];
     };
     const [numbersRow] = checkmark(
       "kerning-suggestion-preview-numbers",
@@ -2584,6 +2584,7 @@ export class KerningViewController extends ViewController {
     const showHiddenCheckbox = document.querySelector(
       "#kerning-pairtable-filter-hidden"
     );
+    showHiddenCheckbox.label = "show hidden";
     showHiddenCheckbox.checked = filters.showHidden;
     showHiddenCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showHidden", showHiddenCheckbox.checked);
@@ -2608,6 +2609,7 @@ export class KerningViewController extends ViewController {
     );
     // "zero value": checked shows those rows, so it is the stored hide flag
     // inverted.
+    hideZeroCurrentCheckbox.label = "zero value";
     hideZeroCurrentCheckbox.checked = !filters.hideZeroCurrentSuggestions;
     hideZeroCurrentCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(
@@ -2758,6 +2760,7 @@ export class KerningViewController extends ViewController {
     const showMembersCheckbox = document.querySelector(
       "#kerning-pairtable-show-members"
     );
+    showMembersCheckbox.label = "class members";
     showMembersCheckbox.checked = filters.showIndividualMembers;
     showMembersCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(

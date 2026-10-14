@@ -4,6 +4,7 @@ import { addStyleSheet } from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { enumerate, hexToRgba, range, rgbaToHex } from "@fontra/core/utils.ts";
 import { message } from "@fontra/web-components/modal-dialog.js";
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js";
 import { BaseInfoPanel } from "./panel-base.js";
 
 const defaultStatusFieldDefinitions = {
@@ -243,7 +244,7 @@ class StatusDefinitionBox extends HTMLElement {
     }
   }
 
-  changeStatusDefIsDefault(event) {
+  changeStatusDefIsDefault(checked) {
     const undoLabel = translate(
       "development-status-definitions.undo.change-is-default"
     );
@@ -254,7 +255,7 @@ class StatusDefinitionBox extends HTMLElement {
     for (const [index, oldStatusDef] of enumerate(statusDefinitions)) {
       const newStatusDef = { ...oldStatusDef };
       delete newStatusDef["isDefault"];
-      if (index === this.statusIndex && event.target.checked) {
+      if (index === this.statusIndex && checked) {
         newStatusDef["isDefault"] = true;
       }
       newStatusDefinitions.push(newStatusDef);
@@ -348,7 +349,6 @@ class StatusDefinitionBox extends HTMLElement {
       })
     );
 
-    const checkBoxIdentifier = `statusDefIsDefault${this.statusIndex}`;
     this.append(
       html.div(
         {
@@ -359,18 +359,10 @@ class StatusDefinitionBox extends HTMLElement {
           "data-tooltipposition": "top",
         },
         [
-          html.input({
-            type: "checkbox",
-            checked: statusDef.isDefault,
-            id: checkBoxIdentifier,
-            onchange: (event) => this.changeStatusDefIsDefault(event),
-          }),
-          html.label(
-            {
-              for: checkBoxIdentifier,
-              style: "margin: auto;",
-            },
-            [translate("development-status-definitions.label.is-default")]
+          makeCheckmark(
+            statusDef.isDefault,
+            translate("development-status-definitions.label.is-default"),
+            (checked) => this.changeStatusDefIsDefault(checked)
           ),
         ]
       )

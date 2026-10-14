@@ -311,7 +311,7 @@ export class CheckboxGroup {
           label,
           (checked) => (this.checkboxController.model[key] = checked)
         );
-        const input = row.querySelector("input");
+        const input = row;
         this.checkboxController.addKeyListener(key, (event) => {
           input.checked = !!event.newValue;
         });

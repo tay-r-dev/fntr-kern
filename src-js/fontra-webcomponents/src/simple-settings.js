@@ -1,4 +1,5 @@
 import { UnlitElement, div, input, label } from "@fontra/core/html-utils.js";
+import { makeCheckmark } from "./ui-checkmark.js";
 
 export class SimpleSettings extends UnlitElement {
   static styles = `
@@ -66,17 +67,12 @@ const uiTypes = {
   },
 
   checkbox(settingsElement, description, controller) {
-    const id = `simple-settings.${description.key}`;
-
     return div({}, [
-      input({
-        type: "checkbox",
-        id: id,
-        onchange: (event) =>
-          controller.setItem(description.key, event.target.checked, settingsElement),
-        checked: controller.model[description.key],
-      }),
-      label({ for: id }, [description.displayName]),
+      makeCheckmark(
+        controller.model[description.key],
+        description.displayName,
+        (checked) => controller.setItem(description.key, checked, settingsElement)
+      ),
     ]);
   },
 

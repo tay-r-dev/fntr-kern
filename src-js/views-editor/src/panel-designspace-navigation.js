@@ -35,6 +35,7 @@ import {
   subscribeSnapParameters,
 } from "@fontra/core/snapping.js";
 import {
+  checkmark,
   labeledCheckbox,
   labeledPopupSelect,
   labeledTextInput,
@@ -228,10 +229,9 @@ function debugSlider(id, label, { min, max, step, unit = "" }) {
 
 // A debug switch: the checkmark and its name.
 function debugCheckmark(id, label) {
-  return html.label({ class: "checkmark-row" }, [
-    html.input({ id, type: "checkbox", class: "checkmark" }),
-    label,
-  ]);
+  const element = checkmark(false, label, () => {});
+  element.id = id;
+  return element;
 }
 
 function debugResetButton(id) {
@@ -647,7 +647,7 @@ export default class DesignspaceNavigationPanel extends Panel {
       }
 
       /* Stacked checkmarks in the point labels card, 6px apart. */
-      .ds-popover-column .checkmark-row + .checkmark-row {
+      .ds-popover-column ui-checkmark + ui-checkmark {
         margin-top: 6px;
       }
     `);
@@ -988,16 +988,18 @@ export default class DesignspaceNavigationPanel extends Panel {
         const element = html.div({ class: "ds-popover-column" }, [
           html.div({ class: "section-label ds-label--dark" }, [title]),
           ...Object.entries(keys).map(([label, key]) => {
-            const box = html.input({ type: "checkbox", class: "checkmark" });
-            box.checked = !!applicationSettingsController.model[key];
-            box.addEventListener("change", () => {
-              applicationSettingsController.model[key] = box.checked;
-              this.sceneController.canvasController.requestUpdate();
-            });
+            const box = checkmark(
+              applicationSettingsController.model[key],
+              label,
+              (checked) => {
+                applicationSettingsController.model[key] = checked;
+                this.sceneController.canvasController.requestUpdate();
+              }
+            );
             applicationSettingsController.addKeyListener(key, (event) => {
               box.checked = !!event.newValue;
             });
-            return html.label({ class: "checkmark-row" }, [box, label]);
+            return box;
           }),
         ]);
         return element;
@@ -3302,19 +3304,22 @@ export default class DesignspaceNavigationPanel extends Panel {
         (count, src) => count + (src.layerName === source.layerName ? 1 : 0),
         0
       );
-    const deleteLayerCheckBox = html.input({
-      type: "checkbox",
-      id: "delete-layer",
-      checked: canDeleteLayer,
-      disabled: !canDeleteLayer,
-    });
-
     const sourceLayerNames =
       glyphController.getSourceLayerNamesForSourceIndex(sourceIndex);
 
     const sourceLayerNamesString = sourceLayerNames
       .map((item) => `“${item.shortName || "foreground"}”`)
       .join(", ");
+
+    const deleteLayerCheckBox = checkmark(
+      canDeleteLayer,
+      translate(
+        "sidebar.designspace-navigation.warning.delete-associated-layer",
+        sourceLayerNamesString
+      ),
+      () => {},
+      { disabled: !canDeleteLayer }
+    );
 
     const dialogContent = html.div({}, [
       html.div({ class: "message" }, [
@@ -3325,12 +3330,6 @@ export default class DesignspaceNavigationPanel extends Panel {
       ]),
       html.br(),
       deleteLayerCheckBox,
-      html.label({ for: "delete-layer", style: canDeleteLayer ? "" : "color: gray;" }, [
-        translate(
-          "sidebar.designspace-navigation.warning.delete-associated-layer",
-          sourceLayerNamesString
-        ),
-      ]),
     ]);
     dialog.setContent(dialogContent);
 
