@@ -3278,45 +3278,53 @@ falls about 0.001 per unit of wall.
   skeleton point lands on whole units, and the corner where the ball meets the
   wall moves further than the rib does.
 
-### X and B split the ball by turn; the fit starts twice (2026-10-15)
+### Every bulb point has one role; the three apexes sit on extremes (2026-10-15)
 
 Reported: the regenerated bulb left points close together, and rounding the
-short handles between them made kinks. Fine at easing 100; at small easing
-the last ball point sat on an extreme with wrong handles, and the outer wall
-moved off the reference. Measured on E, S, d, R and P of skeletron-test, 20
-easings each, without stored edits.
+short handles between them made kinks; then, after a first fix, in-between
+states of an interpolated glyph rotated the bulb's points. Measured on E, S,
+d, R and P of skeletron-test, 40 easings each, without stored edits; E is the
+one glyph with a bulb in two masters, and the others get a made second master
+(ball ratio x1.25, easing 0.8 against 0.2).
 
-- **The crowding was the fit's own placement.** X and B split the ball up to A
-  by length and A was free, so the fit packed X, B and A onto a short piece of
-  ball: on S at easing 0.5 the chords ran 87, 28, 29, 62, handles 5 to 16. Short
-  handles are what rounding turns: up to 11 degrees of kink on S.
-- **A balance term in the fit was tried first and withdrawn.** It traded the
+- **The rotation was each master choosing its own places.** The fit moved A
+  and W freely and pinned X and B to whichever extremes fitted best, so point
+  3 in one master and point 3 in the other described different parts of the
+  ball. On E's two masters X, B and A pointed 63, 43 and 14 degrees apart, and
+  a blend turns them through that. Now X, B and A are the bulb's three apexes:
+  the axis direction nearest the stroke's at the rib, then a quarter turn and
+  a half turn on. That depends on the rib's direction alone, so every master
+  gives an apex the same extreme: 0, 0 and 0 degrees on E. An apex leaves its
+  extreme only where the extreme is not on the bulb (S's larger made master:
+  A 16.7 degrees). E on the outer wall and W the neck stay the fit's, and
+  their angles are free: 14 to 27 degrees between masters.
+- **Choosing between two fit starts by cost is closed** for the same reason: on
+  E between easing 0.5 and 0.9 one start landed W-Q 12 units off the reference
+  and the other cost twenty times less, and two masters can fall either side.
+  With A held on its apex the single start no longer reaches that minimum.
+- **Splitting the ball by turn, or the whole run by turn, is closed.** By turn
+  over the whole run the fillet's turn moved the split with the easing, the
+  pins changed slot below easing 0.6 on E, and the outer wall left the
+  reference by 6.9 units against 0.3. By turn over the ball alone it held the
+  wall, but the points still landed on different extremes per master.
+- **A balance term in the fit was tried and withdrawn.** It traded the
   curvature match for the balance and left the kinks: S 11.3 to 4.8 degrees,
   R 2.7 to 6.1, comb steps up to 194 per cent.
-- **Placing the joins on the curvature jumps forces unequal handles.** A and W
-  at the ends of the fillet circle: a G2 join between two arcs of different
-  radius gives the cubic beside it handles up to 13 to 1.
-- **Placing every point by turn over the whole run moves the outer wall with
-  the easing.** The fillet's turn shifts the even split, the pins change slot
-  below easing 0.6 on E, and P-E leaves the wall by 6.9 units against 0.3.
-  So X and B split the ball alone, rib to fillet, and only they take extremes.
-  E, A and W stay the fit's.
-- **The fit has two minima on the inner side, 20 to 1 apart in cost.** On E
-  between easing 0.5 and 0.9 one start lands W-Q 12 units off the reference at
-  a cost of 400; the other minimum costs 22. A start at the ends of the ball and
-  the circle finds the good one there and the bad one elsewhere (handle ratios
-  to 37 to 1). The release fit runs from both and keeps the cheaper: 52 to 70 ms
-  on E, 25 to 38 on S. Preview frames still take the quick fit from one start.
+- **Joins on the curvature jumps force unequal handles.** A and W at the ends of
+  the fillet circle: a G2 join between arcs of different radius gave the cubic
+  beside it handles up to 13 to 1.
+- **Keeping the neck inside the fillet was tried and withdrawn**: no kink moved,
+  and A-W left the reference by 14.7 units on one case.
 
-Worst over the five glyphs at 40 easings, distance from the reference: outer
-wall 0.30 (6.9 before on E), ball 1.84, inner side 3.45. Without edits, worst
-kink and handle ratio per glyph, before and after: E 3.1 / 12.2 to 1.7 / 1.8,
-S 11.3 / 3.3 to 4.1 / 1.5, d 5.0 / 3.2 to 2.2 / 2.3, R 2.7 / 3.0 to 3.8 / 1.7,
-P unchanged at 3.9 / 9.6. The bulb test file fails the same 28 tests before
-and after; the suite went 2992 passing, 33 failing, both sides.
+Worst distance from the reference over all of them: outer wall 1.36, ball
+1.69, A-W 2.08, W-Q 5.73. Worst kink, worst handle ratio and shortest handle:
+E 8.0 / 3.2 / 6, S 6.2 / 3.9 / 6, d 0.2 / 1.9 / 21.6, R 2.5 / 4.6 / 9, P 6.3 /
+1.9 / 8. The bulb test file fails the same 28 tests before and after; the suite
+is 2992 passing, 33 failing, both sides.
 
-- **Open: P at easing 0.3 to 0.45** takes the cheaper minimum with A at the
-  ball's end, so A-W leaves A on a 5-unit handle (5/45). The shape holds; the
-  short handle remains.
+- **Open: short handles at A and W.** Where the ball's end is close to the third
+  apex and the fillet is small, A-W is 19 to 46 units long with handles of 6 to
+  18, and rounding bends A or W by up to 8 degrees (E at small easing). That is
+  inside what the grid allows a join with handles this short.
 - **Open: S's ball is too small for long handles.** It turns about 250 degrees
   over six cubics, so no placement gives handles much over 12 units there.
