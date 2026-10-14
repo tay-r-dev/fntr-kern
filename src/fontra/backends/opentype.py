@@ -74,7 +74,9 @@ class OTFBackend(WatchableBackend, ReadableBaseBackend):
         fontAxes: list[FontAxis] = [
             axis for axis in self.axes.axes if isinstance(axis, FontAxis)
         ]
-        self.fontSources = unpackFontSources(self.font, fontAxes)
+        self.fontSources, self.normalizedSourceLocations = unpackFontSources(
+            self.font, fontAxes
+        )
         self.fontSourcesInstancer = FontSourcesInstancer(
             fontAxes=self.axes.axes, fontSources=self.fontSources
         )
@@ -229,8 +231,8 @@ class OTFBackend(WatchableBackend, ReadableBaseBackend):
         return self.font["head"].unitsPerEm
 
     async def getKerning(self) -> dict[str, Kerning]:
-        # TODO: extract kerning from GPOS
-        return {}
+        kerning = unpackKerning(self.font, self.normalizedSourceLocations)
+        return {"kern": kerning} if kerning is not None else {}
 
     async def getFeatures(self) -> OpenTypeFeatures:
         # TODO: do best effort of reading GSUB/GPOS with fontFeatures
@@ -416,7 +418,8 @@ OS_2_MAPPING = [
 
 def unpackFontSources(
     font: TTFont, fontraAxes: list[FontAxis]
-) -> dict[str, FontSource]:
+) -> tuple[dict[str, FontSource], dict[str, dict[str, float]]]:
+    # Also returns each source's normalized location, keyed by axis tag
     nameTable = font["name"]
     fvarTable = font.get("fvar")
     fvarAxes = fvarTable.axes if fvarTable is not None else []
@@ -470,6 +473,7 @@ def unpackFontSources(
         }
 
     sources = {defaultSourceIdentifier: defaultSource}
+    normalizedLocations: dict[str, dict[str, float]] = {defaultSourceIdentifier: {}}
 
     for locationTuple in sorted(locations):
         location = dict(locationTuple)
@@ -498,8 +502,170 @@ def unpackFontSources(
                     ]
 
         sources[sourceIdentifier] = source
+        normalizedLocations[sourceIdentifier] = location
 
-    return sources
+    return sources, normalizedLocations
+
+
+def unpackKerning(
+    font: TTFont, normalizedSourceLocations: dict[str, dict[str, float]]
+) -> Kerning | None:
+    gposTable = font.get("GPOS")
+    if gposTable is None or gposTable.table.LookupList is None:
+        return None
+    gpos = gposTable.table
+
+    lookupIndices = sorted(
+        {
+            lookupIndex
+            for featureRecord in gpos.FeatureList.FeatureRecord
+            if featureRecord.FeatureTag == "kern"
+            for lookupIndex in featureRecord.Feature.LookupListIndex
+        }
+    )
+
+    instancers = []
+    gdefTable = font.get("GDEF")
+    varStore = getattr(gdefTable.table, "VarStore", None) if gdefTable else None
+    if varStore is not None and "fvar" in font:
+        fvarAxes = font["fvar"].axes
+        instancers = [
+            VarStoreInstancer(varStore, fvarAxes, location)
+            for location in normalizedSourceLocations.values()
+        ]
+
+    collector = KerningCollector(
+        len(normalizedSourceLocations), instancers, font.getReverseGlyphMap()
+    )
+    # shortcut: values from several kern lookups add up when shaped, but the
+    # first lookup to define a pair wins here; compiled fonts rarely split kern
+    # pairs across lookups. Flatten to glyph pairs if one turns up.
+    for lookupIndex in lookupIndices:
+        lookup = gpos.LookupList.Lookup[lookupIndex]
+        for subtable in lookup.SubTable:
+            lookupType = lookup.LookupType
+            if lookupType == 9:
+                lookupType = subtable.ExtensionLookupType
+                subtable = subtable.ExtSubTable
+            if lookupType != 2:
+                continue
+            if subtable.Format == 1:
+                collector.addGlyphPairs(subtable)
+            elif subtable.Format == 2:
+                collector.addClassPairs(subtable)
+
+    if not collector.values:
+        return None
+
+    return Kerning(
+        groupsSide1=collector.groupsSide1,
+        groupsSide2=collector.groupsSide2,
+        sourceIdentifiers=list(normalizedSourceLocations),
+        values=collector.values,
+    )
+
+
+class KerningCollector:
+    """Turn GPOS pair subtables into Fontra kerning, in lookup order.
+
+    The first subtable that defines a pair wins, as in shaping. A glyph can be
+    in one group per side, so a first-glyph class is cut down to the glyphs
+    no earlier class subtable covers, and a second-glyph class that overlaps
+    an earlier group keeps the overlapping glyphs as single-glyph pairs.
+    """
+
+    def __init__(
+        self, numSources: int, instancers: list, glyphIndices: dict[str, int]
+    ) -> None:
+        self.numSources = numSources
+        self.glyphIndices = glyphIndices
+        self.instancers = instancers
+        self.groupsSide1: dict[str, list[str]] = {}
+        self.groupsSide2: dict[str, list[str]] = {}
+        self.values: dict[str, dict[str, list[float | None]]] = {}
+        self.glyphPairs: set[tuple[str, str]] = set()
+        # First glyphs a class subtable covers: no later subtable reaches them
+        self.coveredByClass: set[str] = set()
+        self.side2GroupOfGlyph: dict[str, str] = {}
+
+    def readValues(self, valueRecord) -> list[float | None]:
+        # shortcut: reads the first glyph's advance only, so right-to-left
+        # kerning stored as placement is missed; read XPlacement for RTL fonts.
+        base = getattr(valueRecord, "XAdvance", None) or 0
+        device = getattr(valueRecord, "XAdvDevice", None)
+        if device is None or device.DeltaFormat != 0x8000 or not self.instancers:
+            return [base] * self.numSources
+        varIdx = (device.StartSize << 16) + device.EndSize
+        return [base + instancer[varIdx] for instancer in self.instancers]
+
+    def addGlyphPairs(self, subtable) -> None:
+        for leftGlyph, pairSet in zip(subtable.Coverage.glyphs, subtable.PairSet):
+            if leftGlyph in self.coveredByClass:
+                continue
+            for record in pairSet.PairValueRecord:
+                pair = (leftGlyph, record.SecondGlyph)
+                if pair in self.glyphPairs:
+                    continue
+                self.glyphPairs.add(pair)
+                self.values.setdefault(leftGlyph, {})[record.SecondGlyph] = (
+                    self.readValues(record.Value1)
+                )
+
+    def addClassPairs(self, subtable) -> None:
+        classDefs1 = subtable.ClassDef1.classDefs
+        classDefs2 = subtable.ClassDef2.classDefs
+
+        leftClasses: dict[int, list[str]] = {}
+        for glyphName in subtable.Coverage.glyphs:
+            if glyphName not in self.coveredByClass:
+                leftClasses.setdefault(classDefs1.get(glyphName, 0), []).append(
+                    glyphName
+                )
+        self.coveredByClass.update(subtable.Coverage.glyphs)
+
+        rightClasses: dict[int, list[str]] = {}
+        for glyphName, classIndex in classDefs2.items():
+            # shortcut: class 0 is "every other glyph"; a non-zero value there
+            # is dropped. Emit it as one pair per glyph if a font needs it.
+            if classIndex:
+                rightClasses.setdefault(classIndex, []).append(glyphName)
+
+        rightKeys = {
+            classIndex: self.side2Keys(
+                sorted(glyphNames, key=self.glyphIndices.__getitem__)
+            )
+            for classIndex, glyphNames in rightClasses.items()
+        }
+
+        for classIndex1, leftGlyphs in leftClasses.items():
+            leftKey = "@" + leftGlyphs[0]
+            self.groupsSide1[leftGlyphs[0]] = leftGlyphs
+            classRecord = subtable.Class1Record[classIndex1]
+            for classIndex2, keys in rightKeys.items():
+                sourceValues = self.readValues(
+                    classRecord.Class2Record[classIndex2].Value1
+                )
+                if not any(sourceValues):
+                    continue
+                rightDict = self.values.setdefault(leftKey, {})
+                for rightKey in keys:
+                    rightDict.setdefault(rightKey, sourceValues)
+
+    def side2Keys(self, glyphNames: list[str]) -> list[str]:
+        existing = {self.side2GroupOfGlyph.get(glyphName) for glyphName in glyphNames}
+        if len(existing) == 1 and None not in existing:
+            [groupName] = existing
+            if self.groupsSide2[groupName] == glyphNames:
+                return ["@" + groupName]
+
+        free = [g for g in glyphNames if g not in self.side2GroupOfGlyph]
+        keys = [g for g in glyphNames if g in self.side2GroupOfGlyph]
+        if free:
+            self.groupsSide2[free[0]] = free
+            for glyphName in free:
+                self.side2GroupOfGlyph[glyphName] = free[0]
+            keys.insert(0, "@" + free[0])
+        return keys
 
 
 def unpackFVARInstances(font) -> list[tuple[dict[str, float], str]]:

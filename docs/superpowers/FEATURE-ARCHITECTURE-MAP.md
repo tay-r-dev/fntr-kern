@@ -553,6 +553,7 @@ Small shared edits worth knowing about:
 | `fontra-core/assets/tabler-icons/check.svg` | +1/−0 | **Kerning view** — apply/accept icon in the pair table and the derive proposals list |
 | `fontra-webcomponents/src/glyph-cell.js` | +60/−8 | **Kerning view** — a stale-tile opacity rule and a `--glyph-cell-status-display` toggle for the class panel's tiles; renames the shared `throttledUpdate` listener into two named listeners |
 | `views-editor/src/edit-tools-metrics.js` | +3/−3 | **Kerning view** — exports `SidebearingTool` and `KerningTool` so `views-kerning` can import them (§3 F13) |
+| `src/fontra/backends/opentype.py` | +170/−4 | **Kerning view** — `getKerning` reads GPOS pair kerning from a compiled font: glyph and class pairs, a value per source from the GDEF variation store. Upstream returns nothing here. A class a later subtable cannot reach loses those glyphs; a second-side class that overlaps an earlier group keeps them as single-glyph pairs. Tests in `test-py/test_backends_opentype.py`, checked against the MutatorSans sources |
 
 ---
 
@@ -572,8 +573,9 @@ Access it **only** through `fontra-core/src/fontra-internal-data.js`, with
 them. customData is freeform, and every Fontra backend round-trips it, so this data lands
 permanently in the user's project files (`.fontra`, `.designspace`, UFO lib).
 
-### The one backend change
+### The one backend schema change
 
+The compiled-font kerning reader (§4, `opentype.py`) is the other backend change; it adds no field.
 `src/fontra/core/classes.py` gets **a single line**:
 
 ```python
