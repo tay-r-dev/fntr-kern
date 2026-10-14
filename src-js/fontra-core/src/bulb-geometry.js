@@ -248,9 +248,8 @@ function wallLengthTable(points, from) {
   };
 }
 
-// The rolling circle's radius at the smallest easing and at full easing, in
-// ball radii. Easing 0 is the plain corner.
-const FILLET_MIN_RADIUS = 0.5;
+// The rolling circle's largest radius, at full easing, in ball radii. Easing 0
+// is the plain corner.
 const FILLET_RADIUS = 2.2;
 // How far back along the outer wall from the rib the refit starts E, in ball
 // radii: where the realized S put it.
@@ -419,12 +418,9 @@ function solveBulb({
   // circle's arc, the inner wall to Q. Every piece is exact. Its comb may step,
   // because it is the shape to follow, not the outline.
   const built = easing > 0;
-  // Easing runs from the smallest circle to the largest that fits.
-  const largest = built ? largestCircle() : 0;
-  const smallest = Math.min(FILLET_MIN_RADIUS * radius, largest);
-  const filletRadius = built
-    ? smallest + clamp(easing, 0, 1) * (largest - smallest)
-    : 0;
+  // Easing runs from no circle, the corner, to the largest that fits, in
+  // proportion: a small easing is a small fillet.
+  const filletRadius = built ? clamp(easing, 0, 1) * largestCircle() : 0;
   const ballPieces = (from, to) => {
     const count = Math.max(1, Math.ceil(Math.abs(to - from) / (Math.PI / 3)));
     return Array.from({ length: count }, (_, i) =>
@@ -483,8 +479,9 @@ function solveBulb({
   const held = built ? apexes : [...apexes, sA];
   const fit = fitToReference(reference, {
     start: sRib - Math.min(FIT_ENTRY_LEAD * radius, 0.8 * sRib),
-    // The neck starts in the middle of the fillet.
-    neck: reference.atTurn((reference.turnAt(sA) + reference.turnAt(sW)) / 2),
+    // The neck starts in the middle of the fillet, by length: the turn table
+    // cannot see a fillet a few units across.
+    neck: (sA + sW) / 2,
     kP,
     kQ,
     radius,

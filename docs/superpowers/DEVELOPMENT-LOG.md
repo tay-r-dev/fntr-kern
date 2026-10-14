@@ -3322,6 +3322,19 @@ E 8.0 / 3.2 / 6, S 6.2 / 3.9 / 6, d 0.2 / 1.9 / 21.6, R 2.5 / 4.6 / 9, P 6.3 /
 1.9 / 8. The bulb test file fails the same 28 tests before and after; the suite
 is 2992 passing, 33 failing, both sides.
 
+- **Easing scales the fillet from nothing.** It ran from half a ball radius at
+  the smallest easing to the largest circle that fits, so on d, R and P the
+  smallest easing already drew half the full fillet (R: 26 units against 59).
+  It is easing times the largest circle now: R 0.1 units at easing 0.001, 5.9
+  at 0.1.
+- **The turn table cannot see a small fillet.** It samples the reference every
+  half unit or so, and a fillet a few units across read 12, 51 and 68 degrees
+  on three neighbouring easings. The neck started at the fillet's middle by
+  turn and hopped between minima with it; it starts at the middle by length.
+- **Open: the neck still hops between two minima** on some neighbouring
+  easings: R from 0.05 to 0.075 (A-W 3.2 to 7.4 units off the reference), E's
+  second master between 0.15 and 0.3 (W-Q 0.65 to 6.7). Preview frames take
+  the quick fit, so it shows on release.
 - **Open: short handles at A and W.** Where the ball's end is close to the third
   apex and the fillet is small, A-W is 19 to 46 units long with handles of 6 to
   18, and rounding bends A or W by up to 8 degrees (E at small easing). That is
