@@ -124,7 +124,7 @@ export class Form extends SimpleElement {
       letter-spacing: var(--ui-tracking-sans);
       text-transform: uppercase;
       color: var(--text-base-basic-3);
-      margin-top: 2px;
+      margin-top: calc(2px + var(--space-above, 0px));
       margin-bottom: -4px;
     }
 
@@ -363,12 +363,7 @@ export class Form extends SimpleElement {
     }
     for (const fieldItem of fieldDescriptions) {
       if (fieldItem.type === "divider") {
-        // `spaceAbove`: extra room above the divider, in px.
-        const hr = html.hr();
-        if (fieldItem.spaceAbove) {
-          hr.style.marginBlockStart = `${fieldItem.spaceAbove}px`;
-        }
-        this.contentElement.appendChild(hr);
+        this.contentElement.appendChild(html.hr());
         continue;
       }
       if (fieldItem.type === "line-spacer") {
@@ -393,6 +388,10 @@ export class Form extends SimpleElement {
       labelElement.classList.add("ui-form-label", fieldItem.type);
       if (fieldItem.type === "header") {
         labelElement.classList.add(`header-${fieldItem.level || "h4"}`);
+        // `spaceAbove`: extra room above the heading, in px.
+        if (fieldItem.spaceAbove) {
+          labelElement.style.setProperty("--space-above", `${fieldItem.spaceAbove}px`);
+        }
       }
       const valueElement = document.createElement("div");
       valueElement.classList.add("ui-form-value", fieldItem.type);

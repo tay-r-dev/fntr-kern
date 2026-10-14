@@ -2266,12 +2266,13 @@ export default class SkeletonParametersPanel {
     if (presetType) {
       this._refreshTerminalPresetControl(presetType);
     }
-    // 4px more above the terminal section than above the others.
-    formContents.push({ type: "divider", spaceAbove: 4 });
+    formContents.push({ type: "divider" });
     formContents.push({
       type: "header",
       level: "h2",
       label: translate("sidebar.skeleton-parameters.caps"),
+      // 4px more above the terminal section than above the others.
+      spaceAbove: 4,
       // The kind, as the small chips on the heading.
       auxiliaryElement: this.terminalKindControl,
       layoutKey: "terminalKind",
