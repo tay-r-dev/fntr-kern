@@ -167,7 +167,7 @@ export class GlyphSetsUIController {
     table.columns = [
       { label: "", selectAll: true, size: "hug" },
       { label: "name", size: "draggable", width: 120 },
-      { label: "", size: "stretch" },
+      { label: "", size: "hug" },
     ];
     table.resizable = true;
     table.minHeight = 48;

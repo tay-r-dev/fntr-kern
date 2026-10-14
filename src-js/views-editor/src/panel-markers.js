@@ -78,7 +78,7 @@ const MARKERS_PANEL_STYLES = `
 
 // The columns, by the shared table rule: a column of numbers fits four
 // digits in its box or its head; the names and values are dragged to fit,
-// and the actions take what is left, never less than their buttons.
+// and the actions hug their buttons.
 // Dragged columns keep their widths in a narrow panel: the table scrolls
 // sideways instead.
 const ID_COLUMN = { size: "draggable", width: 96 };
@@ -87,7 +87,7 @@ const NUMBER_COLUMN = { size: "hug", fitText: "0000", align: "right" };
 // Goal can be turned off from the table head's menu (right-click).
 const GOAL_COLUMN = { key: "goal", hideable: true, size: "hug", fitText: "0000", fitField: true };
 const GROUP_COLUMN = { size: "draggable", width: 56 };
-const ACTIONS_COLUMN = { label: "", size: "stretch" };
+const ACTIONS_COLUMN = { label: "", size: "hug" };
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";

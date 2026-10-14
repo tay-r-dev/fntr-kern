@@ -94,7 +94,7 @@ const SKELETON_SETTINGS_STYLES = `
 // what is left, never less than their buttons.
 const NAME_COLUMN = { size: "draggable", width: 80 };
 const NUMBER_COLUMN = { size: "hug", fitText: "0000", fitField: true };
-const ACTIONS_COLUMN = { label: "", size: "stretch" };
+const ACTIONS_COLUMN = { label: "", size: "hug" };
 
 function longest(texts) {
   return texts.reduce((a, b) => (b.length > a.length ? b : a), "");
@@ -160,7 +160,7 @@ export default class SkeletonSettingsPanel extends Panel {
       table.look = "select";
       table.columns = columns;
       // The name column is dragged; the number columns hug their numbers;
-      // the actions take what is left.
+      // the actions hug their buttons.
       if (columnWidthsKey) {
         table.columnWidthsStorageKey = columnWidthsKey;
       }

@@ -352,7 +352,7 @@ function dataTable(look) {
     { label: "entry", key: "entry", size: "draggable", width: 120 },
     { label: "editable", key: "editable", size: "hug" },
     { label: "custom", key: "custom", size: "hug" },
-    { label: "", key: "actions", size: "stretch" },
+    { label: "", key: "actions", size: "hug" },
   ];
   table.look = look;
   table.selectable = true;

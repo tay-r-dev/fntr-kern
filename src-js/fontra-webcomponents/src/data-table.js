@@ -1129,9 +1129,9 @@ export class DataTable extends HTMLElement {
   //   width never changes it: a table too wide for its box scrolls sideways;
   // - "stretch": takes the room the others leave, never narrower than its
   //   head, or than its buttons if it holds any.
-  // A column without a size hugs. The one stretching is the column marked so,
-  // else the last. A table none of whose columns has a size is laid out by
-  // the browser.
+  // A column without a size hugs. Without a stretching column the table is
+  // as wide as its columns, not its box. A table none of whose columns has a
+  // size is laid out by the browser.
   _applyColumnWidths() {
     if (!this._table) {
       return;
@@ -1168,13 +1168,11 @@ export class DataTable extends HTMLElement {
     // The columns are their widths, not their contents' (a fixed layout).
     this._table.style.tableLayout = sized ? "fixed" : "";
     this._table.style.minWidth = sized && used > box ? `${used}px` : "";
+    this._table.style.width = sized && !flex ? `${used}px` : "";
   }
 
   _flexEntry(visible) {
-    return (
-      visible.find(({ column }) => column.size === "stretch") ??
-      visible[visible.length - 1]
-    );
+    return visible.find(({ column }) => column.size === "stretch") ?? null;
   }
 
   // The narrowest the stretching column goes: its buttons, if its cells hold
