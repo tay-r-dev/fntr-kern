@@ -17,6 +17,7 @@ import {
 } from "@fontra/core/utils.ts";
 import { EdgeScrub } from "@fontra/web-components/edge-scrub.js";
 import { RangeSlider } from "@fontra/web-components/range-slider.js";
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js";
 import "@fontra/web-components/rotary-control.js";
 
 export class Form extends SimpleElement {
@@ -992,15 +993,16 @@ export class Form extends SimpleElement {
     }
   }
 
-  _addCheckbox(valueElement, fieldItem) {
-    const inputElement = html.input({
-      type: "checkbox",
-      checked: !!fieldItem.value,
-      disabled: !!fieldItem.disabled,
-      onchange: (event) => {
-        this._fieldChanging(fieldItem, inputElement.checked, undefined);
-      },
-    });
+  // The checkmark component, its name inside it; the label column stays
+  // empty so the rows line up.
+  _addCheckbox(valueElement, fieldItem, labelElement) {
+    const inputElement = makeCheckmark(
+      !!fieldItem.value,
+      labelElement.textContent,
+      (checked) => this._fieldChanging(fieldItem, checked, undefined),
+      { disabled: !!fieldItem.disabled }
+    );
+    labelElement.textContent = "";
     if (fieldItem.indeterminate) {
       inputElement.indeterminate = true;
     }
