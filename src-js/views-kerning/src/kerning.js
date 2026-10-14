@@ -5598,7 +5598,12 @@ export class KerningViewController extends ViewController {
       id,
       [
         tableCell(entry.side === "side1" ? "left" : "right"),
-        tableCell(entry.name),
+        tableCell(
+          editableCell({
+            value: entry.name,
+            onCommit: (value) => this.renameClass(entry.side, entry.name, value),
+          })
+        ),
         tableCell([swatch, colorInput]),
         tableCell(truncateGlyphList(entry.members)),
         actions,
@@ -5714,6 +5719,46 @@ export class KerningViewController extends ViewController {
       this.selectedClass = null;
     }
     // Same refresh pattern addGlyphsToClass already uses.
+    this.renderClassList();
+    this.renderClassSwatchStrip();
+    this.renderPairTable();
+  }
+
+  // Renames a class from its row's name: its members, its pairs and its
+  // colour go with it. An empty name, or one the side already has, changes
+  // nothing.
+  async renameClass(side, name, newName) {
+    newName = String(newName ?? "").trim();
+    const groups =
+      side === "side1"
+        ? this.kerningController.kernData.groupsSide1
+        : this.kerningController.kernData.groupsSide2;
+    if (!newName || newName === name || groups?.[newName]) {
+      this.renderClassList();
+      return;
+    }
+    await this.kerningController.renameGroup(side, name, newName);
+    await this.fontController.performEdit(
+      "kerning view: rename class color",
+      "customData",
+      (root) => {
+        const stored = root.customData[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY];
+        if (stored?.[side]?.[name] === undefined) {
+          return;
+        }
+        const colors = {
+          side1: { ...(stored.side1 || {}) },
+          side2: { ...(stored.side2 || {}) },
+        };
+        colors[side][newName] = colors[side][name];
+        delete colors[side][name];
+        root.customData[AUTOKERN_CLASS_COLORS_CUSTOM_DATA_KEY] = colors;
+      },
+      this
+    );
+    if (this.selectedClass?.side === side && this.selectedClass?.name === name) {
+      this.selectedClass = { side, name: newName };
+    }
     this.renderClassList();
     this.renderClassSwatchStrip();
     this.renderPairTable();

@@ -277,6 +277,42 @@ export class KerningController {
     await this._editGroup(glyphName, groupName.trim(), "groupsSide2");
   }
 
+  // Renames a class on one side: its members, and every pair it kerns,
+  // keyed "@name" on the left for side 1 and on the right for side 2.
+  async renameGroup(side, oldName, newName) {
+    const groupsProperty = side === "side1" ? "groupsSide1" : "groupsSide2";
+    const oldKey = addGroupPrefix(oldName);
+    const newKey = addGroupPrefix(newName);
+    await this.fontController.performEdit(
+      `rename kerning ${groupsProperty}`,
+      "kerning",
+      (root) => {
+        const kerningTable = root.kerning[this.kernTag];
+        const groups = kerningTable[groupsProperty];
+        assert(groups?.[oldName] && !groups[newName]);
+        groups[newName] = groups[oldName];
+        delete groups[oldName];
+        const values = kerningTable.values;
+        if (side === "side1") {
+          if (values[oldKey]) {
+            values[newKey] = values[oldKey];
+            delete values[oldKey];
+          }
+        } else {
+          for (const left of Object.keys(values)) {
+            if (values[left][oldKey]) {
+              values[left][newKey] = values[left][oldKey];
+              delete values[left][oldKey];
+            }
+          }
+        }
+        this._updatePairGroupMappings();
+      },
+      null
+    );
+    this._pairFunctions = {};
+  }
+
   async _editGroup(glyphName, newGroupName, groupsProperty) {
     const senderID = null;
     await this.fontController.performEdit(
