@@ -1,11 +1,9 @@
 import * as html from "@fontra/core/html-utils.js";
 import {
   clampWindowStart,
-  fitColumnWidths,
   huggedColumnWidth,
   ownColumns,
   parseCellValue,
-  spreadColumnWidths,
   parseStoredColumnWidths,
   resizedColumnWidth,
   scrollWindowShift,
@@ -960,16 +958,15 @@ export class DataTable extends HTMLElement {
   }
 
   // Column descriptor shape: { label, key, sortKey, sortable, selectAll,
-  // hideable, visible, align, headerClassName, width, minWidth, noShrink,
-  // fitText, fitField, hug, stretch }. A `hug` column is as wide as its
-  // widest cell and head -- an actions column always is, unless `hug` is
-  // false. `stretch` marks the column that takes the room the others leave;
-  // without it that is the last column that neither hugs nor fits text. A `fitText` column is as wide as that text in the
-  // rows' type, or as its head if that is wider -- "0000" for a number
-  // column, or a list for fields side by side. `fitField` measures it
-  // inside an editable cell's box, "select" inside a dropdown field's. Such a column cannot be dragged or
-  // shrunk. `sortKey` is opaque to this component -- it is whatever the
-  // caller passed back through `onSort`.
+  // hideable, visible, align, headerClassName, size, width, minWidth,
+  // fitText, fitField }. `size` is "hug", "draggable" or "stretch" (see
+  // _applyColumnWidths); `width` is where a draggable column starts and
+  // `minWidth` how narrow it may go if more than its head. A `fitText` column
+  // hugs that text in the rows' type instead of its cells -- "0000" for a
+  // number column, or a list for fields side by side. `fitField` measures it
+  // inside an editable cell's box, "select" inside a dropdown field's.
+  // `sortKey` is opaque to this component -- it is whatever the caller passed
+  // back through `onSort`.
   // `key` names a hideable column in the column menu and `setColumnVisible`.
   set columns(columns) {
     this._columns = ownColumns(columns);
@@ -1101,9 +1098,8 @@ export class DataTable extends HTMLElement {
     return this._look ?? null;
   }
 
-  // Columns can be resized by dragging a head cell's right edge, and the
-  // widths are kept under this key, so they survive a reload. Unset, the
-  // columns cannot be dragged.
+  // Dragged widths are kept under this key, so they survive a reload. Unset,
+  // they last for the page.
   set columnWidthsStorageKey(key) {
     this._columnWidthsStorageKey = key;
     let stored = null;
@@ -1126,125 +1122,95 @@ export class DataTable extends HTMLElement {
       .filter(({ column }) => column.visible !== false && column._headerElement);
   }
 
-  // Every column but the last has a width: the one it was dragged to, else
-  // its descriptor's `width`. The last stretches to take what is left, never
-  // less than its `minWidth` (48px by default). A table whose columns have no
-  // widths at all shares its width among them as before.
+  // Every column has one of three sizes (its `size`):
+  // - "hug": as wide as its head or its widest cell, whichever is wider;
+  // - "draggable": dragged by its head's right edge to any width, never
+  //   narrower than its head; it starts at `width`, else hugging. The panel's
+  //   width never changes it: a table too wide for its box scrolls sideways;
+  // - "stretch": takes the room the others leave, never narrower than its
+  //   head, or than its buttons if it holds any.
+  // A column without a size hugs. The one stretching is the column marked so,
+  // else the last. A table none of whose columns has a size is laid out by
+  // the browser.
   _applyColumnWidths() {
     if (!this._table) {
       return;
     }
     const visible = this._visibleColumns();
-    const hugs = visible.some(({ column, index }) => this._isHugColumn(column, index));
-    if (!this._columnWidthsStorageKey && !hugs) {
-      return;
-    }
-    const last = this._flexEntry(visible);
-    const fixed = visible.filter(({ column }) => column !== last?.column);
-    const widthOf = ({ column, index }) =>
-      column.fitText != null
-        ? this._fitTextWidth(column)
-        : this._isHugColumn(column, index)
-          ? this._hugWidth(column, index)
-          : (this._columnWidths?.[this._columnId(column, index)] ??
-            column.width ??
-            null);
-    const anyWidth = fixed.some((entry) => widthOf(entry) != null);
-
-    if (last) {
-      // The flexing column has no handle.
-      last.column._headerElement
-        .querySelector(":scope > .data-table-column-grip")
-        ?.remove();
+    const sized = visible.some(({ column }) => column.size);
+    const flex = sized ? this._flexEntry(visible) : null;
+    let used = 0;
+    for (const entry of visible) {
+      const th = entry.column._headerElement;
+      const draggable = sized && entry !== flex && entry.column.size === "draggable";
+      const grip = th.querySelector(":scope > .data-table-column-grip");
+      if (draggable && !grip) {
+        th.appendChild(this._makeColumnGrip(entry.column, entry.index));
+      } else if (!draggable && grip) {
+        grip.remove();
+      }
+      // A head cell whose right edge has a grip draws that boundary as
+      // draggable.
+      th.classList.toggle("data-table-drag-right", draggable);
+      if (!sized || entry === flex) {
+        continue;
+      }
+      const width = this._columnWidth(entry);
+      th.style.width = `${width}px`;
+      used += width;
     }
     const box = this._scroll?.clientWidth || 0;
-    const lastMin = this._flexMin(last);
-    const widths = fixed.map((entry) => (anyWidth ? (widthOf(entry) ?? 80) : null));
-    // Every column but the last keeps its own width; only the last stretches,
-    // to fill the box, never below its minimum. When the box is too narrow
-    // for them and that minimum, every fixed column gives up the same amount
-    // (fitColumnWidths) -- on screen only; the kept widths come back when the
-    // box widens.
-    const shown =
-      anyWidth && box > 0
-        ? fitColumnWidths(widths, box - lastMin, this._shrinkFloors(fixed, widths))
-        : widths;
-    let used = 0;
-    fixed.forEach((entry, i) => {
-      const th = entry.column._headerElement;
-      if (
-        entry.column.fitText == null &&
-        !this._isHugColumn(entry.column, entry.index) &&
-        !th.querySelector(":scope > .data-table-column-grip")
-      ) {
-        th.appendChild(this._makeColumnGrip(entry.column, entry.index));
-      }
-      const width = shown[i] || null;
-      th.style.width = width ? `${width}px` : "";
-      used += width || 0;
-    });
-    // A head cell whose right edge has a grip draws that boundary as
-    // draggable.
-    for (const { column } of visible) {
-      column._headerElement.classList.toggle(
-        "data-table-drag-right",
-        !!column._headerElement.querySelector(":scope > .data-table-column-grip")
-      );
-    }
-    const lastWidth = Math.max(lastMin, box - used);
-    if (last) {
-      last.column._headerElement.style.width =
-        anyWidth && box > 0 ? `${lastWidth}px` : "";
+    if (flex) {
+      const width = Math.max(this._stretchFloor(flex), box - used);
+      flex.column._headerElement.style.width = `${width}px`;
+      used += width;
     }
     // The columns are their widths, not their contents' (a fixed layout).
-    // Columns that do not shrink can leave the table wider than its box, which
-    // then scrolls sideways.
-    this._table.style.tableLayout = anyWidth && box > 0 ? "fixed" : "";
-    this._table.style.minWidth =
-      anyWidth && box > 0 && used + lastWidth > box ? `${used + lastWidth}px` : "";
+    this._table.style.tableLayout = sized ? "fixed" : "";
+    this._table.style.minWidth = sized && used > box ? `${used}px` : "";
   }
 
-  // The width each fixed column may shrink to: its `minWidth`, or its own
-  // width for a column marked `noShrink`, which the box never narrows.
-  _shrinkFloors(fixed, widths) {
-    return fixed.map(({ column, index }, i) =>
-      column.noShrink ||
-      column.fitText != null ||
-      this._isHugColumn(column, index)
-        ? (widths[i] ?? 0)
-        : (column.minWidth ?? 24)
-    );
-  }
-
-  // An actions column hugs its buttons; any other column hugs when asked.
-  _isHugColumn(column, index) {
-    if (column.hug != null) {
-      return !!column.hug;
-    }
-    return !!this._tbody?.querySelector(
-      `tr > :nth-child(${index + 1}) > .data-table-actions`
-    );
-  }
-
-  // The column that takes the room the others leave: the one marked
-  // `stretch`, else the last. A hugging one never goes below its contents.
   _flexEntry(visible) {
-    return visible.find(({ column }) => column.stretch) ?? visible[visible.length - 1];
+    return (
+      visible.find(({ column }) => column.size === "stretch") ??
+      visible[visible.length - 1]
+    );
   }
 
-  // The narrowest the flexing column may be.
-  _flexMin(entry) {
-    if (!entry) {
-      return 48;
-    }
+  // The narrowest the stretching column goes: its buttons, if its cells hold
+  // any, else its head.
+  _stretchFloor(entry) {
     const { column, index } = entry;
-    return this._isHugColumn(column, index)
-      ? Math.max(column.minWidth ?? 0, this._hugWidth(column, index))
-      : (column.minWidth ?? 48);
+    const buttons = [...(this._tbody?.children || [])].some((row) =>
+      row.children[index]?.querySelector("icon-button, button")
+    );
+    return buttons ? this._contentWidth(entry) : this._headWidth(column);
   }
 
-  // A hugging column's width: its widest cell, the head included.
-  _hugWidth(column, index) {
+  // A hugging or draggable column's width.
+  _columnWidth(entry) {
+    const { column, index } = entry;
+    if (column.size !== "draggable") {
+      return this._contentWidth(entry);
+    }
+    const width =
+      this._columnWidths?.[this._columnId(column, index)] ??
+      column.width ??
+      this._contentWidth(entry);
+    return Math.max(this._dragFloor(column), width);
+  }
+
+  // The narrowest a draggable column goes: its head, or `minWidth` if wider.
+  _dragFloor(column) {
+    return Math.max(column.minWidth ?? 0, this._headWidth(column));
+  }
+
+  // A column's contents' width: its head or its widest cell, whichever is
+  // wider. A `fitText` column measures that text instead of its cells.
+  _contentWidth({ column, index }) {
+    if (column.fitText != null) {
+      return this._fitTextWidth(column);
+    }
     const cells = [column._headerElement];
     for (const row of this._tbody?.children || []) {
       const cell = row.children[index];
@@ -1254,41 +1220,47 @@ export class DataTable extends HTMLElement {
     }
     return huggedColumnWidth(
       cells.map((cell) => html.naturalCellWidth(cell)),
-      column.minWidth ?? 0,
+      0,
       Infinity
     );
   }
 
+  // Texts set in `cell` side by side, FIT_FIELD_GAP apart, with the cell's
+  // padding and `boxPadding` round each.
+  _measureTexts(cell, texts, className, boxPadding = 0) {
+    const style = getComputedStyle(cell);
+    let width =
+      parseFloat(style.paddingLeft) +
+      parseFloat(style.paddingRight) +
+      FIT_FIELD_GAP * (texts.length - 1) +
+      boxPadding * texts.length;
+    for (const text of texts) {
+      const probe = document.createElement("span");
+      probe.className = className || "";
+      probe.style.cssText =
+        "display: inline-block; width: auto; position: absolute; visibility: hidden;";
+      probe.textContent = text;
+      cell.appendChild(probe);
+      width += probe.getBoundingClientRect().width;
+      probe.remove();
+    }
+    return width;
+  }
+
+  _headWidth(column) {
+    return Math.ceil(this._measureTexts(column._headerElement, [column.label || ""]));
+  }
+
   // A `fitText` column's width: its text set in a row's cell, or its label
-  // in its head, whichever is wider, with the cell's padding. A list is
-  // several fields side by side, FIT_FIELD_GAP apart. Measured while shown,
-  // so it follows the look's type.
+  // in its head, whichever is wider. A list is several fields side by side.
+  // `fitField` measures it inside an editable cell's box, "select" inside a
+  // dropdown field's. Measured while shown, so it follows the look's type.
   _fitTextWidth(column) {
-    const measure = (cell, texts, className, boxPadding = 0) => {
-      const style = getComputedStyle(cell);
-      let width =
-        parseFloat(style.paddingLeft) +
-        parseFloat(style.paddingRight) +
-        FIT_FIELD_GAP * (texts.length - 1) +
-        boxPadding * texts.length;
-      for (const text of texts) {
-        const probe = document.createElement("span");
-        probe.className = className || "";
-        probe.style.cssText =
-          "display: inline-block; width: auto; position: absolute; visibility: hidden;";
-        probe.textContent = text;
-        cell.appendChild(probe);
-        width += probe.getBoundingClientRect().width;
-        probe.remove();
-      }
-      return width;
-    };
-    const head = measure(column._headerElement, [column.label || ""]);
     const row = document.createElement("tr");
     const cell = document.createElement("td");
     row.appendChild(cell);
     this._tbody.appendChild(row);
-    const text = measure(
+    const text = this._measureTexts(
       cell,
       [].concat(column.fitText).map(String),
       column.fitField === "select"
@@ -1301,63 +1273,13 @@ export class DataTable extends HTMLElement {
       column.fitField === "select" ? 15 : column.fitField ? 8 : 0
     );
     row.remove();
-    return Math.ceil(Math.max(head, text));
-  }
-
-  // The widest a column may be dragged or hugged: what the box has room for,
-  // or no limit for a column that does not shrink (the table scrolls).
-  _maxColumnWidth(column) {
-    if (column.noShrink) {
-      return Infinity;
-    }
-    const visible = this._visibleColumns();
-    const last = this._flexEntry(visible);
-    let others = 0;
-    for (const entry of visible) {
-      if (entry.column === column || entry.column === last?.column) {
-        continue;
-      }
-      others +=
-        entry.column.fitText != null
-          ? this._fitTextWidth(entry.column)
-          : this._isHugColumn(entry.column, entry.index)
-            ? this._hugWidth(entry.column, entry.index)
-            : (this._columnWidths?.[this._columnId(entry.column, entry.index)] ??
-              entry.column.width ??
-              80);
-    }
-    const box = this._scroll?.clientWidth || 0;
-    return box > 0 ? box - this._flexMin(last) - others : Infinity;
-  }
-
-  _hugColumn(column, index) {
-    const cells = [column._headerElement];
-    for (const row of this._tbody?.children || []) {
-      const cell = row.children[index];
-      if (cell) {
-        cells.push(cell);
-      }
-    }
-    const visible = this._visibleColumns();
-    const lastColumn = this._flexEntry(visible)?.column;
-    this._columnWidths = { ...this._columnWidths };
-    for (const entry of visible) {
-      if (entry.column !== lastColumn) {
-        this._columnWidths[this._columnId(entry.column, entry.index)] = Math.round(
-          entry.column._headerElement.getBoundingClientRect().width
-        );
-      }
-    }
-    this._columnWidths[this._columnId(column, index)] = huggedColumnWidth(
-      cells.map((cell) => html.naturalCellWidth(cell)),
-      column.minWidth ?? 24,
-      this._maxColumnWidth(column)
-    );
-    this._applyColumnWidths();
-    this._storeColumnWidths();
+    return Math.ceil(Math.max(this._headWidth(column), text));
   }
 
   _storeColumnWidths() {
+    if (!this._columnWidthsStorageKey) {
+      return;
+    }
     try {
       localStorage.setItem(
         this._columnWidthsStorageKey,
@@ -1370,6 +1292,7 @@ export class DataTable extends HTMLElement {
 
   _makeColumnGrip(column, index) {
     const grip = html.div({ class: "data-table-column-grip" });
+    const id = this._columnId(column, index);
     // A click on the grip is not a click on the head (no sort).
     grip.addEventListener("click", (event) => event.stopPropagation());
     grip.addEventListener("pointerdown", (event) => {
@@ -1378,38 +1301,17 @@ export class DataTable extends HTMLElement {
       }
       event.preventDefault();
       event.stopPropagation();
-      const id = this._columnId(column, index);
-      // A drag starts from what is on screen: the fixed columns' shown widths
-      // (shrunk to fit a narrow box, maybe) become their kept ones.
-      const visible = this._visibleColumns();
-      const lastColumn = this._flexEntry(visible)?.column;
-      this._columnWidths = { ...this._columnWidths };
-      for (const entry of visible) {
-        if (entry.column !== lastColumn) {
-          this._columnWidths[this._columnId(entry.column, entry.index)] = Math.round(
-            entry.column._headerElement.getBoundingClientRect().width
-          );
-        }
-      }
-      const startWidth = this._columnWidths[id];
+      const startWidth = this._columnWidth({ column, index });
       const startX = event.clientX;
+      const floor = this._dragFloor(column);
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");
       document.documentElement.classList.add("data-table-column-resizing");
-      // The widest this column can go: the box, less the last column's
-      // minimum and every other fixed column's width. The table never leaves
-      // its box, so with the last column at its minimum a column can only
-      // narrow.
-      const maxWidth = this._maxColumnWidth(column);
       const onMove = (moveEvent) => {
-        this._columnWidths[id] = Math.min(
-          maxWidth,
-          resizedColumnWidth(
-            startWidth,
-            moveEvent.clientX - startX,
-            column.minWidth ?? 24
-          )
-        );
+        this._columnWidths = {
+          ...this._columnWidths,
+          [id]: resizedColumnWidth(startWidth, moveEvent.clientX - startX, floor),
+        };
         this._applyColumnWidths();
       };
       const onEnd = () => {
@@ -1429,7 +1331,12 @@ export class DataTable extends HTMLElement {
     // drawn now.
     grip.addEventListener("dblclick", (event) => {
       event.stopPropagation();
-      this._hugColumn(column, index);
+      this._columnWidths = {
+        ...this._columnWidths,
+        [id]: Math.max(this._dragFloor(column), this._contentWidth({ column, index })),
+      };
+      this._applyColumnWidths();
+      this._storeColumnWidths();
     });
     return grip;
   }
@@ -1747,46 +1654,11 @@ export class DataTable extends HTMLElement {
     this._applyColumnVisibility();
     this._updateSortHeaders();
     this._applyColumnWidths();
-    // The box widening goes to the last column alone. Narrowing comes off the
-    // last column first, then equally off the fixed columns.
+    // The stretching column follows the box.
     new ResizeObserver(() => this._boxResized()).observe(this._scroll);
   }
 
   _boxResized() {
-    const box = this._scroll?.clientWidth || 0;
-    const previous = this._lastBoxWidth;
-    this._lastBoxWidth = box;
-    if (this._columnWidthsStorageKey && previous > 0 && box > 0 && box !== previous) {
-      const visible = this._visibleColumns();
-      const flex = this._flexEntry(visible);
-      const fixed = visible.filter(({ column }) => column !== flex?.column);
-      const ids = fixed.map(({ column, index }) => this._columnId(column, index));
-      const current = fixed.map(({ column, index }, i) =>
-        column.fitText != null
-          ? this._fitTextWidth(column)
-          : this._isHugColumn(column, index)
-            ? this._hugWidth(column, index)
-            : (this._columnWidths?.[ids[i]] ?? column.width ?? null)
-      );
-      if (box < previous && current.every((width) => width != null)) {
-        // Growing goes to the last column alone; the fixed columns stay.
-        // Shrinking: the last column gives up its room first, down to its
-        // minimum; only what is still over comes off the fixed columns,
-        // equally.
-        const sum = current.reduce((total, width) => total + width, 0);
-        const lastMin = flex?.column.minWidth ?? 48;
-        const slack = Math.max(0, previous - sum - lastMin);
-        const delta = Math.min(0, box - previous + slack);
-        const next = spreadColumnWidths(
-          current,
-          delta,
-          this._shrinkFloors(fixed, current)
-        );
-        this._columnWidths = { ...this._columnWidths };
-        ids.forEach((id, i) => (this._columnWidths[id] = next[i]));
-        this._storeColumnWidths();
-      }
-    }
     this._applyColumnWidths();
   }
 

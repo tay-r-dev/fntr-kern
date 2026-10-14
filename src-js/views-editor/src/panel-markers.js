@@ -81,13 +81,13 @@ const MARKERS_PANEL_STYLES = `
 // and the actions take what is left, never less than their buttons.
 // Dragged columns keep their widths in a narrow panel: the table scrolls
 // sideways instead.
-const ID_COLUMN = { width: 96, minWidth: 32, noShrink: true };
-const VALUE_COLUMN = { width: 120, minWidth: 48, noShrink: true };
-const NUMBER_COLUMN = { fitText: "0000", align: "right" };
+const ID_COLUMN = { size: "draggable", width: 96 };
+const VALUE_COLUMN = { size: "draggable", width: 120 };
+const NUMBER_COLUMN = { size: "hug", fitText: "0000", align: "right" };
 // Goal can be turned off from the table head's menu (right-click).
-const GOAL_COLUMN = { key: "goal", hideable: true, fitText: "0000", fitField: true };
-const GROUP_COLUMN = { width: 56, minWidth: 40, noShrink: true };
-const ACTIONS_COLUMN = { label: "", hug: true };
+const GOAL_COLUMN = { key: "goal", hideable: true, size: "hug", fitText: "0000", fitField: true };
+const GROUP_COLUMN = { size: "draggable", width: 56 };
+const ACTIONS_COLUMN = { label: "", size: "stretch" };
 
 export default class MarkersPanel extends Panel {
   identifier = "markers";
@@ -242,12 +242,12 @@ export default class MarkersPanel extends Panel {
     const table = this._buildTable("groups", [
       {
         label: translate("sidebar.markers.column.name"),
+        size: "draggable",
         width: 120,
-        minWidth: 40,
-        noShrink: true,
       },
       {
         label: translate("sidebar.markers.column.type"),
+        size: "hug",
         fitText: longest(MARKER_KINDS.map((kind) => kindName(kind))),
       },
       { label: translate("sidebar.markers.column.count"), ...NUMBER_COLUMN },

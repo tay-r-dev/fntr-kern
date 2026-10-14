@@ -165,9 +165,9 @@ export class GlyphSetsUIController {
     table.look = "select";
     table.selectAllClassName = "checkmark";
     table.columns = [
-      { label: "", selectAll: true, hug: true },
-      { label: "name", width: 120, minWidth: 40 },
-      { label: "" },
+      { label: "", selectAll: true, size: "hug" },
+      { label: "name", size: "draggable", width: 120 },
+      { label: "", size: "stretch" },
     ];
     table.resizable = true;
     table.minHeight = 48;

@@ -349,10 +349,10 @@ const TABLE_ITEMS = [
 function dataTable(look) {
   const table = make("data-table", {});
   table.columns = [
-    { label: "entry", key: "entry" },
-    { label: "editable", key: "editable" },
-    { label: "custom", key: "custom" },
-    { label: "", key: "actions" },
+    { label: "entry", key: "entry", size: "draggable", width: 120 },
+    { label: "editable", key: "editable", size: "hug" },
+    { label: "custom", key: "custom", size: "hug" },
+    { label: "", key: "actions", size: "stretch" },
   ];
   table.look = look;
   table.selectable = true;

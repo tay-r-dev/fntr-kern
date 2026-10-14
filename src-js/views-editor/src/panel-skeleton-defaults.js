@@ -92,9 +92,9 @@ const SKELETON_SETTINGS_STYLES = `
 // The preset tables' columns: the name dragged to any width, a number as
 // wide as four digits in its box or its head, and the row's actions taking
 // what is left, never less than their buttons.
-const NAME_COLUMN = { width: 80, minWidth: 40 };
-const NUMBER_COLUMN = { fitText: "0000", fitField: true };
-const ACTIONS_COLUMN = { label: "", hug: true };
+const NAME_COLUMN = { size: "draggable", width: 80 };
+const NUMBER_COLUMN = { size: "hug", fitText: "0000", fitField: true };
+const ACTIONS_COLUMN = { label: "", size: "stretch" };
 
 function longest(texts) {
   return texts.reduce((a, b) => (b.length > a.length ? b : a), "");
@@ -159,8 +159,8 @@ export default class SkeletonSettingsPanel extends Panel {
       // table, look "select" (Figma 4109:3669).
       table.look = "select";
       table.columns = columns;
-      // The name column takes what is left; the number columns fit their
-      // numbers; the actions hug their buttons.
+      // The name column is dragged; the number columns hug their numbers;
+      // the actions take what is left.
       if (columnWidthsKey) {
         table.columnWidthsStorageKey = columnWidthsKey;
       }
@@ -190,6 +190,7 @@ export default class SkeletonSettingsPanel extends Panel {
         },
         {
           label: translate("sidebar.skeleton-settings.column.side"),
+          size: "hug",
           fitText: longest(
             ["both", "left", "right"].map((side) =>
               translate(`sidebar.skeleton-settings.side.${side}`)
@@ -229,7 +230,7 @@ export default class SkeletonSettingsPanel extends Panel {
     // master, built once and refilled on update.
     this.terminalPresetTable = presetTable(
       [
-        { label: translate("sidebar.skeleton-settings.column.type"), hug: true },
+        { label: translate("sidebar.skeleton-settings.column.type"), size: "hug" },
         { label: translate("sidebar.skeleton-settings.column.name"), ...NAME_COLUMN },
         ACTIONS_COLUMN,
       ],
@@ -265,9 +266,10 @@ export default class SkeletonSettingsPanel extends Panel {
     this.gridPresetTable = presetTable(
       [
         { label: translate("sidebar.skeleton-settings.column.name"), ...NAME_COLUMN },
-        { label: "primary", fitText: ["0000", "0000"], fitField: true },
+        { label: "primary", size: "hug", fitText: ["0000", "0000"], fitField: true },
         {
           label: "secondary",
+          size: "hug",
           fitText: longest(["off", ...SECONDARY_GRID_MULTIPLIERS.map(String)]),
           fitField: "select",
         },

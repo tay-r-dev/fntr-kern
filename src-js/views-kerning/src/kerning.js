@@ -2791,13 +2791,14 @@ export class KerningViewController extends ViewController {
         sortKey: "left",
         sortable: true,
         selectAll: true,
+        size: "draggable",
         width: 56,
-        noShrink: true,
       },
       {
         // Always shown: the stored value is what every other number reads
         // against, so it is not in the column menu.
         label: "Current",
+        size: "draggable",
         width: 64,
         // Three digits in the input (4px in on each side) beside the reset.
         minWidth: 64,
@@ -2809,20 +2810,20 @@ export class KerningViewController extends ViewController {
       // so it is the column that sorts by delta.
       {
         label: "Proposed",
+        size: "draggable",
         width: 96,
-        noShrink: true,
         key: "showProposed",
         hideable: true,
         sortKey: "proposed",
         sortable: true,
         headerClassName: "kerning-pairtable-proposed-col",
       },
-      { label: "R", sortKey: "right", sortable: true, width: 56, noShrink: true },
+      { label: "R", sortKey: "right", sortable: true, size: "draggable", width: 56 },
       // One unlabelled actions column (Figma 421:14591): apply, the
       // exception lock and the eye.
       // It takes the width the other columns leave, never less than its
       // three 18px buttons, 1px apart, 2px in on the left and 7px on the right.
-      { label: "", headerClassName: "kerning-pairtable-apply-col", minWidth: 65 },
+      { label: "", headerClassName: "kerning-pairtable-apply-col", size: "stretch" },
     ];
     // Backlog item 11: click a column header to sort by it, click again to
     // flip direction -- one sort UI (headers), not two (the old toggle
@@ -5300,10 +5301,10 @@ export class KerningViewController extends ViewController {
     this._classTable = html.createDomElement("data-table");
     this._classTable.look = "select";
     this._classTable.columns = [
-      { label: "side", width: 34, noShrink: true },
-      { label: "label", width: 47, noShrink: true },
-      { label: "glyphs" },
-      { label: "", minWidth: 64 },
+      { label: "side", size: "hug" },
+      { label: "label", size: "hug" },
+      { label: "glyphs", size: "stretch" },
+      { label: "", size: "hug" },
     ];
     this._classTable.onRowClick = (id) => {
       const entry = this._classTableEntries?.get(id);
