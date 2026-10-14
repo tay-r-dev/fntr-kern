@@ -378,6 +378,15 @@ const DATA_TABLE_STYLES = `
     border: 1px solid var(--data-table-look-border-color);
     border-radius: 6px;
     background-color: var(--data-table-look-background-color);
+    /* The head's rule runs the box's full width, past columns narrower
+       than it; it stays put as the rows scroll. */
+    background-image: linear-gradient(
+      var(--data-table-look-head-rule-color),
+      var(--data-table-look-head-rule-color)
+    );
+    background-position: 0 calc(var(--height-l) - 1px);
+    background-size: 100% 1px;
+    background-repeat: no-repeat;
     /* A column dragged wider than the box scrolls sideways. */
     overflow-x: auto;
   }
@@ -1216,11 +1225,25 @@ export class DataTable extends HTMLElement {
         cells.push(cell);
       }
     }
-    return huggedColumnWidth(
-      cells.map((cell) => html.naturalCellWidth(cell)),
-      0,
-      Infinity
-    );
+    return huggedColumnWidth(cells.map((cell) => this._cellWidth(cell)), 0, Infinity);
+  }
+
+  // A cell's natural width. A row's actions are measured where they stand:
+  // a copy of the buttons loses the size they are set to.
+  _cellWidth(cell) {
+    const actions = cell.querySelector(":scope > .data-table-actions");
+    if (!actions) {
+      return html.naturalCellWidth(cell);
+    }
+    const saved = actions.style.width;
+    actions.style.width = "max-content";
+    const style = getComputedStyle(cell);
+    const width =
+      actions.getBoundingClientRect().width +
+      parseFloat(style.paddingLeft) +
+      parseFloat(style.paddingRight);
+    actions.style.width = saved;
+    return Math.ceil(width);
   }
 
   // Texts set in `cell` side by side, FIT_FIELD_GAP apart, with the cell's
