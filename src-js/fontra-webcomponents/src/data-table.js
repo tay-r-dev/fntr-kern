@@ -1294,6 +1294,15 @@ export class DataTable extends HTMLElement {
   // A cell's natural width. Buttons are measured where they stand, side by
   // side: a copy of one loses the size it is set to, and is slow to make.
   _cellWidth(cell) {
+    if (cell.tagName === "TH") {
+      // A head cell carries the width this table gave it; measured with it,
+      // a column would only ever hug its own width.
+      const saved = cell.style.width;
+      cell.style.width = "";
+      const width = html.naturalCellWidth(cell);
+      cell.style.width = saved;
+      return width;
+    }
     if (!cell.querySelector("icon-button, button")) {
       return html.naturalCellWidth(cell);
     }
