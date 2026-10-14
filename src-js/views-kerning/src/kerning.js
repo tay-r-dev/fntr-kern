@@ -2781,7 +2781,6 @@ export class KerningViewController extends ViewController {
     this._pairTable.selectAllClassName = "kerning-pairtable-select-all";
     // Ticket 21: the tick covers every row the filters admit now, not just
     // what happens to be in the window.
-    this._pairTable.selectAllTitle = "Select every row the filters admit";
     this._pairTable.columns = [
       // Each head sorts by its own column, so the arrow shows on the one that
       // drives the sort: L by the left glyph, R by the right one.
