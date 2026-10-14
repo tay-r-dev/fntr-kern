@@ -5287,16 +5287,18 @@ export class KerningViewController extends ViewController {
     });
     document.querySelector("#autokern-class-help-slot").replaceWith(help);
 
-    // The class table (Figma 4134:4709): side, the class's colour, its
-    // glyphs, and the row's actions on hover.
+    // The class table (Figma 4134:4709): side, the class's name and colour,
+    // its glyphs, and the row's actions on hover.
     this._classTable = html.createDomElement("data-table");
     this._classTable.look = "select";
     this._classTable.columns = [
       { label: "side", size: "hug" },
+      { label: "name", size: "draggable", width: 96 },
       { label: "label", size: "hug" },
       { label: "glyphs", size: "stretch" },
       { label: "", size: "hug" },
     ];
+    this._classTable.columnWidthsStorageKey = "fontra-kerning-class-table-column-widths";
     this._classTable.onRowClick = (id) => {
       const entry = this._classTableEntries?.get(id);
       if (entry) {
@@ -5554,7 +5556,10 @@ export class KerningViewController extends ViewController {
     const colorInput = document.createElement("input");
     colorInput.type = "color";
     colorInput.value = currentColor || "#cccccc";
-    colorInput.hidden = true;
+    // Out of the row's layout, so it never grows the row, yet still able to
+    // open its picker (a hidden one may not, and a stylesheet can unhide it).
+    colorInput.style.cssText =
+      "position: absolute; width: 0; height: 0; padding: 0; border: 0; opacity: 0;";
     colorInput.addEventListener("input", () => {
       swatch.style.backgroundColor = colorInput.value;
     });
@@ -5593,6 +5598,7 @@ export class KerningViewController extends ViewController {
       id,
       [
         tableCell(entry.side === "side1" ? "left" : "right"),
+        tableCell(entry.name),
         tableCell([swatch, colorInput]),
         tableCell(truncateGlyphList(entry.members)),
         actions,
