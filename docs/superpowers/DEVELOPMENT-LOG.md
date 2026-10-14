@@ -3277,3 +3277,46 @@ falls about 0.001 per unit of wall.
 - **One whole unit of terminal moves the neck up to 3 units** on the `S`. The
   skeleton point lands on whole units, and the corner where the ball meets the
   wall moves further than the rib does.
+
+### X and B split the ball by turn; the fit starts twice (2026-10-15)
+
+Reported: the regenerated bulb left points close together, and rounding the
+short handles between them made kinks. Fine at easing 100; at small easing
+the last ball point sat on an extreme with wrong handles, and the outer wall
+moved off the reference. Measured on E, S, d, R and P of skeletron-test, 20
+easings each, without stored edits.
+
+- **The crowding was the fit's own placement.** X and B split the ball up to A
+  by length and A was free, so the fit packed X, B and A onto a short piece of
+  ball: on S at easing 0.5 the chords ran 87, 28, 29, 62, handles 5 to 16. Short
+  handles are what rounding turns: up to 11 degrees of kink on S.
+- **A balance term in the fit was tried first and withdrawn.** It traded the
+  curvature match for the balance and left the kinks: S 11.3 to 4.8 degrees,
+  R 2.7 to 6.1, comb steps up to 194 per cent.
+- **Placing the joins on the curvature jumps forces unequal handles.** A and W
+  at the ends of the fillet circle: a G2 join between two arcs of different
+  radius gives the cubic beside it handles up to 13 to 1.
+- **Placing every point by turn over the whole run moves the outer wall with
+  the easing.** The fillet's turn shifts the even split, the pins change slot
+  below easing 0.6 on E, and P-E leaves the wall by 6.9 units against 0.3.
+  So X and B split the ball alone, rib to fillet, and only they take extremes.
+  E, A and W stay the fit's.
+- **The fit has two minima on the inner side, 20 to 1 apart in cost.** On E
+  between easing 0.5 and 0.9 one start lands W-Q 12 units off the reference at
+  a cost of 400; the other minimum costs 22. A start at the ends of the ball and
+  the circle finds the good one there and the bad one elsewhere (handle ratios
+  to 37 to 1). The release fit runs from both and keeps the cheaper: 52 to 70 ms
+  on E, 25 to 38 on S. Preview frames still take the quick fit from one start.
+
+Worst over the five glyphs at 40 easings, distance from the reference: outer
+wall 0.30 (6.9 before on E), ball 1.84, inner side 3.45. Without edits, worst
+kink and handle ratio per glyph, before and after: E 3.1 / 12.2 to 1.7 / 1.8,
+S 11.3 / 3.3 to 4.1 / 1.5, d 5.0 / 3.2 to 2.2 / 2.3, R 2.7 / 3.0 to 3.8 / 1.7,
+P unchanged at 3.9 / 9.6. The bulb test file fails the same 28 tests before
+and after; the suite went 2992 passing, 33 failing, both sides.
+
+- **Open: P at easing 0.3 to 0.45** takes the cheaper minimum with A at the
+  ball's end, so A-W leaves A on a 5-unit handle (5/45). The shape holds; the
+  short handle remains.
+- **Open: S's ball is too small for long handles.** It turns about 250 degrees
+  over six cubics, so no placement gives handles much over 12 units there.

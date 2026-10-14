@@ -463,63 +463,60 @@ function solveBulb({
   const sA = reference.ends[ballCount];
   const sW = reference.ends[ballCount + arcCount];
 
-  // The refit: E, X, B, A and W slide along the reference, every handle keeps
-  // the reference's direction at its point, and only the handle lengths and
-  // those five places are free. Curvature matches at every join, at P with
-  // the wall before it and at Q with the stroke after it, and the outline
-  // stays as near the reference as that allows. One solve from one start:
-  // E as far back on the wall as the realized S put it, X and B splitting the
-  // ball from the rib to A, A and W where the circle touches. At zero easing
-  // A and W are the corner: the fit ends there, with no condition at it, and
-  // the inner wall leaves the corner at its own angle, exact.
+  // The refit: X and B are placed first, and the fit solves E, A, W and the
+  // twelve handle lengths. Every handle keeps the reference's direction at
+  // its point. Curvature matches at every join, at P with the wall before it
+  // and at Q with the stroke after it, and the outline stays as near the
+  // reference as that allows. At zero easing A and W are the corner: the fit
+  // ends there, with no condition at it, and the inner wall leaves the corner
+  // at its own angle, exact.
+  //
+  // X and B split the ball from the rib to its end by turn. A cubic that turns
+  // a fair angle on an even stretch of curve has two near-equal handles of its
+  // own, and its ends already bend alike, so the fit has little to correct.
+  // They split the ball alone, so easing cannot move them, nor E and the
+  // outer wall the fit solves against them. Split over the whole run instead,
+  // the fillet's turn moved them with the easing, and the wall with them.
+  // Neither X nor B sits exactly at the third place A would take: A pinned to
+  // an extreme left the ball beyond it to a cubic that also had to carry the
+  // fillet.
   const kP = bulbEndCurvature(wall);
   const wallCurvature = curvatureBeyond(inner, beyond);
   const kQ = wallCurvature ?? bulbEndCurvature(inner, true);
-  const start = [
-    sRib - Math.min(FIT_ENTRY_LEAD * radius, 0.8 * sRib),
-    sRib + (sA - sRib) / 3,
-    sRib + (2 * (sA - sRib)) / 3,
-    sA,
-    sW,
-  ];
-  // While an edit runs the bulb's points are hidden, so only the outline has
-  // to move smoothly. The final build pins X and B to where the ball runs
-  // exactly horizontal or vertical, where it does: one extreme takes the
-  // slot whose equal split is nearer, two or more fill both slots with the
-  // pair nearest the equal splits. An extreme within half a radius of the rib,
-  // of A or of the other pin is left alone: the span it would leave is too
-  // short to keep its curvature on whole units.
-  let pins = [null, null];
-  if (!preview) {
-    const gapOnBall = FIT_APEX_ROOM * radius;
-    const targets = [sRib + (sA - sRib) / 3, sRib + (2 * (sA - sRib)) / 3];
-    const found = reference.extremes(sRib + gapOnBall, sA - gapOnBall);
-    if (found.length === 1) {
-      const k =
-        Math.abs(found[0] - targets[0]) <= Math.abs(found[0] - targets[1]) ? 0 : 1;
-      pins[k] = found[0];
-    } else if (found.length >= 2) {
-      let best = null;
-      for (let i = 0; i < found.length; i++)
-        for (let j = i + 1; j < found.length; j++) {
-          if (found[j] - found[i] < gapOnBall) continue;
-          const cost =
-            Math.abs(found[i] - targets[0]) + Math.abs(found[j] - targets[1]);
-          if (!best || cost < best.cost) best = { cost, pins: [found[i], found[j]] };
-        }
-      if (best) pins = best.pins;
-    }
+  const ballPlaces = placeByTurn(reference, sRib, sA, 3, radius, !preview, [0, 1]);
+  // A and W start at a share of the way from their even places, A's third of
+  // the ball and W's middle of the circle, to where the ball and the circle
+  // end. The fit has two minima there, far apart in cost, and one start
+  // does not reach the better one everywhere: the release fit runs from
+  // both and keeps the cheaper. A preview frame takes the quick fit from
+  // the first.
+  const turnOf = reference.turnAt;
+  const toward = (s0, s1, share) =>
+    reference.atTurn(turnOf(s0) + (turnOf(s1) - turnOf(s0)) * share);
+  const heldFrom = (share) =>
+    built
+      ? [
+          ballPlaces[0],
+          ballPlaces[1],
+          toward(ballPlaces[2], sA, share),
+          toward(toward(sA, sW, 0.5), sW, share),
+        ]
+      : [...placeByTurn(reference, sRib, sA, 2, radius, !preview, [0, 1]), sA, sA];
+  const start = sRib - Math.min(FIT_ENTRY_LEAD * radius, 0.8 * sRib);
+  const fitFrom = (share) =>
+    fitToReference(reference, start, {
+      kP,
+      kQ,
+      radius,
+      corner: built ? null : { s: sA },
+      held: heldFrom(share),
+      quick: preview,
+    });
+  let fit = fitFrom(0);
+  if (built && !preview) {
+    const other = fitFrom(FIT_SECOND_START);
+    if (other.cost < fit.cost) fit = other;
   }
-  const fit = fitToReference(reference, start, {
-    kP,
-    kQ,
-    radius,
-    corner: built ? null : { s: sA },
-    sRib,
-    pins,
-    // A preview frame takes the quick fit; the refit runs on release.
-    quick: preview,
-  });
   if (!built) {
     let rest = splitCubicAt(inner, cut).second;
     if (wallCurvature !== undefined)
@@ -561,6 +558,63 @@ function solveBulb({
   };
 }
 
+// `count` places strictly between `from` and `to` that split the reference's
+// turn evenly. With `extremes`, places move onto the reference's exact
+// horizontal and vertical extremes wherever every cubic beside them keeps its
+// least turn: enough for handles of FIT_MIN_HANDLE_UNITS at the ball's radius,
+// or FIT_PIN_SHARE of an even share where the run turns too little for that.
+// Most pins win, then the pins nearest the even split. A place with no pin
+// splits what its neighbours leave, evenly by turn.
+function placeByTurn(reference, from, to, count, radius, extremes, pinnable = null) {
+  const t0 = reference.turnAt(from),
+    t1 = reference.turnAt(to);
+  const even = (i) => t0 + ((t1 - t0) * (i + 1)) / (count + 1);
+  const required = Math.min(
+    4 * Math.atan((3 * FIT_MIN_HANDLE_UNITS) / (4 * radius)),
+    (FIT_PIN_SHARE * (t1 - t0)) / (count + 1)
+  );
+  const fill = (pins) => {
+    const out = [...pins];
+    let last = -1;
+    for (let i = 0; i <= count; i++) {
+      if (i < count && out[i] === null) continue;
+      const a = last < 0 ? t0 : out[last],
+        b = i < count ? out[i] : t1;
+      for (let j = last + 1; j < i; j++)
+        out[j] = a + ((b - a) * (j - last)) / (i - last);
+      last = i;
+    }
+    return out;
+  };
+  let best = { pins: Array(count).fill(null), count: 0, cost: 0 };
+  if (extremes) {
+    const found = reference.extremes(from, to).map((s) => reference.turnAt(s));
+    // Every order-keeping assignment of extremes to places.
+    const visit = (pins, slot, next) => {
+      const placed = fill(pins);
+      const spans = [t0, ...placed, t1].slice(1).map((t, i) => t - [t0, ...placed][i]);
+      const used = pins.filter((t) => t !== null).length;
+      if (used && Math.min(...spans) >= required) {
+        const cost = pins.reduce(
+          (sum, t, i) => sum + (t === null ? 0 : Math.abs(t - even(i))),
+          0
+        );
+        if (used > best.count || (used === best.count && cost < best.cost))
+          best = { pins: [...pins], count: used, cost };
+      }
+      for (let i = slot; i < count; i++)
+        for (let k = next; k < found.length; k++) {
+          if (pinnable && !pinnable.includes(i)) continue;
+          pins[i] = found[k];
+          visit(pins, i + 1, k + 1);
+          pins[i] = null;
+        }
+    };
+    visit(Array(count).fill(null), 0, 0);
+  }
+  return fill(best.pins).map((t) => reference.atTurn(t));
+}
+
 // Cubics end to end, read by length: the place and the direction at any
 // distance along them. Linear between table rows, so both move continuously.
 function referencePath(cubics) {
@@ -589,9 +643,50 @@ function referencePath(cubics) {
     const piece = pieces[k];
     return { curve: piece.curve, t: piece.table.parameterAt(s - piece.from) };
   };
+  // The turn of the reference from its start, accumulated as it runs, so it
+  // only rises. Tabled once on first use; linear between rows.
+  const TURN_STEPS = 1024;
+  let turns = null;
+  const turnTable = () => {
+    if (turns) return turns;
+    turns = [0];
+    let previous = cubicTangentAtPath(0);
+    for (let i = 1; i <= TURN_STEPS; i++) {
+      const tangent = cubicTangentAtPath((total * i) / TURN_STEPS);
+      const dot = previous.x * tangent.x + previous.y * tangent.y;
+      turns.push(turns[i - 1] + Math.abs(Math.atan2(cross(previous, tangent), dot)));
+      previous = tangent;
+    }
+    return turns;
+  };
+  function cubicTangentAtPath(s) {
+    const { curve, t } = locate(s);
+    return cubicTangentAt(curve, t);
+  }
   return {
     total,
     ends,
+    turnAt: (s) => {
+      const table = turnTable();
+      const x = (clamp(s, 0, total) / (total || 1)) * TURN_STEPS;
+      const i = Math.min(TURN_STEPS - 1, Math.floor(x));
+      return table[i] + (table[i + 1] - table[i]) * (x - i);
+    },
+    // The place at a given turn; the first, where the turn stands still.
+    atTurn: (turn) => {
+      const table = turnTable();
+      if (turn <= 0) return 0;
+      if (turn >= table[TURN_STEPS]) return total;
+      let lo = 0,
+        hi = TURN_STEPS;
+      while (hi - lo > 1) {
+        const mid = (lo + hi) >> 1;
+        if (table[mid] < turn) lo = mid;
+        else hi = mid;
+      }
+      const share = (turn - table[lo]) / (table[hi] - table[lo] || 1);
+      return ((lo + share) / TURN_STEPS) * total;
+    },
     point: (s) => {
       const { curve, t } = locate(s);
       return cubicPointAt(curve, t);
@@ -673,11 +768,12 @@ function circleArc(centre, r, a, b) {
 }
 
 // The refit of six cubics, P-E-X-B-A-W-Q, to a reference. The unknowns are
-// the five inner places along the reference and the twelve handle lengths, in
-// logarithms. Residuals: each curve's distance from the reference, across it,
-// at seven fixed parameters, and each curvature condition, weighted to hold.
-// Levenberg-Marquardt from the given start with a fixed step budget: one
-// objective, one start, nothing chosen among. `corner` holds A and W together
+// the places of E, A and W along the reference and the twelve handle lengths,
+// in logarithms; X and B are held where the caller put them, and A and W
+// start there. Residuals: each curve's distance from the reference, across
+// it, at seven fixed parameters, and each curvature condition, weighted to
+// hold. Levenberg-Marquardt from the given start with a fixed step budget.
+// Returns the final cost, so a caller with two starts can keep the cheaper. `corner` holds A and W together
 // on the reference's corner: the fit then stops at A, with no condition there,
 // and the caller supplies the wall after it.
 const FIT_SAMPLES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
@@ -687,38 +783,32 @@ const FIT_SAMPLES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
 const FIT_CURVATURE_WEIGHTS = [0, 1, 10, 100, 2000];
 const FIT_STEPS = 40;
 const FIT_MIN_HANDLE = 0.01;
-// The least span, in ball radii, an extreme must leave on each side to become
-// a point in the final build.
-const FIT_APEX_ROOM = 0.5;
+// The shortest ball handle, in units, a pin may leave beside it: rounding turns
+// a handle this long by under two degrees.
+const FIT_MIN_HANDLE_UNITS = 20;
+// Where the whole ball turns too little for that, a pin may still shorten a
+// neighbouring cubic to this share of an equal split.
+const FIT_PIN_SHARE = 0.75;
 const FIT_LENGTH_PULL = 2;
+// The second start of the release fit, as a share of the way from A's and W's
+// even places to the ends of the ball and the circle: the ends themselves.
+const FIT_SECOND_START = 1;
 // A step that improves the fit by less than this share has settled it.
 const FIT_SETTLED = 1e-6;
 function fitToReference(
   reference,
   start,
-  { kP, kQ, radius, corner, sRib, pins = [null, null], quick = false }
+  { kP, kQ, radius, corner, held, quick = false }
 ) {
   const gap = 0.1 * radius;
   const total = reference.total;
   const fixedCorner = corner !== null;
-  // The free places are E, and A and W unless they are the corner. X and B
-  // split the ball from the rib to A into three equal lengths, as the
-  // realized S has them: left free, the two trade length along one smooth
-  // arc almost for nothing, and the fit had two answers to choose between.
+  // E is solved, and A and W too unless they are the corner; X and B are held.
   const placeCount = fixedCorner ? 1 : 3;
-  const places = (z) => {
-    const sA = fixedCorner ? corner.s : z[1],
-      sW = fixedCorner ? corner.s : z[2];
-    // A slot with no pin splits what its neighbours leave: equally in three
-    // with no pins, in half beside a single pin.
-    const sX =
-      pins[0] ??
-      (pins[1] !== null ? sRib + (pins[1] - sRib) / 2 : sRib + (sA - sRib) / 3);
-    const sB =
-      pins[1] ??
-      (pins[0] !== null ? pins[0] + (sA - pins[0]) / 2 : sRib + (2 * (sA - sRib)) / 3);
-    return [0, z[0], sX, sB, sA, sW, total];
-  };
+  const places = (z) =>
+    fixedCorner
+      ? [0, z[0], ...held, total]
+      : [0, z[0], held[0], held[1], z[1], z[2], total];
   const fitted = (k) => !(fixedCorner && k >= 4);
   // The ends of curve k: places, points and directions along the reference.
   const ends = (s, k) => ({
@@ -784,7 +874,7 @@ function fitToReference(
       return [Math.max(h0, floor), Math.max(h1, floor)];
     });
 
-  const free = fixedCorner ? [start[0]] : [start[0], start[3], start[4]];
+  const free = fixedCorner ? [start] : [start, held[2], held[3]];
   if (quick) {
     const s = places(free);
     const lengths = quickLengths(s);
@@ -840,29 +930,26 @@ function fitToReference(
       rows.push(FIT_LENGTH_PULL * (z[i] - anchor[i]));
     return { curves, blocks, rows };
   };
-  // Which curves an unknown moves: a handle length its own curve; E the two
-  // curves either side of it; A everything from X on, because X and B split
-  // the ball up to A; W the two curves either side of it.
-  const touchedBy = (j) => {
-    if (j >= placeCount) return [Math.floor((j - placeCount) / 2)];
-    if (j === 0) return [0, 1];
-    if (j === 1) return [1, 2, 3, 4];
-    return [4, 5];
-  };
+  // Which curves an unknown moves: a handle length its own curve, a place the
+  // two curves either side of it.
+  const touchedBy = (j) =>
+    j >= placeCount
+      ? [Math.floor((j - placeCount) / 2)]
+      : [
+          [0, 1],
+          [3, 4],
+          [4, 5],
+        ][j];
   // The places stay in order, a tenth of a radius apart; no handle falls
   // under a hundredth of its span, where a collapsed handle meets any
   // curvature with any shape.
   const project = (z) => {
     const out = [...z];
+    out[0] = clamp(out[0], gap, held[0] - gap);
     if (!fixedCorner) {
-      out[1] = clamp(
-        out[1],
-        Math.max(sRib + 3 * gap, (pins[1] ?? 0) + gap),
-        total - 2 * gap
-      );
+      out[1] = clamp(out[1], held[1] + gap, total - 2 * gap);
       out[2] = clamp(out[2], out[1] + gap, total - gap);
     }
-    out[0] = clamp(out[0], gap, places(out)[2] - gap);
     const s = places(out);
     for (let i = placeCount; i < out.length; i++) {
       const k = Math.floor((i - placeCount) / 2);
@@ -925,8 +1012,10 @@ function fitToReference(
       if (!improved) break;
     }
   }
-  const curves = evaluate(z).curves;
+  const finalState = evaluate(z);
+  const curves = finalState.curves;
   return {
+    cost: cost(finalState.rows),
     curves,
     places: places(z),
     curvatureError: Math.max(...curvatureRows(curves).map(Math.abs)),
