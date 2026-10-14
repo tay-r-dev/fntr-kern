@@ -1093,6 +1093,7 @@ export class DataTable extends HTMLElement {
   // "data" only the selected ones. Unset keeps the plain table. Row icons
   // from `rowAction` draw as button/table icon in either look.
   set look(value) {
+    this._forgetMeasures();
     this._look = value === "data" || value === "select" ? value : null;
     if (this._look) {
       this.setAttribute("look", this._look);
@@ -1188,10 +1189,26 @@ export class DataTable extends HTMLElement {
   // any, else its head.
   _stretchFloor(entry) {
     const { column, index } = entry;
-    const buttons = [...(this._tbody?.children || [])].some((row) =>
-      row.children[index]?.querySelector("icon-button, button")
-    );
-    return buttons ? this._contentWidth(entry) : this._headWidth(column);
+    return this._measured(`stretch ${index}`, () => {
+      const buttons = [...(this._tbody?.children || [])].some((row) =>
+        row.children[index]?.querySelector("icon-button, button")
+      );
+      return buttons ? this._contentWidth(entry) : this._headWidth(column);
+    });
+  }
+
+  // Widths are measured once per drawing of the rows, columns or look, not
+  // on every drag step or box resize.
+  _measured(key, measure) {
+    this._measures ??= new Map();
+    if (!this._measures.has(key)) {
+      this._measures.set(key, measure());
+    }
+    return this._measures.get(key);
+  }
+
+  _forgetMeasures() {
+    this._measures?.clear();
   }
 
   // A hugging or draggable column's width.
@@ -1215,35 +1232,55 @@ export class DataTable extends HTMLElement {
   // A column's contents' width: its head or its widest cell, whichever is
   // wider. A `fitText` column measures that text instead of its cells.
   _contentWidth({ column, index }) {
-    if (column.fitText != null) {
-      return this._fitTextWidth(column);
-    }
-    const cells = [column._headerElement];
-    for (const row of this._tbody?.children || []) {
-      const cell = row.children[index];
-      if (cell) {
-        cells.push(cell);
+    return this._measured(`content ${index}`, () => {
+      if (column.fitText != null) {
+        return this._fitTextWidth(column);
       }
-    }
-    return huggedColumnWidth(cells.map((cell) => this._cellWidth(cell)), 0, Infinity);
+      const cells = [column._headerElement];
+      for (const row of this._tbody?.children || []) {
+        const cell = row.children[index];
+        if (cell) {
+          cells.push(cell);
+        }
+      }
+      return huggedColumnWidth(
+        cells.map((cell) => this._cellWidth(cell)),
+        0,
+        Infinity
+      );
+    });
   }
 
-  // A cell's natural width. A row's actions are measured where they stand:
-  // a copy of the buttons loses the size they are set to.
+  // A cell's natural width. Buttons are measured where they stand, side by
+  // side: a copy of one loses the size it is set to, and is slow to make.
   _cellWidth(cell) {
-    const actions = cell.querySelector(":scope > .data-table-actions");
-    if (!actions) {
+    if (!cell.querySelector("icon-button, button")) {
       return html.naturalCellWidth(cell);
     }
-    const saved = actions.style.width;
-    actions.style.width = "max-content";
+    const actions = cell.querySelector(":scope > .data-table-actions");
     const style = getComputedStyle(cell);
-    const width =
-      actions.getBoundingClientRect().width +
-      parseFloat(style.paddingLeft) +
-      parseFloat(style.paddingRight);
-    actions.style.width = saved;
-    return Math.ceil(width);
+    return Math.ceil(
+      this._childrenWidth(actions || cell) +
+        parseFloat(style.paddingLeft) +
+        parseFloat(style.paddingRight)
+    );
+  }
+
+  // What `box`'s children take side by side: their widths, margins and gaps.
+  _childrenWidth(box) {
+    const children = [...box.children].filter(
+      (child) => getComputedStyle(child).position !== "absolute"
+    );
+    const gap = parseFloat(getComputedStyle(box).columnGap) || 0;
+    let width = gap * Math.max(0, children.length - 1);
+    for (const child of children) {
+      const style = getComputedStyle(child);
+      width +=
+        child.getBoundingClientRect().width +
+        parseFloat(style.marginLeft) +
+        parseFloat(style.marginRight);
+    }
+    return width;
   }
 
   // Texts set in `cell` side by side, FIT_FIELD_GAP apart, with the cell's
@@ -1269,7 +1306,9 @@ export class DataTable extends HTMLElement {
   }
 
   _headWidth(column) {
-    return Math.ceil(this._measureTexts(column._headerElement, [column.label || ""]));
+    return this._measured(`head ${this._columns.indexOf(column)}`, () =>
+      Math.ceil(this._measureTexts(column._headerElement, [column.label || ""]))
+    );
   }
 
   // A `fitText` column's width: its text set in a row's cell, or its label
@@ -1421,6 +1460,7 @@ export class DataTable extends HTMLElement {
     }
     column.visible = !!visible;
     this._applyColumnVisibility();
+    this._forgetMeasures();
     this._applyColumnWidths();
     this._storeHiddenColumns();
   }
@@ -1556,6 +1596,7 @@ export class DataTable extends HTMLElement {
   }
 
   _build() {
+    this._forgetMeasures();
     if (this._built) {
       // Columns are supplied once, at setup time -- there is no caller that
       // changes them after the fact.
@@ -1680,6 +1721,13 @@ export class DataTable extends HTMLElement {
   }
 
   _boxResized() {
+    // A table first shown (in a panel or accordion that opened) is measured
+    // afresh: hidden, everything measured nothing.
+    const box = this._scroll?.clientWidth || 0;
+    if (!this._lastBoxWidth || !box) {
+      this._forgetMeasures();
+    }
+    this._lastBoxWidth = box;
     this._applyColumnWidths();
   }
 
@@ -1699,6 +1747,7 @@ export class DataTable extends HTMLElement {
       this._syncSelectAll();
     }
     // A hugging column follows the rows now drawn.
+    this._forgetMeasures();
     this._applyColumnWidths();
     this._restoreCellFocus(focus);
     this.onRowsRender?.();
