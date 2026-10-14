@@ -4695,7 +4695,7 @@ export class KerningViewController extends ViewController {
     const button = tableIconButton();
     button.className =
       "kerning-pairtable-reset-indicator kerning-pairtable-reset-value";
-    button.src = "rotate";
+    button.src = "refresh";
     button.setAttribute("aria-label", `Reset ${row.left} × ${row.right} to 0`);
     button.setAttribute("data-tooltip", "Reset this pair to 0.");
     button.onclick = (event) => {
