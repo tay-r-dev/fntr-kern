@@ -2584,7 +2584,6 @@ export class KerningViewController extends ViewController {
     const showHiddenCheckbox = document.querySelector(
       "#kerning-pairtable-filter-hidden"
     );
-    showHiddenCheckbox.label = "show hidden";
     showHiddenCheckbox.checked = filters.showHidden;
     showHiddenCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem("showHidden", showHiddenCheckbox.checked);
@@ -2609,7 +2608,6 @@ export class KerningViewController extends ViewController {
     );
     // "zero value": checked shows those rows, so it is the stored hide flag
     // inverted.
-    hideZeroCurrentCheckbox.label = "zero value";
     hideZeroCurrentCheckbox.checked = !filters.hideZeroCurrentSuggestions;
     hideZeroCurrentCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(
@@ -2760,7 +2758,6 @@ export class KerningViewController extends ViewController {
     const showMembersCheckbox = document.querySelector(
       "#kerning-pairtable-show-members"
     );
-    showMembersCheckbox.label = "class members";
     showMembersCheckbox.checked = filters.showIndividualMembers;
     showMembersCheckbox.addEventListener("change", () => {
       this.autokernFiltersController.setItem(
