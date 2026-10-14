@@ -90,8 +90,8 @@ const SKELETON_SETTINGS_STYLES = `
 // the master-wide source defaults: the width and terminal presets. The
 // defaults used to be hosted in the Metrics panel.
 // The preset tables' columns: the name dragged to any width, a number as
-// wide as four digits in its box or its head, and the row's actions taking
-// what is left, never less than their buttons.
+// wide as four digits in its box or its head, and the row's actions hugging
+// their buttons.
 const NAME_COLUMN = { size: "draggable", width: 80 };
 const NUMBER_COLUMN = { size: "hug", fitText: "0000", fitField: true };
 const ACTIONS_COLUMN = { label: "", size: "hug" };
