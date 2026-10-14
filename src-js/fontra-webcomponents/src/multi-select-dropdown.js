@@ -59,11 +59,12 @@ const colors = {
     "rgba(255, 255, 255, 0.08)",
   ],
   // The field's text: empty (the property name, or "select" under a label)
-  // and filled (the pick), each at rest, on hover and while open.
-  "multi-select-dropdown-placeholder-color": ["var(--text-base-basic-3)", "#8e8e8e"],
-  "multi-select-dropdown-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
-  "multi-select-dropdown-open-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
-  "multi-select-dropdown-filled-text-color": ["var(--text-base-basic-2)", "#b0b0b0"],
+  // and filled (the pick), each at rest, on hover and while open. Empty is
+  // text 4, text 3 on hover and open; filled is text 3, text 2 on hover.
+  "multi-select-dropdown-placeholder-color": ["var(--text-base-basic-4)", "#8e8e8e"],
+  "multi-select-dropdown-text-color": ["var(--text-base-basic-3)", "#e0e0e0"],
+  "multi-select-dropdown-open-text-color": ["var(--text-base-basic-3)", "#e0e0e0"],
+  "multi-select-dropdown-filled-text-color": ["var(--text-base-basic-3)", "#b0b0b0"],
   "multi-select-dropdown-filled-hover-text-color": [
     "var(--text-base-basic-2)",
     "#e0e0e0",
@@ -74,7 +75,7 @@ const colors = {
   "multi-select-dropdown-chevron-hover-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "multi-select-dropdown-chevron-open-color": ["var(--icon-base-basic-2)", "#e0e0e0"],
   "multi-select-dropdown-chevron-filled-hover-color": [
-    "var(--icon-base-basic-1)",
+    "var(--icon-base-basic-2)",
     "#f0f0f0",
   ],
   "multi-select-dropdown-chevron-disabled-color": [
@@ -300,7 +301,7 @@ export class MultiSelectDropdown extends UnlitElement {
       border-radius: var(--corner-outer-l);
       padding: 4px 6px;
       gap: 4px;
-      /* ui/label/S */
+      /* ui/label/XS */
       font: var(--ui-text-label-xs);
       letter-spacing: var(--ui-tracking);
       font-feature-settings: "case" 1;

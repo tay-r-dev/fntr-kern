@@ -545,8 +545,8 @@
    aliases of the palette below. Figma path with dashes. */
 :root {
   --text-base-basic-1: var(--grey-02);
-  --text-base-basic-2: var(--grey-05);
-  --text-base-basic-3: var(--grey-08);
+  --text-base-basic-2: var(--grey-04);
+  --text-base-basic-3: var(--grey-07);
   --text-base-basic-4: var(--grey-10);
   --text-base-basic-5: var(--grey-11);
   --text-base-inverted-1: #ffffff;
@@ -561,8 +561,8 @@
   --text-color-lime-inverted-2: color-mix(in srgb, var(--lime-15) 75%, transparent);
   --text-color-lime-inverted-3: color-mix(in srgb, var(--lime-15) 50%, transparent);
   --icon-base-basic-1: var(--grey-02);
-  --icon-base-basic-2: var(--grey-05);
-  --icon-base-basic-3: var(--grey-08);
+  --icon-base-basic-2: var(--grey-04);
+  --icon-base-basic-3: var(--grey-07);
   --icon-base-basic-4: var(--grey-10);
   --icon-base-basic-5: var(--grey-11);
   --icon-base-inverted-1: #ffffff;
