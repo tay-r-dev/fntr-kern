@@ -5,7 +5,7 @@
 // every shadow root that uses it. A shadow root adopts the sheet; nothing is
 // inserted, parsed or matched again per element. A file the page already
 // loaded is copied from the page's own sheet, so it applies on the first
-// frame; otherwise it is fetched once and fills in when it arrives.
+// frame; the file is then fetched once and its exact text replaces the copy.
 const sharedSheets = new Map();
 
 export function sharedStyleSheet(href) {
@@ -28,11 +28,14 @@ export function sharedStyleSheet(href) {
   }
   if (rules != null) {
     sheet.replaceSync(rules);
-  } else {
-    fetch(href)
-      .then((response) => response.text())
-      .then((text) => sheet.replace(text));
   }
+  // Always the file's own text in the end: rules copied from the page's sheet
+  // can come back without a shorthand written with a token, such as
+  // `font: var(--ui-text-label-xs)`, so every such text style was missing
+  // inside the shadow roots.
+  fetch(href)
+    .then((response) => response.text())
+    .then((text) => sheet.replace(text));
   return sheet;
 }
 
