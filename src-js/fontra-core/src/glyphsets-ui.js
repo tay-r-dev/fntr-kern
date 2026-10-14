@@ -166,13 +166,14 @@ export class GlyphSetsUIController {
     table.selectAllClassName = "checkmark";
     table.columns = [
       { label: "", selectAll: true, hug: true },
-      { label: "name", stretch: true },
+      { label: "name", width: 120, minWidth: 40 },
       { label: "" },
     ];
     table.resizable = true;
     table.minHeight = 48;
     table.style.setProperty("--data-table-height", "76px");
     table.heightStorageKey = `fontra-glyph-sets-table-height-${this.collectionKey}`;
+    table.columnWidthsStorageKey = `fontra-glyph-sets-column-widths-${this.collectionKey}`;
     table.onSelectAllChange = (checked) =>
       setSelected(checked ? glyphSets.map(({ key }) => key) : []);
     table.setRows(

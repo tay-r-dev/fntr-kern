@@ -230,10 +230,11 @@ export default class SkeletonSettingsPanel extends Panel {
     this.terminalPresetTable = presetTable(
       [
         { label: translate("sidebar.skeleton-settings.column.type"), hug: true },
-        { label: translate("sidebar.skeleton-settings.column.name"), stretch: true },
+        { label: translate("sidebar.skeleton-settings.column.name"), ...NAME_COLUMN },
         ACTIONS_COLUMN,
       ],
-      "fontra-skeleton-terminal-presets-height"
+      "fontra-skeleton-terminal-presets-height",
+      "fontra-skeleton-terminal-presets-column-widths"
     );
     this._terminalPresetFilter = { master: null, case: null, type: null };
     this.terminalPresetFilters = this._makePresetFilterBar(
