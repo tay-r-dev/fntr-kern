@@ -40,6 +40,7 @@ import "@fontra/web-components/overflow-popover.js"; // the settings overflow
 import "@fontra/web-components/text-button.js";
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
 import "@fontra/web-components/ui-text-input.js"; // the reference glyph
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js"; // batch apply's subsets
 import Panel from "./panel.js";
 import { editSkeleton } from "./skeleton-editing.js";
 
@@ -521,7 +522,7 @@ export default class LetterspacerPanel extends Panel {
       html.div(
         { class: "checkmark-wrap" },
         BULK_SUBSETS.map((subset) =>
-          checkmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
+          makeCheckmark(!!this.bulkSubsets[subset.key], subset.label, (checked) => {
             this.bulkSubsets[subset.key] = checked;
           })
         )

@@ -3,11 +3,11 @@ import { getGlyphInfoFromCodePoint } from "@fontra/core/glyph-data.js";
 import * as html from "@fontra/core/html-utils.js";
 import { translate } from "@fontra/core/localization.js";
 import { features, languages, scripts } from "@fontra/core/opentype-tags.js";
-import { checkmark } from "@fontra/core/ui-utils.js";
 import "@fontra/web-components/labeled-toggle.js";
 import "@fontra/web-components/multi-select-dropdown.js";
 import "@fontra/web-components/segmented-control.js";
 import { Accordion } from "@fontra/web-components/ui-accordion.js";
+import { makeCheckmark } from "@fontra/web-components/ui-checkmark.js";
 import "@fontra/web-components/ui-text-input.js";
 import Panel from "./panel.js";
 
@@ -331,7 +331,7 @@ export default class TextEntryPanel extends Panel {
           shapingToggle,
         ]),
         content: html.div({}, [
-          checkmark(
+          makeCheckmark(
             applicationSettingsController.model.disableAdHocMarks,
             "Disable ad-hoc mark detection",
             (checked) => {
@@ -527,7 +527,7 @@ function featureControl(controller, featureTag, label, { defaultValue, disabled 
   };
 
   if (defaultValue !== undefined) {
-    return checkmark(state ?? defaultValue, label, setState, { disabled, tooltip });
+    return makeCheckmark(state ?? defaultValue, label, setState, { disabled, tooltip });
   }
 
   const states = { auto: undefined, on: true, off: false };

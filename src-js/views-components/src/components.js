@@ -26,6 +26,7 @@ import "@fontra/web-components/indication-badge.js";
 import "@fontra/web-components/inline-svg.js";
 import "@fontra/web-components/input-scrub.js";
 import "@fontra/web-components/labeled-toggle.js";
+import "@fontra/web-components/ui-checkmark.js";
 import "@fontra/web-components/latch-button.js";
 import "@fontra/web-components/link-button.js";
 import "@fontra/web-components/modal-dialog.js";
@@ -148,6 +149,17 @@ function toggles() {
     cell("on", toggle({ checked: true })),
     cell("off, disabled", toggle({ disabled: true })),
     cell("on, disabled", toggle({ checked: true, disabled: true }))
+  );
+}
+
+function checkmarks() {
+  const check = (props) => make("ui-checkmark", { label: "label", ...props });
+  return row(
+    cell("off", check()),
+    cell("on", check({ checked: true })),
+    cell("off, disabled", check({ disabled: true })),
+    cell("on, disabled", check({ checked: true, disabled: true })),
+    cell("no label", check({ label: "" }))
   );
 }
 
@@ -432,6 +444,7 @@ export function buildComponentsGallery(container) {
     section("button/latch", "Figma 287:15701", latchButtons()),
     section("select/segmented", "Figma 2004:29330", segmentedControls()),
     section("select/toggle", "Figma 2004:29380", toggles()),
+    section("select/checkmark", "Figma 2004:29411", checkmarks()),
     section("select/radio", "radio-buttons, the checkmark made round", radioButtons()),
     section(
       "select/dropdown",
