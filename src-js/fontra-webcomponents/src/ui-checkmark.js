@@ -1,28 +1,107 @@
 import * as html from "@fontra/core/html-utils.js";
 import { UnlitElement } from "@fontra/core/html-utils.js";
+import { themeColorCSS } from "./theme-support.js";
 
 // checkmark (Figma 2004:29411): a 12px check with its name, ui/label/XS, 4px
-// after it. The look is shared.css's label.checkmark-row holding an
-// input.checkmark (the shadow root links shared.css).
+// after it. At rest a checked box is the grey check and an empty one the
+// light box, both with grey names; hover lights the check lime or darkens the
+// box, and darkens the name. The look is all here: the component does not
+// lean on shared.css.
 //
 // `label`, `checked` and `disabled` are attributes, also set as properties;
 // `indeterminate` is a property only, as on a native checkbox. A click fires
 // "change". focus() reaches the box inside.
+// Light colours are the design system's tokens (core.css); dark ones stay
+// hand-picked until the design has a dark mode.
+const colors = {
+  "ui-checkmark-box-color": ["var(--surface-base-basic-2)", "#444444"],
+  "ui-checkmark-box-hover-color": ["var(--surface-base-basic-4)", "#555555"],
+  "ui-checkmark-line-color": ["var(--line-base-basic-2)", "rgba(255, 255, 255, 0.05)"],
+  "ui-checkmark-line-hover-color": [
+    "var(--line-base-basic-4)",
+    "rgba(255, 255, 255, 0.1)",
+  ],
+  "ui-checkmark-text-color": ["var(--text-base-basic-3)", "#9a9a9a"],
+  "ui-checkmark-hover-text-color": ["var(--text-base-basic-2)", "#e0e0e0"],
+  "ui-checkmark-disabled-text-color": ["var(--text-base-basic-4)", "#6a6a6a"],
+};
+
 export class UICheckmark extends UnlitElement {
   static styles = `
+    ${themeColorCSS(colors)}
+
     :host {
       display: inline-flex;
       min-width: 0;
     }
 
-    .checkmark-row {
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
       min-width: 0;
+      /* ui/label/XS */
+      font: var(--ui-text-label-xs);
+      letter-spacing: var(--ui-tracking);
+      font-feature-settings: "case" 1;
+      color: var(--ui-checkmark-text-color);
+      white-space: nowrap;
+      cursor: pointer;
       user-select: none;
     }
 
-    .checkmark-row span {
+    label:hover {
+      color: var(--ui-checkmark-hover-text-color);
+    }
+
+    label:has(:disabled) {
+      color: var(--ui-checkmark-disabled-text-color);
+      cursor: default;
+    }
+
+    span {
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    span[hidden] {
+      display: none;
+    }
+
+    input {
+      appearance: none;
+      flex: none;
+      margin: 0;
+      width: 12px;
+      height: 12px;
+      border: 1px solid var(--ui-checkmark-line-color);
+      border-bottom: none;
+      border-radius: var(--corner-outer-xs);
+      background: var(--ui-checkmark-box-color) center / contain no-repeat;
+      cursor: pointer;
+    }
+
+    label:hover input {
+      background-color: var(--ui-checkmark-box-hover-color);
+      border-color: var(--ui-checkmark-line-hover-color);
+    }
+
+    input:checked,
+    label:hover input:checked {
+      border: none;
+      background-color: transparent;
+      background-image: url("/images/checkbox-on-rest.svg");
+    }
+
+    label:hover input:checked {
+      background-image: url("/images/checkbox-on-hover.svg");
+    }
+
+    input:disabled,
+    label:hover input:disabled {
+      border: none;
+      background: url("/images/checkbox-disabled.svg") center / contain no-repeat;
+      cursor: default;
     }
   `;
 
@@ -90,7 +169,6 @@ export class UICheckmark extends UnlitElement {
   render() {
     this._checkbox = html.input({
       type: "checkbox",
-      class: "checkmark",
       checked: this.checked,
       disabled: this.disabled,
       onchange: () => {
@@ -102,7 +180,7 @@ export class UICheckmark extends UnlitElement {
     this._checkbox.indeterminate = this._indeterminate;
     this._labelText = html.span({}, [this.label]);
     this._labelText.hidden = !this.label;
-    return html.label({ class: "checkmark-row" }, [this._checkbox, this._labelText]);
+    return html.label({}, [this._checkbox, this._labelText]);
   }
 }
 
