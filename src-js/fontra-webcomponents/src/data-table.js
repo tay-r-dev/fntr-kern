@@ -1162,14 +1162,30 @@ export class DataTable extends HTMLElement {
       // A head cell whose right edge has a grip draws that boundary as
       // draggable.
       th.classList.toggle("data-table-drag-right", draggable);
-      if (!sized || entry === flex) {
-        continue;
-      }
-      const width = this._columnWidth(entry);
-      th.style.width = `${width}px`;
-      used += width;
     }
     const box = this._scroll?.clientWidth || 0;
+    const fixed = sized ? visible.filter((entry) => entry !== flex) : [];
+    const widths = fixed.map((entry) => this._columnWidth(entry));
+    if (flex && box) {
+      // A table with a stretching column stays in its box: when the kept
+      // widths leave that column less than its narrowest, the draggable
+      // columns nearest it give up the difference, on screen only.
+      let over = widths.reduce((sum, w) => sum + w, 0) + this._stretchFloor(flex) - box;
+      for (let i = fixed.length - 1; i >= 0 && over > 0; i--) {
+        if (fixed[i].column.size !== "draggable") {
+          continue;
+        }
+        const give = Math.min(over, widths[i] - this._dragFloor(fixed[i].column));
+        if (give > 0) {
+          widths[i] -= give;
+          over -= give;
+        }
+      }
+    }
+    fixed.forEach((entry, i) => {
+      entry.column._headerElement.style.width = `${widths[i]}px`;
+      used += widths[i];
+    });
     if (flex) {
       const width = Math.max(this._stretchFloor(flex), box - used);
       flex.column._headerElement.style.width = `${width}px`;
@@ -1380,7 +1396,9 @@ export class DataTable extends HTMLElement {
       }
       event.preventDefault();
       event.stopPropagation();
-      const startWidth = this._columnWidth({ column, index });
+      // A drag starts from the width on screen, which a box too narrow for
+      // the kept one may have cut.
+      const startWidth = Math.round(column._headerElement.getBoundingClientRect().width);
       const startX = event.clientX;
       const floor = this._dragFloor(column);
       const ceiling = this._dragCeiling(column, index, startWidth);
