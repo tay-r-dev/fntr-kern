@@ -1,12 +1,13 @@
 import { getCodePointFromGlyphName, getSuggestedGlyphName } from "./glyph-data.js";
 import { assert, splitGlyphNameExtension } from "./utils.ts";
 
+// Without fallback maps, a character the font lacks has no glyph.
 export function characterLinesFromString(
   string,
   characterMap,
   glyphMap,
-  fallbackCharacterMap,
-  fallbackGlyphMap,
+  fallbackCharacterMap = {},
+  fallbackGlyphMap = {},
   substituteGlyphName
 ) {
   const characterLines = [];
