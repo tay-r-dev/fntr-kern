@@ -213,6 +213,12 @@ const DATA_TABLE_STYLES = `
     selectedWithin: "data-table:hover .data-table-row-selected",
   })}
 
+  /* A table's dropdown is as wide as its widest choice whatever is picked,
+     so the column never jumps with the pick. */
+  .data-table select.smol {
+    field-sizing: fixed;
+  }
+
   :where(.data-table-action) {
     display: inline-flex;
     vertical-align: middle;
