@@ -363,7 +363,12 @@ export class Form extends SimpleElement {
     }
     for (const fieldItem of fieldDescriptions) {
       if (fieldItem.type === "divider") {
-        this.contentElement.appendChild(html.hr());
+        // `spaceAbove`: extra room above the divider, in px.
+        const hr = html.hr();
+        if (fieldItem.spaceAbove) {
+          hr.style.marginBlockStart = `${fieldItem.spaceAbove}px`;
+        }
+        this.contentElement.appendChild(hr);
         continue;
       }
       if (fieldItem.type === "line-spacer") {

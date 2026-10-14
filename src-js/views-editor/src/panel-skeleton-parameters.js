@@ -2266,7 +2266,8 @@ export default class SkeletonParametersPanel {
     if (presetType) {
       this._refreshTerminalPresetControl(presetType);
     }
-    formContents.push({ type: "divider" });
+    // 4px more above the terminal section than above the others.
+    formContents.push({ type: "divider", spaceAbove: 4 });
     formContents.push({
       type: "header",
       level: "h2",
