@@ -1224,6 +1224,25 @@ export class DataTable extends HTMLElement {
     return Math.max(this._dragFloor(column), width);
   }
 
+  // The widest a draggable column goes: in a table with a stretching column,
+  // until that one is at its narrowest -- a drag never pushes the table out
+  // of its box. Without one there is no limit; the table scrolls sideways.
+  _dragCeiling(column, index, startWidth) {
+    const visible = this._visibleColumns();
+    const flex = this._flexEntry(visible);
+    const box = this._scroll?.clientWidth || 0;
+    if (!flex || !box) {
+      return Infinity;
+    }
+    let others = 0;
+    for (const entry of visible) {
+      if (entry.index !== index && entry !== flex) {
+        others += this._columnWidth(entry);
+      }
+    }
+    return Math.max(startWidth, box - others - this._stretchFloor(flex));
+  }
+
   // The narrowest a draggable column goes: its head, or `minWidth` if wider.
   _dragFloor(column) {
     return Math.max(column.minWidth ?? 0, this._headWidth(column));
@@ -1364,13 +1383,17 @@ export class DataTable extends HTMLElement {
       const startWidth = this._columnWidth({ column, index });
       const startX = event.clientX;
       const floor = this._dragFloor(column);
+      const ceiling = this._dragCeiling(column, index, startWidth);
       grip.setPointerCapture(event.pointerId);
       grip.classList.add("dragging");
       document.documentElement.classList.add("data-table-column-resizing");
       const onMove = (moveEvent) => {
         this._columnWidths = {
           ...this._columnWidths,
-          [id]: resizedColumnWidth(startWidth, moveEvent.clientX - startX, floor),
+          [id]: Math.min(
+            ceiling,
+            resizedColumnWidth(startWidth, moveEvent.clientX - startX, floor)
+          ),
         };
         this._applyColumnWidths();
       };
