@@ -1678,7 +1678,8 @@ export class DataTable extends HTMLElement {
     tbody.addEventListener("click", (event) => {
       if (
         event.target.closest(
-          "input, select, textarea, button, icon-button, a, .data-table-action"
+          "input, select, textarea, button, icon-button, ui-checkmark, a, " +
+            ".data-table-action"
         )
       ) {
         return;
@@ -1813,7 +1814,7 @@ export class DataTable extends HTMLElement {
     if (!tr) {
       return null;
     }
-    const fields = [...tr.querySelectorAll("input, select, textarea")];
+    const fields = [...tr.querySelectorAll("input, select, textarea, ui-checkmark")];
     let selectionStart = null;
     let selectionEnd = null;
     try {
@@ -1837,7 +1838,7 @@ export class DataTable extends HTMLElement {
     const tr = [...this._tbody.querySelectorAll("tr[data-row-id]")].find(
       (row) => row.dataset.rowId === focus.rowId
     );
-    const field = tr?.querySelectorAll("input, select, textarea")[focus.index];
+    const field = tr?.querySelectorAll("input, select, textarea, ui-checkmark")[focus.index];
     if (!field) {
       return;
     }

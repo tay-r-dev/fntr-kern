@@ -5,8 +5,9 @@ import { UnlitElement } from "@fontra/core/html-utils.js";
 // after it. The look is shared.css's label.checkmark-row holding an
 // input.checkmark (the shadow root links shared.css).
 //
-// `checked`, `disabled` and `label` are plain JS properties, set after
-// creating the element; a click fires "change".
+// `checked`, `indeterminate`, `disabled` and `label` are plain JS properties,
+// set after creating the element; a click fires "change". focus() reaches
+// the box inside.
 export class UICheckmark extends UnlitElement {
   static styles = `
     :host {
@@ -29,6 +30,7 @@ export class UICheckmark extends UnlitElement {
     super();
     this._label = "";
     this._checked = false;
+    this._indeterminate = false;
     this._disabled = false;
   }
 
@@ -55,6 +57,17 @@ export class UICheckmark extends UnlitElement {
     }
   }
 
+  get indeterminate() {
+    return this._indeterminate;
+  }
+
+  set indeterminate(value) {
+    this._indeterminate = !!value;
+    if (this._checkbox) {
+      this._checkbox.indeterminate = this._indeterminate;
+    }
+  }
+
   get disabled() {
     return this._disabled;
   }
@@ -66,6 +79,10 @@ export class UICheckmark extends UnlitElement {
     }
   }
 
+  focus(options) {
+    this._checkbox?.focus(options);
+  }
+
   render() {
     this._checkbox = html.input({
       type: "checkbox",
@@ -74,9 +91,11 @@ export class UICheckmark extends UnlitElement {
       disabled: this._disabled,
       onchange: () => {
         this._checked = this._checkbox.checked;
+        this._indeterminate = false;
         this.dispatchEvent(new Event("change"));
       },
     });
+    this._checkbox.indeterminate = this._indeterminate;
     this._labelText = html.span({}, [this._label]);
     this._labelText.hidden = !this._label;
     return html.label({ class: "checkmark-row" }, [this._checkbox, this._labelText]);

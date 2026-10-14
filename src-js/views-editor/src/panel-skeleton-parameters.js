@@ -709,7 +709,7 @@ export default class SkeletonParametersPanel {
           )
       );
     const ribFootprintRow = footprintCheckRow();
-    this.ribFootprintCheck = ribFootprintRow.querySelector("input");
+    this.ribFootprintCheck = ribFootprintRow;
     // Flat's own copy of the two, shown outright under the kind chips. The
     // model holds one lock per point, so the two copies cannot drift: both read
     // it and both write it.
@@ -733,7 +733,7 @@ export default class SkeletonParametersPanel {
       this._onWidthChange("ribanglelock", value)
     );
     const flatFootprintRow = footprintCheckRow();
-    this.flatFootprintCheck = flatFootprintRow.querySelector("input");
+    this.flatFootprintCheck = flatFootprintRow;
     this.flatAngleRow = html.div(
       { style: "display: flex; gap: 0.75em; align-items: center; flex-wrap: wrap;" },
       [this.flatAngleControl, flatFootprintRow]
