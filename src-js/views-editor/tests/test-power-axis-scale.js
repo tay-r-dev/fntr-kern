@@ -191,6 +191,58 @@ describe("power axis scale, slanted smooth points", () => {
     }
   });
 
+  it("keeps a carried point smooth where the run outruns its segment", () => {
+    // An italic bowl, every on-curve a slanted smooth point. Dragging point 9
+    // 62 units right carries point 6 past where its own segment had room: a
+    // correction run on the shape before the stretch shrank handle 7 to one
+    // unit, where the grid holds only eight directions, and the bend stayed.
+    const settings = applicationSettingsController.model;
+    const saved = settings.powerDragCarriesSlantedSmooths;
+    settings.powerDragCarriesSlantedSmooths = true;
+    try {
+      const before = [
+        { x: 420, y: 300, smooth: true },
+        { x: 427, y: 380, type: "cubic" },
+        { x: 400, y: 470, type: "cubic" },
+        { x: 330, y: 520, smooth: true },
+        { x: 260, y: 570, type: "cubic" },
+        { x: 170, y: 560, type: "cubic" },
+        { x: 130, y: 480, smooth: true },
+        { x: 100, y: 420, type: "cubic" },
+        { x: 95, y: 330, type: "cubic" },
+        { x: 110, y: 250, smooth: true },
+        { x: 125, y: 170, type: "cubic" },
+        { x: 180, y: 80, type: "cubic" },
+        { x: 260, y: 60, smooth: true },
+        { x: 340, y: 40, type: "cubic" },
+        { x: 407, y: 160, type: "cubic" },
+      ];
+      const delta = { x: 62, y: 0 };
+      const after = movedCopy(before, [8, 9, 10], delta);
+      correctTensionAwareDragContour(
+        before,
+        after,
+        true,
+        new Set([9]),
+        delta,
+        POWER_TENSION_AWARE_BEHAVIOR_NAME
+      );
+      expect(after[6].x).to.be.above(before[6].x);
+      const incoming = { x: after[5].x - after[6].x, y: after[5].y - after[6].y };
+      const outgoing = { x: after[7].x - after[6].x, y: after[7].y - after[6].y };
+      const incomingLength = Math.hypot(incoming.x, incoming.y);
+      const outgoingLength = Math.hypot(outgoing.x, outgoing.y);
+      const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+      const bend = Math.asin(Math.abs(cross) / (incomingLength * outgoingLength));
+      const allowance =
+        Math.atan(Math.SQRT1_2 / incomingLength) +
+        Math.atan(Math.SQRT1_2 / outgoingLength);
+      expect(bend).to.be.below(allowance);
+    } finally {
+      settings.powerDragCarriesSlantedSmooths = saved;
+    }
+  });
+
   it("still stops at a corner when asked to carry slanted smooths", () => {
     const before = circleContour();
     before[2].y = 80;

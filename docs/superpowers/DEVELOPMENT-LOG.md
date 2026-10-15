@@ -2310,6 +2310,14 @@ original radius at the new size.
   default. A smooth point there is two handles on one line through the point,
   within the same two degrees an extreme is allowed. A point with one handle
   is not one, because carrying it would move the straight on its other side.
+  **Carried slanted points bent, twice.** First the carry mixed the earlier
+  pass's handle on one axis with the pre-drag one on the other (about 10
+  degrees). Then the earlier pass itself: it corrected the shape before the
+  run moved, where a segment the run was about to open had almost no room,
+  shrank a handle to one unit, and the grid left it eight directions to point
+  in. The next pass kept that direction: 18.4 degrees on an italic bowl. C now
+  moves the run first and corrects once. A square extreme never showed it,
+  because an axis direction survives the grid at any length.
 - **The drag keeps the rest, and it is worth keeping.** On the n's outer arch
   with the springing point pulled 40 down its own stem, without the tension rule
   tension falls 0.496 to 0.385 and the apex radius collapses 158 to 101; pushed

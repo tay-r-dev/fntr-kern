@@ -128,12 +128,14 @@ export function correctTensionAwareDragContour(
     applyTensionAwareEdit(before, after, closed, slideOptions);
     return;
   }
-  applyTensionAwareEdit(before, after, closed, { slide: false });
+  // The run moves first, on what the ordinary rules left, and one correction
+  // follows. A correction before the run as well rounded every handle once,
+  // and the second read its direction off that rounded handle, so the two
+  // roundings added up and a carried slanted smooth point bent past what the
+  // grid alone does.
   applyPowerAxisScale(before, after, closed, movedIndices, delta, {
     carrySlantedSmooths: !!settings.powerDragCarriesSlantedSmooths,
   });
-  // The run has moved, so the handles around it are read again, and this is
-  // the pass that slides: it is the one that sees the stretched shape.
   applyTensionAwareEdit(before, after, closed, slideOptions);
 }
 
