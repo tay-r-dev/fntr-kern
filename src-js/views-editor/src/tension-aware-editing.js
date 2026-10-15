@@ -314,7 +314,11 @@ export function applyPowerAxisScale(
         const scaled = Math.round(
           pivot + amount + (before[index][axis] - pivot) * factor
         );
-        const shift = scaled - before[index][axis];
+        // The travel from where the point stands now, so its handles move by it
+        // from where they stand now too. The pass before this one may have
+        // rebuilt them, and mixing that state on one axis with the pre-drag
+        // state on the other turns a slanted handle off its line.
+        const shift = scaled - after[index][axis];
         after[index] = { ...after[index], [axis]: scaled };
         // The handles travel with their point. Left behind, a handle that
         // reached forward ends up reaching back once its point has passed it,
@@ -326,7 +330,7 @@ export function applyPowerAxisScale(
           if (handleIndex === null || !before[handleIndex]?.type) continue;
           after[handleIndex] = {
             ...after[handleIndex],
-            [axis]: before[handleIndex][axis] + shift,
+            [axis]: after[handleIndex][axis] + shift,
           };
         }
       }

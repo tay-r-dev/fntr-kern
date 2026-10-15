@@ -1,5 +1,10 @@
 import { expect } from "chai";
-import { applyPowerAxisScale } from "../src/tension-aware-editing.js";
+import { applicationSettingsController } from "@fontra/core/application-settings.js";
+import {
+  applyPowerAxisScale,
+  correctTensionAwareDragContour,
+  POWER_TENSION_AWARE_BEHAVIOR_NAME,
+} from "../src/tension-aware-editing.js";
 
 // A circle of radius 50 around (50, 50), four extremes, in contour order
 // starting at the right one.
@@ -149,6 +154,41 @@ describe("power axis scale, slanted smooth points", () => {
     });
     expect(after[3].x).to.equal(60);
     expect(after[6].x).to.equal(0);
+  });
+
+  it("keeps a carried slanted smooth point smooth through the whole drag", () => {
+    const settings = applicationSettingsController.model;
+    const saved = settings.powerDragCarriesSlantedSmooths;
+    settings.powerDragCarriesSlantedSmooths = true;
+    try {
+      const before = circleWithSlantedTop();
+      const delta = { x: 20, y: 0 };
+      const after = movedCopy(before, 0, delta);
+      correctTensionAwareDragContour(
+        before,
+        after,
+        true,
+        new Set([0]),
+        delta,
+        POWER_TENSION_AWARE_BEHAVIOR_NAME
+      );
+      expect(after[3].x).to.equal(60);
+      const incoming = { x: after[2].x - after[3].x, y: after[2].y - after[3].y };
+      const outgoing = { x: after[4].x - after[3].x, y: after[4].y - after[3].y };
+      const incomingLength = Math.hypot(incoming.x, incoming.y);
+      const outgoingLength = Math.hypot(outgoing.x, outgoing.y);
+      const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+      const bend = Math.asin(Math.abs(cross) / (incomingLength * outgoingLength));
+      // A whole-unit handle holds its line only to within atan(0.71 / length),
+      // the grid's own allowance; unrounded the point stays exactly smooth.
+      // The fault turned it about 10 degrees, three times this allowance.
+      const allowance =
+        Math.atan(Math.SQRT1_2 / incomingLength) +
+        Math.atan(Math.SQRT1_2 / outgoingLength);
+      expect(bend).to.be.below(allowance);
+    } finally {
+      settings.powerDragCarriesSlantedSmooths = saved;
+    }
   });
 
   it("still stops at a corner when asked to carry slanted smooths", () => {
