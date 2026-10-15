@@ -553,7 +553,8 @@ export function recollinearizeStraightHandles(
  * and no straight to travel on: the rule fires on one end of a curve and never
  * the other, and the same gesture reads as corrected from one grip and ignored
  * from the opposite one. So the drag keeps the tension and leaves the on-curve
- * points where they were put. `slide` is off there and on everywhere else.
+ * points where they were put. `slide` is off there and on everywhere else,
+ * except where the designer holds Alt with the drag and asks for it.
  * @returns {boolean} Whether anything moved
  */
 export function applyTensionAwareEdit(beforePoints, afterPoints, closed, options = {}) {

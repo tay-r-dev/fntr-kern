@@ -122,6 +122,48 @@ describe("power axis scale, drawn glyphs", () => {
   });
 });
 
+// The top point turned off the axis: its two handles stay on one line through
+// it, so it is still smooth, but no longer square across x.
+function circleWithSlantedTop() {
+  const points = circleContour();
+  points[2] = { ...points[2], y: 110 };
+  points[4] = { ...points[4], y: 90 };
+  return points;
+}
+
+describe("power axis scale, slanted smooth points", () => {
+  it("stops at a slanted smooth point by default", () => {
+    const before = circleWithSlantedTop();
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, new Set([0]), delta);
+    expect(after[3].x).to.equal(50);
+  });
+
+  it("carries a slanted smooth point when asked to", () => {
+    const before = circleWithSlantedTop();
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, new Set([0]), delta, {
+      carrySlantedSmooths: true,
+    });
+    expect(after[3].x).to.equal(60);
+    expect(after[6].x).to.equal(0);
+  });
+
+  it("still stops at a corner when asked to carry slanted smooths", () => {
+    const before = circleContour();
+    before[2].y = 80;
+    before[4].y = 80;
+    const delta = { x: 20, y: 0 };
+    const after = movedCopy(before, 0, delta);
+    applyPowerAxisScale(before, after, true, new Set([0]), delta, {
+      carrySlantedSmooths: true,
+    });
+    expect(after[3].x).to.equal(50);
+  });
+});
+
 // The leg of "n" from _external/skeletron.fontra, the outline layer. Points 8
 // to 11 are the leg; 5 is the extreme of the left arch and 14 the extreme of
 // the right one, and both are square across x.

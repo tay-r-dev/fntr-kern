@@ -960,6 +960,20 @@ export class EditorController extends ViewController {
         ],
       },
       {
+        title: translate("sidebar.selection-transformation.power-drag"),
+        getItems: () => [
+          {
+            title: translate(
+              "sidebar.selection-transformation.power-drag-slanted-smooths"
+            ),
+            checked: !!settings.powerDragCarriesSlantedSmooths,
+            callback: () =>
+              (settings.powerDragCarriesSlantedSmooths =
+                !settings.powerDragCarriesSlantedSmooths),
+          },
+        ],
+      },
+      {
         title: translate("action.simplify-contour.title"),
         getItems: () => [
           {

@@ -17,6 +17,50 @@ export const POWER_TENSION_AWARE_BEHAVIOR_NAME = "power-tension-aware";
 export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME =
   "skeleton-power-tension-aware";
 
+// Alt on X or C: the same drag, and a tension point also slides along its
+// straight, the way the X scale keeps a curve's proportions. It is a separate
+// name because only a name change rebuilds the target entries, so Alt pressed
+// with the button down takes effect on the next frame.
+const PROPORTIONAL_SUFFIX = "-proportional";
+
+const PATH_TENSION_AWARE_NAMES = [
+  TENSION_AWARE_BEHAVIOR_NAME,
+  POWER_TENSION_AWARE_BEHAVIOR_NAME,
+];
+const SKELETON_TENSION_AWARE_NAMES = [
+  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
+  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
+];
+
+// Every name the drag can carry, for the behavior registry.
+export const TENSION_AWARE_DRAG_BEHAVIOR_NAMES = {
+  path: PATH_TENSION_AWARE_NAMES.flatMap((name) => [name, name + PROPORTIONAL_SUFFIX]),
+  skeleton: SKELETON_TENSION_AWARE_NAMES.flatMap((name) => [
+    name,
+    name + PROPORTIONAL_SUFFIX,
+  ]),
+};
+
+export function isPathTensionAwareBehaviorName(name) {
+  return TENSION_AWARE_DRAG_BEHAVIOR_NAMES.path.includes(name);
+}
+
+export function isSkeletonTensionAwareBehaviorName(name) {
+  return TENSION_AWARE_DRAG_BEHAVIOR_NAMES.skeleton.includes(name);
+}
+
+// What a drag name asks for: the power run, and the slide.
+function readTensionAwareBehaviorName(name) {
+  const proportional = !!name?.endsWith(PROPORTIONAL_SUFFIX);
+  const base = proportional ? name.slice(0, -PROPORTIONAL_SUFFIX.length) : name;
+  return {
+    power:
+      base === POWER_TENSION_AWARE_BEHAVIOR_NAME ||
+      base === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
+    proportional,
+  };
+}
+
 /**
  * X drives the correction on whatever geometry the selection holds: ordinary
  * path points take it directly, skeleton points take it on their centerline.
@@ -25,32 +69,73 @@ export const SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME =
  * C is the power variant of the same drag: the extremes between the dragged
  * point and the first fixed landmark on either side are carried along the
  * locked axis. It states the correction too, so it needs no X under it.
+ *
+ * Alt with either one adds the slide (see PROPORTIONAL_SUFFIX).
  * @param {Object} modifiers - Realtime modifier state from the pointer tool
  * @param {Set} targetKinds - Selection kinds present, from getSelectionTargetKinds
+ * @param {Object} event - The pointer or key event, for Alt
  * @returns {string|null} The behavior name, or null
  */
-export function getTensionAwareBehaviorName(modifiers, targetKinds) {
+export function getTensionAwareBehaviorName(modifiers, targetKinds, event = null) {
   const power = !!modifiers?.powerTensionAwareMode;
   if (!modifiers?.tensionAwareMode && !power) return null;
   // A rib drag is the width edit: it states a distance across the stroke, and
   // there is no tension along it for the correction to hold. X stays out.
   if (targetKinds?.has("skeletonRib")) return null;
+  const suffix = event?.altKey ? PROPORTIONAL_SUFFIX : "";
   // The centerline is a path, so it takes the same correction - but only
   // through the skeleton write path, which the ordinary entry cannot reach.
   if (targetKinds?.has("skeletonPoint")) {
-    return power
-      ? SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
-      : SKELETON_TENSION_AWARE_BEHAVIOR_NAME;
+    return (
+      (power
+        ? SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
+        : SKELETON_TENSION_AWARE_BEHAVIOR_NAME) + suffix
+    );
   }
-  return power ? POWER_TENSION_AWARE_BEHAVIOR_NAME : TENSION_AWARE_BEHAVIOR_NAME;
+  return (
+    (power ? POWER_TENSION_AWARE_BEHAVIOR_NAME : TENSION_AWARE_BEHAVIOR_NAME) + suffix
+  );
 }
 
-// The ordinary behavior name behind ours. The correction runs on top of what
-// the ordinary rules produce, so the rules have to run somewhere.
-const BASE_BEHAVIOR_NAMES = {
-  [TENSION_AWARE_BEHAVIOR_NAME]: "default",
-  [POWER_TENSION_AWARE_BEHAVIOR_NAME]: "default",
-};
+/**
+ * The correction one drag frame applies to one contour, shared by the outline
+ * entry and the centerline entry. `after` is what the ordinary rules did with
+ * the locked delta, and is corrected in place.
+ *
+ * Without Alt nothing slides: the designer's own placement stands, and the
+ * tension is what the correction holds (see `applyTensionAwareEdit`). With Alt
+ * a tension point slides along its straight, as under the X scale, on the
+ * drag's own axis and with the scale's setting for straights across that axis.
+ */
+export function correctTensionAwareDragContour(
+  before,
+  after,
+  closed,
+  movedIndices,
+  delta,
+  behaviorName
+) {
+  const { power, proportional } = readTensionAwareBehaviorName(behaviorName);
+  const settings = applicationSettingsController.model;
+  const slideOptions = proportional
+    ? {
+        slide: true,
+        axis: axisForDelta(delta),
+        slideBothTensionPoints: !!settings.slideBothTensionPoints,
+      }
+    : { slide: false };
+  if (!power) {
+    applyTensionAwareEdit(before, after, closed, slideOptions);
+    return;
+  }
+  applyTensionAwareEdit(before, after, closed, { slide: false });
+  applyPowerAxisScale(before, after, closed, movedIndices, delta, {
+    carrySlantedSmooths: !!settings.powerDragCarriesSlantedSmooths,
+  });
+  // The run has moved, so the handles around it are read again, and this is
+  // the pass that slides: it is the one that sees the stretched shape.
+  applyTensionAwareEdit(before, after, closed, slideOptions);
+}
 
 const POWER_EPSILON = 1e-9;
 
@@ -88,7 +173,12 @@ function wrapContourIndex(index, length, closed) {
 // through. The smooth flag is not asked for - the geometry is the statement,
 // and many drawn extremes carry no flag. Both neighbours are read with a wrap,
 // so the point that sits at the contour's seam is judged like any other.
-function isEligiblePowerPoint(points, index, axis, closed) {
+//
+// `carrySlantedSmooths` also admits a smooth point at any angle: two handles
+// on one line through the point, within the same tolerance. A point with one
+// handle is not admitted that way, because its other side is a straight and
+// carrying it would move the straight.
+function isEligiblePowerPoint(points, index, axis, closed, carrySlantedSmooths) {
   const point = points[index];
   if (!point || point.type) return false;
   const crossAxis = axis === "x" ? "y" : "x";
@@ -99,13 +189,22 @@ function isEligiblePowerPoint(points, index, axis, closed) {
     })
     .filter((neighbour) => neighbour?.type);
   if (!controls.length) return false;
-  return controls.every((control) => {
-    const length = Math.hypot(control.x - point.x, control.y - point.y);
-    return (
-      length > POWER_EPSILON &&
-      Math.abs(control[crossAxis] - point[crossAxis]) <= length * POWER_SQUARE_TOLERANCE
-    );
-  });
+  const lengths = controls.map((control) =>
+    Math.hypot(control.x - point.x, control.y - point.y)
+  );
+  if (lengths.some((length) => length <= POWER_EPSILON)) return false;
+  const square = controls.every(
+    (control, i) =>
+      Math.abs(control[crossAxis] - point[crossAxis]) <=
+      lengths[i] * POWER_SQUARE_TOLERANCE
+  );
+  if (square || !carrySlantedSmooths || controls.length !== 2) return square;
+  // Two unit directions on one line add up to nothing.
+  const [a, b] = controls.map((control, i) => ({
+    x: (control.x - point.x) / lengths[i],
+    y: (control.y - point.y) / lengths[i],
+  }));
+  return Math.hypot(a.x + b.x, a.y + b.y) <= 2 * POWER_SQUARE_TOLERANCE;
 }
 
 // Walk the contour away from one edge of the moved body, one on-curve point at
@@ -121,7 +220,8 @@ function collectPowerRun(
   step,
   axis,
   closed,
-  movedOrdinals
+  movedOrdinals,
+  carrySlantedSmooths
 ) {
   const pivot = points[order[edgeOrdinal]][axis];
   const run = [];
@@ -141,7 +241,7 @@ function collectPowerRun(
       const anchor = run.pop();
       return anchor === undefined ? null : { run, anchor };
     }
-    if (!isEligiblePowerPoint(points, index, axis, closed)) {
+    if (!isEligiblePowerPoint(points, index, axis, closed, carrySlantedSmooths)) {
       return { run, anchor: index };
     }
     run.push(index);
@@ -169,8 +269,18 @@ function collectPowerRun(
  * @param {boolean} closed - Whether the contour is closed
  * @param {Set} movedIndices - Indices, into this contour, of the points the drag moved
  * @param {Object} delta - The locked drag delta
+ * @param {Object} options
+ * @param {boolean} options.carrySlantedSmooths - Also carry smooth points that
+ *   are not square across the axis. The Edit menu's setting.
  */
-export function applyPowerAxisScale(before, after, closed, movedIndices, delta) {
+export function applyPowerAxisScale(
+  before,
+  after,
+  closed,
+  movedIndices,
+  delta,
+  { carrySlantedSmooths = false } = {}
+) {
   if (!movedIndices?.size) return;
   const axis = axisForDelta(delta);
   const amount = delta[axis];
@@ -191,7 +301,8 @@ export function applyPowerAxisScale(before, after, closed, movedIndices, delta) 
         step,
         axis,
         closed,
-        movedOrdinals
+        movedOrdinals,
+        carrySlantedSmooths
       );
       if (!collected?.run.length) continue;
       const span = before[collected.anchor][axis] - pivot;
@@ -248,9 +359,9 @@ export function createTensionAwareTargetEntries(
     selection,
     scalingEditBehavior
   );
-  const baseBehavior = baseFactory.getBehavior(
-    BASE_BEHAVIOR_NAMES[behaviorName] || "default"
-  );
+  // The correction runs on top of what the ordinary rules produce, so the
+  // rules have to run somewhere.
+  const baseBehavior = baseFactory.getBehavior("default");
 
   // The moved body, resolved once: the selected points of each contour, as
   // indices into that contour. The run grows from its edges.
@@ -308,25 +419,15 @@ export function createTensionAwareTargetEntries(
             const before = originalPath.getUnpackedContour(contourIndex);
             const after = moved.path.getUnpackedContour(contourIndex);
             const uncorrected = written.path.getUnpackedContour(contourIndex).points;
-            // No slide under a drag: the designer's own placement stands, and
-            // the tension is what the correction holds. See the note on
-            // `applyTensionAwareEdit`.
-            applyTensionAwareEdit(before.points, after.points, after.isClosed, {
-              slide: false,
-            });
             // The power pass belongs to the contours the selection moved.
-            if (behaviorName === POWER_TENSION_AWARE_BEHAVIOR_NAME) {
-              applyPowerAxisScale(
-                before.points,
-                after.points,
-                after.isClosed,
-                movedByContour.get(contourIndex),
-                delta
-              );
-              applyTensionAwareEdit(before.points, after.points, after.isClosed, {
-                slide: false,
-              });
-            }
+            correctTensionAwareDragContour(
+              before.points,
+              after.points,
+              after.isClosed,
+              movedByContour.get(contourIndex),
+              delta,
+              behaviorName
+            );
             const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
             for (let i = 0; i < after.points.length; i++) {
               const point = after.points[i];

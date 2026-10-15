@@ -1468,6 +1468,17 @@ const behaviorTypes = {
     actions: actionFactories,
   },
 
+  // Alt on X and on C: the same drag, with the tension point slide on.
+  "tension-aware-proportional": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
+  "power-tension-aware-proportional": {
+    matchTree: buildPointMatchTree(defaultRules),
+    actions: actionFactories,
+  },
+
   // The skeleton half of X. The entry writes the whole centerline through the
   // skeleton write path, so the match tree matches no point (R-E, the same
   // shape as base-expand).
@@ -1477,6 +1488,16 @@ const behaviorTypes = {
   },
 
   "skeleton-power-tension-aware": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
+  "skeleton-tension-aware-proportional": {
+    matchTree: buildPointMatchTree([]),
+    actions: actionFactories,
+  },
+
+  "skeleton-power-tension-aware-proportional": {
     matchTree: buildPointMatchTree([]),
     actions: actionFactories,
   },

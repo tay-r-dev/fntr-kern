@@ -133,10 +133,9 @@ import {
 import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
 import { forceRefreshSnapping } from "./snapping-interactions.js";
 import {
-  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
-  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
   getTensionAwareBehaviorName,
+  isSkeletonTensionAwareBehaviorName,
 } from "./tension-aware-editing.js";
 //// grid
 
@@ -1181,7 +1180,7 @@ export class SceneController {
     // mean under the pointer. It needs no axis lock: an arrow key names its
     // axis. The power run grows from the selection, which a nudge has, so the
     // nudge takes it too. Shift is still the coarse step.
-    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds);
+    const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds, event);
     const behaviorName =
       tensionAwareName ||
       getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||
@@ -1205,16 +1204,16 @@ export class SceneController {
         // centerline, which only the skeleton entry can write; the ordinary
         // entry reads outline points and builds nothing at all from a
         // skeleton-only selection, which is why the nudge did nothing.
-        const skeletonTensionAwareEntry =
-          tensionAwareName === SKELETON_TENSION_AWARE_BEHAVIOR_NAME ||
-          tensionAwareName === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
-            ? makeSkeletonTensionAwareTargetEntry(
-                layerGlyph,
-                this.selection,
-                referenceSkeletonData,
-                tensionAwareName
-              )
-            : null;
+        const skeletonTensionAwareEntry = isSkeletonTensionAwareBehaviorName(
+          tensionAwareName
+        )
+          ? makeSkeletonTensionAwareTargetEntry(
+              layerGlyph,
+              this.selection,
+              referenceSkeletonData,
+              tensionAwareName
+            )
+          : null;
         const targetEntries = skeletonTensionAwareEntry
           ? [skeletonTensionAwareEntry]
           : tensionAwareName

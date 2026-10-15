@@ -2303,7 +2303,13 @@ original radius at the new size.
   went 40 units taller with one leg scaled by 1.29. A scale states a size and
   nothing else, so the slide is the only thing that can restore a corner; a drag
   states a position, and the point under the cursor is usually the one the slide
-  would have moved.
+  would have moved. Alt with X or C asks for the slide anyway (2026-10-15), on
+  the drag's axis and under the scale's setting for straights across it; a
+  plain X or C drag still slides nothing.
+- **C may carry slanted smooth points**, behind an Edit menu setting, off by
+  default. A smooth point there is two handles on one line through the point,
+  within the same two degrees an extreme is allowed. A point with one handle
+  is not one, because carrying it would move the straight on its other side.
 - **The drag keeps the rest, and it is worth keeping.** On the n's outer arch
   with the springing point pulled 40 down its own stem, without the tension rule
   tension falls 0.496 to 0.385 and the apex radius collapses 158 to 101; pushed

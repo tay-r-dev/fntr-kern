@@ -775,6 +775,9 @@ export const strings = {
   "sidebar.selection-transformation.path-operations.union": "Remove overlaps",
   "sidebar.selection-transformation.path-operations.union.more":
     "Remove overlaps (right-click for more)",
+  "sidebar.selection-transformation.power-drag": "Power drag (hold C)",
+  "sidebar.selection-transformation.power-drag-slanted-smooths":
+    "Carry slanted smooth points",
   "sidebar.selection-transformation.preserve-aspect-ratio": "Preserve aspect ratio",
   "sidebar.selection-transformation.rotate": "Rotate",
   "sidebar.selection-transformation.scale": "Scale",

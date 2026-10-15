@@ -53,7 +53,6 @@ import {
   transformSkeletonContourMetadata,
   transformSkeletonPointMetadata,
 } from "@fontra/core/skeleton-model.js";
-import { applyTensionAwareEdit } from "@fontra/core/tension-aware-edit.js";
 import { isObjectEmpty, parseSelection, range } from "@fontra/core/utils.ts";
 import { VarPackedPath } from "@fontra/core/var-path.js";
 import { dotVector, mulVectorScalar } from "@fontra/core/vector.js";
@@ -64,10 +63,9 @@ import {
 } from "./bulb-editing.js";
 import { EditBehaviorFactory } from "./edit-behavior.js";
 import {
+  correctTensionAwareDragContour,
   makeAxisLock,
   makeTensionAwareAxisScaleSolver,
-  applyPowerAxisScale,
-  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
 } from "./tension-aware-editing.js";
 
 // Scoped by the editor's edit transaction. While it is on, a bulb is built as
@@ -894,26 +892,15 @@ export function makeSkeletonTensionAwareTargetEntry(
       ) {
         const before = originalPath.getUnpackedContour(contourIndex);
         const after = moved.path.getUnpackedContour(contourIndex);
-        // No slide under a drag: the designer's own placement stands, and the
-        // tension is what the correction holds.
-        applyTensionAwareEdit(before.points, after.points, after.isClosed, {
-          slide: false,
-        });
-        if (behaviorName === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME) {
-          applyPowerAxisScale(
-            before.points,
-            after.points,
-            after.isClosed,
-            movedByContour.get(contourIndex),
-            delta
-          );
-          // The run has moved, so the handles around it are read again. The
-          // outline half does the same, and a centerline that skipped it kept
-          // the tension of the shape before the stretch.
-          applyTensionAwareEdit(before.points, after.points, after.isClosed, {
-            slide: false,
-          });
-        }
+        // The path rule verbatim, one copy for both entries.
+        correctTensionAwareDragContour(
+          before.points,
+          after.points,
+          after.isClosed,
+          movedByContour.get(contourIndex),
+          delta,
+          behaviorName
+        );
         const startIndex = moved.path.getAbsolutePointIndex(contourIndex, 0);
         after.points.forEach((point, i) => corrected.set(startIndex + i, point));
       }

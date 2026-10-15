@@ -94,14 +94,12 @@ import {
   selectedPointIndices,
 } from "./snapping-interactions.js";
 import {
-  SKELETON_TENSION_AWARE_BEHAVIOR_NAME,
-  SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME,
-  TENSION_AWARE_BEHAVIOR_NAME,
-  POWER_TENSION_AWARE_BEHAVIOR_NAME,
   TENSION_AWARE_SCALE_BEHAVIOR_NAME,
   createTensionAwareTargetEntries,
   createTensionAwareTransformEntries,
   getTensionAwareBehaviorName,
+  isPathTensionAwareBehaviorName,
+  isSkeletonTensionAwareBehaviorName,
 } from "./tension-aware-editing.js";
 import {
   glyphSelector,
@@ -999,7 +997,7 @@ export class PointerTool extends BaseTool {
         handleLengthMode: this.handleLengthMode,
       });
       const getSelectionBehaviorName = (event) =>
-        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds) ||
+        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getPointSlideBehaviorName(
           getRealtimeModifiers(),
@@ -1074,10 +1072,7 @@ export class PointerTool extends BaseTool {
             }
           );
         }
-        if (
-          name === TENSION_AWARE_BEHAVIOR_NAME ||
-          name === POWER_TENSION_AWARE_BEHAVIOR_NAME
-        ) {
+        if (isPathTensionAwareBehaviorName(name)) {
           return createTensionAwareTargetEntries(
             layerGlyph,
             sceneController.selection,
@@ -1089,10 +1084,7 @@ export class PointerTool extends BaseTool {
             }
           );
         }
-        if (
-          name === SKELETON_TENSION_AWARE_BEHAVIOR_NAME ||
-          name === SKELETON_POWER_TENSION_AWARE_BEHAVIOR_NAME
-        ) {
+        if (isSkeletonTensionAwareBehaviorName(name)) {
           const entry = makeSkeletonTensionAwareTargetEntry(
             layerGlyph,
             sceneController.selection,

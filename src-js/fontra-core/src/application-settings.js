@@ -71,6 +71,9 @@ export const applicationSettingsController = new ObservableController({
   // straights to keep each curve's proportions. Off, it only adjusts handles
   // (app-level, per D9).
   preserveAspectRatio: true,
+  // fork: the power drag (held on C) carries the extremes square across its
+  // axis. On, it also carries smooth points at any angle (app-level, per D9).
+  powerDragCarriesSlantedSmooths: false,
   // fork: Simplify works on every master being edited at once, so they stay
   // compatible. Off, it simplifies only the master being edited (app-level,
   // per D9).
