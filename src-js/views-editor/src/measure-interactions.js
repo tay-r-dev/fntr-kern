@@ -1,6 +1,6 @@
 import {
-  eventMatchesActionBaseKey,
   eventMatchesActionShortCut,
+  makeHoldKeyRelease,
 } from "@fontra/core/actions.js";
 import { centeredRect } from "@fontra/core/rectangle.ts";
 import {
@@ -56,7 +56,10 @@ export class MeasureInteraction {
             eventMatchesActionShortCut(REALTIME_MEASURE_DIRECT_ACTION, event) ||
             event.altKey,
         });
-        this._boundKeyUp = (e) => this._handleKeyUp(e);
+        const isRelease = makeHoldKeyRelease(REALTIME_MEASURE_ACTION, event);
+        this._boundKeyUp = (e) => {
+          if (isRelease(e)) this._end();
+        };
         window.addEventListener("keyup", this._boundKeyUp);
         this._boundAltKeyDown = (e) => this._handleAltKeyDown(e);
         window.addEventListener("keydown", this._boundAltKeyDown);
@@ -158,15 +161,6 @@ export class MeasureInteraction {
       side,
       type: "skeletonRib",
     };
-  }
-
-  _handleKeyUp(event) {
-    if (
-      eventMatchesActionBaseKey(REALTIME_MEASURE_ACTION, event) ||
-      eventMatchesActionBaseKey(REALTIME_MEASURE_DIRECT_ACTION, event)
-    ) {
-      this._end();
-    }
   }
 
   _handleAltKeyDown(event) {

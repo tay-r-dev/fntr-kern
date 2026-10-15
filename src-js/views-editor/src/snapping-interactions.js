@@ -1,6 +1,6 @@
 import {
-  eventMatchesActionBaseKey,
   eventMatchesActionShortCut,
+  makeHoldKeyRelease,
 } from "@fontra/core/actions.js";
 import {
   getSkeletonData,
@@ -469,8 +469,9 @@ export function handleSnapModeKeyDown(tool, event) {
   // The up is listened for on the window, not the canvas: a key released after
   // the pointer has left the canvas would otherwise stay down forever. Blur says
   // the same thing about a window that loses focus mid-hold.
+  const isRelease = makeHoldKeyRelease(mode.action, event);
   const release = (releaseEvent) => {
-    if (eventMatchesActionBaseKey(mode.action, releaseEvent)) {
+    if (isRelease(releaseEvent)) {
       endSnapModeKey(tool, mode.property);
     }
   };

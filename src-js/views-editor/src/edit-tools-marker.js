@@ -1,3 +1,4 @@
+import { makeHoldKeyRelease } from "@fontra/core/actions.js";
 import { aimCollapsedRay, markerGeometry } from "@fontra/core/marker-measure.js";
 import {
   aimedCast,
@@ -226,13 +227,17 @@ export class MarkerTool extends BaseTool {
 
   // C is held, not toggled. Its release is watched on the window, so a release outside
   // the canvas or a lost focus still ends it.
-  holdCurvatureKey() {
+  holdCurvatureKey(keyDownEvent) {
     if (this.curvatureKeyDown) {
       return;
     }
     this.curvatureKeyDown = true;
+    // No action names this key, so the physical key alone ends the hold.
+    // Matching the letter with Alt up, as the keydown does, kept C held when it
+    // came up with Alt down.
+    const isRelease = makeHoldKeyRelease(null, keyDownEvent);
     this._curvatureKeyUp = (event) => {
-      if (event.type === "blur" || isCurvatureKey(event)) {
+      if (event.type === "blur" || isRelease(event) || isCurvatureKey(event)) {
         this.releaseCurvatureKey();
       }
     };
@@ -269,7 +274,7 @@ export class MarkerTool extends BaseTool {
   handleKeyDown(event) {
     if (isCurvatureKey(event)) {
       event.stopImmediatePropagation();
-      this.holdCurvatureKey();
+      this.holdCurvatureKey(event);
       return;
     }
     if (event.key !== "Backspace") {

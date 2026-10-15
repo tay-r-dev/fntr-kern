@@ -333,6 +333,35 @@ export function eventMatchesActionBaseKey(actionIdentifier, event) {
   return shortCuts.some((shortCut) => shortCut?.baseKey === baseKey);
 }
 
+// fork: the release of a held key, as a test the tool runs on every keyup
+// while the key is held. One copy for every hold key (rail R-B).
+//
+// The physical key that went down is the one that comes up, so it is matched
+// first. The letter alone is read through the current keyboard layout, and
+// Alt+Shift switches the layout on Windows, so a release could read as another
+// letter and the hold never ended. The letter still counts as a release, for
+// a hold whose keydown carried no code.
+//
+// While the hold lasts, Alt does nothing in the browser. On Windows, Alt
+// pressed and released alone moves focus to the browser's menu bar; the held
+// key's release then goes there, and Firefox does not report the lost focus.
+// That is cancelled on the Alt keyup, which is where the browser acts.
+//
+// `actionIdentifier` may be null for a key no action names; the code alone
+// then decides.
+export function makeHoldKeyRelease(actionIdentifier, keyDownEvent) {
+  const code = keyDownEvent?.code;
+  return (event) => {
+    if (event.key === "Alt") {
+      event.preventDefault();
+    }
+    if (code && event.code === code) {
+      return true;
+    }
+    return !!actionIdentifier && eventMatchesActionBaseKey(actionIdentifier, event);
+  };
+}
+
 function matchEventModifiers(shortCut, event) {
   const expectedModifiers = { ...shortCut };
   if (shortCut.commandKey) {

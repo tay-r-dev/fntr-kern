@@ -1,6 +1,6 @@
 import {
-  eventMatchesActionBaseKey,
   eventMatchesActionShortCut,
+  makeHoldKeyRelease,
 } from "@fontra/core/actions.js";
 import { applicationSettingsController } from "@fontra/core/application-settings.js";
 import { ChangeCollector } from "@fontra/core/changes.js";
@@ -69,7 +69,7 @@ export class SkeletonPenTool extends BaseTool {
       !this.insertionPointMode &&
       eventMatchesActionShortCut(REALTIME_INSERTION_POINT_ACTION, event)
     ) {
-      this._startInsertionPointMode();
+      this._startInsertionPointMode(event);
       event.preventDefault();
       return true;
     }
@@ -79,10 +79,11 @@ export class SkeletonPenTool extends BaseTool {
   // The mode lasts exactly as long as the key is down. It has to end on the key
   // coming up, and also on the window losing focus, which is the case where no
   // key-up ever arrives.
-  _startInsertionPointMode() {
+  _startInsertionPointMode(keyDownEvent) {
     this.insertionPointMode = true;
+    const isRelease = makeHoldKeyRelease(REALTIME_INSERTION_POINT_ACTION, keyDownEvent);
     this._insertionPointKeyUp = (event) => {
-      if (eventMatchesActionBaseKey(REALTIME_INSERTION_POINT_ACTION, event)) {
+      if (isRelease(event)) {
         this._endInsertionPointMode();
       }
     };
