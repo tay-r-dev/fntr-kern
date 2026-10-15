@@ -277,7 +277,7 @@ export class PointerTool extends BaseTool {
       size,
       sceneController.selection,
       sceneController.hoverSelection,
-      event.altKey
+      this._ordinaryAltKey(event)
     );
 
     this.sceneController.sceneModel.showTransformSelection = true;
@@ -286,7 +286,7 @@ export class PointerTool extends BaseTool {
 
     if (
       this.sceneModel.canEdit &&
-      event.altKey &&
+      this._ordinaryAltKey(event) &&
       pathHit?.segment.points.length == 2
     ) {
       ({ insertHandles } = this.editor
@@ -550,6 +550,10 @@ export class PointerTool extends BaseTool {
     if (this.measureInteraction.isActive) {
       return;
     }
+    // The preview may have been set by a hover before X or C went down.
+    if (this.sceneModel.pathInsertHandles && !this._ordinaryAltKey(initialEvent)) {
+      this.sceneModel.pathInsertHandles = null;
+    }
     if (this.sceneModel.pathInsertHandles) {
       await this.editor.getPenTool().handleInsertHandles();
       return;
@@ -617,7 +621,7 @@ export class PointerTool extends BaseTool {
       size,
       sceneController.selection,
       sceneController.hoverSelection,
-      initialEvent.altKey
+      this._ordinaryAltKey(initialEvent)
     );
     let initialClickedPointIndex;
     let initialClickedSkeletonPointKey;
@@ -715,7 +719,7 @@ export class PointerTool extends BaseTool {
     // Shift with Alt is an Alt-drag too, so it does not toggle the point off.
     if (
       !selection.size ||
-      (initialEvent.shiftKey && !initialEvent.altKey) ||
+      (initialEvent.shiftKey && !this._ordinaryAltKey(initialEvent)) ||
       !isSuperset(sceneController.selection, cleanSel)
     ) {
       this._selectionBeforeSingleClick = sceneController.selection;
@@ -999,8 +1003,19 @@ export class PointerTool extends BaseTool {
         pointSlideMode: this.pointSlideMode,
         handleLengthMode: this.handleLengthMode,
       });
-      const getSelectionBehaviorName = (event) =>
-        getTensionAwareBehaviorName(getRealtimeModifiers(), targetKinds, event) ||
+      const getSelectionBehaviorName = (rawEvent) => {
+        const tensionAwareName = getTensionAwareBehaviorName(
+          getRealtimeModifiers(),
+          targetKinds,
+          rawEvent
+        );
+        if (tensionAwareName) return tensionAwareName;
+        // Under X or C, Alt belongs to the proportional drag. A selection the
+        // drag does not take (a rib) must not read it as its own Alt rule.
+        const event = this._withOrdinaryAltKey(rawEvent);
+        return getOrdinaryBehaviorName(event);
+      };
+      const getOrdinaryBehaviorName = (event) =>
         getSkeletonModifierBehaviorName(event, getRealtimeModifiers(), targetKinds) ||
         getPointSlideBehaviorName(
           getRealtimeModifiers(),
@@ -1732,6 +1747,29 @@ export class PointerTool extends BaseTool {
     this.sceneSettings.selection = new Set([`${selectionType}/${newIndex}`]);
   }
 
+  // X and C read Alt as their own proportional drag, so while either is held
+  // Alt means nothing else: no handle insertion, no Alt pick, no Alt rule.
+  _altBelongsToTensionAware() {
+    return this.tensionAwareMode || this.powerTensionAwareMode;
+  }
+
+  _ordinaryAltKey(event) {
+    return !!event?.altKey && !this._altBelongsToTensionAware();
+  }
+
+  // The event as the ordinary rules should read it. Reads go to the real event
+  // so its own getters keep working, and its methods stay bound to it.
+  _withOrdinaryAltKey(event) {
+    if (!event?.altKey || !this._altBelongsToTensionAware()) return event;
+    return new Proxy(event, {
+      get(target, property) {
+        if (property === "altKey") return false;
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  }
+
   _handleRealtimeModifierKeyDown(event) {
     const modifier = REALTIME_MODIFIER_ACTIONS.find((modifier) =>
       matchesRealtimeModifierKey(modifier, event)
@@ -1741,6 +1779,10 @@ export class PointerTool extends BaseTool {
     }
     if (!this[modifier.modeProperty]) {
       this[modifier.modeProperty] = true;
+      if (modifier.acceptsAlt && this.sceneModel.pathInsertHandles) {
+        // Alt is the drag's now, so the handle insertion it was showing goes.
+        this.sceneModel.pathInsertHandles = null;
+      }
       const keyUpHandler = (e) => this._handleRealtimeModifierKeyUp(e, modifier.action);
       this._realtimeModifierKeyUpHandlers.set(modifier.action, keyUpHandler);
       window.addEventListener("keyup", keyUpHandler);
