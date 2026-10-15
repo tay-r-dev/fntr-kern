@@ -38,7 +38,7 @@ function specimen({ cap = {}, start = false, mirror = false, single = true } = {
 function bulb(result) {
   const points = result.contours[0].points,
     map = result.provenance[0].pointMap;
-  const roles = ["entry", "bottom", "side", "fillet-ball", "fillet-wall"];
+  const roles = ["entry", "bottom", "side", "apex", "neck", "inner-wall"];
   const indices = roles.map((role) =>
     map.findIndex((p) => p?.bulbRole === role && p.bulbSlot === "onCurve")
   );
@@ -51,7 +51,7 @@ function bulb(result) {
     map,
     indices,
     origin: map[indices[0]],
-    run: Array.from({ length: 19 }, (_, i) => at(i - 3)),
+    run: Array.from({ length: 22 }, (_, i) => at(i - 3)),
   };
 }
 function combStep(a, b) {
@@ -225,15 +225,15 @@ function alongBall(ball, from, to) {
 const EASINGS = Array.from({ length: 51 }, (_, i) => i / 50);
 
 describe("bulb construction", () => {
-  it("emits E, B, C, the fillet's two ends and the existing wall point", () => {
+  it("emits E, the three apexes, the neck, the inner wall point and the existing wall point", () => {
     for (const start of [false, true])
       for (const mirror of [false, true]) {
         for (const capBallEasing of [0, 0.01, 0.5, 1]) {
           const input = specimen({ start, mirror, cap: { capBallEasing } });
           const r = bulb(generateFromSkeleton(input));
-          expect(r.points.filter((p) => !p.type)).to.have.length(7);
-          expect(r.points).to.have.length(19);
-          const q = r.map[r.points.indexOf(r.run[18])];
+          expect(r.points.filter((p) => !p.type)).to.have.length(8);
+          expect(r.points).to.have.length(22);
+          const q = r.map[r.points.indexOf(r.run[21])];
           expect(q.bulbRole).to.equal(undefined);
           expect(q.skeletonPointId).to.equal(start ? 5 : 2);
           const plain = structuredClone(input);
@@ -246,8 +246,8 @@ describe("bulb construction", () => {
               p.role === "onCurve"
           );
           expect(qIndex).to.be.at.least(0);
-          expect(r.run[18].x).to.equal(source.contours[0].points[qIndex].x);
-          expect(r.run[18].y).to.equal(source.contours[0].points[qIndex].y);
+          expect(r.run[21].x).to.equal(source.contours[0].points[qIndex].x);
+          expect(r.run[21].y).to.equal(source.contours[0].points[qIndex].y);
         }
       }
   });
@@ -301,7 +301,7 @@ describe("bulb construction", () => {
             .filter((p) => p?.bulbSlot === "onCurve")
             .map((p) => p.bulbRole)
             .sort()
-        ).to.deep.equal(["bottom", "entry", "fillet-ball", "fillet-wall", "side"]);
+        ).to.deep.equal(["apex", "bottom", "entry", "inner-wall", "neck", "side"]);
         verifyApexes(run);
         const wall = [...input.contours[0].points];
         if (start) wall.reverse();

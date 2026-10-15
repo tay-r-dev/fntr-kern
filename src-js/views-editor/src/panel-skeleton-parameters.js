@@ -122,10 +122,15 @@ export const CAP_BALL_MAX = 300;
 const DEFAULT_CAP_BALL_SHAPE = 0;
 export const CAP_SHAPE_MIN = 0;
 export const CAP_SHAPE_MAX = 100;
-// Bulb easing: a percent of the run from the ball's crossing on the inner edge
-// to the next generated on-curve. 100 collapses the two, and there is nothing
-// past it, so this is a hard end rather than a slider convenience.
+// Bulb easing: a percent of each arm of the corner where the ball meets the
+// inner wall, back to the third apex and up to the next wall point. 100
+// collapses the rounding's ends onto both, and there is nothing past them, so
+// this is a hard end rather than a slider convenience.
 const DEFAULT_CAP_BALL_EASING = 0;
+// How full that rounding is, as a percent: 0 a straight chamfer, 100 both
+// handles on the tangent crossing.
+const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
+export const CAP_BALL_EASE_CURVATURE_MAX = 100;
 
 // Ticket 56: what the Terminal section shows for a cap field a point has never
 // stored, so a preset captured from that point stores what is on screen.
@@ -137,6 +142,7 @@ export const TERMINAL_FIELD_FALLBACKS = {
   capBallRatio: DEFAULT_CAP_BALL_RATIO,
   capBallShape: DEFAULT_CAP_BALL_SHAPE,
   capBallEasing: DEFAULT_CAP_BALL_EASING,
+  capBallEaseCurvature: DEFAULT_CAP_BALL_EASE_CURVATURE,
 };
 export const CAP_BALL_EASING_MAX = 100;
 
@@ -180,6 +186,9 @@ function capValuesFromField(name, value) {
   }
   if (name === "balleasing") {
     return { capBallEasing: Math.min(Math.max(Number(value) / 100, 0), 1) };
+  }
+  if (name === "balleasecurvature") {
+    return { capBallEaseCurvature: Math.min(Math.max(Number(value) / 100, 0), 1) };
   }
   if (name === "ballside") {
     return { capBallSide: value };
@@ -855,13 +864,20 @@ export default class SkeletonParametersPanel {
     this.capFields.radius = this._makeCapField("radius", "cap-radius");
     this.capFields.tension = this._makeCapField("tension", "cap-tension");
     this.roundedRow = fieldRow([this.capFields.radius, this.capFields.tension]);
-    // Ticket 55: the Ball section, Size and Shape, then the easing fillet's one
-    // control. Each in percent.
+    // Ticket 55: the Ball section, Size and Shape, then the easing's distance
+    // and curvature. Each in percent.
     this.capFields.ball = this._makeCapField("ball", "cap-ball");
     this.capFields.ballshape = this._makeCapField("ballshape", "cap-ball-shape");
     this.capFields.balleasing = this._makeCapField("balleasing", "cap-ball-easing");
     this.ballRow = fieldRow([this.capFields.ball, this.capFields.ballshape]);
-    this.ballEaseRow = fieldRow([this.capFields.balleasing]);
+    this.capFields.balleasecurvature = this._makeCapField(
+      "balleasecurvature",
+      "cap-ball-ease-curvature"
+    );
+    this.ballEaseRow = fieldRow([
+      this.capFields.balleasing,
+      this.capFields.balleasecurvature,
+    ]);
     // Which side the ball sits on, as the shared dropdown with its name above.
     // Built once; each update sets its items from the selection.
     this.ballSideDropdown = html.createDomElement("multi-select-dropdown", {
@@ -1330,12 +1346,13 @@ export default class SkeletonParametersPanel {
       ball: Math.round(DEFAULT_CAP_BALL_RATIO * 100),
       ballshape: Math.round(DEFAULT_CAP_BALL_SHAPE * 100),
       balleasing: Math.round(DEFAULT_CAP_BALL_EASING * 100),
+      balleasecurvature: Math.round(DEFAULT_CAP_BALL_EASE_CURVATURE * 100),
     };
     return this._makeCompactField(`cap:${name}`, labelKey, {
       defaultValue: capDefaults[name],
       // The ranged fields read as sliders: radius its 20 positions, roundness
       // and the ball easing their percent runs.
-      slider: ["radius", "tension", "balleasing"].includes(name),
+      slider: ["radius", "tension", "balleasing", "balleasecurvature"].includes(name),
       scrub: (valueStream, startValue) =>
         name === "distance"
           ? nudgePanelCapParameterStream(
@@ -2389,13 +2406,19 @@ export default class SkeletonParametersPanel {
         percentOf(cap.capBallShape, DEFAULT_CAP_BALL_SHAPE),
         { minValue: CAP_SHAPE_MIN, maxValue: CAP_SHAPE_MAX }
       );
-      // Easing grows the fillet where the ball meets the inner wall; 100 is
-      // as far up the wall as one curve can still fill the corner.
+      // Easing rounds the corner where the ball meets the inner wall: its
+      // distance a share of each arm, its curvature how full the rounding is.
       this._refreshCompactField(
         this.capFields.balleasing,
         "cap:balleasing",
         percentOf(cap.capBallEasing, DEFAULT_CAP_BALL_EASING),
         { minValue: 0, maxValue: CAP_BALL_EASING_MAX }
+      );
+      this._refreshCompactField(
+        this.capFields.balleasecurvature,
+        "cap:balleasecurvature",
+        percentOf(cap.capBallEaseCurvature, DEFAULT_CAP_BALL_EASE_CURVATURE),
+        { minValue: 0, maxValue: CAP_BALL_EASE_CURVATURE_MAX }
       );
       formContents.push({
         type: "single-icon",
@@ -2990,6 +3013,7 @@ export default class SkeletonParametersPanel {
         capBallRatio: CAP_BALL_MIN / 100,
         capBallShape: 0,
         capBallEasing: 0,
+        capBallEaseCurvature: DEFAULT_CAP_BALL_EASE_CURVATURE,
       };
       await setPanelCapStyle(
         this.sceneController,

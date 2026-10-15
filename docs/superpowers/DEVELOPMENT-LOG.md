@@ -3278,7 +3278,7 @@ falls about 0.001 per unit of wall.
   skeleton point lands on whole units, and the corner where the ball meets the
   wall moves further than the rib does.
 
-### Every bulb point has one role; the three apexes sit on extremes (2026-10-15)
+### Every bulb point has one role; easing rounds the corner (2026-10-15)
 
 Reported: the regenerated bulb left points close together, and rounding the
 short handles between them made kinks; then, after a first fix, in-between
@@ -3316,28 +3316,31 @@ one glyph with a bulb in two masters, and the others get a made second master
 - **Keeping the neck inside the fillet was tried and withdrawn**: no kink moved,
   and A-W left the reference by 14.7 units on one case.
 
-Worst distance from the reference over all of them: outer wall 1.36, ball
-1.69, A-W 2.08, W-Q 5.73. Worst kink, worst handle ratio and shortest handle:
-E 8.0 / 3.2 / 6, S 6.2 / 3.9 / 6, d 0.2 / 1.9 / 21.6, R 2.5 / 4.6 / 9, P 6.3 /
-1.9 / 8. The bulb test file fails the same 28 tests before and after; the suite
-is 2992 passing, 33 failing, both sides.
+- **The inner side has two points again, and easing is corner rounding.** A
+  became the third apex, which left one point, the neck, to carry the fillet
+  and the whole inner wall: it fell into one of two minima between
+  neighbouring easings (R 0.05 to 0.075, A-N 3.2 to 7.4 units off). N and W
+  now come from the rounding rule skeleton corners use, not from the fit: N
+  goes back along the ball toward A, W up the inner wall toward Q, each by
+  the easing's share of its own arm, and the arc's handles take the easing
+  curvature on the shared Tunni rule. At 0 N is the corner and W halfway up
+  the wall; at 100 N lands on A and W on Q. The arc meets the ball and the
+  wall tangent-only, so the curvature setting has something to set. The
+  rolling circle, its tangent search and its largest-circle search are gone.
+- **The fillet circle never got small.** Easing ran from half a ball radius,
+  so the smallest easing drew about half the full fillet on d, R and P. Under
+  the rounding the share runs from nothing.
+- **The turn table cannot see a small fillet.** It samples the reference about
+  every half unit; a fillet a few units across read 12, 51 and 68 degrees on
+  three neighbouring easings. Nothing reads turn on the inner side now.
 
-- **Easing scales the fillet from nothing.** It ran from half a ball radius at
-  the smallest easing to the largest circle that fits, so on d, R and P the
-  smallest easing already drew half the full fillet (R: 26 units against 59).
-  It is easing times the largest circle now: R 0.1 units at easing 0.001, 5.9
-  at 0.1.
-- **The turn table cannot see a small fillet.** It samples the reference every
-  half unit or so, and a fillet a few units across read 12, 51 and 68 degrees
-  on three neighbouring easings. The neck started at the fillet's middle by
-  turn and hopped between minima with it; it starts at the middle by length.
-- **Open: the neck still hops between two minima** on some neighbouring
-  easings: R from 0.05 to 0.075 (A-W 3.2 to 7.4 units off the reference), E's
-  second master between 0.15 and 0.3 (W-Q 0.65 to 6.7). Preview frames take
-  the quick fit, so it shows on release.
-- **Open: short handles at A and W.** Where the ball's end is close to the third
-  apex and the fillet is small, A-W is 19 to 46 units long with handles of 6 to
-  18, and rounding bends A or W by up to 8 degrees (E at small easing). That is
-  inside what the grid allows a join with handles this short.
+Over E, S, d, R and P at 41 easings: outer wall within 1.34 units of the
+reference, ball 1.68, A-N 0.19, W-Q 0.81; the arc leaves the reference by
+design. Apexes agree between masters to 0.0 degrees. The suite is 2993
+passing, 32 failing; the 32 all failed before this work.
+
+- **Open: N near A.** On S the ball beyond the third apex is short, so from
+  easing 0.6 A-N is 2 to 5 units with handles to match, and rounding to whole
+  units bends N by up to 14 degrees. E and R show the same above 0.85.
 - **Open: S's ball is too small for long handles.** It turns about 250 degrees
   over six cubics, so no placement gives handles much over 12 units there.

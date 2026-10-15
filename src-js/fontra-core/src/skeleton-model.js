@@ -144,9 +144,10 @@ export const CAP_POINT_FIELDS = [
   "capDistance",
   "capBallRatio",
   "capBallShape",
-  // Bulb easing grows the fillet in the corner where the ball meets the inner
-  // wall. It is the fillet's only control.
+  // Bulb easing rounds the corner where the ball meets the inner wall: a share
+  // of each arm, and a curvature that sets how full the rounding is.
   "capBallEasing",
+  "capBallEaseCurvature",
 ];
 
 // A bulb's own points, which Z and Alt edit the way they edit any generated
@@ -3595,7 +3596,12 @@ const TERMINAL_PRESET_TYPES = Object.freeze({
     key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_ROUNDED,
   },
   drop: {
-    fields: Object.freeze(["capBallRatio", "capBallShape", "capBallEasing"]),
+    fields: Object.freeze([
+      "capBallRatio",
+      "capBallShape",
+      "capBallEasing",
+      "capBallEaseCurvature",
+    ]),
     key: SKELETON_SOURCE_DEFAULT_KEYS.CUSTOM_CAP_DROP,
   },
 });

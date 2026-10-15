@@ -118,7 +118,7 @@ describe("V-slide of generated points", () => {
     const plain = generateFromSkeleton(skeleton({}, cap));
     expect(
       plain.provenance[0].pointMap.filter((m) => m?.bulbSlot === "onCurve")
-    ).to.have.length(5);
+    ).to.have.length(6);
     for (const role of ["entry", "bottom", "side", "neck"]) {
       const ignored = generateFromSkeleton(
         skeleton({}, { ...cap, capBallEdits: { [role]: { vslide: 0.3 } } })
@@ -251,7 +251,7 @@ describe("V-slide of generated points, through the editor's entry", () => {
       const layer = await layerWith(
         skeleton({}, { capStyle: "drop", capBallEasing, capBallSide: "left" })
       );
-      for (const role of ["fillet-ball", "fillet-wall"]) {
+      for (const role of ["apex", "neck", "inner-wall"]) {
         const selection = new Set([`editableGeneratedPoint/1/8/bulb-${role}`]);
         expect(
           getPointSlideBehaviorName(

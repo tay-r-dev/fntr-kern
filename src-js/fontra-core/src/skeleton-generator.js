@@ -1,5 +1,5 @@
 import { Bezier } from "bezier-js";
-import { buildBulb } from "./bulb-geometry.js";
+import { buildBulb, DEFAULT_CAP_BALL_EASE_CURVATURE } from "./bulb-geometry.js";
 import { gridJoinPlacement, gridKinkAllowance } from "./harmonization.js";
 import {
   getAdjacentSegments,
@@ -3204,6 +3204,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: firstOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature: firstOnCurvePoint.capBallEaseCurvature,
         capBallEdits: firstOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
       });
@@ -3406,6 +3407,7 @@ export function generateOutlineFromSkeletonContour(skeletonContour, options = {}
           skeletonContour.capBallShape ??
           DEFAULT_CAP_BALL_SHAPE,
         capBallEasing: lastOnCurvePoint.capBallEasing ?? DEFAULT_CAP_BALL_EASING,
+        capBallEaseCurvature: lastOnCurvePoint.capBallEaseCurvature,
         capBallEdits: lastOnCurvePoint.capBallEdits,
         preview: options.bulbPreview,
       });
@@ -6612,6 +6614,7 @@ function buildDropCap({
   capBallRatio,
   capBallShape,
   capBallEasing,
+  capBallEaseCurvature,
   capBallEdits = null,
   preview = false,
 }) {
@@ -6650,13 +6653,16 @@ function buildDropCap({
     radius: (clampCapBallRatio(capBallRatio) * capWidth) / 2,
     shape: clampCapBallShape(capBallShape),
     easing,
+    easeCurvature: Number.isFinite(capBallEaseCurvature)
+      ? Math.min(Math.max(capBallEaseCurvature, 0), 1)
+      : DEFAULT_CAP_BALL_EASE_CURVATURE,
     edits: capBallEdits,
     beyond: beyondRun && [qHandleAnchor, ...beyondRun.slice(1)],
     preview: preview === true,
   });
   if (!result) return null;
   const points = result.points;
-  points[15] = { ...q };
+  points[18] = { ...q };
   // Keep the source wall snapshot for its gizmo, even when E lies before the rib.
   const entry = points[0];
   entry._provenance = {
@@ -6692,12 +6698,13 @@ function buildDropCap({
     points[i].smooth = true;
     points[i].skipColinear = true;
   });
-  // The fillet's two ends and their handles belong to the cap too, but no hand
-  // moves them: the easing slider sets them. They name no side, so nothing
-  // reads them as a rib's own points.
+  // The third apex, the neck and the inner wall point belong to the cap too,
+  // but no hand moves them: the fit and the easing slider set them. They name
+  // no side, so nothing reads them as a rib's own points.
   for (const [i, role] of [
-    [9, "fillet-ball"],
-    [12, "fillet-wall"],
+    [9, "apex"],
+    [12, "neck"],
+    [15, "inner-wall"],
   ])
     for (const [h, slot] of [
       [i - 1, "in"],
@@ -6712,36 +6719,35 @@ function buildDropCap({
         bulbSlot: slot,
       };
   // Q's handle on the bulb side is the bulb's as well: the wall from W to Q is
-  // the cut the fillet leaves. It names the terminal and no side, so a drag on
+  // a piece of the bulb's fit. It names the terminal and no side, so a drag on
   // Q's rib does not carry it.
-  points[14]._provenance = {
+  points[17]._provenance = {
     skeletonPointId: endpoint._sourcePointId,
     side: null,
     role: "in",
-    bulbRole: "fillet-wall",
+    bulbRole: "inner-wall",
     bulbSlot: "wall",
   };
   // While an edit runs, every bulb point and handle is hidden: only the
   // outline moves smoothly. The final build on release places the points on
   // the ball's extremes, and that jump is not to be seen under the cursor.
   if (result.preview)
-    for (const p of [result.wall[2], ...points.slice(0, 15)])
+    for (const p of [result.wall[2], ...points.slice(0, 18)])
       p._provenance = { ...p._provenance, bulbPreview: true };
-  points[9].skipColinear = true;
-  points[12].skipColinear = true;
+  for (const i of [9, 12, 15]) points[i].skipColinear = true;
   // Q keeps its own identity, and every wall segment beyond it.
   const originalInner = awayFromRib(innerPiece.segmentPoints);
-  points[15]._provenance = { ...originalInner.at(-1)._provenance };
-  points[15].skipColinear = true;
-  points[15].smooth = originalInner.at(-1).smooth;
+  points[18]._provenance = { ...originalInner.at(-1)._provenance };
+  points[18].skipColinear = true;
+  points[18].smooth = originalInner.at(-1).smooth;
   const keptOuter =
     position === "end"
       ? [...outer.slice(0, outerPiece.segmentStartIndex), ...result.wall]
       : [...result.wall].reverse().concat(outer.slice(outerPiece.segmentEndIndex + 1));
   const keptInner =
     position === "end"
-      ? [...inner.slice(0, innerPiece.segmentStartIndex), points[15]]
-      : [points[15], ...inner.slice(innerPiece.segmentEndIndex + 1)];
+      ? [...inner.slice(0, innerPiece.segmentStartIndex), points[18]]
+      : [points[18], ...inner.slice(innerPiece.segmentEndIndex + 1)];
   const fromSide = position === "end" ? "left" : "right";
   const capPoints =
     outerSide === fromSide ? points.slice(1, -1) : points.slice(1, -1).reverse();

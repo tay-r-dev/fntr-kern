@@ -1,6 +1,7 @@
 import { matchCubicEndCurvatures } from "./bulb-entry-slide.js";
 import { cubicPointAt, splitCubicAt } from "./offset-contour.js";
 import { bulbEndCurvature } from "./bulb-harmonization.js";
+import { computeTunniHandleLengths } from "./tunni-calculations.js";
 import * as vector from "./vector.js";
 
 // The outer rib end anchors the ball before its emitted entry is V-slid.
@@ -248,14 +249,12 @@ function wallLengthTable(points, from) {
   };
 }
 
-// The rolling circle's largest radius, at full easing, in ball radii. Easing 0
-// is the plain corner.
-const FILLET_RADIUS = 2.2;
 // How far back along the outer wall from the rib the refit starts E, in ball
 // radii: where the realized S put it.
 const FIT_ENTRY_LEAD = 1.75;
-// The wall end never climbs past this share of the wall to the next wall point.
-const FILLET_WALL_SHARE = 0.75;
+// The easing curvature a bulb gets when it stores none: the tension skeleton
+// corner rounding starts from.
+export const DEFAULT_CAP_BALL_EASE_CURVATURE = 0.55;
 
 function cubicTangentAt(points, t) {
   const [p0, p1, p2, p3] = points;
@@ -268,18 +267,18 @@ function cubicTangentAt(points, t) {
 
 const cross = (a, b) => a.x * b.y - a.y * b.x;
 
-// The bulb: E, B and C on the ball, A where the ball gives way to the easing
-// fillet, W where the fillet meets the inner wall, then Q, the wall's next
-// existing point. Sixteen points, at every easing: at zero easing A, W and the
-// fillet's handles all lie on the corner where the ball meets the wall.
+// The bulb: E on the outer wall, X, B and A the ball's three apexes, N where
+// the easing leaves the ball, W where it meets the inner wall, then Q, the
+// wall's next existing point. Nineteen points, at every easing.
 //
-// Easing fills that corner the way solder fills the corner between a part and
-// its pad. It adds material and never removes any: the ball stays whole under
-// the fillet, and the stroke stays whole beside it. The fillet's ball end goes
-// back from the corner as far as its wall end climbs, up to 1.5 radii,
-// then stops, and C slides down the ball ahead of it. Its wall end climbs on.
-// Full easing puts the wall end two radii up the wall, or three quarters of the
-// way to the next wall point where the wall is shorter.
+// Easing rounds the corner where the inner wall leaves the ball, the way
+// skeleton corner rounding does: N goes back along the ball toward A and W up
+// the inner wall toward Q, each by the easing's share of its own arm, and the
+// arc between them takes its handles from the easing curvature, 0 a straight
+// chamfer and 1 both handles on the tangent crossing. The two arms differ, so
+// the rounding is a fillet whose depth the curvature sets. At zero easing N is
+// the corner and W stands halfway up the inner wall; at full easing N lands on
+// A and W on Q.
 //
 // `preview` says an edit is in progress. The geometry is the same; the caller
 // hides E and its handles until release, because the entry fit can move E far
@@ -299,6 +298,7 @@ export function buildBulb(options) {
     options.radius,
     options.shape,
     options.easing,
+    options.easeCurvature ?? null,
     options.edits ?? null,
     options.preview ?? false,
   ]);
@@ -326,6 +326,7 @@ function solveBulb({
   radius,
   shape,
   easing,
+  easeCurvature = DEFAULT_CAP_BALL_EASE_CURVATURE,
   edits = null,
   beyond = null,
   preview = false,
@@ -349,78 +350,10 @@ function solveBulb({
     thetaE + 0.2,
     (3 * Math.PI) / 2 - 0.02
   );
-  const corner = ball.at(thetaCut);
-  const thetaFloor = thetaE + 0.1;
-  const wallTable = wallLengthTable(inner, cut);
-  const wallLength = wallTable.total;
+  const innerRest = splitCubicAt(inner, cut).second;
 
-  // The rolling circle: radius r, outside the ball and on the counter side of
-  // the wall, touching both. Where it touches them are the reference's A and W.
-  const outerMid = cubicPointAt(wall, 0.5);
-  const counterSign =
-    cross(cubicTangentAt(inner, cut), sub(outerMid, corner)) > 0 ? -1 : 1;
-  const counterNormal = (t) => {
-    const tangent = cubicTangentAt(inner, t);
-    return { x: -tangent.y * counterSign, y: tangent.x * counterSign };
-  };
-  const BALL_SAMPLES = 160;
-  const nearestOnBall = (p) => {
-    const at = (theta) => vector.distance(ball.at(theta), p);
-    let best = thetaFloor;
-    for (let i = 0; i <= BALL_SAMPLES; i++) {
-      const theta = thetaFloor + ((thetaCut - thetaFloor) * i) / BALL_SAMPLES;
-      if (at(theta) < at(best)) best = theta;
-    }
-    const step = (thetaCut - thetaFloor) / BALL_SAMPLES;
-    let lo = Math.max(thetaFloor, best - step),
-      hi = Math.min(thetaCut, best + step);
-    for (let i = 0; i < 40; i++) {
-      const m1 = lo + (hi - lo) / 3,
-        m2 = hi - (hi - lo) / 3;
-      if (at(m1) < at(m2)) hi = m2;
-      else lo = m1;
-    }
-    const theta = (lo + hi) / 2;
-    return { theta, distance: (ball.contains(p) ? -1 : 1) * at(theta) };
-  };
-  const tTop = wallTable.parameterAt(FILLET_WALL_SHARE * wallLength);
-  const gapAt = (t, r) =>
-    nearestOnBall(offset(cubicPointAt(inner, t), counterNormal(t), r)).distance - r;
-  // The largest circle that still touches the wall within its allowed share:
-  // a larger one would end its arc off the wall.
-  const largestCircle = () => {
-    let lo = 0,
-      hi = FILLET_RADIUS * radius;
-    if (gapAt(tTop, hi) >= 0) return hi;
-    for (let i = 0; i < 40; i++) {
-      const mid = (lo + hi) / 2;
-      if (gapAt(tTop, mid) >= 0) lo = mid;
-      else hi = mid;
-    }
-    return lo;
-  };
-  const rolled = (r) => {
-    const centre = (t) => offset(cubicPointAt(inner, t), counterNormal(t), r);
-    const gap = (t) => gapAt(t, r);
-    let lo = cut,
-      hi = tTop;
-    if (gap(hi) < 0) lo = hi;
-    else
-      for (let i = 0; i < 50; i++) {
-        const mid = (lo + hi) / 2;
-        if (gap(mid) < 0) lo = mid;
-        else hi = mid;
-      }
-    return { t: lo, thetaA: nearestOnBall(centre(lo)).theta, centre: centre(lo) };
-  };
-
-  // The ideal reference: the outer wall, the ball from the rib, the rolling
-  // circle's arc, the inner wall to Q. Every piece is exact. Its comb may step,
-  // because it is the shape to follow, not the outline.
-  const built = easing > 0;
-  // Easing runs from no circle, the corner, to the largest that fits, in
-  // proportion: a small easing is a small fillet.
-  const filletRadius = built ? clamp(easing, 0, 1) * largestCircle() : 0;
+  // The reference: the outer wall, the ball from the rib to the corner, the
+  // inner wall from the corner to Q. Every piece is exact.
   const ballPieces = (from, to) => {
     const count = Math.max(1, Math.ceil(Math.abs(to - from) / (Math.PI / 3)));
     return Array.from({ length: count }, (_, i) =>
@@ -431,86 +364,75 @@ function solveBulb({
       )
     );
   };
-  let pieces, ballCount, arcCount, tW;
-  if (built) {
-    const circle = rolled(filletRadius);
-    tW = circle.t;
-    const ballPart = ballPieces(thetaE, circle.thetaA);
-    const arcPart = circleArc(
-      circle.centre,
-      filletRadius,
-      ball.at(circle.thetaA),
-      cubicPointAt(inner, tW)
-    );
-    ballCount = ballPart.length;
-    arcCount = arcPart.length;
-    pieces = [wall, ...ballPart, ...arcPart, splitCubicAt(inner, tW).second];
-  } else {
-    tW = cut;
-    const ballPart = ballPieces(thetaE, thetaCut);
-    ballCount = ballPart.length;
-    arcCount = 0;
-    pieces = [wall, ...ballPart, splitCubicAt(inner, cut).second];
-  }
-  const reference = referencePath(pieces);
-  // Places along the reference by its own measure, so A and W land exactly
-  // on the joints between its pieces.
+  const ballPart = ballPieces(thetaE, thetaCut);
+  const reference = referencePath([wall, ...ballPart, innerRest]);
   const sRib = reference.ends[0];
-  const sA = reference.ends[ballCount];
-  const sW = reference.ends[ballCount + arcCount];
+  const sCorner = reference.ends[ballPart.length];
+  // X, B and A are the bulb's three apexes, on its extremes, with the handles
+  // square to the glyph's axes. Every point has one role in every master, so a
+  // blend between masters moves each point along its own part of the bulb
+  // instead of rotating it from one part to another.
+  const [sX, sB, sA] = apexPlaces(reference, sRib, sCorner, 3);
 
-  // The refit: X, B and A are placed first, and the fit solves E, W and the
-  // twelve handle lengths. Every handle keeps the reference's direction at
-  // its point. Curvature matches at every join, at P with the wall before it
-  // and at Q with the stroke after it, and the outline stays as near the
-  // reference as that allows. At zero easing A and W are the corner: the fit
-  // ends there, with no condition at it, and the inner wall leaves the corner
-  // at its own angle, exact.
-  //
-  // Every point has one role in every master, so a blend between masters
-  // moves each point along its own part of the bulb instead of rotating it
-  // from one part to another. E is on the outer wall and W is the neck: both
-  // slide, and their angles are free. X, B and A are the bulb's three apexes,
-  // on its extremes, with the handles square to the glyph's axes.
-  const kP = bulbEndCurvature(wall);
+  // The rounding. N goes back along the ball from the corner toward A, W up
+  // the inner wall toward Q, each by the easing's share of its own arm.
+  const share = clamp(easing, 0, 1);
+  const built = share > 0;
+  const sN = sCorner - share * (sCorner - sA);
+  const wallTable = wallLengthTable(innerRest, 0);
+  const tW = wallTable.parameterAt((built ? share : 0.5) * wallTable.total);
+  const pointN = reference.point(sN);
+  const pointW = cubicPointAt(innerRest, tW);
+  let rounding;
+  if (built) {
+    const along = reference.tangent(sN);
+    const back = vector.mulVectorScalar(cubicTangentAt(innerRest, tW), -1);
+    const { startLen, endLen } =
+      vector.distance(pointN, pointW) > 1e-3
+        ? computeTunniHandleLengths(
+            pointN,
+            along,
+            pointW,
+            back,
+            clamp(easeCurvature, 0, 1)
+          )
+        : { startLen: 0, endLen: 0 };
+    rounding = [
+      pointN,
+      offset(pointN, along, startLen),
+      offset(pointW, back, endLen),
+      pointW,
+    ];
+  } else rounding = cubicSlice(innerRest, 0, tW);
+  let rest = cubicSlice(innerRest, tW, 1);
   const wallCurvature = curvatureBeyond(inner, beyond);
-  const kQ = wallCurvature ?? bulbEndCurvature(inner, true);
-  const apexes = apexPlaces(reference, sRib, sA, built ? 3 : 2);
-  const held = built ? apexes : [...apexes, sA];
+  if (wallCurvature !== undefined)
+    rest = arriveWithCurvature(rest, wallCurvature, radius) ?? rest;
+
+  // The refit of P to N: E slides on the outer wall and the fit solves it and
+  // the ten handle lengths, with X, B, A and N held. Every handle keeps the
+  // reference's direction at its point. Curvature matches at P with the wall
+  // before it and at E, X, B and A; at N the fit ends on the rounding's own
+  // tangent, with no condition on curvature, which is the rounding's to set.
   const fit = fitToReference(reference, {
+    // E as far back on the wall as the realized S put it.
     start: sRib - Math.min(FIT_ENTRY_LEAD * radius, 0.8 * sRib),
-    // The neck starts in the middle of the fillet, by length: the turn table
-    // cannot see a fillet a few units across.
-    neck: (sA + sW) / 2,
-    kP,
-    kQ,
+    kP: bulbEndCurvature(wall),
     radius,
-    corner: built ? null : { s: sA },
-    held,
+    held: [sX, sB, sA, sN],
     // A preview frame takes the quick fit; the refit runs on release.
     quick: preview,
   });
-  if (!built) {
-    let rest = splitCubicAt(inner, cut).second;
-    if (wallCurvature !== undefined)
-      rest = arriveWithCurvature(rest, wallCurvature, radius) ?? rest;
-    fit.curves[5] = rest;
-  }
-  const curves = fit.curves;
+  const curves = [...fit.curves, rounding, rest];
   const points = [
     ...curves[1],
-    ...curves[2].slice(1),
-    ...curves[3].slice(1),
-    ...curves[4].slice(1),
-    ...curves[5].slice(1),
+    ...curves.slice(2).flatMap((curve) => curve.slice(1)),
   ].map((p, i) => (i % 3 ? { x: p.x, y: p.y, type: "cubic" } : { x: p.x, y: p.y }));
   const tangents = [];
   applyBulbEdits(points, edits, tangents, radius);
-  for (const i of [0, 3, 6]) points[i].smooth = true;
-  points[9].smooth = built;
+  for (const i of [0, 3, 6, 9, 15]) points[i].smooth = true;
   points[12].smooth = built;
-  points[9].skipColinear = true;
-  points[12].skipColinear = true;
+  for (const i of [9, 12, 15]) points[i].skipColinear = true;
   const outerWall = curves[0].map((p, i) =>
     i % 3 ? { x: p.x, y: p.y, type: "cubic" } : { ...wall[i], x: p.x, y: p.y }
   );
@@ -520,10 +442,9 @@ function solveBulb({
     error: fit.curvatureError * radius,
     status: fit.curvatureError * radius < 1e-5 ? "matched" : "bounded",
     wall: outerWall,
-    keptInner: [points[15]],
+    keptInner: [points[18]],
     ball,
     tangents,
-    fillet: { radius: filletRadius },
     entryParameter: 1,
     orthogonalEntry: false,
     sideOnApex: false,
@@ -656,41 +577,15 @@ function referencePath(cubics) {
   };
 }
 
-// A circle's arc from a to b, the short way round, as cubics of at most 60
-// degrees.
-function circleArc(centre, r, a, b) {
-  const from = Math.atan2(a.y - centre.y, a.x - centre.x);
-  let sweep = Math.atan2(b.y - centre.y, b.x - centre.x) - from;
-  while (sweep > Math.PI) sweep -= 2 * Math.PI;
-  while (sweep <= -Math.PI) sweep += 2 * Math.PI;
-  const count = Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 3)));
-  const at = (angle) => ({
-    x: centre.x + r * Math.cos(angle),
-    y: centre.y + r * Math.sin(angle),
-  });
-  return Array.from({ length: count }, (_, i) => {
-    const a0 = from + (sweep * i) / count,
-      a1 = from + (sweep * (i + 1)) / count;
-    const k = (4 / 3) * Math.tan((a1 - a0) / 4) * r;
-    const p0 = at(a0),
-      p3 = at(a1);
-    return [
-      p0,
-      { x: p0.x - k * Math.sin(a0), y: p0.y + k * Math.cos(a0) },
-      { x: p3.x + k * Math.sin(a1), y: p3.y - k * Math.cos(a1) },
-      p3,
-    ];
-  });
-}
-
-// The refit of six cubics, P-E-X-B-A-W-Q, to a reference. The unknowns are
-// the places of E and W along the reference and the twelve handle lengths, in
-// logarithms; X, B and A are held where the caller put them. Residuals: each curve's distance from the reference, across
-// it, at seven fixed parameters, and each curvature condition, weighted to
-// hold. Levenberg-Marquardt from the given start with a fixed step budget: one
-// objective, one start, nothing chosen among. `corner` holds A and W together
-// on the reference's corner: the fit then stops at A, with no condition there,
-// and the caller supplies the wall after it.
+// The refit of five cubics, P-E-X-B-A-N, to a reference. The unknowns are E's
+// place along the reference and the ten handle lengths, in logarithms; X, B, A
+// and N are held where the caller put them. Residuals: each curve's distance
+// from the reference, across it, at seven fixed parameters, and each
+// curvature condition, weighted to hold: at P with the wall before it, and at
+// E, X, B and A. The fit ends at N on the reference's tangent there, with no
+// condition on curvature. Where N has reached A, A-N is collapsed and the fit
+// ends at A. Levenberg-Marquardt from the given start with a fixed step
+// budget: one objective, one start, nothing chosen among.
 const FIT_SAMPLES = [1, 2, 3, 4, 5, 6, 7].map((i) => i / 8);
 // The curvature conditions come in by steps, the shape alone first, so the
 // fit stays by the reference while the joins are made smooth. The same
@@ -704,17 +599,14 @@ const FIT_APEX_ROOM = (10 * Math.PI) / 180;
 const FIT_LENGTH_PULL = 2;
 // A step that improves the fit by less than this share has settled it.
 const FIT_SETTLED = 1e-6;
-function fitToReference(
-  reference,
-  { start, neck, kP, kQ, radius, corner, held, quick = false }
-) {
+function fitToReference(reference, { start, kP, radius, held, quick = false }) {
   const gap = 0.1 * radius;
   const total = reference.total;
-  const fixedCorner = corner !== null;
-  // E is solved, and W too unless it is the corner; X, B and A are held.
-  const placeCount = fixedCorner ? 1 : 2;
-  const places = (z) => [0, z[0], ...held, fixedCorner ? held[2] : z[1], total];
-  const fitted = (k) => !(fixedCorner && k >= 4);
+  const placeCount = 1;
+  const places = (z) => [0, z[0], ...held];
+  const CURVES = 5;
+  const collapsed = held[3] - held[2] < 1e-6;
+  const fitted = (k) => !(collapsed && k === 4);
   // The ends of curve k: places, points and directions along the reference.
   const ends = (s, k) => ({
     a: reference.point(s[k]),
@@ -743,7 +635,7 @@ function fitToReference(
   // lengths, so this is one two-by-two solve per curve. No curvature
   // condition: a preview frame shows this, and the refit starts from it.
   const quickLengths = (s) =>
-    Array.from({ length: 6 }, (_, k) => {
+    Array.from({ length: CURVES }, (_, k) => {
       if (!fitted(k)) return [1, 1];
       const { a, b, ta, tb } = ends(s, k);
       const r = targets(s, k);
@@ -779,7 +671,7 @@ function fitToReference(
       return [Math.max(h0, floor), Math.max(h1, floor)];
     });
 
-  const free = fixedCorner ? [start] : [start, neck];
+  const free = [start];
   if (quick) {
     const s = places(free);
     const lengths = quickLengths(s);
@@ -789,9 +681,8 @@ function fitToReference(
 
   const curvatureRows = (curves) => {
     const rows = [bulbEndCurvature(curves[0]) - kP];
-    for (let k = 0; k < (fixedCorner ? 3 : 5); k++)
+    for (let k = 0; k < (collapsed ? 3 : 4); k++)
       rows.push(bulbEndCurvature(curves[k], true) - bulbEndCurvature(curves[k + 1]));
-    if (!fixedCorner) rows.push(bulbEndCurvature(curves[5], true) - kQ);
     return rows;
   };
   // Each curve's shape rows: both curves at the same fractions of their own
@@ -812,7 +703,7 @@ function fitToReference(
     const s = places(z);
     const curves = [],
       blocks = [];
-    for (let k = 0; k < 6; k++) {
+    for (let k = 0; k < CURVES; k++) {
       if (previous && !touched.includes(k)) {
         curves.push(previous.curves[k]);
         blocks.push(previous.blocks[k]);
@@ -835,22 +726,16 @@ function fitToReference(
       rows.push(FIT_LENGTH_PULL * (z[i] - anchor[i]));
     return { curves, blocks, rows };
   };
-  // Which curves an unknown moves: a handle length its own curve, a place the
-  // two curves either side of it.
+  // Which curves an unknown moves: a handle length its own curve, E the two
+  // curves either side of it.
   const touchedBy = (j) =>
-    j >= placeCount
-      ? [Math.floor((j - placeCount) / 2)]
-      : [
-          [0, 1],
-          [4, 5],
-        ][j];
-  // The places stay in order, a tenth of a radius apart; no handle falls
-  // under a hundredth of its span, where a collapsed handle meets any
-  // curvature with any shape.
+    j >= placeCount ? [Math.floor((j - placeCount) / 2)] : [0, 1];
+  // E stays a tenth of a radius off both its neighbours; no handle falls under
+  // a hundredth of its span, where a collapsed handle meets any curvature with
+  // any shape.
   const project = (z) => {
     const out = [...z];
     out[0] = clamp(out[0], gap, held[0] - gap);
-    if (!fixedCorner) out[1] = clamp(out[1], held[2] + gap, total - gap);
     const s = places(out);
     for (let i = placeCount; i < out.length; i++) {
       const k = Math.floor((i - placeCount) / 2);

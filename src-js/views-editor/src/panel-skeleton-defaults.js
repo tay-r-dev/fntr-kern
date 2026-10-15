@@ -43,6 +43,7 @@ import {
   CAP_ANGLE_MAX,
   CAP_ANGLE_MIN,
   CAP_BALL_EASING_MAX,
+  CAP_BALL_EASE_CURVATURE_MAX,
   CAP_BALL_MAX,
   CAP_BALL_MIN,
   CAP_RADIUS_POSITIONS,
@@ -1246,6 +1247,13 @@ export default class SkeletonSettingsPanel extends Panel {
             working.capBallEasing,
             { minValue: 0, maxValue: CAP_BALL_EASING_MAX },
             set("capBallEasing"),
+            percent
+          ),
+          field(
+            "cap-ball-ease-curvature",
+            working.capBallEaseCurvature,
+            { minValue: 0, maxValue: CAP_BALL_EASE_CURVATURE_MAX },
+            set("capBallEaseCurvature"),
             percent
           ),
         ]),

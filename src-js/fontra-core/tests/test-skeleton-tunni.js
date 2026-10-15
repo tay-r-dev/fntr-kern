@@ -1014,7 +1014,7 @@ describe("the curvature gizmo at a bulb terminal", () => {
     return layer;
   }
 
-  const FILLET_ROLES = ["fillet-ball", "fillet-wall"];
+  const FILLET_ROLES = ["apex", "neck", "inner-wall"];
 
   // The easing fillet is set by the easing slider alone. Nothing on it, on the
   // ball arc it leaves, or on the wall it climbs carries a gizmo.
