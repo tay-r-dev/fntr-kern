@@ -133,6 +133,22 @@ import {
 import { skeletonContourEndpointIndices } from "./skeleton-panel-model.js";
 import { forceRefreshSnapping } from "./snapping-interactions.js";
 import {
+  BASE_EXPAND_BEHAVIOR_NAME,
+  createBaseExpandTargetEntries,
+  getBaseExpandBehaviorName,
+} from "./base-expand-editing.js";
+import {
+  HANDLE_LENGTH_BEHAVIOR_NAME,
+  createHandleLengthTargetEntries,
+  getHandleLengthBehaviorName,
+} from "./handle-length-editing.js";
+import {
+  POINT_SLIDE_BEHAVIOR_NAME,
+  createPointSlideTargetEntries,
+  getPointSlideBehaviorName,
+  pointSlideNudgeOrigin,
+} from "./point-slide-editing.js";
+import {
   createTensionAwareTargetEntries,
   getTensionAwareBehaviorName,
   isSkeletonTensionAwareBehaviorName,
@@ -1174,28 +1190,84 @@ export class SceneController {
       tensionAwareMode: this.selectedTool?.tensionAwareMode === true,
       independentRibMode: this.selectedTool?.independentRibMode === true,
       powerTensionAwareMode: this.selectedTool?.powerTensionAwareMode === true,
+      pointSlideMode: this.selectedTool?.pointSlideMode === true,
+      handleLengthMode: this.selectedTool?.handleLengthMode === true,
     };
     const targetKinds = getSelectionTargetKinds(this.selection);
+    const isGeneratedContour = (contourIndex) =>
+      this.sceneModel.isGeneratedPathContour(contourIndex);
     // An arrow key is a drag of one grid step, so X and C mean here what they
     // mean under the pointer. It needs no axis lock: an arrow key names its
     // axis. The power run grows from the selection, which a nudge has, so the
     // nudge takes it too. Shift is still the coarse step.
     const tensionAwareName = getTensionAwareBehaviorName(modifiers, targetKinds, event);
-    const behaviorName =
-      tensionAwareName ||
-      getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||
-      (hasRibLikeSelection
-        ? getSkeletonRibBehaviorName(event, modifiers)
-        : event.altKey
-          ? "alternate"
-          : "default");
     await this.editGlyph((sendIncrementalChange, glyph) => {
       const editingLayers = this.getEditingLayerFromGlyphLayers(glyph.layers);
       const editLayerName = this.sceneSettings.editLayerName;
-      const referenceSkeletonData = getSkeletonData(
-        editingLayers[editLayerName] || Object.values(editingLayers)[0]
+      const editLayerGlyph =
+        editingLayers[editLayerName] || Object.values(editingLayers)[0];
+      const referenceSkeletonData = getSkeletonData(editLayerGlyph);
+      // The same order the pointer drag asks in, so a held key means the same
+      // thing to a nudge as to a drag. V, B and D/S on an outline read the edit
+      // layer's geometry to decide, which is why this is asked here.
+      const behaviorName =
+        tensionAwareName ||
+        getSkeletonModifierBehaviorName(event, modifiers, targetKinds) ||
+        getPointSlideBehaviorName(
+          modifiers,
+          targetKinds,
+          this.selection,
+          editLayerGlyph,
+          {
+            isGeneratedContour,
+          }
+        ) ||
+        getHandleLengthBehaviorName(
+          modifiers,
+          targetKinds,
+          this.selection,
+          editLayerGlyph,
+          { isGeneratedContour }
+        ) ||
+        getBaseExpandBehaviorName(modifiers, targetKinds, this.selection) ||
+        (hasRibLikeSelection
+          ? getSkeletonRibBehaviorName(event, modifiers)
+          : event.altKey
+            ? "alternate"
+            : "default");
+      // The slide shares its sides and parameters across layers through one
+      // session, written by the edit layer's entry, which runs first.
+      const pointSlideSession = {};
+      const pointSlideOrigin =
+        behaviorName === POINT_SLIDE_BEHAVIOR_NAME
+          ? pointSlideNudgeOrigin(editLayerGlyph, this.selection, {
+              isGeneratedContour,
+              referenceSkeletonData,
+            })
+          : null;
+      const orderedLayers = Object.entries(editingLayers).sort(
+        ([a], [b]) => (b === editLayerName) - (a === editLayerName)
       );
-      const layerInfo = Object.entries(editingLayers).map(([layerName, layerGlyph]) => {
+      const layerInfo = orderedLayers.map(([layerName, layerGlyph]) => {
+        const nudgeEntries =
+          behaviorName === POINT_SLIDE_BEHAVIOR_NAME
+            ? createPointSlideTargetEntries(layerGlyph, this.selection, {
+                isGeneratedContour,
+                referenceSkeletonData,
+                initialPointer: pointSlideOrigin,
+                isPrimary: layerGlyph === editLayerGlyph,
+                session: pointSlideSession,
+              })
+            : behaviorName === HANDLE_LENGTH_BEHAVIOR_NAME
+              ? createHandleLengthTargetEntries(layerGlyph, this.selection, {
+                  isGeneratedContour,
+                  referenceSkeletonData,
+                })
+              : behaviorName === BASE_EXPAND_BEHAVIOR_NAME
+                ? createBaseExpandTargetEntries(layerGlyph, this.selection, null, {
+                    isGeneratedContour,
+                  })
+                : null;
         const modifierOptions = makeSkeletonModifierOptions(behaviorName, {
           referenceSkeletonData,
         });
@@ -1214,52 +1286,54 @@ export class SceneController {
               tensionAwareName
             )
           : null;
-        const targetEntries = skeletonTensionAwareEntry
-          ? [skeletonTensionAwareEntry]
-          : tensionAwareName
-            ? createTensionAwareTargetEntries(
-                layerGlyph,
-                this.selection,
-                tensionAwareName,
-                {
-                  isGeneratedContour: (contourIndex) =>
-                    this.sceneModel.isGeneratedPathContour(contourIndex),
-                  scalingEditBehavior: this.selectedTool.scalingEditBehavior,
-                }
-              )
-            : hasGeneratedHandleSelection
-              ? createEditableGeneratedHandleTargetEntries(
+        const targetEntries = nudgeEntries
+          ? nudgeEntries
+          : skeletonTensionAwareEntry
+            ? [skeletonTensionAwareEntry]
+            : tensionAwareName
+              ? createTensionAwareTargetEntries(
                   layerGlyph,
                   this.selection,
-                  behaviorName,
-                  modifierOptions
+                  tensionAwareName,
+                  {
+                    isGeneratedContour: (contourIndex) =>
+                      this.sceneModel.isGeneratedPathContour(contourIndex),
+                    scalingEditBehavior: this.selectedTool.scalingEditBehavior,
+                  }
                 )
-              : // A rib under this modifier pair is an entry point into the
-                // skeleton drag, not the width edit it otherwise means.
-                hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
-                ? [
-                    ...createSkeletonRibTargetEntries(
-                      layerGlyph,
-                      this.selection,
-                      behaviorName,
-                      modifierOptions
-                    ),
-                    ...createEditableGeneratedPointTargetEntries(
-                      layerGlyph,
-                      this.selection,
-                      behaviorName,
-                      modifierOptions
-                    ),
-                  ]
-                : [
-                    makeSkeletonPointTargetEntry(
-                      layerGlyph,
-                      this.selection,
-                      behaviorName,
-                      referenceSkeletonData,
-                      modifierOptions
-                    ),
-                  ].filter((entry) => entry);
+              : hasGeneratedHandleSelection
+                ? createEditableGeneratedHandleTargetEntries(
+                    layerGlyph,
+                    this.selection,
+                    behaviorName,
+                    modifierOptions
+                  )
+                : // A rib under this modifier pair is an entry point into the
+                  // skeleton drag, not the width edit it otherwise means.
+                  hasRibLikeSelection && !isFixedRibBehavior(behaviorName)
+                  ? [
+                      ...createSkeletonRibTargetEntries(
+                        layerGlyph,
+                        this.selection,
+                        behaviorName,
+                        modifierOptions
+                      ),
+                      ...createEditableGeneratedPointTargetEntries(
+                        layerGlyph,
+                        this.selection,
+                        behaviorName,
+                        modifierOptions
+                      ),
+                    ]
+                  : [
+                      makeSkeletonPointTargetEntry(
+                        layerGlyph,
+                        this.selection,
+                        behaviorName,
+                        referenceSkeletonData,
+                        modifierOptions
+                      ),
+                    ].filter((entry) => entry);
         const behaviorFactory = new EditBehaviorFactory(
           layerGlyph,
           this.selection,

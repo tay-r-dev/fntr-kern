@@ -132,6 +132,27 @@ function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
 }
 
 /**
+ * Where an arrow-key nudge starts: the first selected point the slide moves.
+ * An arrow key is a drag of one grid step, so the pointer starts on that point
+ * and the step is the drag. Null where the selection does not slide, and for a
+ * generated point, whose slide the nudge does not reach.
+ */
+export function pointSlideNudgeOrigin(
+  layerGlyph,
+  selection,
+  { isGeneratedContour = null, referenceSkeletonData = null } = {}
+) {
+  if (findGeneratedSlideItem(selection)) return null;
+  const targets = findSlideTargets(layerGlyph, selection, {
+    isGeneratedContour,
+    referenceSkeletonData,
+  });
+  if (!targets) return null;
+  const { x, y } = targets[0].contour.points[targets[0].contourPointIndex];
+  return { x, y };
+}
+
+/**
  * One target entry per layer. The edit layer's entry owns the geometry: every
  * frame it projects each selected point's pointer onto that point's contour
  * and publishes the chosen side and source parameter to the session, point by
