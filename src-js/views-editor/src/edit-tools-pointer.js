@@ -154,6 +154,8 @@ const REALTIME_MODIFIER_ACTIONS = [
   {
     action: REALTIME_TENSION_AWARE_ACTION,
     modeProperty: "tensionAwareMode",
+    // Alt with X or C is the proportional drag, so Alt may be down first.
+    acceptsAlt: true,
   },
   {
     action: REALTIME_INDEPENDENT_RIB_ACTION,
@@ -162,6 +164,7 @@ const REALTIME_MODIFIER_ACTIONS = [
   {
     action: REALTIME_POWER_TENSION_AWARE_ACTION,
     modeProperty: "powerTensionAwareMode",
+    acceptsAlt: true,
   },
   {
     action: REALTIME_POINT_SLIDE_ACTION,
@@ -1731,7 +1734,7 @@ export class PointerTool extends BaseTool {
 
   _handleRealtimeModifierKeyDown(event) {
     const modifier = REALTIME_MODIFIER_ACTIONS.find((modifier) =>
-      matchesRealtimeModifierKey(modifier.action, event)
+      matchesRealtimeModifierKey(modifier, event)
     );
     if (!modifier) {
       return false;
@@ -1942,11 +1945,15 @@ function extendsSelection(event) {
 // A mode key states a mode and nothing about Shift, which is the coarse step of
 // the nudge and the second half of C+Shift. An exact modifier match let the
 // mode start only when Shift came second, so pressing the two together did
-// nothing. Alt and the command keys still have to agree: they carry the menu
-// shortcuts.
-function matchesRealtimeModifierKey(action, event) {
+// nothing. The command keys still have to agree: they carry the menu
+// shortcuts. Alt has to agree too, except for a mode that reads Alt itself
+// during the drag (`acceptsAlt`): there Alt pressed first must not keep the
+// mode from starting.
+function matchesRealtimeModifierKey({ action, acceptsAlt }, event) {
   if (eventMatchesActionShortCut(action, event)) return true;
-  if (!event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return false;
+  if (event.metaKey || event.ctrlKey) return false;
+  if (event.altKey && !acceptsAlt) return false;
+  if (!event.shiftKey && !event.altKey) return false;
   return eventMatchesActionBaseKey(action, event);
 }
 
