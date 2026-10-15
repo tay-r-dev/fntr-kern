@@ -356,6 +356,10 @@ export class EditorController extends ViewController {
     );
     window.addEventListener("keydown", (event) => this.keyDownHandler(event));
     window.addEventListener("keyup", (event) => this.keyUpHandler(event));
+    // A key released while the window has no focus never reaches it, so the
+    // Space hand ends here too. On Windows a tap of Alt moves focus to the
+    // browser's menu, and the Space keyup then goes there.
+    window.addEventListener("blur", () => this.endSpaceHand());
     this.canvasController.canvas.addEventListener("pointerdown", (event) =>
       this.pointerDownHandler(event)
     );
@@ -3927,22 +3931,44 @@ export class EditorController extends ViewController {
 
     this.canvasController.canvas.setPointerCapture(event.pointerId);
 
-    this._middleButtonHand = true;
-    this.savedSelectedToolIdentifier = this.selectedToolIdentifier;
-    this.setSelectedTool("hand-tool");
+    this.claimHandTool("middle-button");
   }
 
   pointerUpHandler(event) {
     // Only a press that took the hand gives it back, so a modifier pressed or
     // released during the drag cannot strand the hand tool or skip the restore.
-    if (event.button !== 1 || !this._middleButtonHand) {
+    if (event.button !== 1 || !this._handClaims.has("middle-button")) {
       return;
     }
-    this._middleButtonHand = false;
 
     this.canvasController.canvas.releasePointerCapture(event.pointerId);
 
-    this.setSelectedTool(this.savedSelectedToolIdentifier);
+    this.releaseHandTool("middle-button");
+  }
+
+  // The hand tool is lent by more than one source - Space and the middle
+  // button - and they can overlap. The first claim saves the tool to go back
+  // to, and the tool comes back only when the last claim is released. Each
+  // source saving its own tool let the second one save the hand itself, and
+  // the hand then stayed.
+  claimHandTool(source) {
+    if (!this._handClaims.size) {
+      this._toolBeforeHand = this.selectedToolIdentifier;
+      this.setSelectedTool("hand-tool");
+    }
+    this._handClaims.add(source);
+  }
+
+  releaseHandTool(source) {
+    if (!this._handClaims.delete(source) || this._handClaims.size) {
+      return;
+    }
+    this.setSelectedTool(this._toolBeforeHand);
+    delete this._toolBeforeHand;
+  }
+
+  get _handClaims() {
+    return (this.__handClaims ??= new Set());
   }
 
   keyUpHandler(event) {
@@ -4003,8 +4029,7 @@ export class EditorController extends ViewController {
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.add("overlay-layer-hidden");
     }
-    this.savedSelectedToolIdentifier = this.selectedToolIdentifier;
-    this.setSelectedTool("hand-tool");
+    this.claimHandTool("space");
     this._matchingKeyUpHandler = {
       code: event.code,
       callback: () => this.leaveCleanViewAndHandTool(),
@@ -4016,8 +4041,15 @@ export class EditorController extends ViewController {
     for (const overlay of document.querySelectorAll(".cleanable-overlay")) {
       overlay.classList.remove("overlay-layer-hidden");
     }
-    this.setSelectedTool(this.savedSelectedToolIdentifier);
-    delete this.savedSelectedToolIdentifier;
+    this.releaseHandTool("space");
+  }
+
+  endSpaceHand() {
+    if (!this._handClaims.has("space")) {
+      return;
+    }
+    delete this._matchingKeyUpHandler;
+    this.leaveCleanViewAndHandTool();
   }
 
   buildContextMenuItems(event) {

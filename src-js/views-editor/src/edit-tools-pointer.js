@@ -1783,7 +1783,8 @@ export class PointerTool extends BaseTool {
         // Alt is the drag's now, so the handle insertion it was showing goes.
         this.sceneModel.pathInsertHandles = null;
       }
-      const keyUpHandler = (e) => this._handleRealtimeModifierKeyUp(e, modifier.action);
+      const keyUpHandler = (e) =>
+        this._handleRealtimeModifierKeyUp(e, modifier.action, event.code);
       this._realtimeModifierKeyUpHandlers.set(modifier.action, keyUpHandler);
       window.addEventListener("keyup", keyUpHandler);
       if (!this._boundRealtimeModifierWindowBlur) {
@@ -1796,8 +1797,12 @@ export class PointerTool extends BaseTool {
     return true;
   }
 
-  _handleRealtimeModifierKeyUp(event, action) {
-    if (eventMatchesActionBaseKey(action, event)) {
+  // The physical key that started the mode ends it too. The letter alone is
+  // read through the current keyboard layout, and Alt+Shift - an Alt drag
+  // with Shift for the axis - switches the layout on Windows, so the release
+  // read as another letter and the mode stayed on.
+  _handleRealtimeModifierKeyUp(event, action, code) {
+    if ((code && event.code === code) || eventMatchesActionBaseKey(action, event)) {
       this._endRealtimeModifierMode(action);
     }
   }
