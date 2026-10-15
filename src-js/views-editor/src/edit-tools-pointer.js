@@ -1682,6 +1682,12 @@ export class PointerTool extends BaseTool {
     if (this.measureInteraction.handleKeyDown(event)) {
       return;
     }
+    // See `_handleRealtimeModifierKeyUp`: Alt must not reach the browser while
+    // a mode key is held.
+    if (event.key === "Alt" && this._realtimeModifierKeyUpHandlers.size) {
+      event.preventDefault();
+      return;
+    }
     if (this._handleRealtimeModifierKeyDown(event)) {
       event.preventDefault();
       return;
@@ -1801,7 +1807,16 @@ export class PointerTool extends BaseTool {
   // read through the current keyboard layout, and Alt+Shift - an Alt drag
   // with Shift for the axis - switches the layout on Windows, so the release
   // read as another letter and the mode stayed on.
+  //
+  // Alt is the other way a release goes missing. On Windows, Alt pressed and
+  // released with no key between - the mode key stops repeating once Alt is
+  // down - moves focus to the browser's menu bar, so the mode key's release
+  // goes there and the page never sees it, and Firefox does not report the
+  // focus loss either. So while a mode is held, Alt does nothing in the browser.
   _handleRealtimeModifierKeyUp(event, action, code) {
+    if (event.key === "Alt") {
+      event.preventDefault();
+    }
     if ((code && event.code === code) || eventMatchesActionBaseKey(action, event)) {
       this._endRealtimeModifierMode(action);
     }

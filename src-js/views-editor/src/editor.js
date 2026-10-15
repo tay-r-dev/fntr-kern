@@ -1807,6 +1807,11 @@ export class EditorController extends ViewController {
   }
 
   async keyDownHandler(event) {
+    // While Space holds the hand, Alt must not open the browser's menu bar:
+    // that takes focus, and the Space keyup then never reaches the page.
+    if (event.key === "Alt" && this._handClaims.has("space")) {
+      event.preventDefault();
+    }
     const actionIdentifier = getActionIdentifierFromKeyEvent(event);
     if (actionIdentifier) {
       this.sceneController.updateContextMenuState(null);
@@ -3972,6 +3977,9 @@ export class EditorController extends ViewController {
   }
 
   keyUpHandler(event) {
+    if (event.key === "Alt" && this._handClaims.has("space")) {
+      event.preventDefault();
+    }
     if (
       this._matchingKeyUpHandler &&
       // At least on macOS, in Chrome and Safari, if _while the space key is
