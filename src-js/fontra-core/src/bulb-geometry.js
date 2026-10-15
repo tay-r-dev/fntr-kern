@@ -457,9 +457,12 @@ function solveBulb({
 // direction nearest the stroke's own at the rib and each next a quarter turn
 // on. The axis an apex aims at follows from the rib's direction alone, so
 // every master gives the same apex the same extreme. An apex moves off its
-// extreme only where the extreme is not on the bulb: before the start of the
-// reference, or past where the ball ends, or closer to its neighbour than
-// FIT_APEX_ROOM. There it stands as near its extreme as the bulb allows.
+// extreme only where the extreme is not on the ball, or not far enough on
+// it: closer than FIT_APEX_ROOM to the rib, to the ball's end or to its
+// neighbour. There it stands as near its extreme as the ball allows. At the
+// rib the curvature jumps from the wall's to the ball's, and a smooth join on
+// that jump bends both curves beside it: an apex 3 degrees short of the rib
+// drew E's ball 6 units square.
 function apexPlaces(reference, sRib, sEnd, count) {
   const ribTurn = reference.turnAt(sRib),
     endTurn = reference.turnAt(sEnd);
@@ -479,7 +482,7 @@ function apexPlaces(reference, sRib, sEnd, count) {
       (k === count - 1 ? endTurn : turns[k + 1]) - FIT_APEX_ROOM
     );
   for (let k = 0; k < count; k++)
-    turns[k] = Math.max(turns[k], (k === 0 ? 0 : turns[k - 1]) + FIT_APEX_ROOM);
+    turns[k] = Math.max(turns[k], (k === 0 ? ribTurn : turns[k - 1]) + FIT_APEX_ROOM);
   return turns.map((t) => reference.atTurn(t));
 }
 

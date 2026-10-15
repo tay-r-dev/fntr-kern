@@ -3339,6 +3339,14 @@ reference, ball 1.68, A-N 0.19, W-Q 0.81; the arc leaves the reference by
 design. Apexes agree between masters to 0.0 degrees. The suite is 2993
 passing, 32 failing; the 32 all failed before this work.
 
+- **The first apex keeps 10 degrees from the rib.** At the rib the curvature
+  jumps from the wall's to the ball's. On E's first master the first apex fell
+  3 degrees short of it, still on the wall, and the smooth join there made X-B
+  start at the wall's curvature: the ball came out square, X-B 5.2 and B-A 6.2
+  units off it. Pushed past the rib, both are 0.13, and the worst ball piece
+  over all five glyphs is 0.39. The cost is the apex itself: X stands 13
+  degrees off its extreme on that master, and E's two masters now differ by
+  5.1 degrees at X.
 - **Open: N near A.** On S the ball beyond the third apex is short, so from
   easing 0.6 A-N is 2 to 5 units with handles to match, and rounding to whole
   units bends N by up to 14 degrees. E and R show the same above 0.85.
