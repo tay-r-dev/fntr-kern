@@ -191,6 +191,14 @@ function isEligiblePowerPoint(points, index, axis, closed) {
   });
 }
 
+// An on-curve neighbour on either side: the point ends a straight.
+function endsStraight(points, index, closed) {
+  return [index - 1, index + 1].some((neighbourIndex) => {
+    const wrapped = wrapContourIndex(neighbourIndex, points.length, closed);
+    return wrapped !== null && !points[wrapped].type;
+  });
+}
+
 // Walk the contour away from one edge of the moved body, one on-curve point at
 // a time, and collect the run the scale carries. The walk ends at the first
 // point that is not an eligible extreme - that point is the anchor, and it
@@ -265,7 +273,18 @@ export function applyPowerAxisScale(before, after, closed, movedIndices, delta) 
   });
   if (!movedOrdinals.size || movedOrdinals.size === order.length) return;
   for (const edgeOrdinal of movedOrdinals) {
-    const pivot = before[order[edgeOrdinal]][axis];
+    // A run grows from an extreme on either axis, or from the end of a
+    // straight - a stem the drag carries. A slanted point between two curves
+    // is neither: dragging it has nothing to stretch from.
+    const edgeIndex = order[edgeOrdinal];
+    if (
+      !isEligiblePowerPoint(before, edgeIndex, "x", closed) &&
+      !isEligiblePowerPoint(before, edgeIndex, "y", closed) &&
+      !endsStraight(before, edgeIndex, closed)
+    ) {
+      continue;
+    }
+    const pivot = before[edgeIndex][axis];
     for (const step of [-1, 1]) {
       const collected = collectPowerRun(
         before,

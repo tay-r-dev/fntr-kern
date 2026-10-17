@@ -139,6 +139,17 @@ describe("power axis scale, a slanted smooth point", () => {
     applyPowerAxisScale(before, after, true, new Set([0]), delta);
     expect(after[3].x).to.equal(50);
   });
+
+  it("starts no run when it is the point dragged", () => {
+    // Dragged up, the top would hand the side extremes a run. It is no extreme
+    // and ends no straight, so there is nothing for C to stretch from.
+    const before = circleWithSlantedTop();
+    const delta = { x: 0, y: 20 };
+    const after = movedCopy(before, [2, 3, 4], delta);
+    applyPowerAxisScale(before, after, true, new Set([3]), delta);
+    expect(after[6].y).to.equal(50);
+    expect(after[0].y).to.equal(50);
+  });
 });
 
 // The leg of "n" from _external/skeletron.fontra, the outline layer. Points 8
