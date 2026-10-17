@@ -1,4 +1,5 @@
 import { recordChanges } from "@fontra/core/change-recorder.js";
+import { applyChange } from "@fontra/core/changes.js";
 import {
   canSlideTogether,
   chooseSlideInterval,
@@ -132,12 +133,124 @@ function findSkeletonSlideTarget(layerGlyph, key, referenceSkeletonData) {
 }
 
 /**
- * Where an arrow-key nudge starts: the first selected point the slide moves.
- * An arrow key is a drag of one grid step, so the pointer starts on that point
- * and the step is the drag. Null where the selection does not slide, and for a
- * generated point, whose slide the nudge does not reach.
+ * Arrow keys under V. An arrow key is a drag of one grid step, but a slide is
+ * a refit, so sliding from the result of the last press piled one press's
+ * rounding onto the next: the shape drifted and did not come back. So the
+ * presses on one selection are one drag. The shape from the first press is
+ * kept, the steps add up, and every press slides once from that shape by the
+ * total. Any other edit in between starts over. Each press is still one undo
+ * step, recorded against the shape it changes.
  */
-export function pointSlideNudgeOrigin(
+export class PointSlideNudge {
+  #state = null;
+
+  // One list of entries per layer, by name. `layers` is [[name, layerGlyph]],
+  // the edit layer's first: its entry writes the shared session the others read.
+  targetEntries(layers, editLayerName, selection, delta, { isGeneratedContour } = {}) {
+    const key = JSON.stringify([[...selection].sort(), layers.map(([name]) => name)]);
+    const state = this.#state;
+    if (
+      state?.key !== key ||
+      !layers.every(([name, layer]) => state.signatures.get(name) === signature(layer))
+    ) {
+      this.#state = {
+        key,
+        total: { x: 0, y: 0 },
+        snapshots: new Map(
+          layers.map(([name, layer]) => [name, cloneLayerGlyphForSkeletonEdit(layer)])
+        ),
+        signatures: new Map(),
+      };
+    }
+    const { snapshots } = this.#state;
+    const total = vector.addVectors(this.#state.total, delta);
+    this.#state.total = total;
+    const referenceSkeletonData = getSkeletonData(snapshots.get(editLayerName));
+    const initialPointer = slideOrigin(snapshots.get(editLayerName), selection, {
+      isGeneratedContour,
+      referenceSkeletonData,
+    });
+    const session = {};
+    const skeleton = !!parseSelection(selection).skeletonPoint?.length;
+    const entries = new Map();
+    for (const [name, live] of layers) {
+      const snapshot = snapshots.get(name);
+      const [slide] = createPointSlideTargetEntries(snapshot, selection, {
+        isGeneratedContour,
+        referenceSkeletonData,
+        initialPointer,
+        isPrimary: name === editLayerName,
+        session,
+      });
+      if (!slide) {
+        entries.set(name, []);
+        continue;
+      }
+      let rollbackChange = null;
+      entries.set(name, [
+        {
+          get rollbackChange() {
+            return rollbackChange;
+          },
+          makeChangeForDelta() {
+            const slid = slide.makeChangeForDelta(total);
+            if (!slid) return null;
+            const target = cloneLayerGlyphForSkeletonEdit(snapshot);
+            applyChange(target, slid);
+            const changes = skeleton
+              ? makeEditSkeletonChange(
+                  cloneLayerGlyphForSkeletonEdit(live),
+                  (working) => {
+                    getSkeletonData(target).contours.forEach((contour, i) => {
+                      working.contours[i].points = structuredClone(contour.points);
+                      working.contours[i].insertions = structuredClone(
+                        contour.insertions
+                      );
+                    });
+                  }
+                )
+              : recordChanges(
+                  { ...live, path: live.path.copy() },
+                  (layerGlyphProxy) => {
+                    for (let i = 0; i < target.path.numContours; i++) {
+                      const contour = target.path.getUnpackedContour(i);
+                      const current = live.path.getUnpackedContour(i);
+                      if (JSON.stringify(contour) === JSON.stringify(current)) continue;
+                      layerGlyphProxy.path.setUnpackedContour(i, contour);
+                    }
+                  }
+                );
+            rollbackChange = changes.rollbackChange;
+            return changes.change;
+          },
+          makeChangeForTransformation() {
+            return null;
+          },
+        },
+      ]);
+    }
+    return entries;
+  }
+
+  // After the press is applied: the shape the next press has to find to go on.
+  remember(layers) {
+    for (const [name, layer] of layers) {
+      this.#state?.signatures.set(name, signature(layer));
+    }
+  }
+}
+
+function signature(layerGlyph) {
+  return JSON.stringify([
+    Array.from(layerGlyph.path.coordinates),
+    getSkeletonData(layerGlyph)?.contours?.map((contour) => contour.points),
+  ]);
+}
+
+// Where the nudge's pointer starts: the first selected point the slide moves.
+// Null where the selection does not slide, and for a generated point, whose
+// slide the nudge does not reach.
+function slideOrigin(
   layerGlyph,
   selection,
   { isGeneratedContour = null, referenceSkeletonData = null } = {}

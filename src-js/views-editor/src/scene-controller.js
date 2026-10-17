@@ -144,9 +144,8 @@ import {
 } from "./handle-length-editing.js";
 import {
   POINT_SLIDE_BEHAVIOR_NAME,
-  createPointSlideTargetEntries,
+  PointSlideNudge,
   getPointSlideBehaviorName,
-  pointSlideNudgeOrigin,
 } from "./point-slide-editing.js";
 import {
   createTensionAwareTargetEntries,
@@ -1235,39 +1234,34 @@ export class SceneController {
           : event.altKey
             ? "alternate"
             : "default");
-      // The slide shares its sides and parameters across layers through one
-      // session, written by the edit layer's entry, which runs first.
-      const pointSlideSession = {};
-      const pointSlideOrigin =
-        behaviorName === POINT_SLIDE_BEHAVIOR_NAME
-          ? pointSlideNudgeOrigin(editLayerGlyph, this.selection, {
-              isGeneratedContour,
-              referenceSkeletonData,
-            })
-          : null;
       const orderedLayers = Object.entries(editingLayers).sort(
         ([a], [b]) => (b === editLayerName) - (a === editLayerName)
       );
+      // Consecutive V presses are one slide from where the first one started.
+      this._pointSlideNudge ??= new PointSlideNudge();
+      const slideEntries =
+        behaviorName === POINT_SLIDE_BEHAVIOR_NAME
+          ? this._pointSlideNudge.targetEntries(
+              orderedLayers,
+              orderedLayers[0][0],
+              this.selection,
+              delta,
+              { isGeneratedContour }
+            )
+          : null;
       const layerInfo = orderedLayers.map(([layerName, layerGlyph]) => {
-        const nudgeEntries =
-          behaviorName === POINT_SLIDE_BEHAVIOR_NAME
-            ? createPointSlideTargetEntries(layerGlyph, this.selection, {
+        const nudgeEntries = slideEntries
+          ? slideEntries.get(layerName)
+          : behaviorName === HANDLE_LENGTH_BEHAVIOR_NAME
+            ? createHandleLengthTargetEntries(layerGlyph, this.selection, {
                 isGeneratedContour,
                 referenceSkeletonData,
-                initialPointer: pointSlideOrigin,
-                isPrimary: layerGlyph === editLayerGlyph,
-                session: pointSlideSession,
               })
-            : behaviorName === HANDLE_LENGTH_BEHAVIOR_NAME
-              ? createHandleLengthTargetEntries(layerGlyph, this.selection, {
+            : behaviorName === BASE_EXPAND_BEHAVIOR_NAME
+              ? createBaseExpandTargetEntries(layerGlyph, this.selection, null, {
                   isGeneratedContour,
-                  referenceSkeletonData,
                 })
-              : behaviorName === BASE_EXPAND_BEHAVIOR_NAME
-                ? createBaseExpandTargetEntries(layerGlyph, this.selection, null, {
-                    isGeneratedContour,
-                  })
-                : null;
+              : null;
         const modifierOptions = makeSkeletonModifierOptions(behaviorName, {
           referenceSkeletonData,
         });
@@ -1359,6 +1353,7 @@ export class SceneController {
           consolidateChanges(editBehavior.rollbackChange, changePath)
         );
       }
+      if (slideEntries) this._pointSlideNudge.remember(orderedLayers);
 
       let changes = ChangeCollector.fromChanges(
         consolidateChanges(editChanges),
