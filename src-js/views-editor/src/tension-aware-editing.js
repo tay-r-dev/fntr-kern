@@ -129,13 +129,9 @@ export function correctTensionAwareDragContour(
     return;
   }
   // The run moves first, on what the ordinary rules left, and one correction
-  // follows. A correction before the run as well rounded every handle once,
-  // and the second read its direction off that rounded handle, so the two
-  // roundings added up and a carried slanted smooth point bent past what the
-  // grid alone does.
-  applyPowerAxisScale(before, after, closed, movedIndices, delta, {
-    carrySlantedSmooths: !!settings.powerDragCarriesSlantedSmooths,
-  });
+  // follows. A correction before the run as well measured a shape the run then
+  // changed, and rounded every handle twice.
+  applyPowerAxisScale(before, after, closed, movedIndices, delta);
   applyTensionAwareEdit(before, after, closed, slideOptions);
 }
 
@@ -175,12 +171,7 @@ function wrapContourIndex(index, length, closed) {
 // through. The smooth flag is not asked for - the geometry is the statement,
 // and many drawn extremes carry no flag. Both neighbours are read with a wrap,
 // so the point that sits at the contour's seam is judged like any other.
-//
-// `carrySlantedSmooths` also admits a smooth point at any angle: two handles
-// on one line through the point, within the same tolerance. A point with one
-// handle is not admitted that way, because its other side is a straight and
-// carrying it would move the straight.
-function isEligiblePowerPoint(points, index, axis, closed, carrySlantedSmooths) {
+function isEligiblePowerPoint(points, index, axis, closed) {
   const point = points[index];
   if (!point || point.type) return false;
   const crossAxis = axis === "x" ? "y" : "x";
@@ -191,22 +182,13 @@ function isEligiblePowerPoint(points, index, axis, closed, carrySlantedSmooths) 
     })
     .filter((neighbour) => neighbour?.type);
   if (!controls.length) return false;
-  const lengths = controls.map((control) =>
-    Math.hypot(control.x - point.x, control.y - point.y)
-  );
-  if (lengths.some((length) => length <= POWER_EPSILON)) return false;
-  const square = controls.every(
-    (control, i) =>
-      Math.abs(control[crossAxis] - point[crossAxis]) <=
-      lengths[i] * POWER_SQUARE_TOLERANCE
-  );
-  if (square || !carrySlantedSmooths || controls.length !== 2) return square;
-  // Two unit directions on one line add up to nothing.
-  const [a, b] = controls.map((control, i) => ({
-    x: (control.x - point.x) / lengths[i],
-    y: (control.y - point.y) / lengths[i],
-  }));
-  return Math.hypot(a.x + b.x, a.y + b.y) <= 2 * POWER_SQUARE_TOLERANCE;
+  return controls.every((control) => {
+    const length = Math.hypot(control.x - point.x, control.y - point.y);
+    return (
+      length > POWER_EPSILON &&
+      Math.abs(control[crossAxis] - point[crossAxis]) <= length * POWER_SQUARE_TOLERANCE
+    );
+  });
 }
 
 // Walk the contour away from one edge of the moved body, one on-curve point at
@@ -222,8 +204,7 @@ function collectPowerRun(
   step,
   axis,
   closed,
-  movedOrdinals,
-  carrySlantedSmooths
+  movedOrdinals
 ) {
   const pivot = points[order[edgeOrdinal]][axis];
   const run = [];
@@ -243,7 +224,7 @@ function collectPowerRun(
       const anchor = run.pop();
       return anchor === undefined ? null : { run, anchor };
     }
-    if (!isEligiblePowerPoint(points, index, axis, closed, carrySlantedSmooths)) {
+    if (!isEligiblePowerPoint(points, index, axis, closed)) {
       return { run, anchor: index };
     }
     run.push(index);
@@ -271,18 +252,8 @@ function collectPowerRun(
  * @param {boolean} closed - Whether the contour is closed
  * @param {Set} movedIndices - Indices, into this contour, of the points the drag moved
  * @param {Object} delta - The locked drag delta
- * @param {Object} options
- * @param {boolean} options.carrySlantedSmooths - Also carry smooth points that
- *   are not square across the axis. The Edit menu's setting.
  */
-export function applyPowerAxisScale(
-  before,
-  after,
-  closed,
-  movedIndices,
-  delta,
-  { carrySlantedSmooths = false } = {}
-) {
+export function applyPowerAxisScale(before, after, closed, movedIndices, delta) {
   if (!movedIndices?.size) return;
   const axis = axisForDelta(delta);
   const amount = delta[axis];
@@ -303,8 +274,7 @@ export function applyPowerAxisScale(
         step,
         axis,
         closed,
-        movedOrdinals,
-        carrySlantedSmooths
+        movedOrdinals
       );
       if (!collected?.run.length) continue;
       const span = before[collected.anchor][axis] - pivot;

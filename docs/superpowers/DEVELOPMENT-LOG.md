@@ -2306,17 +2306,13 @@ original radius at the new size.
   would have moved. Alt with X or C asks for the slide anyway (2026-10-15), on
   the drag's axis and under the scale's setting for straights across it; a
   plain X or C drag still slides nothing.
-- **C may carry slanted smooth points**, behind an Edit menu setting, off by
-  default. A smooth point there is two handles on one line through the point,
-  within the same two degrees an extreme is allowed. A point with one handle
-  is not one, because carrying it would move the straight on its other side.
-  **Carried slanted points bent, twice.** First the carry mixed the earlier
-  pass's handle on one axis with the pre-drag one on the other (about 10
-  degrees). Then the earlier pass itself: it corrected the shape before the
-  run moved, where a segment the run was about to open had almost no room,
-  shrank a handle to one unit, and the grid left it eight directions to point
-  in. The next pass kept that direction: 18.4 degrees on an italic bowl. C now
-  moves the run first and corrects once. A square extreme never showed it,
+- **Carrying slanted smooth points under C was built and withdrawn**
+  (2026-10-17), an Edit menu setting. While it lived, carried slanted points
+  bent twice: the carry mixed the earlier pass's handle on one axis with the
+  pre-drag one on the other (about 10 degrees), and the earlier pass itself
+  corrected a shape the run then changed, shrank a handle to one unit and left
+  it a lattice direction (18.4 degrees on an italic bowl). Both fixes stay: C
+  moves the run first and corrects once. A square extreme never showed either,
   because an axis direction survives the grid at any length.
 - **The drag keeps the rest, and it is worth keeping.** On the n's outer arch
   with the springing point pulled 40 down its own stem, without the tension rule
