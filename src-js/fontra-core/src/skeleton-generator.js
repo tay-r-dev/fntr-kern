@@ -157,37 +157,85 @@ function generateContoursFromGeneratorInput(generatorInput, options = {}) {
     if (skeletonContour.points.length < 2) {
       continue;
     }
-    const generatedContours = generateOutlineFromSkeletonContour(skeletonContour, {
+    const contourOptions = {
       contourIndex,
       skeletonContourId: skeletonContour.id,
       serifUnitsMode: options.serifUnitsMode ?? "absolute",
       removeCollapsedPoints: options.removeCollapsedPoints === true,
       simplifyEasing: options.simplifyEasing === true,
       bulbPreview: options.bulbPreview === true,
-    });
-    for (const generatedContour of generatedContours) {
-      const generatedContourIndex = contours.length;
-      annotateGeneratedContourProvenance(generatedContour, skeletonContour);
-      applyGeneratedVSlides(generatedContour, skeletonContour);
-      roundGeneratedPoints(generatedContour);
-      // Judged on the outline as it is emitted, on whole units.
-      settleSmoothFlags(generatedContour);
-      publishConstructionAxes(generatedContour);
-      contours.push(generatedContour);
+    };
+    const key = JSON.stringify([contourOptions, skeletonContour]);
+    let emitted = skeletonContourCache.get(key);
+    if (!emitted) {
+      emitted = generateEmittedContours(skeletonContour, contourOptions);
+      skeletonContourCache.set(key, emitted);
+    }
+    for (const { contour, pointMap } of structuredClone(emitted)) {
       provenance.push({
         skeletonContourId: skeletonContour.id,
-        generatedContourIndex,
-        pointMap: generatedContour.points.map((point) =>
-          point._serifCutWalls
-            ? { ...(point._provenance || {}), serifCutWalls: point._serifCutWalls }
-            : point._provenance || null
-        ),
+        generatedContourIndex: contours.length,
+        pointMap,
       });
-      stripPointProvenance(generatedContour);
+      contours.push(contour);
     }
   }
   return { contours, provenance };
 }
+
+// One skeleton contour's finished outline and point maps. The output of a
+// contour depends only on that contour and the options (feature model §3), so
+// an edit to one contour reuses the others' emission.
+function generateEmittedContours(skeletonContour, contourOptions) {
+  const emitted = [];
+  for (const generatedContour of generateOutlineFromSkeletonContour(
+    skeletonContour,
+    contourOptions
+  )) {
+    annotateGeneratedContourProvenance(generatedContour, skeletonContour);
+    applyGeneratedVSlides(generatedContour, skeletonContour);
+    roundGeneratedPoints(generatedContour);
+    // Judged on the outline as it is emitted, on whole units.
+    settleSmoothFlags(generatedContour);
+    publishConstructionAxes(generatedContour);
+    const pointMap = generatedContour.points.map((point) =>
+      point._serifCutWalls
+        ? { ...(point._provenance || {}), serifCutWalls: point._serifCutWalls }
+        : point._provenance || null
+    );
+    stripPointProvenance(generatedContour);
+    emitted.push({ contour: generatedContour, pointMap });
+  }
+  return emitted;
+}
+
+// Keyed on the generator input of one contour and its options. Results are
+// copied out, so a caller that changes its output cannot change the next one.
+export const skeletonContourCache = {
+  limit: 256,
+  entries: new Map(),
+  misses: 0,
+  get(key) {
+    const value = this.entries.get(key);
+    if (value) {
+      this.entries.delete(key);
+      this.entries.set(key, value);
+    } else {
+      this.misses++;
+    }
+    return value;
+  },
+  set(key, value) {
+    this.entries.set(key, value);
+    while (this.entries.size > this.limit) {
+      this.entries.delete(this.entries.keys().next().value);
+    }
+  },
+  clear() {
+    this.entries.clear();
+    this.misses = 0;
+  },
+};
 
 // Every generated point and handle lands on whole units, the bulb included.
 function roundGeneratedPoints(contour) {

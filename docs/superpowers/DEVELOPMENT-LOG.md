@@ -1617,6 +1617,11 @@ Every rib end found its outline address by reading the point map from the
 start, so one pass over 1,000 smooth points read it 2,001,000 times. An index
 per point map, built once, takes the same pass under 10,000 (2026-10-18).
 
+**An edit to one contour regenerated all of them.** The generator now reuses
+a contour's emission, keyed on its own generator input and the options, which
+is all a contour's output reads. Moving one point of 24 serifed strokes went
+27.7 ms to 2.8 ms median (2026-10-18).
+
 ### Three small items
 
 - **A hand may collapse a generated handle to zero.** The one-unit floor is the
