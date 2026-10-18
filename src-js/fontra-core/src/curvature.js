@@ -150,6 +150,8 @@ function interpolateColor(color1, color2, t) {
   return `rgba(${r}, ${g}, ${bl}, 1)`;
 }
 
+const COLOR_STEPS = 32;
+
 /**
  * Map normalized curvature -> colour, against a ramp between two named turns.
  *
@@ -198,7 +200,9 @@ export function curvatureToColor(
     // A ramp with no width: everything at or past it takes the last stop.
     t = turn >= flat ? 1 : 0;
   }
-  t = Math.max(0, Math.min(1, t));
+  // In steps: each distinct colour is one fill a frame, and a step of 1/32
+  // moves a channel by a few levels in 255, under what the eye separates.
+  t = Math.round(Math.max(0, Math.min(1, t)) * COLOR_STEPS) / COLOR_STEPS;
 
   const segments = colorStops.length - 1;
   const segIndex = Math.min(Math.floor(t * segments), segments - 1);

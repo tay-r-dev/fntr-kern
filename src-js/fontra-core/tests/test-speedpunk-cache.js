@@ -245,4 +245,15 @@ describe("speedPunkFillGroups", () => {
     expect(groups.map((g) => g.color)).to.have.members([...colours]);
     expect(groups.flatMap((g) => g.quads)).to.have.members(quads);
   });
+
+  // Every distinct colour is one fill a frame, and an unstepped ramp gave
+  // almost every quad its own: about 200 fills a frame on an "o".
+  it("takes the colours in steps, so a dense comb is a few fills", () => {
+    const quads = computeSpeedPunkSamples(hexRing(30), {
+      contourSegmentBudget: 4000,
+      minSegmentsPerCurve: 5,
+    });
+    expect(quads.length).to.be.above(1000);
+    expect(speedPunkFillGroups(quads).length).to.be.at.most(33);
+  });
 });

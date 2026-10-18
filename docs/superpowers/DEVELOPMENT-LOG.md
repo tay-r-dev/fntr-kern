@@ -119,6 +119,13 @@ the zoom still computed a comb inside a zoom frame: 3 to 6 ms on `M^1` in Node,
 holds across rungs, and the settled zoom's comb follows 150 ms after the last
 step.
 
+**One fill per colour needs few colours.** The grouping cut the fills from one
+per quad to one per distinct colour. But the ramp was continuous, so an "o" at
+4× still gave 260 fills a frame, and the comb was 40 per cent of every frame in
+a Firefox profile, zoom and drag alike. The ramp now takes 32 steps, so a comb
+is at most 33 fills. A step moves a channel by a few levels in 255. One turn is
+still one colour everywhere.
+
 ### Three things the comb does differently from the donor (`_external/speedpunk`)
 
 |               | donor                                                    | this comb                                                                                              |
