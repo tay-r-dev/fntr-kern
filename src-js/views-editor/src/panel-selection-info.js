@@ -41,6 +41,7 @@ import "@fontra/web-components/ui-text-input.js";
 import { dialog } from "@fontra/web-components/modal-dialog.js";
 import { Form } from "@fontra/web-components/ui-form.js";
 import LetterspacerPanel from "./panel-letterspacer.js";
+import { formContentsLayoutSignature } from "./panel-skeleton-parameters.js";
 import { editSkeleton } from "./skeleton-editing.js";
 import Panel from "./panel.js";
 
@@ -233,7 +234,9 @@ export default class SelectionInfoPanel extends Panel {
     this.spacingCard.hidden = !showsGlyph;
     this.kerningCard.hidden = !showsGlyph;
     this.letterspacerHost.hidden = !showsGlyph;
-    this._metricFields = {};
+    // The cards' handlers read the glyph through this, so a card kept across an
+    // update acts on the glyph as it is now.
+    this._spacingContext = { glyphName, varGlyphController, glyphController };
     if (showsGlyph) {
       this._buildSpacingCard({
         glyphName,
@@ -462,11 +465,26 @@ export default class SelectionInfoPanel extends Panel {
     }
     this.selectionCard.hidden = showsGlyph && !formContents.length;
     if (!formContents.length) {
+      this._lastFormLayout = null;
       this.infoForm.setFieldDescriptions(
         showsGlyph ? [] : [{ type: "text", value: translate("selection.none") }]
       );
     } else {
-      this.infoForm.setFieldDescriptions(formContents);
+      // A canvas drag moves values, not the fields, so the inputs are kept
+      // and the values written into them (as the skeleton panel does).
+      const layout = formContentsLayoutSignature(formContents);
+      if (layout === this._lastFormLayout) {
+        for (const field of formContents.flatMap((item) =>
+          item.fieldX ? [item.fieldX, item.fieldY] : [item]
+        )) {
+          if (field.key != null && this.infoForm.hasKey(field.key)) {
+            this.infoForm.setValue(field.key, field.value);
+          }
+        }
+      } else {
+        this._lastFormLayout = layout;
+        this.infoForm.setFieldDescriptions(formContents);
+      }
       if (glyphController) {
         await this._setupSelectionInfoHandlers(glyphName);
       }
@@ -497,10 +515,42 @@ export default class SelectionInfoPanel extends Panel {
   }) {
     const editLocked = glyphLocked || this.fontController.readOnly;
 
+    // A canvas drag changes the numbers and nothing else, so the card keeps its
+    // elements and takes the new values. Everything else it shows rebuilds it.
+    const signature = JSON.stringify({
+      glyphName,
+      codePointsStr,
+      baseCodePointsStr,
+      editLocked,
+      glyphLocked,
+      readOnly: this.fontController.readOnly,
+      metricsKeyDisplay,
+      confirm: this._metricsUnlinkConfirm,
+      leftDisabled: glyphController.leftMargin == undefined,
+      rightDisabled: glyphController.rightMargin == undefined,
+    });
+    if (signature === this._spacingSignature && this._metricFields) {
+      const values = {
+        '["xAdvance"]': instance.xAdvance,
+        '["leftMargin"]': metricsKeyDisplay.left ? null : glyphController.leftMargin,
+        '["rightMargin"]': metricsKeyDisplay.right ? null : glyphController.rightMargin,
+      };
+      for (const [key, value] of Object.entries(values)) {
+        const field = this._metricFields[key];
+        if (field && value != null && !field.matches(":focus-within")) {
+          field.value = round(value, 1);
+        }
+      }
+      return;
+    }
+    this._spacingSignature = signature;
+    this._metricFields = {};
+    const context = () => this._spacingContext;
+
     this._lockButton = html.createDomElement("icon-button", {
       "class": "metrics-heading-icon",
       "src": editLocked ? "lock" : "unlock",
-      "onclick": () => this._toggleGlyphLock(varGlyphController.glyph),
+      "onclick": () => this._toggleGlyphLock(context().varGlyphController.glyph),
       "data-tooltip": translate(
         this.fontController.readOnly
           ? "sidebar.selection-info.glyph-locking.tooltip.read-only"
@@ -544,7 +594,7 @@ export default class SelectionInfoPanel extends Panel {
       evaluateExpression: async (expression) =>
         await this._evaluateMetricsExpression(
           expression,
-          varGlyphController,
+          context().varGlyphController,
           "xAdvance"
         ),
       minValue: 0,
@@ -560,7 +610,11 @@ export default class SelectionInfoPanel extends Panel {
         numDigits: 1,
         disabled: margin == undefined,
         evaluateExpression: async (input) =>
-          await this._evaluateSidebearingInput(input, varGlyphController, side),
+          await this._evaluateSidebearingInput(
+            input,
+            context().varGlyphController,
+            side
+          ),
         recordExtraChanges: (glyph, layerInfo, value) =>
           this._recordPendingMetricsKey(glyph, layerInfo, side, value),
         getValue: (layerGlyph, layerGlyphController) => layerGlyphController[marginKey],
@@ -590,7 +644,10 @@ export default class SelectionInfoPanel extends Panel {
             ),
             "data-tooltipposition": "left",
             "onclick": async () => {
-              await this._updateMetricsForGlyph(glyphName, varGlyphController);
+              await this._updateMetricsForGlyph(
+                context().glyphName,
+                context().varGlyphController
+              );
               await this.update();
             },
           })
@@ -649,7 +706,11 @@ export default class SelectionInfoPanel extends Panel {
             return;
           }
           this._metricsUnlinkConfirm = null;
-          await this._unlinkMetricsKey(glyphName, varGlyphController, side);
+          await this._unlinkMetricsKey(
+            context().glyphName,
+            context().varGlyphController,
+            side
+          );
           await this.update();
         },
       });
@@ -671,8 +732,8 @@ export default class SelectionInfoPanel extends Panel {
           "data-tooltipposition": "left",
           "onclick": async () => {
             await this._toggleMetricsSourceOverride(
-              glyphName,
-              varGlyphController,
+              context().glyphName,
+              context().varGlyphController,
               side
             );
             await this.update();
@@ -696,6 +757,20 @@ export default class SelectionInfoPanel extends Panel {
   // KERNING (Figma 4108:2941): the heading with the way to the kerning view,
   // and the glyph's two kern groups.
   _buildKerningCard(glyphName, kerningController) {
+    // Outline edits leave the groups alone, so the card is kept until they move.
+    const signature = JSON.stringify([
+      glyphName,
+      kerningController.rightPairGroupMapping[glyphName] ?? null,
+      kerningController.leftPairGroupMapping[glyphName] ?? null,
+    ]);
+    if (
+      signature === this._kerningSignature &&
+      kerningController === this._kerningCardController
+    ) {
+      return;
+    }
+    this._kerningSignature = signature;
+    this._kerningCardController = kerningController;
     const groupField = (placeholder, value, setGroup) => {
       const field = html.createDomElement("ui-text-input", {});
       field.placeholder = placeholder;
