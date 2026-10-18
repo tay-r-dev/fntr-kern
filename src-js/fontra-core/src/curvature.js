@@ -657,11 +657,15 @@ export function speedPunkFillGroups(quads) {
 }
 
 // Combs per segment, keyed on everything a segment's comb reads. The most
-// recently used are kept, up to `limit`.
+// recently used are kept, up to `limit` entries and `quadBudget` quads. Entries
+// differ in size by the step count, so the entry limit alone let a drag's old
+// versions of one segment hold about 100 MiB; a quad is about half a KiB.
 export class SpeedPunkSegmentCache {
-  constructor(limit = 20000) {
+  constructor(limit = 20000, quadBudget = 60000) {
     this.limit = limit;
+    this.quadBudget = quadBudget;
     this.entries = new Map();
+    this.quadCount = 0;
     this.misses = 0;
   }
 
@@ -678,9 +682,20 @@ export class SpeedPunkSegmentCache {
   }
 
   set(key, value) {
+    const old = this.entries.get(key);
+    if (old) {
+      this.quadCount -= old.length;
+      this.entries.delete(key);
+    }
     this.entries.set(key, value);
-    while (this.entries.size > this.limit) {
-      this.entries.delete(this.entries.keys().next().value);
+    this.quadCount += value.length;
+    while (
+      this.entries.size > this.limit ||
+      (this.quadCount > this.quadBudget && this.entries.size > 1)
+    ) {
+      const oldestKey = this.entries.keys().next().value;
+      this.quadCount -= this.entries.get(oldestKey).length;
+      this.entries.delete(oldestKey);
     }
   }
 }

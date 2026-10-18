@@ -159,6 +159,10 @@ Stating the ceiling as a fraction of the local radius would end the crossing —
 and would put a unit of length back into a readout that eleven rounds took one
 out of.
 
+**The segment cache was bounded by entries, and entries differ in size.** 300
+versions of one cubic at 724 steps held 107 MiB under a 20,000-entry limit. A
+quad budget of 60,000 holds the same run at 29.5 MiB (2026-10-18).
+
 **Still open**, all three out with the revert: the comb does not repaint when a
 comb setting changes; the three fields do not scrub and a number box keeps the
 keyboard after an edit; sharpness and opacity store the full float of a drag.

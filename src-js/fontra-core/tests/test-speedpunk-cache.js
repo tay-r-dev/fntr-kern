@@ -214,6 +214,24 @@ describe("SpeedPunk per-segment cache", () => {
     computeSpeedPunkSamples(hexRing(), params, cache);
     expect(cache.misses).to.equal(6 + 3 + 3);
   });
+
+  it("holds its quads under a budget, whatever the entry count", () => {
+    const cache = new SpeedPunkSegmentCache(20000, 500);
+    for (let i = 0; i < 50; i++) {
+      computeSpeedPunkSamples(hexRing(i), params, cache);
+    }
+    expect(cache.quadCount).to.be.at.most(500);
+    const counted = [...cache.entries.values()].reduce((n, q) => n + q.length, 0);
+    expect(cache.quadCount).to.equal(counted);
+  });
+
+  it("keeps unchanged segments under the budget", () => {
+    const cache = new SpeedPunkSegmentCache(20000, 500);
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    const misses = cache.misses;
+    computeSpeedPunkSamples(hexRing(), params, cache);
+    expect(cache.misses).to.equal(misses);
+  });
 });
 
 describe("speedPunkFillGroups", () => {
