@@ -4569,28 +4569,62 @@ export function findGeneratedPathAddress(skeletonData, contourId, pointId, side,
   if (numericContourId === null || numericPointId === null) {
     return null;
   }
+  const key = bulbRole
+    ? generatedAddressKey(numericPointId, "bulb", bulbRole, role)
+    : generatedAddressKey(numericPointId, "side", side, role);
   for (const generatedEntry of skeletonData?.generated || []) {
     if (generatedEntry?.skeletonContourId !== numericContourId) continue;
-    const pointMap = generatedEntry.pointMap || [];
-    for (
-      let contourPointIndex = 0;
-      contourPointIndex < pointMap.length;
-      contourPointIndex++
-    ) {
-      const provenance = pointMap[contourPointIndex];
-      const matches = bulbRole
-        ? provenance?.bulbRole === bulbRole && provenance.bulbSlot === role
-        : provenance?.side === side && provenance.role === role && !provenance.bulbRole;
-      if (provenance?.skeletonPointId === numericPointId && matches) {
-        return {
-          pathContourIndex: generatedEntry.pathContourIndex,
-          contourPointIndex,
-          pathPointIndex: contourPointIndex,
-        };
-      }
+    const contourPointIndex = generatedAddressIndex(generatedEntry.pointMap || []).get(
+      key
+    );
+    if (contourPointIndex !== undefined) {
+      return {
+        pathContourIndex: generatedEntry.pathContourIndex,
+        contourPointIndex,
+        pathPointIndex: contourPointIndex,
+      };
     }
   }
   return null;
+}
+
+function generatedAddressKey(pointId, kind, name, role) {
+  return `${pointId}|${kind}|${name}|${role}`;
+}
+
+// The first index of each address in one point map. Every rib end asked for its
+// address by scanning the map from the start, so a pass over a contour was
+// quadratic in its size. Regeneration hands over a new map, which is a new key
+// here; the length check catches a map that grew in place.
+const generatedAddressIndices = new WeakMap();
+
+function generatedAddressIndex(pointMap) {
+  let cached = generatedAddressIndices.get(pointMap);
+  if (cached?.length === pointMap.length) {
+    return cached.index;
+  }
+  const index = new Map();
+  for (let i = 0; i < pointMap.length; i++) {
+    const provenance = pointMap[i];
+    if (!Number.isInteger(provenance?.skeletonPointId)) continue;
+    const key = provenance.bulbRole
+      ? generatedAddressKey(
+          provenance.skeletonPointId,
+          "bulb",
+          provenance.bulbRole,
+          provenance.bulbSlot
+        )
+      : generatedAddressKey(
+          provenance.skeletonPointId,
+          "side",
+          provenance.side,
+          provenance.role
+        );
+    if (!index.has(key)) index.set(key, i);
+  }
+  cached = { length: pointMap.length, index };
+  generatedAddressIndices.set(pointMap, cached);
+  return index;
 }
 
 function asStrictSkeletonInteger(value) {

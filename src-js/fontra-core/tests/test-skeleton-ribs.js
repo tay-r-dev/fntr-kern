@@ -1656,3 +1656,66 @@ describe("which rib drags show the width plaque", () => {
     }
   });
 });
+
+describe("findGeneratedPathAddress lookup cost", () => {
+  const makeData = (count, reads) => {
+    const entries = [];
+    for (let id = 1; id <= count; id++) {
+      entries.push({ skeletonPointId: id, side: "left", role: "onCurve" });
+      entries.push({ skeletonPointId: id, side: "right", role: "onCurve" });
+    }
+    const pointMap = new Proxy(entries, {
+      get(target, key) {
+        if (typeof key === "string" && /^\d+$/.test(key)) reads.count++;
+        return target[key];
+      },
+    });
+    return { generated: [{ skeletonContourId: 1, pathContourIndex: 0, pointMap }] };
+  };
+
+  it("reads the point map a linear number of times over a whole pass", () => {
+    const reads = { count: 0 };
+    const count = 1000;
+    const data = makeData(count, reads);
+    for (let id = 1; id <= count; id++) {
+      for (const side of ["left", "right"]) {
+        const address = findGeneratedPathAddress(data, 1, id, side, "onCurve");
+        expect(address.contourPointIndex).to.equal((id - 1) * 2 + (side === "right"));
+      }
+    }
+    expect(reads.count).to.be.below(count * 10);
+  });
+
+  it("keeps the first match where provenance repeats", () => {
+    const data = {
+      generated: [
+        {
+          skeletonContourId: 1,
+          pathContourIndex: 0,
+          pointMap: [
+            { skeletonPointId: 1, side: "left", role: "onCurve" },
+            { skeletonPointId: 1, side: "left", role: "onCurve" },
+          ],
+        },
+      ],
+    };
+    expect(
+      findGeneratedPathAddress(data, 1, 1, "left", "onCurve").contourPointIndex
+    ).to.equal(0);
+  });
+
+  it("answers from a new point map after regeneration", () => {
+    const data = makeData(3, { count: 0 });
+    findGeneratedPathAddress(data, 1, 2, "left", "onCurve");
+    data.generated = [
+      {
+        skeletonContourId: 1,
+        pathContourIndex: 4,
+        pointMap: [{ skeletonPointId: 2, side: "left", role: "onCurve" }],
+      },
+    ];
+    const address = findGeneratedPathAddress(data, 1, 2, "left", "onCurve");
+    expect(address.pathContourIndex).to.equal(4);
+    expect(address.contourPointIndex).to.equal(0);
+  });
+});

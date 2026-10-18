@@ -1611,6 +1611,12 @@ consumer exists.
   twelve-line subclass. One file, and the two pens cannot fall out of step — rail
   R-B paying for itself rather than being argued for.
 
+### The rib end's address was a scan
+
+Every rib end found its outline address by reading the point map from the
+start, so one pass over 1,000 smooth points read it 2,001,000 times. An index
+per point map, built once, takes the same pass under 10,000 (2026-10-18).
+
 ### Three small items
 
 - **A hand may collapse a generated handle to zero.** The one-unit floor is the
