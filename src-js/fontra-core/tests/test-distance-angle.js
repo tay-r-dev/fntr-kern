@@ -4,8 +4,11 @@ import {
   calculateProjectedDistanceComponents,
   handleGizmoLines,
   handleLabelGoesUp,
+  labelContourPieces,
+  registerLabelContours,
 } from "@fontra/core/distance-angle.js";
 import { calculateSegmentTension } from "@fontra/core/tunni-calculations.js";
+import { VarPackedPath } from "@fontra/core/var-path.js";
 import { expect } from "chai";
 
 describe("distance-angle measure helpers", () => {
@@ -182,5 +185,57 @@ describe("handleGizmoLines", () => {
 
   it("says n/a for a tension there is none of", () => {
     expect(handleGizmoLines({ distance: 10, tension: null })[1]).to.equal("n/a");
+  });
+});
+
+describe("registerLabelContours", () => {
+  const cubics = (count) =>
+    VarPackedPath.fromUnpackedContours(
+      Array.from({ length: count }, (_, i) => ({
+        points: [
+          { x: 200 * i, y: 0 },
+          { x: 200 * i, y: 100, type: "cubic" },
+          { x: 200 * i + 100, y: 100, type: "cubic" },
+          { x: 200 * i + 100, y: 0 },
+        ],
+        isClosed: false,
+      }))
+    );
+  const contextWith = (matrix) => {
+    const context = { reads: 0 };
+    context.getTransform = () => {
+      context.reads++;
+      return matrix;
+    };
+    return context;
+  };
+  const nextFrame = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const shift = { a: 1, b: 0, c: 0, d: 1, e: 10, f: 5 };
+
+  it("reads the transform once per registration, frame after frame", async () => {
+    const path = cubics(100);
+    const context = contextWith(shift);
+    for (let frame = 0; frame < 3; frame++) {
+      const before = context.reads;
+      registerLabelContours(context, path);
+      expect(context.reads - before).to.equal(1);
+      await nextFrame();
+    }
+  });
+
+  it("places the pieces on screen through the transform", () => {
+    const pieces = labelContourPieces(contextWith(shift), cubics(1));
+    expect(pieces.length).to.equal(8);
+    expect(pieces[0][0]).to.deep.equal({ x: 10, y: 5 });
+    expect(pieces[7][1]).to.deep.equal({ x: 110, y: 5 });
+  });
+
+  it("samples again after the path is edited in place", async () => {
+    const path = cubics(1);
+    labelContourPieces(contextWith(shift), path);
+    await nextFrame();
+    path.coordinates[0] = 50;
+    const pieces = labelContourPieces(contextWith(shift), path);
+    expect(pieces[0][0]).to.deep.equal({ x: 60, y: 5 });
   });
 });

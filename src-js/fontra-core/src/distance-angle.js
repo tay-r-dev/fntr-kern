@@ -1235,31 +1235,80 @@ export function registerLabelContours(context, path) {
     return;
   }
   obstacles.paths.add(path);
+  const m = context.getTransform();
+  const toDevice = ({ x, y }) => ({
+    x: m.a * x + m.c * y + m.e,
+    y: m.b * x + m.d * y + m.f,
+  });
+  for (const [a, b] of glyphContourPieces(path)) {
+    obstacles.contours.push([toDevice(a), toDevice(b)]);
+  }
+}
+
+// This frame's contour pieces, after registering the path. For tests.
+export function labelContourPieces(context, path) {
+  registerLabelContours(context, path);
+  return labelObstaclesFor(context).contours;
+}
+
+const CONTOUR_STEPS = 8;
+
+// A path's contour pieces in glyph space, kept while the path's geometry is the
+// same. A path can be edited in place, so the geometry is compared, not the
+// object; every redraw used to sample every curve again.
+const glyphContourPieceCache = new WeakMap();
+
+function glyphContourPieces(path) {
+  const geometry = [path.coordinates, path.pointTypes, path.contourInfo];
+  const cached = glyphContourPieceCache.get(path);
+  if (cached && sameGeometry(cached.geometry, geometry)) {
+    return cached.pieces;
+  }
+  const pieces = [];
   for (let contourIndex = 0; contourIndex < path.numContours; contourIndex++) {
     for (const { points } of path.iterContourDecomposedSegments(contourIndex)) {
       const steps = points.length > 2 ? CONTOUR_STEPS : 1;
-      let previous = devicePoint(context, points[0]);
+      let previous = { x: points[0].x, y: points[0].y };
       for (let s = 1; s <= steps; s++) {
-        const next = devicePoint(context, bezierAt(points, s / steps));
-        obstacles.contours.push([previous, next]);
+        const next = bezierAt(points, s / steps);
+        pieces.push([previous, next]);
         previous = next;
       }
     }
   }
+  glyphContourPieceCache.set(path, {
+    geometry: geometry.map((part) =>
+      Array.from(part || [], (item) =>
+        typeof item === "object" ? `${item.endPoint}|${item.isClosed}` : item
+      )
+    ),
+    pieces,
+  });
+  return pieces;
 }
 
-const CONTOUR_STEPS = 8;
+function sameGeometry(saved, geometry) {
+  return saved.every((copy, i) => {
+    const part = geometry[i] || [];
+    if (copy.length !== part.length) return false;
+    for (let j = 0; j < copy.length; j++) {
+      const item = part[j];
+      const value =
+        typeof item === "object" ? `${item.endPoint}|${item.isClosed}` : item;
+      if (copy[j] !== value) return false;
+    }
+    return true;
+  });
+}
 
 // A point on a Bézier of any degree, by de Casteljau.
 function bezierAt(points, t) {
   let row = points.map(({ x, y }) => ({ x, y }));
   while (row.length > 1) {
-    row = row
-      .slice(1)
-      .map((p, i) => ({
-        x: row[i].x + (p.x - row[i].x) * t,
-        y: row[i].y + (p.y - row[i].y) * t,
-      }));
+    row = row.slice(1).map((p, i) => ({
+      x: row[i].x + (p.x - row[i].x) * t,
+      y: row[i].y + (p.y - row[i].y) * t,
+    }));
   }
   return row[0];
 }
