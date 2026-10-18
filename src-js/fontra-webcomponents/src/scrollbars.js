@@ -157,7 +157,8 @@ const attachedScrollbars = new WeakMap();
 // shadow root, including boxes added later. A view calls this once at start.
 // The boxes are found by their computed overflow, so no box has to ask.
 export function drawScrollbarsEverywhere(root = document) {
-  const pending = new Set();
+  const pendingWalk = new Set();
+  const pendingCheck = new Set();
   let frame = 0;
   const observer = new MutationObserver((records) => {
     for (const record of records) {
@@ -165,23 +166,34 @@ export function drawScrollbarsEverywhere(root = document) {
       if (record.target.closest?.(".scrollbar-rail")) {
         continue;
       }
-      if (record.type === "attributes") {
-        pending.add(record.target);
+      // An inline style changes how its own element overflows. A resize gutter
+      // writes one on the page root every frame, and walking the whole page
+      // for it found nothing new.
+      if (record.type === "attributes" && record.attributeName === "style") {
+        pendingCheck.add(record.target);
+      } else if (record.type === "attributes") {
+        pendingWalk.add(record.target);
       }
       for (const node of record.addedNodes) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          pending.add(node);
+          pendingWalk.add(node);
         }
       }
     }
     if (!frame) {
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const nodes = [...pending];
-        pending.clear();
-        for (const node of nodes) {
+        const plan = planScrollbarScan(pendingWalk, pendingCheck);
+        pendingWalk.clear();
+        pendingCheck.clear();
+        for (const node of plan.walk) {
           if (node.isConnected) {
             walk(node);
+          }
+        }
+        for (const element of plan.check) {
+          if (element.isConnected && scrolls(element)) {
+            attachScrollbars(element);
           }
         }
       });
@@ -218,6 +230,23 @@ export function drawScrollbarsEverywhere(root = document) {
   };
   observe(root);
   walk(root.documentElement ?? root);
+}
+
+// What one frame's changes ask for: trees to walk, and elements to check on
+// their own. A node inside a tree already walked is dropped, through shadow
+// roots to their hosts, so one batch visits each subtree once.
+export function planScrollbarScan(walkNodes, checkNodes) {
+  const insideWalked = (node) => {
+    for (let up = node.parentNode ?? node.host; up; up = up.parentNode ?? up.host) {
+      if (walkNodes.has(up)) return true;
+    }
+    return false;
+  };
+  const walk = [...walkNodes].filter((node) => !insideWalked(node));
+  const check = [...checkNodes].filter(
+    (node) => !walkNodes.has(node) && !insideWalked(node)
+  );
+  return { walk, check };
 }
 
 // Not the page itself, which has no parent to hold the bars, and not a
